@@ -12,6 +12,15 @@ upscale to a 512 px display-resolution reference. **Tune split = 31 photos,
 holdout split = 32 (Kodak24 + 8 held-out curated).** Candidates are chosen on
 tune and validated on holdout, per the pre-registered rule in `RATIONALE.md`.
 
+> **Two corpora, and §12 is on the second one.** The photographic corpus was
+> re-sourced from Wikimedia Commons in `85f6af3`, which moved every photographic
+> mean — the R-D gate's tier-1 ΔE00 went 8.8459 → 11.1369 (+25.9%) over its
+> eight images. **§1–§11 have not been re-baselined and still describe the
+> retired Picsum set**; §6 must be re-run in full before those numbers mean
+> anything again. §12 is measured on the current corpus and compares itself to
+> nothing above. Never read a §12 figure against a §1–§11 one: as §7.14 puts it,
+> a run that mixes the two sets reproduces nothing.
+
 > **Corpus revision (2026-08).** Every number below was re-measured on a
 > corpus extended from 26 to 39 curated photographs, after an audit found the
 > old set had no interior illuminant, no achromatic photograph, no high-key
@@ -633,6 +642,11 @@ mise run sweep v07-holdout-photo --split holdout    # §11.12
 mise run sweep v07-holdout-alpha --split holdout    # §11.12
 mise run sweep adopted-defaults                     # §10.3
 mise run sweep adopted-defaults --split holdout     # §10.3
+
+# Round 4 — the instruments, and the window (§12)
+mise run sweep synthesis-window                     # §12.2
+mise run sweep synthesis-window-upper               # §12.3
+mise run selftest:metrics                           # §12.1, §12.5
 
 # Check the tables in this file against the results above
 mise run verify:experiments
@@ -2400,3 +2414,202 @@ still takes SSIMULACRA2 and Butteraugli at ~84 B, where ChromaHash wins ΔE00 by
 13%. The format still buys colour accuracy with structural accuracy; it now does
 so over a wider range and loses the trade later.
 
+
+## 12. Round 4: the instruments, and the window (2026-09)
+
+This round adds no constant. It adds two things the file needed before it could
+add another: a metric that can see the artifact the format is actually accused
+of, and a decode path that can tell the format's own reconstruction apart from
+the browser's interpolation of it. Then it uses both on the one lever §5 listed
+that has never been refuted with a number.
+
+> **These numbers are on the Wikimedia corpus** (`85f6af3`), which §1–§11 are
+> not. Every table above still describes the retired Picsum set; the CHANGELOG
+> says so and §6 has not been re-run. Nothing here is compared to a number from
+> those sections. Each table below is a self-contained sweep with its own
+> incumbent, which is what makes it readable anyway — guards, Δ% and the paired
+> CI are all measured *within* the run.
+
+### 12.1 Ringing could not see the artifact, and no sweep could see ringing
+
+Two gaps, and they compound.
+
+`metrics/local.ts` measures overshoot: error escaping the reference's local
+`[min, max]`. That is what makes a blur score exactly zero, and it is also a
+hard ceiling on what it can detect. A ripple oscillating *inside* the envelope
+scores zero. So does a broad wave over a textured region, and so does a
+directional stripe. Away from hard edges, those are precisely what a
+truncated-cosine reconstruction produces — and they are what a reader means when
+a placeholder "looks textured" rather than merely blurry.
+
+And no sweep computed it regardless. `sweep.ts` builds its scoring config
+without the flag, so **every constant in this document was chosen on ΔE00 plus
+three aggregate fidelity guards** — none of which separates *smooth but wrong*
+from *sharp with artifacts*. That is the same instrument set that rejected the
+synthesis window for v0.6.
+
+**Spurious detail** (`metrics/spurious.ts`) is the second artifact metric. Both
+sides go onto one grid and through the same separable DCT-II — the format's own
+basis, so a coefficient of the transform is a coefficient of the kind ChromaHash
+transmits — and the score is the RMS of `max(0, |D| − |I|)` in 8-bit levels,
+where `I` is the reference area-averaged onto the decode's raster: the ideal
+low-pass, the best any placeholder at that raster could do.
+
+It holds the same discipline: **a decode that is that ideal low-pass scores
+exactly zero**, and `selftest:metrics` asserts it over 8 decode sizes × 3
+content shapes. Missing detail is free — that is what ΔE00, SSIMULACRA2 and
+DSSIM charge for — and it is magnitude-only, so it is an artifact measure and
+never a fidelity score.
+
+The orientation split comes free, and is worth having because the selection
+order is deliberately anisotropic (`aniso_oblique = 1.2`, `sel_hv = 0.15`) and
+whether that asymmetry is *visible* had never been measured.
+
+Two independent checks that it recognises formats by their construction, none
+of it fitted:
+
+| Format | Vertical | Horizontal | Diagonal | What it is |
+|---|---|---|---|---|
+| unpic | 0.09 | **16.45** | 0.96 | a CSS gradient — horizontal bands |
+| BlurHash | 6.15 | 6.01 | **0.08** | separable rectangular basis, no diagonal term |
+| lqip-modern | 5.71 | 4.83 | 4.88 | a plain downscale; ringing scores exactly 0.00 |
+| ChromaHash t1 | 2.29 | 3.62 | 2.09 | ℓ2 ball, weighted against diagonals |
+
+ChromaHash shows no gross directional artifact. The oblique weight is doing
+something — diagonal is the lowest of its three — but nothing like BlurHash's
+structural blindness to it.
+
+### 12.2 The synthesis window, at the default tier
+
+`sweeps/synthesis-window.json`, 31 tune photographs, `expectBytes: 32`. The
+taper is decoder-side and the encoder is byte-identical with it on, so every
+arm is the same 32 bytes; adopting one would move every test vector and change
+no hash.
+
+| variant | ΔE00 | Δ% | SSIM2 | Ring | Spur | paired 95% CI | guards |
+|---|---|---|---|---|---|---|---|
+| shipped (no window) | 11.473 | — | −341.7 | 1.02 | 3.53 | — | (base) |
+| w_min 0.85 exp 1 | 11.510 | +0.33% | −343.8 | 0.78 | 2.44 | [−0.077, −0.003] | FAIL |
+| w_min 0.7 exp 1 | 11.646 | +1.51% | −347.7 | 0.67 | 1.80 | [−0.273, −0.092] | FAIL |
+| w_min 0.7 exp 2 | 11.775 | +2.64% | −349.5 | 0.73 | 1.53 | [−0.435, −0.187] | FAIL |
+| w_min 0.5 exp 1 | 11.980 | +4.42% | −356.1 | 0.78 | 1.28 | [−0.722, −0.329] | FAIL |
+| w_min 0.5 exp 2 | 12.308 | +7.28% | −360.6 | 1.00 | 0.95 | [−1.120, −0.590] | FAIL |
+| luma only 0.7 exp 1 | 11.649 | +1.53% | −347.1 | 0.67 | 1.90 | [−0.267, −0.102] | FAIL |
+| chroma only 0.7 exp 1 | 11.476 | +0.03% | −342.2 | 1.03 | 3.58 | [−0.029, +0.029] | ok |
+
+Four things this settles.
+
+1. **The window does what it is for, and by a lot.** Invented detail falls
+   monotonically with taper strength, 3.53 → 0.95, a **73% reduction** at the
+   strongest setting. Nothing else on the roadmap moves an artifact number like
+   that.
+2. **It is paid for in ΔE00 and SSIMULACRA2, monotonically.** Every windowed arm
+   fails guards, and the paired CI excludes zero from `w_min 0.85` onward. The
+   pre-registered rule wants ≥3% ΔE00 *improvement* with all guards improving;
+   this is the opposite sign. **The v0.6 rejection stands — and now it stands on
+   evidence rather than on an instrument that could not see the other half.**
+3. **The effect is entirely luma.** `luma only` reproduces the both-channel arm
+   almost exactly (spurious 1.90 vs 1.80, ΔE00 +1.53% vs +1.51%), while
+   `chroma only` is inert on every column — spurious 3.58 against a 3.53 base,
+   a paired CI straddling zero, the only arm that passes guards precisely
+   because it does nothing. `RATIONALE.md` attributes v0.5's visible striping to
+   "chroma quantization noise, not luma ringing". Whatever was true at the v0.5
+   constants, at v0.7's the invented structure is **luma**, and a chroma taper
+   cannot touch it.
+4. **Ringing is not monotonic in the taper, and spurious is.** Ringing bottoms
+   out at `w_min 0.7 exp 1` (1.02 → 0.67) and climbs back to 1.00 at the
+   strongest arm, while spurious keeps falling. They are measuring different
+   things, which is the case for having both.
+
+### 12.3 The same knob at code 2, where the positioning claim lives
+
+`sweeps/synthesis-window-upper.json`, `expectBytes: 108`. Split from the table
+above rather than added to it: Δ%, guards and the paired CI are computed against
+the first row, so mixing tiers would compare a 108-byte arm to a 32-byte
+incumbent and make the tightest instrument here meaningless.
+
+| variant | ΔE00 | Δ% | SSIM2 | DSSIM | Ring | Spur | paired 95% CI | guards |
+|---|---|---|---|---|---|---|---|---|
+| t2 shipped (no window) | 9.667 | — | −212.9 | 0.2559 | 1.32 | 3.65 | — | (base) |
+| t2 w_min 0.85 exp 1 | 9.674 | +0.06% | −216.1 | 0.2548 | 1.03 | 2.64 | [−0.027, +0.012] | FAIL |
+| t2 w_min 0.7 exp 1 | 9.756 | +0.92% | −221.8 | 0.2544 | 0.87 | 2.01 | [−0.136, −0.048] | FAIL |
+| t2 w_min 0.5 exp 2 | 10.255 | +6.08% | −242.2 | 0.2561 | 1.00 | 1.27 | [−0.732, −0.459] | FAIL |
+| t2 luma only 0.7 exp 1 | 9.750 | +0.85% | −221.0 | 0.2543 | 0.88 | 2.04 | [−0.126, −0.047] | FAIL |
+| t2 chroma only 0.7 exp 1 | 9.674 | +0.06% | −213.7 | 0.2561 | 1.30 | 3.71 | [−0.033, +0.022] | ok |
+
+The pattern holds, and the light arm gets interesting.
+
+At `w_min 0.85`, ΔE00 is **statistically free** — the paired CI is
+[−0.027, +0.012] and includes zero, on 31 images, from the instrument §11 built
+precisely to resolve differences this small. For that nothing, the arm buys a
+**28% cut in invented detail**, a **22% cut in ringing**, and a *better* DSSIM
+(0.2548 vs 0.2559).
+
+It fails guards on one metric: SSIMULACRA2, −3.2 points against a −1.0
+tolerance. That is the whole verdict, and it deserves to be stated as a tension
+rather than filed as a refutation:
+
+* SSIMULACRA2 is the metric ChromaHash **already loses** to WebP and lqip-modern
+  from ~84 B up (§2, §11.14). It is the axis the format is weakest on.
+* It is also a **fidelity** score fitted to human ratings of *coded images*,
+  where invented high-frequency structure and real high-frequency detail are
+  hard to tell apart from a distance. A taper removes both.
+* And per §7.14's U19, **not one of these metrics has ever been validated
+  against human judgement at placeholder fidelity.** §8.5 already recorded three
+  MSE-reducing changes moving ΔE00 the wrong way.
+
+So the honest statement is: the window trades a metric the format is losing
+anyway for two artifact metrics it wins on, at no measurable ΔE00 cost, and
+**the existing rules say no**. Whether the rules are right about this is the
+U19 question, which this round does not answer and cannot.
+
+### 12.4 What the previews were showing, and the render at display size
+
+The artifacts a reader sees in the comparison report were the prompt for this
+round, so it is worth stating what that report actually renders. Every preview
+is a decode at its **own** raster — 32×21 at the default tier — placed in a
+150 px box with `image-rendering: pixelated`, i.e. magnified about seven times.
+The button labelled "Toggle Blur" applied no blur; it switched
+`image-rendering` to `auto`, the browser's interpolation of those same samples.
+
+Neither view is the format drawing a picture at display size, and until this
+round nothing could produce one: `render_at_size` has always been able to
+evaluate the basis at any grid, but it is private, and every public entry point
+either uses the natural raster or takes a per-axis `min` against it. No binding,
+in any of the nine languages, can ask for it. The scoring path could not either
+— it decodes capped to the ≤100 px encoder input and hands the result to
+libvips, whose enlarger overshoots a step edge by ~7% of its own.
+
+`research-render` (off by default, no binding exposes it) closes that, and the
+report gains a row: the same 32 bytes, rendered directly at the 512 px
+reference, so the shared upscale is a no-op for it alone.
+
+First measurement, one photograph (`chroma-black-and-white`):
+
+| | ΔE00 | DSSIM | SSIM2 | Butteraugli | Ringing |
+|---|---|---|---|---|---|
+| t1, decode at 32 px + upscale | 9.50 | 0.1844 | −180.1 | 32.88 | 0.85 |
+| t1, native render at 512 px | 9.49 | 0.1843 | −179.9 | 32.82 | **2.32** |
+
+On fidelity the two are the same picture to three significant figures. On
+**ringing the native render is 2.7× worse** — the format's own reconstruction
+overshoots more than the browser's interpolation of its 32 px samples does,
+because bilinear interpolation between stored samples cannot overshoot and a
+truncated cosine basis can.
+
+That is a directional first result on one image, not a corpus finding, and it is
+the row to widen next. What it already settles is narrower and useful: rendering
+at display size is **not** a free improvement, and the blockiness in a report
+preview is the magnification rather than the format.
+
+### 12.5 What this round did not do
+
+* **No constant moved.** Every arm above is a measurement.
+* **`aspect.ts` gained the self-checks** that `metric-selftest.ts`'s docstring
+  and the `selftest:metrics` task description had both claimed since it was
+  written, and neither had. One of them pins the 1.59% a 3:2 source lands on —
+  which is the number an `<img>` receives, against the aspect *byte*'s 1.09%.
+* **U19 is still open, and this round raises its stakes.** §7.14 said adding two
+  computed metrics arguably does that; §12.3 is what it looks like when it
+  happens — a decision that now turns on whether SSIMULACRA2 is right about
+  placeholders, which nothing here can say.

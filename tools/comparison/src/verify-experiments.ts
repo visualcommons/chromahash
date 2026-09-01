@@ -111,6 +111,8 @@ export interface SweepRow {
   meanButteraugli: number | null;
   meanDssim: number | null;
   meanAlphaMae: number | null;
+  meanRinging: number | null;
+  meanSpurious: number | null;
   ciedeDeltaPct: number | null;
   guardsOk: boolean | null;
   perImageCiede: (number | null)[];
@@ -146,6 +148,10 @@ function fromRdRow(r: RdRow): SweepRow {
     meanButteraugli: r.butteraugli,
     meanDssim: r.dssim,
     meanAlphaMae: null,
+    // rd-budget scores no artifact metrics: it is a cross-format R-D run, and
+    // the two locally-computed metrics are opt-in per entry point.
+    meanRinging: null,
+    meanSpurious: null,
     ciedeDeltaPct: null,
     guardsOk: null,
     perImageCiede: [],
@@ -212,6 +218,8 @@ export type Metric =
   | "meanButteraugli"
   | "meanDssim"
   | "meanAlphaMae"
+  | "meanRinging"
+  | "meanSpurious"
   | "ciedeDeltaPct"
   | "bytes"
   | "ci"
@@ -1349,6 +1357,40 @@ const BINDINGS: Binding[] = [
       "SSIM2 ↑": "meanSsimulacra2",
       "Butter ↓": "meanButteraugli",
       "DSSIM ↓": "meanDssim",
+    },
+  },
+
+  // §12 — the synthesis window, with the artifact columns that decide it. These
+  // are the first bindings to check `meanRinging`/`meanSpurious`, which is the
+  // point: §12's verdict turns on them, so a stale artifact cell would be a
+  // stale conclusion.
+  {
+    kind: "rows",
+    section: "12.2",
+    table: 0,
+    sweep: "synthesis-window",
+    columns: {
+      ΔE00: "meanCiede",
+      "Δ%": "ciedeDeltaPct",
+      SSIM2: "meanSsimulacra2",
+      Ring: "meanRinging",
+      Spur: "meanSpurious",
+      "paired 95% CI": "ci",
+    },
+  },
+  {
+    kind: "rows",
+    section: "12.3",
+    table: 0,
+    sweep: "synthesis-window-upper",
+    columns: {
+      ΔE00: "meanCiede",
+      "Δ%": "ciedeDeltaPct",
+      SSIM2: "meanSsimulacra2",
+      DSSIM: "meanDssim",
+      Ring: "meanRinging",
+      Spur: "meanSpurious",
+      "paired 95% CI": "ci",
     },
   },
 ];

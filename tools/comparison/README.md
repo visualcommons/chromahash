@@ -61,7 +61,7 @@ not add it.
 
 ## The metrics
 
-Seven come from [`iqa-cli`](https://crates.io/crates/iqa-cli); two are computed
+Seven come from [`iqa-cli`](https://crates.io/crates/iqa-cli); three are computed
 by this harness and are badged separately in the report, because the report
 claims those seven are iqa-cli's and that claim has to stay true.
 
@@ -75,6 +75,7 @@ claims those seven are iqa-cli's and that claim has to stay true.
 | PSNR-HVS-M | higher | [Ponomarenko et al.](https://www.ponomarenko.info/psnrhvsm.htm) |
 | PSNR — *reference only* | higher | [Peak signal-to-noise ratio](https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio) |
 | **Ringing** — *measured here* | lower | [Ringing artifacts](https://en.wikipedia.org/wiki/Ringing_artifacts) |
+| **Invented detail** — *measured here* | lower | [Ringing artifacts](https://en.wikipedia.org/wiki/Ringing_artifacts) |
 | **Aspect error / reflow** — *measured here* | lower | [Cumulative Layout Shift](https://web.dev/articles/cls) |
 
 ΔE00 is primary because colour accuracy dominates perceived quality at
@@ -82,7 +83,7 @@ placeholder fidelity, where PSNR correlates poorly. SSIMULACRA2, Butteraugli and
 DSSIM are co-reported as guards: a change that improves ΔE00 while making one of
 them worse has traded something real away.
 
-The two local metrics exist because the other seven cannot answer their
+The three local metrics exist because the other seven cannot answer their
 questions:
 
 - **Ringing** (`src/metrics/local.ts`) separates *smooth but wrong* from *sharp
@@ -90,6 +91,16 @@ questions:
   only error that escapes the local range of the original, so a decode that is
   merely a low-pass of the reference scores **exactly zero** — that property is
   the metric, and `mise run selftest:metrics` asserts it.
+- **Invented detail** (`src/metrics/spurious.ts`) is ringing's companion, and
+  exists because ringing has a hard ceiling: it sees only error that escapes the
+  reference's *local range*, so an in-envelope ripple, a broad wave over texture
+  and a directional stripe all score zero there — and away from hard edges those
+  are exactly what a truncated cosine basis produces. It measures energy the
+  decode carries at frequencies the reference has none at, through the format's
+  own basis, and **the ideal low-pass of the reference scores exactly zero**.
+  Missing detail is free, by design: that is what the fidelity metrics charge
+  for. It splits by orientation, which is how the deliberately anisotropic
+  selection order (`aniso_oblique`, `sel_hv`) would show up if it were visible.
 - **Aspect error** (`src/aspect.ts`) exists because `upscaleRgba` stretches every
   decode back into the reference frame before scoring, so every other metric here
   is structurally blind to a format decoding to the wrong shape.
@@ -123,6 +134,7 @@ mise run compare:rd           # rate-distortion sweep -> output/rd-report.*
 mise run compare:versions     # v0.2..v0.6 vs the working tree
 mise run rd:gate              # the CI quality gate
 mise run selftest:metrics     # assert the local metrics' defining properties
+mise run sweep synthesis-window   # the decode-side taper, scored on artifacts
 ```
 
 Useful flags on `node dist/main.js`:
@@ -131,7 +143,7 @@ Useful flags on `node dist/main.js`:
 | --- | --- |
 | `--skip-harnesses` | Skip cross-language verification (what CI uses; needs no language toolchains) |
 | `--images <glob>` | Narrow the corpus — the fast loop while iterating |
-| `--no-ringing` | Skip the local artifact metric |
+| `--no-artifacts` | Skip both local artifact metrics (ringing, invented detail) |
 | `--no-blurred-scoring` | Skip the blur-recovery pass |
 | `--allow-missing-iqa` | Degrade metrics to N/A. Preview only; never for a published comparison |
 
@@ -151,6 +163,7 @@ src/
   metrics.ts           scoring config, compositing, blur, the scoring path
   metrics/iqa.ts       iqa-cli subprocess wrapper + content-addressed cache
   metrics/local.ts     ringing
+  metrics/spurious.ts  invented detail
   corpus.ts            the three corpus axes
   adapters/            one per format
   rd/                  rate-distortion lineup, byte targeting, charts

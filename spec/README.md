@@ -1662,8 +1662,8 @@ is a few hundred bytes and the target is intentionally low-pass.
 | XYB opsin color | Perceptual LMS-based color space | **Already covered** — OKLAB is the modern peer; no change. |
 | Variable DCT block sizes (2×2…32×32, incl. rectangular) | Per-block adaptive transform size | **N/A** — a single global DCT is correct at this bitrate; the *tier* is our "variable" axis. Per-block side-info is unaffordable here. |
 | Adaptive (spatial) quantization | Per-region quant field from a perceptual heuristic | **Defer** — a per-region quant map is too much side-info for a sub-2 KB payload; possibly justified only at code 4. |
-| **Chroma-from-luma (CfL)** | Predict X/B chroma from Y luma with per-group multipliers | **Strong v0.8 candidate** — chroma AC is a large share of the budget; a per-image Y→a/b correlation coefficient is a few bits of side-info that could free budget for luma detail. Evaluate the rate–distortion gain on the corpus. |
-| Gaborish | Small post-decode smoothing convolution | **Analog already present** — the decode-side synthesis window (`window_weights`, a Hann taper, disabled by default). Worth re-evaluating enabling it at high tiers to suppress ringing. |
+| **Chroma-from-luma (CfL)** | Predict X/B chroma from Y luma with per-group multipliers | **Built and refuted** — `EXPERIMENTS.md` §7.10 implemented it as a signalled per-channel least-squares gain and measured it at every tier; it does not pay at any of them. This row read "strong v0.8 candidate" until that experiment was run, and is kept as the prediction it scored against. |
+| Gaborish | Small post-decode smoothing convolution | **Re-evaluated, still off** — the decode-side synthesis window (`window_weights`, a Hann taper, disabled by default). `EXPERIMENTS.md` §12.2–§12.3 measured it at codes 1 and 2 with artifact metrics that did not exist when v0.6 rejected it: it removes up to 73% of the invented structure and costs ΔE00 and SSIMULACRA2 monotonically, failing the guards at every strength. At code 2 the lightest taper is statistically free on ΔE00 and fails on SSIMULACRA2 alone. |
 | Edge-preserving filter (EPF) | Adaptive deringing loop filter | **Reject** — a blurred placeholder has few edges to preserve. |
 | DC image + DC predictors | Separate DC plane with spatial predictors | **N/A** — chromahash has a single average-color DC per channel, already chosen by the decode-aware DC search (§10.3). |
 | **Quantization weighting matrices (HVS/CSF)** | Frequency-dependent quant step | **Evaluate / adopt** — a frequency-shaped bit allocation generalizes the existing two-tier `AcLayout` L split; cheap and on-trend with HVS sensitivity. |
@@ -1674,12 +1674,15 @@ is a few hundred bytes and the target is intentionally low-pass.
 | **Progressive / responsive passes** | DC-first, then refinement passes (embedded scalability) | **Compelling v0.8 direction** — make higher tiers *embedded* (the default-tier bytes are a prefix of code 2, etc.) so one stored hash serves both an instant preview and an on-demand detailed render. Constrains the layout but is very LQIP-appropriate. |
 | Upsampling (2×/4×/8×) | Store small, upsample at decode with a fixed kernel | **Already covered** — the DCT renders at any target size and `decodeCapped` band-limits (§6.4, §11.3). |
 
-**Summary of the roadmap.** The most promising directions, in rough priority order, are
-(1) **entropy coding** of the quantized coefficients (largest quality-per-byte gain),
-(2) **chroma-from-luma** (cheap side-info, large chroma budget), (3) **frequency-weighted
-quantization** (generalizes the existing tier split), and (4) **embedded/progressive
-tiers** (one hash, preview→detail). All four are deliberately out of scope for v1, which
-establishes the self-describing, tiered container they would build on.
+**Summary of the roadmap, as written for v1 — and how it scored.** The four directions
+named here were (1) **entropy coding**, (2) **chroma-from-luma**, (3) **frequency-weighted
+quantization**, (4) **embedded/progressive tiers**. All four were subsequently built and
+measured in `EXPERIMENTS.md` §7, and the ordering did not survive: chroma-from-luma is
+refuted at every tier (§7.10), frequency-weighted quantization is −0.52% and below
+threshold (§11.9), embedded tiers are bounded at −20% (§7.11), and entropy coding buys
+−4.3% out of sample at the cost of the O(1) length check that *is* this format's validity
+check (§7.13, §2.6). The list is kept as written so the predictions can be read against
+the outcomes; `EXPERIMENTS.md` §11.13 and §12 carry the current one.
 
 ---
 

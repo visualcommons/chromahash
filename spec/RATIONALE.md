@@ -249,12 +249,32 @@ zeros and excluded from scale (encoder); render-time filtering skips pairs
 outside the raster (decoder). Fixes the v0.5 1×N-strip catastrophe
 **[v0.6: dim_1x100 ΔE00 54.5 → 0.78]** and makes capped decodes band-limited.
 
-### Synthesis window: evaluated and rejected
+### Synthesis window: evaluated and rejected, re-measured and still off
 A raised-cosine synthesis window (ρ = sqrt(priority/p_k)) was implemented and
 swept for v0.6. With corrected chroma scale ranges it cost more detail than
 the ringing it suppressed — v0.5's visible striping was chroma quantization
 noise, not luma ringing. `p_k` stays pinned by test vectors for future
 frequency-normalized extensions.
+
+**Re-opened for v0.8** (`EXPERIMENTS.md` §12.2–§12.3), because that verdict was
+reached on ΔE00 plus three aggregate fidelity guards, and none of them can
+separate *smooth but wrong* from *sharp with artifacts* — the harness had no
+artifact metric at all until v0.7.2, and no sweep scored one until this round.
+Measured at codes 1 and 2 with ringing and spurious detail reported, the taper
+removes up to **73%** of the structure the format invents, and costs ΔE00 and
+SSIMULACRA2 monotonically; every arm fails the guards. **The rejection stands,
+and now it rests on the trade rather than on half of it.**
+
+Two findings worth carrying forward. The effect is **entirely luma**: a
+chroma-only taper is inert on every column, which is the opposite of the
+attribution above — whatever was true at the v0.5 constants, at v0.7's the
+invented structure is luma, and this paragraph's second sentence should not be
+read as describing the format as it now ships. And at code 2 the lightest taper
+(`w_min 0.85`) is **statistically free** on ΔE00 — a paired CI of
+[−0.027, +0.012] over 31 images — buying a 28% cut in invented detail and a
+better DSSIM, and failing on SSIMULACRA2 alone. That is a decision resting
+entirely on whether SSIMULACRA2 is right about placeholders, which is U19 and
+is still open.
 
 ## Quantization (the audio-codec audit)
 
@@ -409,6 +429,15 @@ encoding.
   design); ΔE00 is structure-blind, so every sweep decision requires guard
   non-regression. The tier-precision sweep shows the guards doing real work —
   variants that look near-neutral on ΔE00 fail hard on SSIMULACRA2.
+- **Ringing and spurious detail as the artifact pair, reported not gated:** all
+  four metrics above are *aggregate fidelity* scores, and none separates a
+  placeholder that is uniformly a little off from one that rings and stripes.
+  The two locally-computed metrics do, and each is built on one falsifiable
+  property asserted in CI — a blur scores exactly zero for ringing, the ideal
+  low-pass scores exactly zero for spurious detail. They are opt-in per sweep
+  and gate nothing by default: a taper is *expected* to trade fidelity for
+  artifacts, and gating would hide the exchange rate rather than measure it
+  (`EXPERIMENTS.md` §12).
 - **Display-resolution reference (512 px cap), browser-gamma upscale primary:**
   placeholders are judged at display size as a browser renders them
   (gamma-space smooth filtering); linear-light Lanczos is co-supported as the
@@ -431,8 +460,11 @@ encoding.
 
 ## Future work / open questions
 Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
-1. **Chroma-from-luma** — the largest expected v0.8 win; needs a
-   residual-coding design and a wire change.
+1. ~~**Chroma-from-luma**~~ — **refuted in v0.7** (`EXPERIMENTS.md` §7.10).
+   Built as a signalled per-channel least-squares gain and measured at every
+   tier; it does not pay at any of them. Listed here as "the largest expected
+   v0.8 win" until it was run, and kept struck through rather than deleted so
+   the prediction can be read against the outcome.
 2. ~~**Alpha-mode default-tier layout**~~ — **resolved in v0.7** (`EXPERIMENTS.md`
    §11.3). It got its own corpus and sweep, and the answer was not the
    arithmetic's `L 22 @ 4, a/b 14 @ 3`. The binding constraint was not the
