@@ -100,6 +100,29 @@ export interface LocalMetrics {
    * scale (see `metrics/local.ts`).
    */
   ringWindowRadius: number | null;
+  /**
+   * Spurious detail: RMS energy the decode carries at spatial frequencies the
+   * reference does not, in 8-bit sRGB levels. Lower is better; a decode that is
+   * the ideal low-pass of the reference scores exactly 0.
+   *
+   * The companion to {@link ringing}, and the reason there are two: ringing sees
+   * only error that escapes the reference's *local range*, so an in-envelope
+   * ripple, a broad wave over a textured region and a directional stripe all
+   * score zero there. See `metrics/spurious.ts`.
+   */
+  spurious: number | null;
+  /** Vertical-stripe part of the spurious energy (cx-dominant frequencies). */
+  spuriousVertical: number | null;
+  /** Horizontal-stripe part (cy-dominant frequencies). */
+  spuriousHorizontal: number | null;
+  /** Oblique part; the three partition the plane and recombine in quadrature. */
+  spuriousDiagonal: number | null;
+  /**
+   * Longest edge of the analysis grid, in samples. Reported for the same reason
+   * as {@link ringWindowRadius}: it is derived per format per image, so two
+   * scores are directly comparable only at equal grids.
+   */
+  spuriousGridEdge: number | null;
 }
 
 /** All-null local metrics — for CSS-only formats and skipped computations. */
@@ -111,6 +134,11 @@ export const NULL_LOCAL_METRICS: LocalMetrics = {
   ringArea: null,
   ringP99: null,
   ringWindowRadius: null,
+  spurious: null,
+  spuriousVertical: null,
+  spuriousHorizontal: null,
+  spuriousDiagonal: null,
+  spuriousGridEdge: null,
 };
 
 /**
@@ -371,8 +399,12 @@ export interface ScoringMetaJson {
   alphaBackdrop: readonly [number, number, number];
   /** Container width the layout reflow figure is quoted for, in CSS px. */
   reflowContainerPx: number;
-  /** Whether the locally-computed ringing metric was scored. */
-  ringing: boolean;
+  /**
+   * Whether the locally-computed artifact metrics (ringing and spurious detail)
+   * were scored. One flag, because both are computed at the same point on the
+   * same composited pair, and neither is meaningful on the blurred set.
+   */
+  artifacts: boolean;
 }
 
 /**

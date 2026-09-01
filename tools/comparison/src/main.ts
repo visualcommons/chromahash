@@ -103,9 +103,10 @@ const { values } = parseArgs({
     // reader is choosing between. The blurred pass requests ΔE00 alone, so it
     // costs a fraction of the sharp set rather than doubling it.
     "no-blurred-scoring": { type: "boolean", default: false },
-    // Skip the locally-computed ringing metric (see metrics/local.ts). It costs
-    // no subprocess but does cost CPU per pair; a preview-only run can drop it.
-    "no-ringing": { type: "boolean", default: false },
+    // Skip the locally-computed artifact metrics (metrics/local.ts and
+    // metrics/spurious.ts). They cost no subprocess but do cost CPU per pair;
+    // a preview-only run can drop them.
+    "no-artifacts": { type: "boolean", default: false },
     formats: { type: "string" },
     versions: { type: "string" },
     commit: { type: "string" },
@@ -150,7 +151,7 @@ const upscalePolicy: UpscalePolicy =
 const blurredScoring =
   (values["blurred-scoring"] ?? true) &&
   !(values["no-blurred-scoring"] ?? false);
-const ringing = !(values["no-ringing"] ?? false);
+const artifacts = !(values["no-artifacts"] ?? false);
 /** Optional comma-separated format filter (case-insensitive), e.g. --formats ChromaHash,ThumbHash. */
 const formatFilter = values.formats
   ? values.formats.split(",").map((f) => f.trim().toLowerCase())
@@ -245,7 +246,7 @@ async function main(): Promise<void> {
   setAllowMissingIqa(values["allow-missing-iqa"] ?? false);
   ensureIqaAvailable();
 
-  setScoringConfig({ upscalePolicy, blurredScoring, ringing });
+  setScoringConfig({ upscalePolicy, blurredScoring, artifacts });
 
   // Fan-out width. Scoring is dominated by iqa-cli subprocesses and sharp
   // encodes, so the default is one worker per available core; --jobs 1 restores
@@ -774,7 +775,7 @@ async function main(): Promise<void> {
   const rdJson = rdVariants ? computeRdCurves(entries, rdVariants) : null;
 
   const json: ComparisonJson = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     generatedAt: meta.generatedAt,
     scoring: {
       referenceCap: REFERENCE_CAP,
@@ -783,7 +784,7 @@ async function main(): Promise<void> {
       blurSigmaRule: BLUR_SIGMA_RULE,
       alphaBackdrop: ALPHA_BACKDROP,
       reflowContainerPx: REFLOW_CONTAINER_PX,
-      ringing,
+      artifacts,
     },
     commit: meta.commit,
     repoUrl: meta.repoUrl,

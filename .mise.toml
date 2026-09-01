@@ -655,7 +655,7 @@ run = [
 # window-radius derivation is wrong and every ringing number is noise. Pure
 # computation: no iqa-cli, no corpus, no network.
 [tasks."selftest:metrics"]
-description = "Self-check the locally-computed metrics (ringing, aspect)"
+description = "Self-check the locally-computed metrics (ringing, spurious detail, aspect)"
 depends = ["build:compare"]
 run = "node tools/comparison/dist/metric-selftest.js"
 

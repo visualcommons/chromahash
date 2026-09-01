@@ -4,7 +4,10 @@
  * behind a separate type, so the report's claim that those seven come from
  * iqa-cli stays literally true.
  *
- * Currently: **ringing**, the artifact measure.
+ * Here: **ringing**, the overshoot measure. Its companion, **spurious detail**,
+ * lives in `metrics/spurious.ts` — the two are the artifact pair, and the split
+ * is deliberate: ringing sees only error that escapes the reference's local
+ * range, and everything that stays inside it is the other metric's job.
  *
  * ## Why a new metric at all
  *
@@ -462,8 +465,16 @@ export function computeRinging(
   };
 }
 
-/** Local metrics with every field null — CSS-only formats, skipped runs. */
-export const NULL_RINGING: Omit<LocalMetrics, "alphaMae"> = {
+/** Ringing fields with every entry null — CSS-only formats, skipped runs. */
+export const NULL_RINGING: Pick<
+  LocalMetrics,
+  | "ringing"
+  | "ringingLuma"
+  | "ringingChroma"
+  | "ringArea"
+  | "ringP99"
+  | "ringWindowRadius"
+> = {
   ringing: null,
   ringingLuma: null,
   ringingChroma: null,
