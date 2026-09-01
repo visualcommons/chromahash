@@ -111,6 +111,25 @@ interface SweepConfig {
   /** Also score the alpha plane directly, reported as `meanAlphaMae`. */
   alphaFidelity?: boolean;
   /**
+   * Also score the locally-computed artifact metrics (ringing and spurious
+   * detail), adding them as columns of the decision table.
+   *
+   * Opt-in per config, not on by default, and the reason is the one commit
+   * c23d929 acted on: they cost real CPU per pair and most sweeps do not read
+   * them. A sweep that *is* about artifacts -- the synthesis window above all --
+   * cannot be decided without them, because dE00 and the three guards are
+   * exactly the instruments that rejected the window in v0.6 before any metric
+   * could see what it suppresses.
+   */
+  artifacts?: boolean;
+  /**
+   * Fail a variant whose ringing or spurious detail rises more than this
+   * fraction above the incumbent's, alongside the existing dE00 guards. Only
+   * meaningful with `artifacts`; omitted means the columns are reported but not
+   * gated, which is the right default for a first look at a new knob.
+   */
+  artifactGuardRise?: number;
+  /**
    * Byte length every arm must encode to. A sweep comparing layouts is only
    * meaningful at a fixed budget, and a config that overrides part of a layout
    * inherits the rest from the shipped default — so when a default moves, arms
@@ -149,6 +168,14 @@ interface SweepRow {
   meanDssim: number | null;
   /** Mean absolute alpha error on [0, 1], or null when alpha is not scored. */
   meanAlphaMae: number | null;
+  /** Mean ringing in 8-bit levels, or null unless `artifacts` was set. */
+  meanRinging: number | null;
+  /** Mean spurious detail in 8-bit levels, or null unless `artifacts` was set. */
+  meanSpurious: number | null;
+  /** Vertical/horizontal/diagonal split of the spurious energy. */
+  meanSpuriousVertical: number | null;
+  meanSpuriousHorizontal: number | null;
+  meanSpuriousDiagonal: number | null;
   /** ΔE00 change vs the incumbent, in percent (negative = better). */
   ciedeDeltaPct: number | null;
   /** All guard metrics within tolerance of the incumbent. */
@@ -345,6 +372,11 @@ async function scoreVariant(
   const butters: (number | null)[] = [];
   const dssims: (number | null)[] = [];
   const alphaMaes: (number | null)[] = [];
+  const ringings: (number | null)[] = [];
+  const spuriouses: (number | null)[] = [];
+  const spuriousV: (number | null)[] = [];
+  const spuriousH: (number | null)[] = [];
+  const spuriousD: (number | null)[] = [];
   let bytesSum = 0;
 
   for (const input of inputs) {
@@ -395,6 +427,11 @@ async function scoreVariant(
     butters.push(metrics.butteraugli);
     dssims.push(metrics.dssim);
     alphaMaes.push(local.alphaMae);
+    ringings.push(local.ringing);
+    spuriouses.push(local.spurious);
+    spuriousV.push(local.spuriousVertical);
+    spuriousH.push(local.spuriousHorizontal);
+    spuriousD.push(local.spuriousDiagonal);
   }
 
   return {
@@ -414,6 +451,11 @@ async function scoreVariant(
     meanButteraugli: mean(butters),
     meanDssim: mean(dssims),
     meanAlphaMae: mean(alphaMaes),
+    meanRinging: mean(ringings),
+    meanSpurious: mean(spuriouses),
+    meanSpuriousVertical: mean(spuriousV),
+    meanSpuriousHorizontal: mean(spuriousH),
+    meanSpuriousDiagonal: mean(spuriousD),
     ciedeDeltaPct: null,
     guardsOk: null,
     pairedCi: null,
@@ -422,8 +464,27 @@ async function scoreVariant(
   };
 }
 
+/**
+ * True when `value` is no more than `rise` above `base`, relatively.
+ *
+ * A null on either side passes: the metric was not scored, and a sweep that did
+ * not ask for it must not fail on it. A base of exactly zero is compared
+ * absolutely against the tolerance, because a relative rise from zero is
+ * infinite for any positive value and would fail every arm on a corpus where the
+ * incumbent happens to be artifact-free.
+ */
+function roseNoMoreThan(
+  value: number | null,
+  base: number | null,
+  rise: number,
+): boolean {
+  if (value === null || base === null) return true;
+  if (base === 0) return value <= rise;
+  return value <= base * (1 + rise);
+}
+
 /** Fill ciedeDeltaPct/guardsOk/paired stats on every row from the incumbent. */
-function applyGuards(rows: SweepRow[]): void {
+function applyGuards(rows: SweepRow[], config: SweepConfig): void {
   const base = rows[0];
   if (!base) return;
   for (const row of rows.slice(1)) {
@@ -458,7 +519,16 @@ function applyGuards(rows: SweepRow[]): void {
       row.meanDssim === null ||
       base.meanDssim === null ||
       row.meanDssim <= base.meanDssim * (1 + GUARD_REL_RISE);
-    row.guardsOk = ssim2Ok && butterOk && dssimOk;
+    // Artifact guards are opt-in per config: a sweep exploring a new knob wants
+    // the columns visible before it decides what a regression in them even is.
+    // Where a tolerance IS declared, an artifact rise fails the row exactly as a
+    // guard-metric rise does -- which is the whole point of measuring them.
+    const artifactRise = config.artifactGuardRise;
+    const artifactOk =
+      artifactRise === undefined ||
+      (roseNoMoreThan(row.meanRinging, base.meanRinging, artifactRise) &&
+        roseNoMoreThan(row.meanSpurious, base.meanSpurious, artifactRise));
+    row.guardsOk = ssim2Ok && butterOk && dssimOk && artifactOk;
   }
 }
 
@@ -471,6 +541,7 @@ async function main(): Promise<void> {
     blurredScoring: false,
     backdrops: BACKDROP_SETS[config.backdrops ?? "white"],
     alphaFidelity: config.alphaFidelity ?? false,
+    artifacts: config.artifacts ?? false,
   });
   if (!config.variants?.length) {
     throw new Error(`config ${config.name} declares no variants`);
@@ -515,7 +586,7 @@ async function main(): Promise<void> {
       `  ${variant.label.padEnd(28)} ΔE00 ${row.meanCiede?.toFixed(3) ?? "N/A"} (${((performance.now() - started) / 1000).toFixed(0)}s)`,
     );
   }
-  applyGuards(rows);
+  applyGuards(rows, config);
 
   const expectBytes = config.expectBytes;
   if (expectBytes !== undefined) {
@@ -537,28 +608,43 @@ async function main(): Promise<void> {
   const outPath = path.join(outDir, `${config.name}${suffix}.json`);
   await fs.writeFile(
     outPath,
-    `${JSON.stringify({ name: config.name, description: config.description ?? null, split, images: inputs.length, guardTolerances: { ssimulacra2Drop: GUARD_SSIM2_DROP, relativeRise: GUARD_REL_RISE }, corpus, backdrops: config.backdrops ?? "white", alphaFidelity: config.alphaFidelity ?? false, forceOpaque: config.forceOpaque ?? false, expectBytes: config.expectBytes ?? null, rows }, null, 2)}\n`,
+    `${JSON.stringify({ name: config.name, description: config.description ?? null, split, images: inputs.length, guardTolerances: { ssimulacra2Drop: GUARD_SSIM2_DROP, relativeRise: GUARD_REL_RISE }, corpus, backdrops: config.backdrops ?? "white", alphaFidelity: config.alphaFidelity ?? false, artifacts: config.artifacts ?? false, artifactGuardRise: config.artifactGuardRise ?? null, forceOpaque: config.forceOpaque ?? false, expectBytes: config.expectBytes ?? null, rows }, null, 2)}\n`,
   );
 
   console.log(`\nDecision table (${split} split) → ${outPath}`);
   // The alpha column only exists when alpha was scored, so an opaque sweep's
   // table stays exactly as wide as it was.
   const showAlpha = rows.some((r) => r.meanAlphaMae !== null);
+  // Same rule as the alpha column: a sweep that did not score artifacts keeps a
+  // table exactly as wide as it was before this existed.
+  const showArtifacts = rows.some(
+    (r) => r.meanRinging !== null || r.meanSpurious !== null,
+  );
   console.log(
-    `  ${"Variant".padEnd(28)} ${"Bytes".padStart(6)} ${"ΔE00".padStart(8)} ${"Δ%".padStart(7)} ${"Med".padStart(8)} ${"SSIM2".padStart(8)} ${"Butter".padStart(8)} ${"DSSIM".padStart(8)}${showAlpha ? ` ${"αMAE".padStart(8)}` : ""} ${"paired 95% CI".padStart(18)} ${"win/n".padStart(7)} Guards`,
+    `  ${"Variant".padEnd(28)} ${"Bytes".padStart(6)} ${"ΔE00".padStart(8)} ${"Δ%".padStart(7)} ${"Med".padStart(8)} ${"SSIM2".padStart(8)} ${"Butter".padStart(8)} ${"DSSIM".padStart(8)}${showAlpha ? ` ${"αMAE".padStart(8)}` : ""}${showArtifacts ? ` ${"Ring".padStart(7)} ${"Spur".padStart(7)} ${"Sp:V/H/D".padStart(20)}` : ""} ${"paired 95% CI".padStart(18)} ${"win/n".padStart(7)} Guards`,
   );
   const cell = (v: number | null, d: number, w: number) =>
     (v !== null ? v.toFixed(d) : "N/A").padStart(w);
   for (const r of rows) {
     const guards = r.guardsOk === null ? "(base)" : r.guardsOk ? "ok" : "FAIL";
     const alpha = showAlpha ? ` ${cell(r.meanAlphaMae, 4, 8)}` : "";
+    const vhd = [
+      r.meanSpuriousVertical,
+      r.meanSpuriousHorizontal,
+      r.meanSpuriousDiagonal,
+    ]
+      .map((v) => (v !== null ? v.toFixed(2) : "N/A"))
+      .join("/");
+    const artifacts = showArtifacts
+      ? ` ${cell(r.meanRinging, 2, 7)} ${cell(r.meanSpurious, 2, 7)} ${vhd.padStart(20)}`
+      : "";
     const signed = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(3)}`;
     const ci = r.pairedCi
       ? `[${signed(r.pairedCi[0])}, ${signed(r.pairedCi[1])}]`
       : "—";
     const winN = r.wins !== null ? `${r.wins}/${r.pairs}` : "—";
     console.log(
-      `  ${r.label.padEnd(28)} ${r.bytes.toFixed(0).padStart(6)} ${cell(r.meanCiede, 3, 8)} ${cell(r.ciedeDeltaPct, 2, 7)} ${cell(r.medianCiede, 3, 8)} ${cell(r.meanSsimulacra2, 1, 8)} ${cell(r.meanButteraugli, 2, 8)} ${cell(r.meanDssim, 4, 8)}${alpha} ${ci.padStart(18)} ${winN.padStart(7)} ${guards}`,
+      `  ${r.label.padEnd(28)} ${r.bytes.toFixed(0).padStart(6)} ${cell(r.meanCiede, 3, 8)} ${cell(r.ciedeDeltaPct, 2, 7)} ${cell(r.medianCiede, 3, 8)} ${cell(r.meanSsimulacra2, 1, 8)} ${cell(r.meanButteraugli, 2, 8)} ${cell(r.meanDssim, 4, 8)}${alpha}${artifacts} ${ci.padStart(18)} ${winN.padStart(7)} ${guards}`,
     );
   }
 }

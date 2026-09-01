@@ -1,0 +1,35 @@
+{
+  "name": "synthesis-window-upper",
+  "description": "The synthesis window at code 2 (108 B), the format's strongest point against size-matched WebP. Split from synthesis-window.json rather than added as extra arms because guards, the dE00 delta and the paired CI are all computed against the FIRST row: mixing tiers in one config would compare a 108-byte arm to a 32-byte incumbent and make the tightest instrument in the harness meaningless. Same pattern as scalefactor-bands / scalefactor-bands-t1. This is the tier where a regression costs the most -- README.md 14.1 rests the format's positioning claim on it -- and, per EXPERIMENTS.md 7.14, ringing climbs monotonically with tier while every fidelity metric improves, so it is also where the window has the most to suppress.",
+  "photoOnly": true,
+  "artifacts": true,
+  "expectBytes": 108,
+  "variants": [
+    { "label": "t2 shipped (no window)", "tier": 2 },
+    {
+      "label": "t2 w_min 0.85 exp 1",
+      "tier": 2,
+      "tune": "w_min_l=0.85 w_exp_l=1 w_min_c=0.85 w_exp_c=1"
+    },
+    {
+      "label": "t2 w_min 0.7 exp 1",
+      "tier": 2,
+      "tune": "w_min_l=0.7 w_exp_l=1 w_min_c=0.7 w_exp_c=1"
+    },
+    {
+      "label": "t2 w_min 0.5 exp 2",
+      "tier": 2,
+      "tune": "w_min_l=0.5 w_exp_l=2 w_min_c=0.5 w_exp_c=2"
+    },
+    {
+      "label": "t2 luma only 0.7 exp 1",
+      "tier": 2,
+      "tune": "w_min_l=0.7 w_exp_l=1"
+    },
+    {
+      "label": "t2 chroma only 0.7 exp 1",
+      "tier": 2,
+      "tune": "w_min_c=0.7 w_exp_c=1"
+    }
+  ]
+}

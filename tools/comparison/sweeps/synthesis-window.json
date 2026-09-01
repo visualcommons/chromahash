@@ -1,0 +1,32 @@
+{
+  "name": "synthesis-window",
+  "description": "Re-open the decode-side synthesis window at the default tier, with instruments that can see what it does. The Hann taper w = w_min + (1-w_min)*hann(rho)^w_exp is implemented in dct.rs and disabled by default (w_min = 1.0). RATIONALE.md ('Synthesis window: evaluated and rejected') rejected it for v0.6 as costing 'more detail than the ringing it suppressed' -- a verdict reached on dE00 plus three aggregate fidelity guards, none of which separates smooth-but-wrong from sharp-with-artifacts, and reached before either artifact metric in this harness existed. Zero wire cost: the taper is decoder-side, the encoder is byte-identical with it on (verified), so adopting it would move every test vector while changing no hash. The luma-only and chroma-only arms are the control that says WHICH channel the window is acting on -- RATIONALE.md attributes v0.5's visible striping to chroma quantization noise rather than luma ringing, and a probe on a synthetic edge agrees (chroma-only moves the decode by up to 54 levels against luma-only's 9). artifactGuardRise is deliberately absent: a taper is EXPECTED to trade fidelity for artifacts, so the question is the exchange rate, not whether the trade exists, and gating would only hide the table this sweep exists to produce.",
+  "photoOnly": true,
+  "artifacts": true,
+  "expectBytes": 32,
+  "variants": [
+    { "label": "shipped (no window)" },
+    {
+      "label": "w_min 0.85 exp 1",
+      "tune": "w_min_l=0.85 w_exp_l=1 w_min_c=0.85 w_exp_c=1"
+    },
+    {
+      "label": "w_min 0.7 exp 1",
+      "tune": "w_min_l=0.7 w_exp_l=1 w_min_c=0.7 w_exp_c=1"
+    },
+    {
+      "label": "w_min 0.7 exp 2",
+      "tune": "w_min_l=0.7 w_exp_l=2 w_min_c=0.7 w_exp_c=2"
+    },
+    {
+      "label": "w_min 0.5 exp 1",
+      "tune": "w_min_l=0.5 w_exp_l=1 w_min_c=0.5 w_exp_c=1"
+    },
+    {
+      "label": "w_min 0.5 exp 2",
+      "tune": "w_min_l=0.5 w_exp_l=2 w_min_c=0.5 w_exp_c=2"
+    },
+    { "label": "luma only 0.7 exp 1", "tune": "w_min_l=0.7 w_exp_l=1" },
+    { "label": "chroma only 0.7 exp 1", "tune": "w_min_c=0.7 w_exp_c=1" }
+  ]
+}
