@@ -74,12 +74,18 @@ export interface ScoringConfig {
    * and spurious detail (`metrics/spurious.ts`). Defaults to **off**, and the
    * report opts in.
    *
-   * Optional-and-off rather than optional-and-on because the four other entry
-   * points -- `sweep.ts`, `rd-gate.ts`, `rd-budget.ts`, `entropy-budget.ts` --
-   * construct a config without this field and read only `metrics`. Defaulting
-   * it on made every one of them compute a ~25 ms/pair metric they discard,
-   * which over a sweep's thousands of pairs is minutes per run for a number
-   * nothing looks at.
+   * Optional-and-off rather than optional-and-on because the other entry points
+   * -- `rd-gate.ts`, `rd-budget.ts`, `entropy-budget.ts`, and `sweep.ts` unless
+   * its config opts in -- construct a config without this field and read only
+   * `metrics`. Defaulting it on made every one of them compute metrics they
+   * discard, which over a sweep's thousands of pairs is minutes per run for
+   * numbers nothing looks at.
+   *
+   * The cost is not small, and grew when spurious detail joined ringing.
+   * Measured on a warm metric cache over ~20 photographs and the full default
+   * lineup: **15 s with these off, 28 s with them on** — the pair roughly
+   * doubles a report run. That is why the report is the only entry point that
+   * opts in by default, and why a sweep has to ask.
    */
   artifacts?: boolean;
 }
@@ -225,10 +231,11 @@ export interface MetricOptions {
    */
   skipBlurred?: boolean;
   /**
-   * Skip the locally-computed ringing metric regardless of
-   * {@link ScoringConfig.ringing}. Same reasoning as {@link skipBlurred}: it is
-   * reported for the chosen variant only, and it is not free (~45 ms/pair
-   * measured, against ~59 ms for a ΔE00-only iqa-cli call).
+   * Skip both locally-computed artifact metrics regardless of
+   * {@link ScoringConfig.artifacts}. Same reasoning as {@link skipBlurred}: they
+   * are reported for the chosen variant only, and they are not free — together
+   * they roughly double a warm report run (see {@link ScoringConfig.artifacts}),
+   * against ~59 ms/pair for a ΔE00-only iqa-cli call.
    */
   skipArtifacts?: boolean;
 }
