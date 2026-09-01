@@ -823,6 +823,43 @@ mod tests {
         );
     }
 
+    /// The `ChromaHash` method is the surface the harness actually calls — the
+    /// free function above is module-internal, since `mod decode` is private.
+    /// Exercising only the free function left every mutant of the wrapper alive
+    /// (12 of them), which is exactly what an untested public entry point looks
+    /// like.
+    #[cfg(feature = "research-render")]
+    #[test]
+    fn decode_at_size_tuned_is_the_free_function() {
+        use crate::{ChromaHash, Tunables};
+        let hash = ChromaHash::encode(16, 16, &gradient_image(16, 16), Gamut::Srgb);
+        let t = Tunables::DEFAULT;
+
+        for (w, h) in [(64u32, 64u32), (8, 8), (0, 0)] {
+            let via_method = hash.decode_at_size_tuned(w, h, Gamut::Srgb, &t);
+            let via_fn = decode_at_size_to_with(hash.as_bytes(), w, h, &t, Gamut::Srgb);
+            assert_eq!(
+                via_method, via_fn,
+                "method and free function diverge at {w}x{h}"
+            );
+            // Pin the shape independently, so a mutant returning a plausible
+            // constant tuple cannot satisfy the equality above by replacing both.
+            let (mw, mh, rgba) = via_method;
+            assert_eq!((mw, mh), (w.max(1), h.max(1)));
+            assert_eq!(rgba.len(), (mw * mh * 4) as usize);
+        }
+
+        // The output gamut must flow through the wrapper, not be dropped: a
+        // P3-encoded saturated green clips in sRGB and not in P3.
+        let p3_green = [0u8, 200, 80, 255].repeat(16);
+        let p3 = ChromaHash::encode(4, 4, &p3_green, Gamut::DisplayP3);
+        assert_ne!(
+            p3.decode_at_size_tuned(8, 8, Gamut::DisplayP3, &t),
+            p3.decode_at_size_tuned(8, 8, Gamut::Srgb, &t),
+            "P3 vs sRGB output must differ"
+        );
+    }
+
     /// A zero axis has no defined render. Clamping to 1 keeps the returned
     /// dimensions and the buffer length in agreement, which an empty buffer
     /// would not: a caller reading `w * h * 4` would walk off the end.
