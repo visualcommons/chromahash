@@ -468,6 +468,48 @@ pub fn decode_capped_to(hash: &[u8], max_w: u32, max_h: u32, output: Gamut) -> (
     decode_capped_to_with(hash, max_w, max_h, &Tunables::DEFAULT, output)
 }
 
+/// Render a ChromaHash at an exact target raster, with explicit tunables.
+///
+/// Unlike [`decode_capped_to_with`], which takes a per-axis `min` against the
+/// natural raster and therefore only ever renders *smaller*, this renders at
+/// whatever grid it is given — including one far larger than the natural size.
+/// The coefficients are unchanged; only the sampling grid moves, so this is the
+/// format's own continuous reconstruction sampled densely rather than an
+/// interpolation of its natural-raster samples.
+///
+/// The caller supplies both axes, so nothing here preserves the aspect ratio:
+/// that is deliberate, because the harness renders into a reference frame whose
+/// dimensions it already knows. Callers wanting the declared shape should scale
+/// [`decode_output_size`]'s result themselves.
+///
+/// The §6.4 frequency filter still applies, so a raster *smaller* than natural
+/// stays band-limited exactly as a capped decode would be. Above the natural
+/// raster the filter is inert — every selected pair is representable — which is
+/// what makes this the full reconstruction rather than a resampled one.
+///
+/// Both axes are clamped to at least 1: a zero-area render has no defined
+/// output and returning an empty buffer would be a silent wrong answer.
+///
+/// Takes an already-validated hash, exactly as the other free functions in this
+/// module do — `ChromaHash::from_bytes` is where a malformed input is rejected.
+///
+/// Research surface, gated on the `research-render` feature. Not part of the
+/// default API and exposed by no binding — see the feature's note in
+/// `Cargo.toml`.
+#[cfg(feature = "research-render")]
+pub fn decode_at_size_to_with(
+    hash: &[u8],
+    w: u32,
+    h: u32,
+    t: &Tunables,
+    output: Gamut,
+) -> (u32, u32, Vec<u8>) {
+    let w = w.max(1);
+    let h = h.max(1);
+    let rgba = render_at_size(hash, w as usize, h as usize, t, output);
+    (w, h, rgba)
+}
+
 /// Extract the average color from a ChromaHash without full decode, with
 /// explicit tunables. Returns [r, g, b, a] as u8 values. Per spec §11.2.
 pub fn average_color_with(hash: &[u8], t: &Tunables) -> [u8; 4] {
@@ -737,5 +779,61 @@ mod tests {
             decode_capped_to(bytes, 4, 4, Gamut::Srgb),
             "P3 vs sRGB capped output must differ"
         );
+    }
+
+    /// `decode_at_size` is only meaningful if it is the *same* renderer the
+    /// shipped entry points use, sampled on a different grid. These are the
+    /// three claims that make it a measurement rather than a second decoder.
+    #[cfg(feature = "research-render")]
+    #[test]
+    fn decode_at_size_agrees_with_the_shipped_entry_points() {
+        use crate::{ChromaHash, Tunables};
+        let hash = ChromaHash::encode(16, 16, &gradient_image(16, 16), Gamut::Srgb);
+        let bytes = hash.as_bytes();
+        let t = Tunables::DEFAULT;
+
+        // 1. At the natural raster it must be byte-identical to a plain decode.
+        //    Any difference here means a second, divergent render path.
+        let (nw, nh, natural) = decode_to_with(bytes, &t, Gamut::Srgb);
+        assert_eq!(
+            decode_at_size_to_with(bytes, nw, nh, &t, Gamut::Srgb),
+            (nw, nh, natural),
+            "a render at the natural raster must equal decode"
+        );
+
+        // 2. Below natural it must be byte-identical to a capped decode -- the
+        //    §6.4 frequency filter is the one thing that could differ, and a
+        //    band-limited render is exactly what a capped decode promises.
+        assert_eq!(
+            decode_at_size_to_with(bytes, 8, 8, &t, Gamut::Srgb),
+            decode_capped_to_with(bytes, 8, 8, &t, Gamut::Srgb),
+            "a render below natural must equal a capped decode"
+        );
+
+        // 3. Above natural it must actually go up. This is the capability no
+        //    shipped entry point has: `decode_capped_*` takes a per-axis min, so
+        //    asking either of them for 64x64 returns the 16x16 natural raster.
+        let (uw, uh, up) = decode_at_size_to_with(bytes, 64, 64, &t, Gamut::Srgb);
+        assert_eq!((uw, uh), (64, 64));
+        assert_eq!(up.len(), 64 * 64 * 4);
+        assert_eq!(
+            decode_capped_to_with(bytes, 64, 64, &t, Gamut::Srgb).0,
+            nw,
+            "capped decode must still refuse to upscale"
+        );
+    }
+
+    /// A zero axis has no defined render. Clamping to 1 keeps the returned
+    /// dimensions and the buffer length in agreement, which an empty buffer
+    /// would not: a caller reading `w * h * 4` would walk off the end.
+    #[cfg(feature = "research-render")]
+    #[test]
+    fn decode_at_size_clamps_a_zero_axis() {
+        use crate::{ChromaHash, Tunables};
+        let hash = ChromaHash::encode(16, 16, &gradient_image(16, 16), Gamut::Srgb);
+        let (w, h, rgba) =
+            decode_at_size_to_with(hash.as_bytes(), 0, 0, &Tunables::DEFAULT, Gamut::Srgb);
+        assert_eq!((w, h), (1, 1));
+        assert_eq!(rgba.len(), (w * h * 4) as usize);
     }
 }
