@@ -120,6 +120,17 @@ export const METRIC_DOCS = {
     hrefLabel: "Wikipedia: Ringing artifacts",
     source: "harness",
   },
+  spurious: {
+    label: "Invented detail",
+    name: "Structure the placeholder has that the original does not",
+    direction: "lower",
+    why: "Ringing catches error that escapes the range of the original nearby — halos at edges. It cannot catch a ripple that stays inside that range, a broad wave laid over a textured area, or a stripe running through the whole picture, and those are what a placeholder built from a handful of frequencies produces away from edges. This is the number for that: how much structure the placeholder shows at spatial frequencies the original has none at. It is what a reader means when a placeholder 'looks textured' rather than simply blurry. Losing detail costs nothing here — that is what the columns above charge for.",
+    scale:
+      "0 to ~20 in 8-bit colour levels. The ideal blurred copy of the original at the same resolution scores exactly 0, by construction. Compare two rows directly only at equal decode sizes.",
+    href: "https://en.wikipedia.org/wiki/Ringing_artifacts",
+    hrefLabel: "Wikipedia: Ringing artifacts",
+    source: "harness",
+  },
   blurRecovery: {
     label: "Blur recovery",
     name: "Colour error removed by a blur-up",

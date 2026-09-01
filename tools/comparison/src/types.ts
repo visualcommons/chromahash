@@ -292,6 +292,8 @@ export interface FormatStat {
   ciCiede: [number, number] | null;
   /** RMS ringing in 8-bit sRGB levels, averaged across the set. */
   avgRinging: number | null;
+  /** Mean invented detail in 8-bit levels, averaged across the set. */
+  avgSpurious: number | null;
   /** 90th-percentile ringing — the images where artifacts actually bite. */
   p90Ringing: number | null;
   /** Mean fraction of pixels carrying any excursion, on [0, 1]. */
