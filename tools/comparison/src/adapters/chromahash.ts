@@ -162,6 +162,14 @@ function renderViaRust(
       // a 32 px natural raster — so it needs materially more headroom than the
       // 30 s the natural-raster decodes run under.
       timeout: 120_000,
+      // Node's default is exactly 1 MiB, and this is the first call here that
+      // emits a *display-resolution* raster: `decodeViaRust` is bounded by the
+      // natural raster (<=256 px at tier 4, ~262 KB) but this one is
+      // `refW*refH*4 + header`. At REFERENCE_CAP = 512 a square source lands on
+      // 1048584 bytes and throws ENOBUFS. No fixture trips it today — the
+      // largest is 989192 bytes, 6% short — so one square photograph added to
+      // the corpus, or any raise of REFERENCE_CAP, would break the report.
+      maxBuffer: 64 * 1024 * 1024,
       env: { ...rustEnv(0, tune), CHROMAHASH_OUT: outGamut },
     },
   );
@@ -324,8 +332,16 @@ export class ChromaHashAdapter implements FormatAdapter {
     // keeps the Rust core the single source of truth, as `gamut.ts` and
     // `iqa.ts` already do -- and `decode` with no cap args is a subcommand every
     // released tag understands, so `--versions` mode keeps working.
+    //
+    // The native row always needs the second call: `dw` is the *reference*
+    // width, so `dw >= capW` is trivially true and the short-circuit below can
+    // never fire for it. More importantly it would be wrong to skip — the
+    // declared shape is a property of the hash, not of the raster this row
+    // happened to ask for, and taking `decoded` here would report the reference
+    // dimensions as the format's declared size and read a false 0 aspect error.
     const cappedOut =
-      capW !== undefined && capH !== undefined && (dw >= capW || dh >= capH);
+      native ||
+      (capW !== undefined && capH !== undefined && (dw >= capW || dh >= capH));
     const natural = cappedOut ? decodeViaRust(bin, encoded, "srgb") : decoded;
 
     // Preview: decode to the source display gamut where ChromaHash supports it

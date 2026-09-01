@@ -48,6 +48,17 @@
  *    low-pass case score zero; the extra factor covers the support of a real
  *    reconstruction kernel. This is derived, not tuned — and it is why the
  *    radius is per-format-per-image and gets reported alongside the score.
+ *
+ *    **The cost of that derivation: this score is comparable only between
+ *    decodes at the same raster.** It is not a caveat about precision, it is
+ *    the difference between 0 and 10. Measured on one picture presented at two
+ *    decode sizes, chosen at exactly 16x so that `nearestPlane` yields
+ *    pixel-identical decode planes and *only* the radius differs: 0.000 at
+ *    radius 32, **10.482** at radius 2. A radius-2 envelope is a 5x5 local
+ *    min/max of a photograph, and almost anything escapes it. Two rows of a
+ *    report whose decode sizes differ are two different instruments, and a
+ *    ratio between them measures the instruments. `spec/EXPERIMENTS.md` §12.4
+ *    records a conclusion that was drawn and withdrawn on exactly this.
  * 3. **Bias correction.** Without it a solid-colour fixture, whose envelope is
  *    a single point, scores any tint error as ringing. Subtracting the locally
  *    smooth component of the error first absorbs level and tint errors — which

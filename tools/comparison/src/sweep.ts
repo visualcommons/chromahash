@@ -203,6 +203,14 @@ interface SweepRow {
   imageNames: string[];
 }
 
+/**
+ * Absolute allowance, in 8-bit levels, when an artifact guard's incumbent scores
+ * exactly zero. One level is the dead zone both artifact metrics already apply
+ * per pixel and per frequency, so anything at or below it is noise by their own
+ * definition.
+ */
+const ARTIFACT_ZERO_BASE_ALLOWANCE = 1.0;
+
 /** Guard tolerances vs the incumbent (absolute for SSIM2, relative otherwise). */
 const GUARD_SSIM2_DROP = 1.0;
 const GUARD_REL_RISE = 0.02;
@@ -468,10 +476,17 @@ async function scoreVariant(
  * True when `value` is no more than `rise` above `base`, relatively.
  *
  * A null on either side passes: the metric was not scored, and a sweep that did
- * not ask for it must not fail on it. A base of exactly zero is compared
- * absolutely against the tolerance, because a relative rise from zero is
- * infinite for any positive value and would fail every arm on a corpus where the
- * incumbent happens to be artifact-free.
+ * not ask for it must not fail on it. (A config that declares the tolerance and
+ * forgets `artifacts` would therefore gate nothing at all, silently — so that
+ * combination is rejected at load instead.)
+ *
+ * A base of exactly zero cannot be compared relatively: any positive value is an
+ * infinite rise, which would fail every arm on a corpus where the incumbent
+ * happens to be artifact-free. It falls back to an absolute allowance of
+ * {@link ARTIFACT_ZERO_BASE_ALLOWANCE} levels rather than reusing `rise`, which
+ * is a *fraction* and would otherwise be read as a level count -- 0.02 levels is
+ * far below the metrics' own one-level dead zone and would fail an arm for
+ * noise.
  */
 function roseNoMoreThan(
   value: number | null,
@@ -479,7 +494,7 @@ function roseNoMoreThan(
   rise: number,
 ): boolean {
   if (value === null || base === null) return true;
-  if (base === 0) return value <= rise;
+  if (base === 0) return value <= ARTIFACT_ZERO_BASE_ALLOWANCE;
   return value <= base * (1 + rise);
 }
 
@@ -545,6 +560,13 @@ async function main(): Promise<void> {
   });
   if (!config.variants?.length) {
     throw new Error(`config ${config.name} declares no variants`);
+  }
+  // Without `artifacts` every artifact score is null, `roseNoMoreThan` passes on
+  // null, and the declared guard would gate nothing while looking like it did.
+  if (config.artifactGuardRise !== undefined && !config.artifacts) {
+    throw new Error(
+      `config ${config.name} sets artifactGuardRise but not artifacts, so the guard would pass unconditionally on unscored metrics`,
+    );
   }
 
   const corpus = corpusFor(config);

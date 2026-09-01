@@ -115,7 +115,7 @@ export const METRIC_DOCS = {
     direction: "lower",
     why: "Everything above answers 'how wrong is it'. None of them answers 'is it wrong in an ugly way'. A placeholder that is uniformly a little off and one that rings with halos and ripples around every edge can score the same. This separates them: it measures only error that escapes the range of the original nearby, which is what ringing does and what ordinary blur cannot do. Blurring a placeholder before display hides this kind of error and not the other kind, so it is the number to watch if you intend to blur.",
     scale:
-      "0 to ~20 in 8-bit colour levels. A placeholder that is merely a blurred copy of the original scores exactly 0, by construction.",
+      "0 to ~20 in 8-bit colour levels. A placeholder that is merely a blurred copy of the original scores exactly 0, by construction. Comparable only between rows decoded at the same size — the window this is measured in scales with the decode, and the Scale column shows it.",
     href: "https://en.wikipedia.org/wiki/Ringing_artifacts",
     hrefLabel: "Wikipedia: Ringing artifacts",
     source: "harness",

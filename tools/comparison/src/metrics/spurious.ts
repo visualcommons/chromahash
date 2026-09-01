@@ -290,7 +290,10 @@ function idealSpectrum(
     perBuffer = new Map();
     idealCache.set(refRgba, perBuffer);
   }
-  const key = `${channel}:${w}x${h}`;
+  // refW/refH are in the key even though they are a function of the buffer's
+  // identity today: nothing enforces that, and a caller scoring one reference at
+  // two sizes would otherwise get a stale spectrum with no error.
+  const key = `${channel}:${refW}x${refH}:${w}x${h}`;
   const hit = perBuffer.get(key);
   if (hit) return hit;
   const built = dct2(areaChannel(refRgba, refW, refH, w, h, channel), w, h);

@@ -648,6 +648,11 @@ mise run sweep synthesis-window                     # §12.2
 mise run sweep synthesis-window-upper               # §12.3
 mise run selftest:metrics                           # §12.1, §12.5
 
+# §12.1's orientation table and §12.4's come from a report run, not a sweep, so
+# verify:experiments does not bind them. Read them out of output/report.json's
+# per-format `local` block.
+node tools/comparison/dist/main.js --skip-harnesses --images 'fixtures/natural/chroma-black-and-white.jpg'
+
 # Check the tables in this file against the results above
 mise run verify:experiments
 mise run verify:experiments --list-unbound
@@ -2466,7 +2471,12 @@ order is deliberately anisotropic (`aniso_oblique = 1.2`, `sel_hv = 0.15`) and
 whether that asymmetry is *visible* had never been measured.
 
 Two independent checks that it recognises formats by their construction, none
-of it fitted:
+of it fitted. **This table and §12.4's come from a report run, not a sweep, so
+`verify:experiments` does not bind them** — it checks sweep output, and nothing
+here aggregates orientation into a sweep row. They are reproduced with
+`node tools/comparison/dist/main.js --skip-harnesses --images '<one photo>'` and
+read out of `output/report.json`'s per-format `local` block; treat them as
+illustrative rather than as gated figures, unlike §12.2 and §12.3.
 
 | Format | Vertical | Horizontal | Diagonal | What it is |
 |---|---|---|---|---|
@@ -2586,21 +2596,63 @@ reference, so the shared upscale is a no-op for it alone.
 
 First measurement, one photograph (`chroma-black-and-white`):
 
-| | ΔE00 | DSSIM | SSIM2 | Butteraugli | Ringing |
+| | ΔE00 | DSSIM | SSIM2 | Butteraugli | Spurious |
 |---|---|---|---|---|---|
-| t1, decode at 32 px + upscale | 9.50 | 0.1844 | −180.1 | 32.88 | 0.85 |
-| t1, native render at 512 px | 9.49 | 0.1843 | −179.9 | 32.82 | **2.32** |
+| t1, decode at 32 px + upscale | 9.50 | 0.1844 | −180.1 | 32.88 | 4.77 |
+| t1, native render at 512 px | 9.49 | 0.1843 | −179.9 | 32.82 | 4.64 |
 
-On fidelity the two are the same picture to three significant figures. On
-**ringing the native render is 2.7× worse** — the format's own reconstruction
-overshoots more than the browser's interpolation of its 32 px samples does,
-because bilinear interpolation between stored samples cannot overshoot and a
-truncated cosine basis can.
+**The two are the same picture on every metric that can compare them.** Not
+close — identical to three significant figures on all four fidelity scores, and
+within noise on invented detail. Rendering the format's own continuous
+reconstruction at display size, instead of sampling it at 32 px and letting a
+resampler interpolate, changes nothing a metric here can detect.
 
-That is a directional first result on one image, not a corpus finding, and it is
-the row to widen next. What it already settles is narrower and useful: rendering
-at display size is **not** a free improvement, and the blockiness in a report
-preview is the magnification rather than the format.
+**Ringing is deliberately absent from that table, and the reason is worth
+recording.** The first draft of this section reported ringing 0.85 against 2.32
+and concluded that the native render "overshoots 2.7× more" because a truncated
+cosine basis can overshoot where bilinear interpolation cannot. That conclusion
+was wrong, and the metric — not the format — produced it.
+
+`metrics/local.ts` derives its envelope radius from the *upscale factor*:
+`scale = max(refW/decW, refH/decH)`, `radius = ceil(2·scale)`. A 32×21 decode
+against a 512×341 reference gets **radius 33**; a native render at 512×341 gets
+**radius 2**. Those are different instruments. A radius-2 envelope is a 5×5
+local min/max of a photograph, tight enough that almost any reconstruction
+escapes it.
+
+Measured directly, with the *same picture* presented at both decode sizes —
+exactly 16×, so nearest-neighbour sampling makes the two decode planes
+pixel-identical and only the radius differs:
+
+| presentation | radius | ringing |
+|---|---|---|
+| 32×20 decode against a 512×320 reference | 32 | **0.000** |
+| the identical picture as a 512×320 decode | 2 | **10.482** |
+
+The same picture, zero or ten depending only on how it is handed to the metric.
+The 0.85-vs-2.32 gap is comfortably inside that, so it carries no information
+about the format. The causal story in the withdrawn draft was independently
+wrong too: `computeRinging` never sees `upscale.ts` at all — it sample-and-holds
+through `nearestPlane` precisely so a resampler's halo is not charged to a
+format — so both rows' decode planes are step functions and neither can
+overshoot by interpolation.
+
+This is a limit of the ringing metric, not a defect in it: `r >= S` is what makes
+a low-pass score exactly zero, and that derivation *requires* the radius to track
+the decode's footprint. The consequence is simply that **ringing is comparable
+only between decodes at the same raster** — which `local.ts` already says, and
+which is why it reports `ringWindowRadius` alongside the score. Spurious detail
+is much less grid-sensitive (a controlled probe gives 12.48 at grid 32 against
+14.19 at grid 256 for one picture), so it is the artifact column this table can
+carry.
+
+What survives is narrower than the withdrawn claim and more useful: on one
+photograph, rendering at display size buys **nothing measurable**, at ~256× the
+per-pixel decode cost. That is an argument against promoting `render_at_size` to
+public API in nine languages, not for it — and it is the row to widen to the
+corpus before either decision. It also settles the presentation question: the
+blockiness in a report preview is the magnification, not the format, and the
+format's own render does not look different enough for any metric to tell.
 
 ### 12.5 What this round did not do
 

@@ -87,6 +87,35 @@ function avgMetricLocal(
   return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
 }
 
+/**
+ * The scale the artifact metrics were measured at for one format, as `r33/g32`
+ * (envelope radius / analysis grid edge). A range when the corpus produced more
+ * than one, which happens whenever image shapes differ.
+ *
+ * Reported because neither artifact metric is comparable across decode sizes and
+ * the numbers alone do not show it.
+ */
+function artifactScaleOf(results: FormatResult[]): string | null {
+  const part = (pick: (m: LocalMetrics) => number | null, tag: string) => {
+    const vals = [
+      ...new Set(
+        results
+          .map((r) => pick(r.local))
+          .filter((v): v is number => v !== null && Number.isFinite(v)),
+      ),
+    ].sort((a, b) => a - b);
+    if (vals.length === 0) return null;
+    const lo = vals[0];
+    const hi = vals[vals.length - 1];
+    return lo === hi ? `${tag}${lo}` : `${tag}${lo}-${hi}`;
+  };
+  const parts = [
+    part((m) => m.ringWindowRadius, "r"),
+    part((m) => m.spuriousGridEdge, "g"),
+  ].filter((v): v is string => v !== null);
+  return parts.length > 0 ? parts.join("/") : null;
+}
+
 /** Average a nullable field of the blurred metric set (null when not computed). */
 function avgBlurredMetric(
   results: FormatResult[],
@@ -170,6 +199,7 @@ export function computeFormatStats(
       ciCiede: ciedeValues.length > 0 ? bootstrapCI(ciedeValues) : null,
       avgRinging: avgMetricLocal(results, (m) => m.ringing),
       avgSpurious: avgMetricLocal(results, (m) => m.spurious),
+      artifactScale: artifactScaleOf(results),
       p90Ringing: ringSorted.length > 0 ? quantile(ringSorted, 0.9) : null,
       avgRingArea: avgMetricLocal(results, (m) => m.ringArea),
       avgAspectErrorPct: meanLog2 !== null ? log2ToPct(meanLog2) : null,
@@ -292,7 +322,7 @@ function formatStatsTable(stats: FormatStat[]): string {
   const hasRinging = stats.some((s) => s.avgRinging !== null);
   const hasSpurious = stats.some((s) => s.avgSpurious !== null);
   return `<div class="table-scroll"><table>
-<tr><th>Format</th><th>Images</th><th>Avg Size (B)</th>${metricTh("ciede2000", "Avg ")}${metricTh("ciede2000", "Median ")}${metricTh("ciede2000", "p90 ")}<th>95% CI ΔE00</th>${hasBlurred ? metricTh("blurRecovery") : ""}${hasRinging ? metricTh("ringing", "Avg ") : ""}${hasSpurious ? metricTh("spurious", "Avg ") : ""}${metricTh("ssimulacra2", "Avg ")}${metricTh("butteraugli", "Avg ")}${metricTh("dssim", "Avg ")}${metricTh("msSsim", "Avg ")}${metricTh("psnrHvsM", "Avg ")}${metricTh("psnrDb", "Avg ")}</tr>
+<tr><th>Format</th><th>Images</th><th>Avg Size (B)</th>${metricTh("ciede2000", "Avg ")}${metricTh("ciede2000", "Median ")}${metricTh("ciede2000", "p90 ")}<th>95% CI ΔE00</th>${hasBlurred ? metricTh("blurRecovery") : ""}${hasRinging ? metricTh("ringing", "Avg ") : ""}${hasSpurious ? metricTh("spurious", "Avg ") : ""}${hasRinging || hasSpurious ? '<th title="Envelope radius / analysis grid the artifact columns were measured at. Neither is comparable across different sizes.">Scale</th>' : ""}${metricTh("ssimulacra2", "Avg ")}${metricTh("butteraugli", "Avg ")}${metricTh("dssim", "Avg ")}${metricTh("msSsim", "Avg ")}${metricTh("psnrHvsM", "Avg ")}${metricTh("psnrDb", "Avg ")}</tr>
 ${stats
   .map(
     (s) => `<tr>
@@ -311,7 +341,7 @@ ${stats
             : "N/A"
         }</td>\n  `
       : ""
-  }${hasRinging ? `<td>${fmt(s.avgRinging, 2)}</td>\n  ` : ""}${hasSpurious ? `<td>${fmt(s.avgSpurious, 2)}</td>\n  ` : ""}<td>${fmt(s.avgSsimulacra2, 1)}</td>
+  }${hasRinging ? `<td>${fmt(s.avgRinging, 2)}</td>\n  ` : ""}${hasSpurious ? `<td>${fmt(s.avgSpurious, 2)}</td>\n  ` : ""}${hasRinging || hasSpurious ? `<td>${esc(s.artifactScale ?? "—")}</td>\n  ` : ""}<td>${fmt(s.avgSsimulacra2, 1)}</td>
   <td>${fmt(s.avgButteraugli, 2)}</td>
   <td>${gradeCell(s.avgDssim, 4, 0.1, 0.25)}</td>
   <td>${fmt(s.avgMsSsim, 4)}</td>

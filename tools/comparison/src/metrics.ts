@@ -342,6 +342,12 @@ export async function computeAllMetrics(
 
   let ringing = NULL_RINGING;
   let spurious = NULL_SPURIOUS;
+  // An explicit flag rather than `ringing === NULL_RINGING`. Both metrics are
+  // taken from the primary backdrop, and reusing one's sentinel to gate the
+  // other only works while their failure conditions coincide -- they do today
+  // (spurious's are a strict superset), but if they ever diverge, spurious would
+  // silently come from the *last* backdrop while ringing came from the first.
+  let artifactsScored = false;
   for (const backdrop of backdrops) {
     const reference = flattenReference(referenceRgba, backdrop);
     const decodedFlat = flattenOverBackdrop(decodedRgba, backdrop);
@@ -353,7 +359,7 @@ export async function computeAllMetrics(
     if (
       (scoringConfig.artifacts ?? false) &&
       !(options.skipArtifacts ?? false) &&
-      ringing === NULL_RINGING
+      !artifactsScored
     ) {
       ringing =
         computeRinging(
@@ -373,6 +379,7 @@ export async function computeAllMetrics(
           decodedW,
           decodedH,
         ) ?? NULL_SPURIOUS;
+      artifactsScored = true;
     }
 
     // Composite first, then upscale: the backdrop is part of what is resampled,

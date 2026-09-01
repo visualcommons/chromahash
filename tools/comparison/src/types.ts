@@ -294,6 +294,16 @@ export interface FormatStat {
   avgRinging: number | null;
   /** Mean invented detail in 8-bit levels, averaged across the set. */
   avgSpurious: number | null;
+  /**
+   * The scale both artifact metrics were measured at: the ringing envelope
+   * radius and the spurious analysis grid, in reference pixels and samples.
+   *
+   * Rendered beside them because neither is comparable across decode sizes, and
+   * without this the caveat was invisible — a reader saw one column and no
+   * reason to doubt it. `spec/EXPERIMENTS.md` §12.4 records a conclusion drawn
+   * and withdrawn on exactly that mistake.
+   */
+  artifactScale: string | null;
   /** 90th-percentile ringing — the images where artifacts actually bite. */
   p90Ringing: number | null;
   /** Mean fraction of pixels carrying any excursion, on [0, 1]. */
