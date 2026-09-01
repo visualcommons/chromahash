@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { glob } from "node:fs/promises";
-import { ChromaHashAdapter } from "./adapters/chromahash.ts";
+import { ChromaHashAdapter, supportsRender } from "./adapters/chromahash.ts";
 import { ThumbHashAdapter } from "./adapters/thumbhash.ts";
 import { BlurHashAdapter } from "./adapters/blurhash.ts";
 import { LqipModernAdapter } from "./adapters/lqip-modern.ts";
@@ -419,11 +419,19 @@ async function main(): Promise<void> {
       // format or the magnification?" cannot be answered from them alone. This
       // row is the other half of that comparison. It is deliberately NOT in
       // rd/lineup.ts, so rd-budget and the R-D gate are untouched.
-      new ChromaHashAdapter({
-        name: `${chromaHashLabel(DEFAULT_TIER)} native render`,
-        tier: DEFAULT_TIER,
-        renderAtReference: true,
-      }),
+      // Only when the binary actually has the subcommand. A build without
+      // `research-render` would otherwise get a row that silently decoded the
+      // ordinary way -- a duplicate of the tier row above it, wearing a name
+      // that claims it is the comparison.
+      ...(supportsRender()
+        ? [
+            new ChromaHashAdapter({
+              name: `${chromaHashLabel(DEFAULT_TIER)} native render`,
+              tier: DEFAULT_TIER,
+              renderAtReference: true,
+            }),
+          ]
+        : []),
       new ThumbHashAdapter(),
       new BlurHashAdapter(),
       new LqipModernAdapter(),

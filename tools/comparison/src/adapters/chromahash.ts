@@ -185,7 +185,7 @@ function renderViaRust(
  */
 const rendersAtSize = new Map<string, boolean>();
 
-function supportsRender(binary: string): boolean {
+export function supportsRender(binary: string = RUST_CLI): boolean {
   const hit = rendersAtSize.get(binary);
   if (hit !== undefined) return hit;
   let ok = false;
@@ -279,7 +279,17 @@ export class ChromaHashAdapter implements FormatAdapter {
     // which makes the shared upscale a no-op for this row alone. That is exactly
     // what it is for: it isolates how much of a placeholder's visible texture is
     // the reconstruction and how much is the resampler standing in for it.
-    const native = this.renderAtReference && supportsRender(bin);
+    if (this.renderAtReference && !supportsRender(bin)) {
+      // Falling back to a plain decode here would emit a row byte-identical to
+      // the tier row beside it, under a name claiming it is something else --
+      // a duplicate presented as a comparison. The lineup is supposed to have
+      // filtered this adapter out (see main.ts); if it did not, say so rather
+      // than publish the duplicate.
+      throw new Error(
+        `${this.name}: ${bin} has no \`render\` subcommand, so it cannot render at the reference raster. Rebuild with \`--features research-render\`, or drop this row from the lineup.`,
+      );
+    }
+    const native = this.renderAtReference;
     const decoded = native
       ? renderViaRust(
           bin,
