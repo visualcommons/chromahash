@@ -407,6 +407,23 @@ async function main(): Promise<void> {
       ...ALL_TIERS.map(
         (tier) => new ChromaHashAdapter({ name: chromaHashLabel(tier), tier }),
       ),
+      // The same 32 bytes, rendered at the reference raster instead of decoded
+      // at 32 px and enlarged by the shared upscale. An extra operating point,
+      // not a replacement: the row above it is the one that is comparable to
+      // every other format, because every other format goes through that same
+      // resampler and most of them have no choice.
+      //
+      // It is here rather than behind a flag because the question it answers is
+      // one a reader asks by looking: the previews in this report are decodes at
+      // their native raster, magnified by the browser, and "is that texture the
+      // format or the magnification?" cannot be answered from them alone. This
+      // row is the other half of that comparison. It is deliberately NOT in
+      // rd/lineup.ts, so rd-budget and the R-D gate are untouched.
+      new ChromaHashAdapter({
+        name: `${chromaHashLabel(DEFAULT_TIER)} native render`,
+        tier: DEFAULT_TIER,
+        renderAtReference: true,
+      }),
       new ThumbHashAdapter(),
       new BlurHashAdapter(),
       new LqipModernAdapter(),

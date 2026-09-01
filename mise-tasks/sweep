@@ -13,5 +13,5 @@ set -euo pipefail
 config="${1:?usage: mise run sweep <config> [args...]}"
 shift
 
-cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin
+cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin
 node tools/comparison/dist/sweep.js "tools/comparison/sweeps/$config.json" "$@"
