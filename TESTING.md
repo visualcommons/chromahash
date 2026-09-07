@@ -118,6 +118,9 @@ Then the slower gates, which are not part of a routine change:
 mise run test:simd:diff     # every SIMD backend this host can execute
 mise run rd:gate            # encoder quality regression gate
 mise run verify:experiments # every number in spec/EXPERIMENTS.md vs the sweep output
+mise run verify:claims      # every figure the OTHER docs quote from EXPERIMENTS.md
+mise run verify:sweep-labels # every sweep arm sets the constants its label names
+mise run corpus:licenses -- --check   # corpus attribution vs the pin table
 mise run verify:benchmark   # every number in spec/PERFORMANCE.md vs the committed runs
 mise run mutants:rust       # full mutation sweep of the core (slow)
 mise run benchmark          # the perf sweep behind spec/PERFORMANCE.md
@@ -129,6 +132,34 @@ mise run benchmark:stages   # where encode time goes, stage by stage
 committed runs under `tools/comparison/baselines/` — so it is cheap and runs in
 `ci-comparison.yml` on every change to either. `verify:experiments` is its
 sibling for `EXPERIMENTS.md`.
+
+**Four gates, and only one of them needs the sweeps.** `verify:experiments` does
+— they are gitignored and take hours, so it can only ever run locally, and its
+bindings are exercised nowhere else. The other three read source files and run
+in CI:
+
+| Gate | What it asserts | Reads |
+| --- | --- | --- |
+| `verify:experiments` | every table in `EXPERIMENTS.md` matches the run that produced it | the sweep output |
+| `verify:claims` | every figure `README.md`, `spec/README.md`, `spec/RATIONALE.md` and `rust/src/constants.rs` quote from `EXPERIMENTS.md` matches the cell it cites | five files |
+| `verify:sweep-labels` | every sweep arm sets the constants its own label names | the sweep configs |
+| `validate:spec` | `spec/constants.py`, `rust/src/constants.rs` and `typescript/src/header.ts` agree on every shared constant | three sources |
+
+They chain: the sweeps gate `EXPERIMENTS.md`, and `EXPERIMENTS.md` gates
+everything that quotes it. That is why `verify:claims` checks against the
+*document* rather than re-deriving from the sweeps — the same traceability, and
+it can run where the sweeps cannot.
+
+> **A green `verify:claims` means every *registered* claim traces to a cell**,
+> not that every number in the repo is true. `--list` prints the register.
+> Adding a figure to one of those files should mean adding a line to it.
+
+> **`verify:experiments` binds columns, not tables.** A bound table is checked on
+> the columns its binding names and silent about the rest; four columns sat stale
+> behind passing tables that way (`EXPERIMENTS.md` §9.5). The run now prints a
+> `PARTIAL` line per bound table with an unchecked column, and
+> `--list-unbound-columns` gives the breakdown. Every unchecked column is either
+> bound or listed in `UNBOUND_COLUMN_NOTES` with the reason.
 
 > **`verify:benchmark` currently fails, and its CI job is red on `master`.**
 > `spec/PERFORMANCE.md` carries `TBD` placeholders throughout and no perf run is
