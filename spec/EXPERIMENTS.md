@@ -2742,7 +2742,8 @@ fidelity scores that charge for both at once, which is exactly why §12.3's
 verdict came down to one SSIMULACRA2 number that could not say what it was
 reacting to. It holds the same discipline as its siblings — an ideal low-pass
 scores **exactly zero** on both, asserted in `selftest:metrics` over 8 decode
-sizes × 3 content shapes — and it is not a fidelity score either: a placeholder
+sizes × 3 content shapes, and over four decode rasters at every pin, which is
+the case that caught the grid-pin defect §13.3 records — and it is not a fidelity score either: a placeholder
 is *supposed* to have a deficit, so it is read against `spurious` as an exchange
 rate, never minimized.
 
@@ -2787,8 +2788,8 @@ photographs:
 | code 0 (compact) | 21 | 12.147 | 3.98 | 27.05 | 0.15 |
 | code 1 (default) | 32 | 11.473 | 3.53 | 24.79 | 0.14 |
 | **code 2** | 108 | 9.667 | **3.49** | 17.01 | 0.21 |
-| code 3 | 411 | 7.828 | 5.23 | 8.96 | 0.58 |
-| code 4 | 1623 | 6.726 | 6.23 | 6.32 | **0.99** |
+| code 3 | 411 | 7.828 | 4.21 | 8.44 | 0.50 |
+| code 4 | 1623 | 6.726 | 4.23 | 4.58 | **0.92** |
 
 Ringing is deliberately still reported per row and still not comparable across
 them: it derives its envelope radius from the upscale factor and has no
@@ -2799,26 +2800,26 @@ equivalent knob, which is the asymmetry §12.4 documents.
 Three findings, on one instrument.
 
 1. **Invented structure has a minimum, and it is code 2.** Spurious falls
-   3.98 → 3.53 → **3.49** and then rises, 5.23 at code 3 and 6.23 at code 4.
-   From its minimum to the top tier it grows **78%** while ΔE00 improves 30%.
+   3.98 → 3.53 → **3.49** and then rises, 4.21 at code 3 and 4.23 at code 4.
+   From its minimum to the top tier it grows **21%** while ΔE00 improves 30%.
    That code 2 is also where §11.14 puts the format's strongest cross-format
    position is not a coincidence worth asserting from two numbers, but it is
    worth writing down.
-2. **At code 4 the format invents almost exactly as much as it still lacks.**
-   Spurious 6.23 against deficit 6.32 — a ratio of 0.99, against 0.14 at the
+2. **At code 4 the format invents almost as much as it still lacks.**
+   Spurious 4.23 against deficit 4.58 — a ratio of 0.92, against 0.14 at the
    default tier. Read plainly: on the frequencies every tier can represent, the
-   archival tier's remaining error is half missing structure and half fabricated
-   structure. Every fidelity metric improves monotonically across that same
+   archival tier's remaining error is roughly half missing structure and half
+   fabricated structure. Every fidelity metric improves monotonically across that same
    range, and none of them can say this, because each charges for both halves at
    once.
 3. **Deficit falls monotonically and fidelity tracks it, not spurious.**
-   27.05 → 6.32, a 77% reduction, alongside ΔE00 −45% and SSIMULACRA2
+   27.05 → 4.58, an 83% reduction, alongside ΔE00 −45% and SSIMULACRA2
    −371 → −64. The tiers do work. What the pair adds is the price: **the last
-   two tiers spend 63% of the remaining deficit and buy 78% more invention.**
+   two tiers spend 73% of the remaining deficit and buy 21% more invention.**
 
 This is the number behind the informal criticism, and it does not refute it.
 
-### 13.3 The artifact moves from smooth content to textured content
+### 13.3 The content the artifact prefers stops being predictable
 
 `mise run stratify artifact-ladder-common-grid --metric spurious --by detail`.
 Equal-count terciles of the tune corpus by Laplacian detail energy, bins held
@@ -2828,27 +2829,41 @@ fixed across arms; `r` is Pearson over all 31.
 |---|---|---|---|---|
 | code 0 | 4.33 | 4.25 | 3.31 | **−0.29** |
 | code 1 | 3.65 | 3.78 | 3.16 | −0.17 |
-| code 2 | 3.65 | 3.55 | 3.26 | −0.20 |
-| code 3 | 4.98 | 5.29 | 5.45 | +0.03 |
-| code 4 | 5.60 | 6.38 | 6.77 | **+0.06** |
+| code 2 | 3.66 | 3.55 | 3.25 | −0.20 |
+| code 3 | 3.95 | 4.50 | 4.22 | +0.03 |
+| code 4 | 3.81 | 4.79 | 4.12 | **0.00** |
 
-**The correlation changes sign.** At the low tiers the format invents most on
-the *smooth* photographs — a handful of coefficients laid across a near-flat
-field, which is the classic low-order-basis banding, and which is also why
-ringing is highest on smooth content at every tier (r = −0.13 to −0.30). At the
-upper tiers it inverts: the invention follows the texture.
+**The correlation does not survive the ladder.** At the low tiers the format
+invents most on the *smooth* photographs — a handful of coefficients laid across
+a near-flat field, which is the classic low-order-basis banding, and which is
+also why ringing is highest on smooth content at every tier (r = −0.13 to
+−0.30). At the upper tiers that relationship is simply gone: r reaches +0.03 and
+0.00, and the bins stop being monotone in either direction, peaking on the
+middle tercile and falling back on the most textured one.
 
-Those are two different defects wearing one number, and they want two different
-answers. Nothing above distinguishes them, and no aggregate could.
+An earlier form of this table read as a clean sign change — the invention
+following the texture at codes 3 and 4 — and that reading was an artifact of the
+instrument, not of the format. The pinned grid was double-quantizing every
+decode whose raster sat above it, which inflated the upper tiers' spurious
+scores in proportion to how far they had been pinned; `metrics/spurious.ts`
+records the defect and `selftest:metrics` now pins it shut. What is left is
+weaker and stranger than the sign change, and it is what the corpus actually
+says: whatever selects the smooth photographs at the low tiers stops operating
+by code 3, and nothing legible replaces it.
+
+That still leaves two different defects wearing one number, and they still want
+two different answers — but only the low-tier one has a shape this corpus can
+describe. Nothing above distinguishes them, and no aggregate could.
 
 Two supporting axes, same sweep:
 
 * **Chroma.** Spurious tracks mean C* strongly at the low tiers (r = +0.44,
-  +0.41, +0.53 at codes 0–2) and not at all above them (+0.07, +0.08).
-  Saturated content drives invented structure exactly where the chroma budget is
-  tightest — 6 coefficients at code 0, 15 at code 1.
+  +0.41, +0.53 at codes 0–2) and about half as strongly above them (+0.19,
+  +0.25). Saturated content drives invented structure hardest where the chroma
+  budget is tightest — 6 coefficients at code 0, 15 at code 1 — and this is the
+  one covariate that keeps pointing the same way all the way up the ladder.
 * **Lightness.** Spurious is lowest on high-key photographs at every tier
-  (r = −0.10 to −0.36), which is the DC-dominated case: little AC amplitude to
+  (r = −0.03 to −0.36), which is the DC-dominated case: little AC amplitude to
   get wrong.
 
 And the fidelity side, for contrast: ΔE00's correlation with detail *strengthens*
