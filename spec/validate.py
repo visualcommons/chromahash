@@ -11,6 +11,8 @@ Usage:
 Exit code 0 on success, 1 on any validation failure.
 """
 import math
+import os
+import re
 import sys
 
 import selection
@@ -56,7 +58,17 @@ from constants import (
     DEFAULT_TIER,
     is_valid_tier,
     render_level,
-    ALPHA_FLAG_BIT,)
+    ALPHA_FLAG_BIT,
+    BASE_LONG_EDGE,
+    LAYOUT_B,
+    LAYOUT_T0,
+    LAYOUT_TC,
+    L_DC_BITS,
+    L_SCALE_BITS,
+    B_SCALE_BITS,
+    ALPHA_DC_BITS,
+    ALPHA_SCALE_BITS,
+    SEL_Q,)
 from selection import (
     FORMAT_KS,
     decode_output_size,
@@ -745,6 +757,187 @@ def validate_against_vectors():
           + (f" — MISMATCH: {bad[:3]}" if bad else ""))
 
 
+
+# =========================================================================
+# Cross-implementation constant parity
+# =========================================================================
+# This file is the spec's own re-derivation of `spec/constants.py`, and until
+# now that was the whole of it: nothing compared `constants.py` to the Rust
+# reference it claims to describe, or to the third hand-maintained copy in
+# `typescript/src/header.ts`.
+#
+# Three copies, two of them unchecked, is a standing invitation to drift. The
+# TypeScript one is the worst of it: the pure-TS decoder re-declares all three
+# layouts, every bit width, every quantization maximum, all three µ values and
+# the selection weights, and the only thing that compared it to anything was a
+# unit test checking three tier *codes* against WASM. A moved layout row or a
+# changed `SEL_HV` would survive there until somebody regenerated the golden
+# vectors and noticed the mismatch several languages later.
+#
+# So the parity is asserted here, where it costs nothing to run: this script has
+# no path filter in `ci-repo.yml`, so it fires on every push. The sources are
+# read as text rather than imported — Rust and TypeScript are not importable
+# from Python, and a regex over a `const` declaration is exactly as strong as
+# the thing it is protecting, which is that somebody typed the same number three
+# times.
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _rust_source() -> str:
+    with open(os.path.join(REPO, "rust/src/constants.rs"), encoding="utf-8") as f:
+        return f.read()
+
+
+def _ts_source() -> str:
+    with open(os.path.join(REPO, "typescript/src/header.ts"), encoding="utf-8") as f:
+        return f.read()
+
+
+def _num(text: str, pattern: str):
+    """First capture of `pattern` in `text`, as a float, or None."""
+    m = re.search(pattern, text)
+    return float(m.group(1)) if m else None
+
+
+def _rust_layout(src: str, name: str):
+    """Parse `const NAME: AcLayout = AcLayout { .. };` into a comparable tuple."""
+    m = re.search(
+        r"const\s+" + re.escape(name) + r"\s*:\s*AcLayout\s*=\s*AcLayout\s*\{(.*?)\n\};",
+        src,
+        re.S,
+    )
+    if not m:
+        return None
+    body = m.group(1)
+
+    # `a_count` is a substring of `ca_count` and `a_bits` of `ca_bits`, so
+    # every field needs a left word boundary or it silently reads its neighbour.
+    def bands(field):
+        b = re.search(r"(?<![A-Za-z_])" + field + r"\s*:\s*\[\s*\((\d+),\s*(\d+)\),\s*\((\d+),\s*(\d+)\)", body)
+        return (int(b.group(1)), int(b.group(2)), int(b.group(3)), int(b.group(4))) if b else None
+
+    def scalar(field):
+        v = re.search(r"(?<![A-Za-z_])" + field + r"\s*:\s*(\d+)", body)
+        return int(v.group(1)) if v else None
+
+    return (
+        bands("l_tiers"), scalar("c_count"), scalar("c_bits"),
+        bands("la_tiers"), scalar("ca_count"), scalar("ca_bits"),
+        scalar("a_count"), scalar("a_bits"),
+    )
+
+
+def _ts_layout(src: str, name: str):
+    """Parse `const NAME: AcLayout = { .. };` into the same tuple shape."""
+    m = re.search(
+        r"const\s+" + re.escape(name) + r"\s*:\s*AcLayout\s*=\s*\{(.*?)\n\};", src, re.S
+    )
+    if not m:
+        return None
+    body = m.group(1)
+
+    # As the Rust reader: `aCount` is a substring of `caCount`.
+    def bands(field):
+        b = re.search(r"(?<![A-Za-z])" + field + r"\s*:\s*\[\s*\[\s*(\d+),\s*(\d+),?\s*\],\s*\[\s*(\d+),\s*(\d+),?\s*\]", body, re.S)
+        return (int(b.group(1)), int(b.group(2)), int(b.group(3)), int(b.group(4))) if b else None
+
+    def scalar(field):
+        v = re.search(r"(?<![A-Za-z])" + field + r"\s*:\s*(\d+)", body)
+        return int(v.group(1)) if v else None
+
+    return (
+        bands("lBands"), scalar("cCount"), scalar("cBits"),
+        bands("laBands"), scalar("caCount"), scalar("caBits"),
+        scalar("aCount"), scalar("aBits"),
+    )
+
+
+def _spec_layout(layout):
+    return (
+        (layout.l_tiers[0][0], layout.l_tiers[0][1], layout.l_tiers[1][0], layout.l_tiers[1][1]),
+        layout.c_count, layout.c_bits,
+        (layout.la_tiers[0][0], layout.la_tiers[0][1], layout.la_tiers[1][0], layout.la_tiers[1][1]),
+        layout.ca_count, layout.ca_bits,
+        layout.a_count, layout.a_bits,
+    )
+
+
+def validate_cross_implementation_constants():
+    print("\nCross-implementation constant parity (spec / Rust / TypeScript):")
+    rust = _rust_source()
+    ts = _ts_source()
+
+    # --- Scalars: (spec value, Rust pattern, TypeScript pattern) ---
+    scalars = [
+        ("MAX_CHROMA_A", MAX_CHROMA_A,
+         r"max_chroma_a:\s*([\d.]+)", r"MAX_CHROMA_A\s*=\s*([\d.]+)"),
+        ("MAX_CHROMA_B", MAX_CHROMA_B,
+         r"max_chroma_b:\s*([\d.]+)", r"MAX_CHROMA_B\s*=\s*([\d.]+)"),
+        ("MAX_L_SCALE", MAX_L_SCALE,
+         r"max_l_scale:\s*([\d.]+)", r"MAX_L_SCALE\s*=\s*([\d.]+)"),
+        ("MAX_A_SCALE", MAX_A_SCALE,
+         r"max_a_scale:\s*([\d.]+)", r"MAX_A_SCALE\s*=\s*([\d.]+)"),
+        ("MAX_B_SCALE", MAX_B_SCALE,
+         r"max_b_scale:\s*([\d.]+)", r"MAX_B_SCALE\s*=\s*([\d.]+)"),
+        ("MAX_A_ALPHA_SCALE", MAX_A_ALPHA_SCALE,
+         r"max_alpha_scale:\s*([\d.]+)", r"MAX_ALPHA_SCALE\s*=\s*([\d.]+)"),
+        ("MU_L", MU_L, r"mu_l:\s*([\d.]+)", r"MU_L\s*=\s*([\d.]+)"),
+        ("MU_C", MU_C, r"mu_c:\s*([\d.]+)", r"MU_C\s*=\s*([\d.]+)"),
+        ("MU_ALPHA", MU_ALPHA, r"mu_alpha:\s*([\d.]+)", r"MU_ALPHA\s*=\s*([\d.]+)"),
+        ("ANISO_OBLIQUE", ANISO_OBLIQUE,
+         r"aniso_oblique:\s*([\d.]+)", r"ANISO_OBLIQUE\s*=\s*([\d.]+)"),
+        ("SEL_HV", SEL_HV, r"sel_hv:\s*([\d.]+)", r"SEL_HV\s*=\s*([\d.]+)"),
+        ("SEL_Q", SEL_Q, r"SEL_Q:\s*u32\s*=\s*(\d+)", r"SEL_Q\s*=\s*(\d+)"),
+        ("FORMAT_VERSION", FORMAT_VERSION,
+         r"FORMAT_VERSION:\s*u8\s*=\s*(\d+)", r"FORMAT_VERSION\s*=\s*(\d+)"),
+        ("BASE_LONG_EDGE", BASE_LONG_EDGE,
+         r"BASE_LONG_EDGE:\s*u32\s*=\s*(\d+)", r"BASE_LONG_EDGE\s*=\s*(\d+)"),
+        ("MAX_TIER", MAX_TIER, r"MAX_TIER:\s*u8\s*=\s*(\d+)", r"MAX_TIER\s*=\s*(\d+)"),
+        ("L_DC_BITS", L_DC_BITS,
+         r"L_DC_BITS:\s*u32\s*=\s*(\d+)", r"L_DC_BITS\s*=\s*(\d+)"),
+        ("L_SCALE_BITS", L_SCALE_BITS,
+         r"L_SCALE_BITS:\s*u32\s*=\s*(\d+)", r"L_SCALE_BITS\s*=\s*(\d+)"),
+        ("B_SCALE_BITS", B_SCALE_BITS,
+         r"B_SCALE_BITS:\s*u32\s*=\s*(\d+)", r"B_SCALE_BITS\s*=\s*(\d+)"),
+        ("ALPHA_DC_BITS", ALPHA_DC_BITS,
+         r"ALPHA_DC_BITS:\s*u32\s*=\s*(\d+)", r"ALPHA_DC_BITS\s*=\s*(\d+)"),
+        ("ALPHA_SCALE_BITS", ALPHA_SCALE_BITS,
+         r"ALPHA_SCALE_BITS:\s*u32\s*=\s*(\d+)", r"ALPHA_SCALE_BITS\s*=\s*(\d+)"),
+    ]
+
+    # `SEL_Q` lives in dct.rs, not constants.rs — read it from there.
+    with open(os.path.join(REPO, "rust/src/dct.rs"), encoding="utf-8") as f:
+        dct_src = f.read()
+
+    for name, spec_value, rust_pat, ts_pat in scalars:
+        src = dct_src if name == "SEL_Q" else rust
+        r = _num(src, rust_pat)
+        t = _num(ts, ts_pat)
+        check(
+            r is not None and t is not None
+            and float(spec_value) == r == t,
+            f"{name}: spec {spec_value} == Rust {r} == TypeScript {t}",
+        )
+
+    # --- Layouts: the whole AC table, all three rows ---
+    for name, spec_layout in (
+        ("LAYOUT_B", LAYOUT_B),
+        ("LAYOUT_T0", LAYOUT_T0),
+        ("LAYOUT_TC", LAYOUT_TC),
+    ):
+        want = _spec_layout(spec_layout)
+        got_rust = _rust_layout(rust, name)
+        got_ts = _ts_layout(ts, name)
+        check(
+            got_rust is not None and got_ts is not None
+            and want == got_rust == got_ts,
+            f"{name}: spec == Rust == TypeScript"
+            + ("" if want == got_rust == got_ts
+               else f" — spec {want}, Rust {got_rust}, TypeScript {got_ts}"),
+        )
+
+
 if __name__ == "__main__":
     print("ChromaHash Constants Validation")
     print("=" * 60)
@@ -760,6 +953,7 @@ if __name__ == "__main__":
     validate_selection()
     validate_length_formula()
     validate_against_vectors()
+    validate_cross_implementation_constants()
 
     print(f"\n{'=' * 60}")
     print(f"Results: {passed} passed, {failed} failed")
