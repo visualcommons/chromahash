@@ -110,7 +110,7 @@ export async function findCodecVariantForBudget(
       decoded.rgba,
       decoded.width,
       decoded.height,
-      { only: RANKING_METRICS, skipBlurred: true, skipRinging: true },
+      { only: RANKING_METRICS, skipBlurred: true, skipArtifacts: true },
     );
     const candidate: CodecCandidate = {
       longEdge,

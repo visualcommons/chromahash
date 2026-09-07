@@ -11,7 +11,7 @@
     <RootNamespace>ChromaHash</RootNamespace>
     <AssemblyName>ChromaHash</AssemblyName>
     <Version>0.7.2</Version>
-    <Description>ChromaHash: modern LQIP (Low Quality Image Placeholder) format</Description>
+    <Description>Modern, high-quality image placeholder representation (LQIP) for professional photo management at scale</Description>
     <Authors>Justin Chung</Authors>
     <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/visualcommons/chromahash</RepositoryUrl>

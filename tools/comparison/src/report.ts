@@ -87,6 +87,35 @@ function avgMetricLocal(
   return vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
 }
 
+/**
+ * The scale the artifact metrics were measured at for one format, as `r33/g32`
+ * (envelope radius / analysis grid edge). A range when the corpus produced more
+ * than one, which happens whenever image shapes differ.
+ *
+ * Reported because neither artifact metric is comparable across decode sizes and
+ * the numbers alone do not show it.
+ */
+function artifactScaleOf(results: FormatResult[]): string | null {
+  const part = (pick: (m: LocalMetrics) => number | null, tag: string) => {
+    const vals = [
+      ...new Set(
+        results
+          .map((r) => pick(r.local))
+          .filter((v): v is number => v !== null && Number.isFinite(v)),
+      ),
+    ].sort((a, b) => a - b);
+    if (vals.length === 0) return null;
+    const lo = vals[0];
+    const hi = vals[vals.length - 1];
+    return lo === hi ? `${tag}${lo}` : `${tag}${lo}-${hi}`;
+  };
+  const parts = [
+    part((m) => m.ringWindowRadius, "r"),
+    part((m) => m.spuriousGridEdge, "g"),
+  ].filter((v): v is string => v !== null);
+  return parts.length > 0 ? parts.join("/") : null;
+}
+
 /** Average a nullable field of the blurred metric set (null when not computed). */
 function avgBlurredMetric(
   results: FormatResult[],
@@ -169,6 +198,8 @@ export function computeFormatStats(
       p90Ciede: ciedeSorted.length > 0 ? quantile(ciedeSorted, 0.9) : null,
       ciCiede: ciedeValues.length > 0 ? bootstrapCI(ciedeValues) : null,
       avgRinging: avgMetricLocal(results, (m) => m.ringing),
+      avgSpurious: avgMetricLocal(results, (m) => m.spurious),
+      artifactScale: artifactScaleOf(results),
       p90Ringing: ringSorted.length > 0 ? quantile(ringSorted, 0.9) : null,
       avgRingArea: avgMetricLocal(results, (m) => m.ringArea),
       avgAspectErrorPct: meanLog2 !== null ? log2ToPct(meanLog2) : null,
@@ -289,8 +320,9 @@ function formatStatsTable(stats: FormatStat[]): string {
   // The blurred "as-rendered" column only appears when the run computed it.
   const hasBlurred = stats.some((s) => s.avgCiedeBlurred !== null);
   const hasRinging = stats.some((s) => s.avgRinging !== null);
+  const hasSpurious = stats.some((s) => s.avgSpurious !== null);
   return `<div class="table-scroll"><table>
-<tr><th>Format</th><th>Images</th><th>Avg Size (B)</th>${metricTh("ciede2000", "Avg ")}${metricTh("ciede2000", "Median ")}${metricTh("ciede2000", "p90 ")}<th>95% CI ΔE00</th>${hasBlurred ? metricTh("blurRecovery") : ""}${hasRinging ? metricTh("ringing", "Avg ") : ""}${metricTh("ssimulacra2", "Avg ")}${metricTh("butteraugli", "Avg ")}${metricTh("dssim", "Avg ")}${metricTh("msSsim", "Avg ")}${metricTh("psnrHvsM", "Avg ")}${metricTh("psnrDb", "Avg ")}</tr>
+<tr><th>Format</th><th>Images</th><th>Avg Size (B)</th>${metricTh("ciede2000", "Avg ")}${metricTh("ciede2000", "Median ")}${metricTh("ciede2000", "p90 ")}<th>95% CI ΔE00</th>${hasBlurred ? metricTh("blurRecovery") : ""}${hasRinging ? metricTh("ringing", "Avg ") : ""}${hasSpurious ? metricTh("spurious", "Avg ") : ""}${hasRinging || hasSpurious ? '<th title="Envelope radius / analysis grid the artifact columns were measured at. Neither is comparable across different sizes.">Scale</th>' : ""}${metricTh("ssimulacra2", "Avg ")}${metricTh("butteraugli", "Avg ")}${metricTh("dssim", "Avg ")}${metricTh("msSsim", "Avg ")}${metricTh("psnrHvsM", "Avg ")}${metricTh("psnrDb", "Avg ")}</tr>
 ${stats
   .map(
     (s) => `<tr>
@@ -309,7 +341,7 @@ ${stats
             : "N/A"
         }</td>\n  `
       : ""
-  }${hasRinging ? `<td>${fmt(s.avgRinging, 2)}</td>\n  ` : ""}<td>${fmt(s.avgSsimulacra2, 1)}</td>
+  }${hasRinging ? `<td>${fmt(s.avgRinging, 2)}</td>\n  ` : ""}${hasSpurious ? `<td>${fmt(s.avgSpurious, 2)}</td>\n  ` : ""}${hasRinging || hasSpurious ? `<td>${esc(s.artifactScale ?? "—")}</td>\n  ` : ""}<td>${fmt(s.avgSsimulacra2, 1)}</td>
   <td>${fmt(s.avgButteraugli, 2)}</td>
   <td>${gradeCell(s.avgDssim, 4, 0.1, 0.25)}</td>
   <td>${fmt(s.avgMsSsim, 4)}</td>
@@ -552,6 +584,15 @@ function contentTab(
     })
     .join("");
 
+  // What the previews are is a real source of confusion, and it changes how the
+  // texture in them should be read. Each is the decode at its OWN raster —
+  // often 32x21 — magnified by the browser. Blockiness there is the
+  // magnification, not the format; the `Pixels / Smoothed` control switches
+  // between the samples and the browser's interpolation of them, and neither is
+  // a blur. The ChromaHash native-render row is the format drawing the same 32
+  // bytes at full size, which is the only preview here that is not magnified.
+  const previewNote = `<p class="section-note">Each preview is that format's decode at its <em>own</em> resolution, scaled up to a common box — so a 32x21 decode is magnified about seven times. Blocky edges are that magnification, not the format. <strong>Pixels / Smoothed</strong> in the toolbar switches between the stored samples and the browser's interpolation of them; neither is a blur, and placeholders are usually shown blurred. The <em>ChromaHash native render</em> row is the same 32 bytes drawn directly at full size — the one preview here that is not magnified, and the honest comparison for how much of the texture belongs to the format.</p>`;
+
   const galleries = present
     .map((c) => {
       const catEntries = mine.filter((e) => e.category === c);
@@ -562,6 +603,7 @@ function contentTab(
       return `<details class="gallery" id="${catId(group.id, c)}">
 <summary>${c} <span class="jump-n">${catEntries.length} image${catEntries.length === 1 ? "" : "s"}</span></summary>
 <div class="inner">
+${previewNote}
 ${note}${catEntries.map(imageRow).join("\n")}
 </div>
 </details>`;
@@ -600,6 +642,7 @@ ${galleries}`;
  */
 function headlineTable(stats: FormatStat[]): string {
   const hasRinging = stats.some((s) => s.avgRinging !== null);
+  const hasSpurious = stats.some((s) => s.avgSpurious !== null);
   return `<div class="table-scroll"><table class="headline">
 <tr>
   <th>Format</th>
@@ -607,6 +650,7 @@ function headlineTable(stats: FormatStat[]): string {
   ${metricTh("ciede2000", "Colour ")}
   ${metricTh("ssimulacra2", "Perceptual ")}
   ${hasRinging ? metricTh("ringing", "Artifacts ") : ""}
+  ${hasSpurious ? metricTh("spurious", "") : ""}
   ${metricTh("reflow", "Layout ")}
 </tr>
 ${stats
@@ -617,6 +661,7 @@ ${stats
   <td>${gradeCell(s.avgCiede, 2, 2, 5)}</td>
   <td>${fmt(s.avgSsimulacra2, 0)}</td>
   ${hasRinging ? `<td>${fmt(s.avgRinging, 2)}</td>` : ""}
+  ${hasSpurious ? `<td>${fmt(s.avgSpurious, 2)}</td>` : ""}
   <td>${s.aspectImages > 0 ? `${fmt(s.maxAbsReflowPx, 0)}&nbsp;px` : '<span class="na" title="This format carries no shape of its own; the dimensions must come from elsewhere.">—</span>'}</td>
 </tr>`,
   )
@@ -742,10 +787,10 @@ export function generateReport(
       id: "overview",
       label: "Overview",
       html: `${opts?.preludeHtml ?? ""}<h2>Which placeholder format should you use?</h2>
-<p class="lede">A <strong>Low Quality Image Placeholder</strong> is a handful of bytes — usually 20 to 40 — that a page stores alongside an image and shows instantly while the real one loads. It is small enough to inline in the HTML or keep in a database column, so it costs no extra network request. It is not meant to look like the photograph; it is meant to hold the right colours in the right places, and reserve the right amount of space, until the photograph arrives.</p>
+<p class="lede">A <strong>Low Quality Image Placeholder</strong> is a handful of bytes — usually 20 to 40 — that a page stores alongside an image and shows instantly while the real one loads. It is small enough to inline in the HTML or keep in a database column, so it costs no extra network request — and small enough that a photo library can store one per image across a catalogue of millions. It is not meant to look like the photograph; it is meant to hold the right colours in the right places, and reserve the right amount of space, until the photograph arrives.</p>
 <p class="lede">This page compares several of them on the same images, at the same sizes. The table below is the short answer, over ${photoEntries.length} photograph${photoEntries.length === 1 ? "" : "s"}.</p>
 ${headlineTable(headlineStats)}
-<p class="section-note">Lower is better in every column except <em>Perceptual</em>. <strong>Colour</strong> is the average perceptual colour error; under 2 is good, above 5 is obviously wrong. <strong>Perceptual</strong> is a modern quality score fitted to human ratings — a bigger number is better, and only the gaps between formats mean anything. <strong>Artifacts</strong> is halo and ripple; a placeholder that is just a blurred copy of the original scores 0. <strong>Layout</strong> is how far the page jumps when the real image loads; a dash means the format carries no shape at all and you must supply the dimensions yourself. Every column links to what it measures.</p>
+<p class="section-note">Lower is better in every column except <em>Perceptual</em>. <strong>Colour</strong> is the average perceptual colour error; under 2 is good, above 5 is obviously wrong. <strong>Perceptual</strong> is a modern quality score fitted to human ratings — a bigger number is better, and only the gaps between formats mean anything. <strong>Artifacts</strong> is halo and ripple; a placeholder that is just a blurred copy of the original scores 0. <strong>Invented detail</strong> is structure at frequencies the original has none at — the ripples and stripes that stay inside the local range, which Artifacts cannot see. <strong>Layout</strong> is how far the page jumps when the real image loads; a dash means the format carries no shape at all and you must supply the dimensions yourself. Every column links to what it measures.</p>
 <h3>How this page is organised</h3>
 <p class="section-note">The evidence is split, because not all of it answers the same question:</p>
 <ul class="index">
@@ -942,7 +987,7 @@ ${catEntries
      is never stretched by the layout; pixelated keeps a 37x-magnified 4x4
      decode reading as the 16 samples it actually stored. */
   .image-box img { display: block; image-rendering: pixelated; }
-  body.blur .image-box img { image-rendering: auto; }
+  body.smooth .image-box img { image-rendering: auto; }
   .image-box .decode-error { width: 100%; height: 100%; background: #333; display: flex; align-items: center; justify-content: center; color: #f44; font-size: 0.7rem; }
   .original-wrap { position: relative; }
   /* Both layers fill the box exactly -- the box is built from this original's
@@ -995,7 +1040,7 @@ ${layoutStyles}
 ${tabs.map((t, i) => `  <button data-tab="${t.id}"${i === 0 ? ' class="active"' : ""}>${t.label}</button>`).join("\n")}
   <span class="spacer"></span>
   <button onclick="toggleTheme()">Light / Dark</button>
-  <button onclick="toggleBlur()">Toggle Blur</button>
+  <button onclick="toggleSmoothing()" title="Switch the previews between the decoded samples and the browser's interpolation of them. Neither is a blur.">Pixels / Smoothed</button>
 </div></div>
 
 ${tabs
@@ -1044,7 +1089,7 @@ document.addEventListener('click', function (e) {
   setTimeout(function () { target.scrollIntoView({ block: 'start' }); }, 0);
 });
 function toggleTheme() { document.body.classList.toggle('light'); }
-function toggleBlur() { document.body.classList.toggle('blur'); }
+function toggleSmoothing() { document.body.classList.toggle('smooth'); }
 </script>
 ${reportFooter(meta)}
 </body>

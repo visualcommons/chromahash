@@ -9,6 +9,8 @@ fn usage() -> ! {
     eprintln!("Usage:");
     eprintln!("  encode_stdin encode <width> <height> <gamut>");
     eprintln!("  encode_stdin decode [max_width max_height]");
+    #[cfg(feature = "research-render")]
+    eprintln!("  encode_stdin render <width> <height>");
     eprintln!("  encode_stdin average-color");
     eprintln!("  encode_stdin batch-encode <width> <height> <gamut> <count>");
     eprintln!("  encode_stdin batch-decode <count>");
@@ -467,6 +469,32 @@ fn main() {
             } else {
                 ch.decode_to_tuned(out_gamut, &t)
             };
+            let header = format!("{w} {h}\n");
+            io::stdout()
+                .write_all(header.as_bytes())
+                .expect("failed to write header");
+            io::stdout().write_all(&rgba).expect("failed to write RGBA");
+        }
+        // Render at an exact raster instead of at (or capped below) the natural
+        // one. The harness uses this to score the format's own reconstruction at
+        // display resolution against the same reference every other format is
+        // upscaled into — the one path that does not run through a resampler.
+        #[cfg(feature = "research-render")]
+        "render" => {
+            if args.len() != 4 {
+                eprintln!("Usage: encode_stdin render <width> <height>");
+                std::process::exit(1);
+            }
+            let ch = read_hash_from_stdin();
+            let t = tunables_from_env();
+            let out_gamut = match std::env::var("CHROMAHASH_OUT").as_deref() {
+                Ok("displayp3") => Gamut::DisplayP3,
+                Ok("adobergb") => Gamut::AdobeRgb,
+                _ => Gamut::Srgb,
+            };
+            let tw: u32 = args[2].parse().expect("invalid width");
+            let th: u32 = args[3].parse().expect("invalid height");
+            let (w, h, rgba) = ch.decode_at_size_tuned(tw, th, out_gamut, &t);
             let header = format!("{w} {h}\n");
             io::stdout()
                 .write_all(header.as_bytes())

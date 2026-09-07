@@ -2,6 +2,7 @@ import sharp from "sharp";
 import type { LocalMetrics, MetricResult } from "./types.ts";
 import { computeIqaMetrics, NULL_IQA_METRICS } from "./metrics/iqa.ts";
 import { computeRinging, NULL_RINGING } from "./metrics/local.ts";
+import { computeSpurious, NULL_SPURIOUS } from "./metrics/spurious.ts";
 import { upscaleRgba, type UpscalePolicy } from "./upscale.ts";
 
 /** An opaque RGB backdrop that translucent pixels are composited over. */
@@ -69,17 +70,24 @@ export interface ScoringConfig {
    */
   alphaFidelity?: boolean;
   /**
-   * Score ringing (see `metrics/local.ts`). Defaults to **off**, and the report
-   * opts in.
+   * Score the locally-computed artifact metrics -- ringing (`metrics/local.ts`)
+   * and spurious detail (`metrics/spurious.ts`). Defaults to **off**, and the
+   * report opts in.
    *
-   * Optional-and-off rather than optional-and-on because the four other entry
-   * points -- `sweep.ts`, `rd-gate.ts`, `rd-budget.ts`, `entropy-budget.ts` --
-   * construct a config without this field and read only `metrics`. Defaulting
-   * it on made every one of them compute a ~25 ms/pair metric they discard,
-   * which over a sweep's thousands of pairs is minutes per run for a number
-   * nothing looks at.
+   * Optional-and-off rather than optional-and-on because the other entry points
+   * -- `rd-gate.ts`, `rd-budget.ts`, `entropy-budget.ts`, and `sweep.ts` unless
+   * its config opts in -- construct a config without this field and read only
+   * `metrics`. Defaulting it on made every one of them compute metrics they
+   * discard, which over a sweep's thousands of pairs is minutes per run for
+   * numbers nothing looks at.
+   *
+   * The cost is not small, and grew when spurious detail joined ringing.
+   * Measured on a warm metric cache over ~20 photographs and the full default
+   * lineup: **15 s with these off, 28 s with them on** — the pair roughly
+   * doubles a report run. That is why the report is the only entry point that
+   * opts in by default, and why a sweep has to ask.
    */
-  ringing?: boolean;
+  artifacts?: boolean;
 }
 
 let scoringConfig: ScoringConfig = {
@@ -223,12 +231,13 @@ export interface MetricOptions {
    */
   skipBlurred?: boolean;
   /**
-   * Skip the locally-computed ringing metric regardless of
-   * {@link ScoringConfig.ringing}. Same reasoning as {@link skipBlurred}: it is
-   * reported for the chosen variant only, and it is not free (~45 ms/pair
-   * measured, against ~59 ms for a ΔE00-only iqa-cli call).
+   * Skip both locally-computed artifact metrics regardless of
+   * {@link ScoringConfig.artifacts}. Same reasoning as {@link skipBlurred}: they
+   * are reported for the chosen variant only, and they are not free — together
+   * they roughly double a warm report run (see {@link ScoringConfig.artifacts}),
+   * against ~59 ms/pair for a ΔE00-only iqa-cli call.
    */
-  skipRinging?: boolean;
+  skipArtifacts?: boolean;
 }
 
 /** Primary + optional blurred "as-rendered" metric sets for one decode. */
@@ -332,6 +341,13 @@ export async function computeAllMetrics(
   const perBackdropBlurred: MetricResult[] = [];
 
   let ringing = NULL_RINGING;
+  let spurious = NULL_SPURIOUS;
+  // An explicit flag rather than `ringing === NULL_RINGING`. Both metrics are
+  // taken from the primary backdrop, and reusing one's sentinel to gate the
+  // other only works while their failure conditions coincide -- they do today
+  // (spurious's are a strict superset), but if they ever diverge, spurious would
+  // silently come from the *last* backdrop while ringing came from the first.
+  let artifactsScored = false;
   for (const backdrop of backdrops) {
     const reference = flattenReference(referenceRgba, backdrop);
     const decodedFlat = flattenOverBackdrop(decodedRgba, backdrop);
@@ -341,9 +357,9 @@ export async function computeAllMetrics(
     // the blurred set either: blurring both sides destroys the artifact by
     // construction, which is the whole point of the blur-up presentation.
     if (
-      (scoringConfig.ringing ?? false) &&
-      !(options.skipRinging ?? false) &&
-      ringing === NULL_RINGING
+      (scoringConfig.artifacts ?? false) &&
+      !(options.skipArtifacts ?? false) &&
+      !artifactsScored
     ) {
       ringing =
         computeRinging(
@@ -354,6 +370,16 @@ export async function computeAllMetrics(
           decodedW,
           decodedH,
         ) ?? NULL_RINGING;
+      spurious =
+        computeSpurious(
+          reference,
+          decodedFlat,
+          referenceW,
+          referenceH,
+          decodedW,
+          decodedH,
+        ) ?? NULL_SPURIOUS;
+      artifactsScored = true;
     }
 
     // Composite first, then upscale: the backdrop is part of what is resampled,
@@ -419,7 +445,11 @@ export async function computeAllMetrics(
       )
     : null;
 
-  return { metrics, metricsBlurred, local: { alphaMae, ...ringing } };
+  return {
+    metrics,
+    metricsBlurred,
+    local: { alphaMae, ...ringing, ...spurious },
+  };
 }
 
 /** MetricResult with all fields null — for CSS-only formats that produce no raster output. */

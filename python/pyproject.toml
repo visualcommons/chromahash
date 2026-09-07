@@ -1,7 +1,7 @@
 [project]
 name = "chromahash"
 version = "0.7.2"
-description = "ChromaHash: modern LQIP (Low Quality Image Placeholder) format"
+description = "Modern, high-quality image placeholder representation (LQIP) for professional photo management at scale"
 readme = "README.md"
 authors = [{ name = "Justin Chung", email = "noreply@justinchung.net" }]
 license = "MIT OR Apache-2.0"

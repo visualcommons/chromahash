@@ -29,7 +29,19 @@ profile = "mutants"
 # per-backend differential tests, giving them real mutation coverage rather than
 # silently falling back to scalar. (The sweep host must therefore be AVX2-capable;
 # the avx2 test asserts the feature is present rather than skipping.)
-features = ["simd", "simd-diff-tests"]
+features = ["simd", "simd-diff-tests", "research-render"]
+
+# `research-render` is in that list for a different reason than the SIMD pair.
+# cargo-mutants does not evaluate `#[cfg(feature = ...)]`, so it generates
+# mutants for feature-gated code whether or not the feature is on — and when it
+# is off the mutated code is never compiled, the build is unchanged, and every
+# mutant is reported MISSED. That is what `stage_timing` is excluded for below.
+#
+# The difference is that `decode_at_size_to_with` and
+# `ChromaHash::decode_at_size_tuned` have real tests (the three agreement
+# properties in src/decode.rs), so enabling the feature makes their 24 mutants
+# genuinely killable rather than exempt. Prefer a test over an exclusion, as this
+# file says a few lines down.
 
 # …but the aarch64-NEON and wasm32-simd128 backends are `cfg`-gated to those
 # architectures, so on the x86_64 sweep host their source never compiles and no

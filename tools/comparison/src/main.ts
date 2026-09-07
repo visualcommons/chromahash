@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { glob } from "node:fs/promises";
-import { ChromaHashAdapter } from "./adapters/chromahash.ts";
+import { ChromaHashAdapter, supportsRender } from "./adapters/chromahash.ts";
 import { ThumbHashAdapter } from "./adapters/thumbhash.ts";
 import { BlurHashAdapter } from "./adapters/blurhash.ts";
 import { LqipModernAdapter } from "./adapters/lqip-modern.ts";
@@ -103,9 +103,10 @@ const { values } = parseArgs({
     // reader is choosing between. The blurred pass requests ΔE00 alone, so it
     // costs a fraction of the sharp set rather than doubling it.
     "no-blurred-scoring": { type: "boolean", default: false },
-    // Skip the locally-computed ringing metric (see metrics/local.ts). It costs
-    // no subprocess but does cost CPU per pair; a preview-only run can drop it.
-    "no-ringing": { type: "boolean", default: false },
+    // Skip the locally-computed artifact metrics (metrics/local.ts and
+    // metrics/spurious.ts). They cost no subprocess but do cost CPU per pair;
+    // a preview-only run can drop them.
+    "no-artifacts": { type: "boolean", default: false },
     formats: { type: "string" },
     versions: { type: "string" },
     commit: { type: "string" },
@@ -150,7 +151,7 @@ const upscalePolicy: UpscalePolicy =
 const blurredScoring =
   (values["blurred-scoring"] ?? true) &&
   !(values["no-blurred-scoring"] ?? false);
-const ringing = !(values["no-ringing"] ?? false);
+const artifacts = !(values["no-artifacts"] ?? false);
 /** Optional comma-separated format filter (case-insensitive), e.g. --formats ChromaHash,ThumbHash. */
 const formatFilter = values.formats
   ? values.formats.split(",").map((f) => f.trim().toLowerCase())
@@ -245,7 +246,7 @@ async function main(): Promise<void> {
   setAllowMissingIqa(values["allow-missing-iqa"] ?? false);
   ensureIqaAvailable();
 
-  setScoringConfig({ upscalePolicy, blurredScoring, ringing });
+  setScoringConfig({ upscalePolicy, blurredScoring, artifacts });
 
   // Fan-out width. Scoring is dominated by iqa-cli subprocesses and sharp
   // encodes, so the default is one worker per available core; --jobs 1 restores
@@ -406,6 +407,31 @@ async function main(): Promise<void> {
       ...ALL_TIERS.map(
         (tier) => new ChromaHashAdapter({ name: chromaHashLabel(tier), tier }),
       ),
+      // The same 32 bytes, rendered at the reference raster instead of decoded
+      // at 32 px and enlarged by the shared upscale. An extra operating point,
+      // not a replacement: the row above it is the one that is comparable to
+      // every other format, because every other format goes through that same
+      // resampler and most of them have no choice.
+      //
+      // It is here rather than behind a flag because the question it answers is
+      // one a reader asks by looking: the previews in this report are decodes at
+      // their native raster, magnified by the browser, and "is that texture the
+      // format or the magnification?" cannot be answered from them alone. This
+      // row is the other half of that comparison. It is deliberately NOT in
+      // rd/lineup.ts, so rd-budget and the R-D gate are untouched.
+      // Only when the binary actually has the subcommand. A build without
+      // `research-render` would otherwise get a row that silently decoded the
+      // ordinary way -- a duplicate of the tier row above it, wearing a name
+      // that claims it is the comparison.
+      ...(supportsRender()
+        ? [
+            new ChromaHashAdapter({
+              name: `${chromaHashLabel(DEFAULT_TIER)} native render`,
+              tier: DEFAULT_TIER,
+              renderAtReference: true,
+            }),
+          ]
+        : []),
       new ThumbHashAdapter(),
       new BlurHashAdapter(),
       new LqipModernAdapter(),
@@ -774,7 +800,7 @@ async function main(): Promise<void> {
   const rdJson = rdVariants ? computeRdCurves(entries, rdVariants) : null;
 
   const json: ComparisonJson = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     generatedAt: meta.generatedAt,
     scoring: {
       referenceCap: REFERENCE_CAP,
@@ -783,7 +809,7 @@ async function main(): Promise<void> {
       blurSigmaRule: BLUR_SIGMA_RULE,
       alphaBackdrop: ALPHA_BACKDROP,
       reflowContainerPx: REFLOW_CONTAINER_PX,
-      ringing,
+      artifacts,
     },
     commit: meta.commit,
     repoUrl: meta.repoUrl,

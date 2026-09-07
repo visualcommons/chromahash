@@ -355,6 +355,26 @@ impl ChromaHash {
         decode::decode_capped_to_with(&self.hash, max_w, max_h, t, output)
     }
 
+    /// Render at an exact target raster, above or below the natural one, with
+    /// explicit tunables (comparison-harness interface).
+    ///
+    /// Every other decode entry point renders at the natural raster or takes a
+    /// `min` against it, so this is the only way to ask for the reconstruction
+    /// *above* natural size. See [`decode::decode_at_size_to_with`].
+    ///
+    /// Research surface, gated on the `research-render` feature.
+    #[cfg(feature = "research-render")]
+    #[doc(hidden)]
+    pub fn decode_at_size_tuned(
+        &self,
+        w: u32,
+        h: u32,
+        output: Gamut,
+        t: &Tunables,
+    ) -> (u32, u32, Vec<u8>) {
+        decode::decode_at_size_to_with(&self.hash, w, h, t, output)
+    }
+
     /// Get the raw encoded bytes (length depends on the quality tier; 32 bytes
     /// at the default tier).
     pub fn as_bytes(&self) -> &[u8] {

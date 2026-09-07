@@ -4,7 +4,7 @@ version = "0.7.2"
 authors = ["Justin Chung <noreply@justinchung.net>"]
 edition = "2024"
 rust-version = "1.85"
-description = "Modern, high-quality image placeholder representation for professional formats"
+description = "Modern, high-quality image placeholder representation (LQIP) for professional photo management at scale"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/visualcommons/chromahash"
 homepage = "https://github.com/visualcommons/chromahash"
@@ -57,9 +57,37 @@ simd-diff-tests = ["simd"]
 # feature set (rust/.cargo/mutants.toml), so it adds no mutants to the hot path.
 bench-internals = []
 
+# `research-render` (off by default) exposes `ChromaHash::decode_at_size_tuned`
+# — a render at an arbitrary target raster rather than at (or capped below) the
+# natural one, plus the `render` subcommand of the `encode_stdin` example. The
+# renderer has always been able to do this: `render_at_size` evaluates the cosine
+# basis pointwise at whatever grid it is handed, and every public entry point
+# either uses the natural raster or takes a per-axis `min` against it. Nothing
+# could ask it to go *up*.
+#
+# It is a feature rather than plain API because the comparison harness needs it
+# to answer one question — whether the artifacts a reader sees in a placeholder
+# are the format's own reconstruction or the browser's interpolation of a 32 px
+# raster — and that question should not cost the bindings a new entry point in
+# nine languages before it has an answer. Same contract as `bench-internals`: no
+# default-build API, no dependency, no binding exposes it. If the measurement
+# says rendering at display size is worth having, it graduates to real API in
+# every language at once, which is what `AGENTS.md` requires.
+#
+# Cost is why this is not simply on: the render is `O(w·h·K)`, so a 512 px render
+# of a 32 px natural raster is ~256x the per-pixel work. See `spec/PERFORMANCE.md`.
+research-render = []
+
 # `full` turns on every feature — the default set plus the opt-in
-# `simd-diff-tests` — for "test everything" invocations (CI and `mise run test`).
-full = ["spec-vectors", "simd", "simd-diff-tests"]
+# `simd-diff-tests` and `research-render` — for "test everything" invocations
+# (CI and `mise run test`).
+#
+# `research-render` is in and `bench-internals` is out, on the rule stated above:
+# `full` means "test everything", and `bench-internals` has no tests of its own
+# while `research-render` does — the three agreement properties in
+# `src/decode.rs` are what make it a measurement rather than a second decoder,
+# and they are worth nothing unless CI runs them.
+full = ["spec-vectors", "simd", "simd-diff-tests", "research-render"]
 
 [[test]]
 name = "spec_vectors"

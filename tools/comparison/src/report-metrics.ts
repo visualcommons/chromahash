@@ -115,7 +115,18 @@ export const METRIC_DOCS = {
     direction: "lower",
     why: "Everything above answers 'how wrong is it'. None of them answers 'is it wrong in an ugly way'. A placeholder that is uniformly a little off and one that rings with halos and ripples around every edge can score the same. This separates them: it measures only error that escapes the range of the original nearby, which is what ringing does and what ordinary blur cannot do. Blurring a placeholder before display hides this kind of error and not the other kind, so it is the number to watch if you intend to blur.",
     scale:
-      "0 to ~20 in 8-bit colour levels. A placeholder that is merely a blurred copy of the original scores exactly 0, by construction.",
+      "0 to ~20 in 8-bit colour levels. A placeholder that is merely a blurred copy of the original scores exactly 0, by construction. Comparable only between rows decoded at the same size — the window this is measured in scales with the decode, and the Scale column shows it.",
+    href: "https://en.wikipedia.org/wiki/Ringing_artifacts",
+    hrefLabel: "Wikipedia: Ringing artifacts",
+    source: "harness",
+  },
+  spurious: {
+    label: "Invented detail",
+    name: "Structure the placeholder has that the original does not",
+    direction: "lower",
+    why: "Ringing catches error that escapes the range of the original nearby — halos at edges. It cannot catch a ripple that stays inside that range, a broad wave laid over a textured area, or a stripe running through the whole picture, and those are what a placeholder built from a handful of frequencies produces away from edges. This is the number for that: how much structure the placeholder shows at spatial frequencies the original has none at. It is what a reader means when a placeholder 'looks textured' rather than simply blurry. Losing detail costs nothing here — that is what the columns above charge for.",
+    scale:
+      "0 to ~20 in 8-bit colour levels. The ideal blurred copy of the original at the same resolution scores exactly 0, by construction. Compare two rows directly only at equal decode sizes.",
     href: "https://en.wikipedia.org/wiki/Ringing_artifacts",
     hrefLabel: "Wikipedia: Ringing artifacts",
     source: "harness",

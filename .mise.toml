@@ -569,7 +569,7 @@ run = "node tools/comparison/dist/main.js --versions v0.2,v0.3,v0.4,v0.5,v0.6,cu
 description = "Cross-format rate–distortion comparison report"
 depends = ["build:compare"]
 run = [
-  "cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin",
+  "cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin",
   "node tools/comparison/dist/main.js --rd",
 ]
 
@@ -581,7 +581,7 @@ run = [
 description = "Cross-format rate–distortion at arbitrary byte budgets"
 depends = ["build:compare"]
 run = [
-  "cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin",
+  "cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin",
   "node tools/comparison/dist/rd-budget.js",
 ]
 
@@ -589,7 +589,7 @@ run = [
 description = "Chroma-from-luma sizing probe (per-index chroma predictability from luma)"
 depends = ["build:compare"]
 run = [
-  "cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin",
+  "cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin",
   "node tools/comparison/dist/cfl-probe.js",
 ]
 
@@ -597,7 +597,7 @@ run = [
 description = "AC entropy headroom, and l2-ball prefix energy vs the best fixed/oracle set"
 depends = ["build:compare"]
 run = [
-  "cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin",
+  "cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin",
   "node tools/comparison/dist/coeff-stats.js",
 ]
 
@@ -605,7 +605,7 @@ run = [
 description = "What entropy-coding the AC payload would buy, costed leave-one-image-out"
 depends = ["build:compare"]
 run = [
-  "cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin",
+  "cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin",
   "node tools/comparison/dist/entropy-budget.js",
 ]
 
@@ -616,7 +616,7 @@ run = [
 description = "Train Lloyd-Max codebooks and run the chroma VQ probe"
 depends = ["build:compare"]
 run = [
-  "cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin",
+  "cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin",
   "node tools/comparison/dist/train-tables.js",
 ]
 
@@ -632,7 +632,7 @@ run = [
 description = "Encoder quality regression gate (mean ΔE00 vs the checked-in baseline)"
 depends = ["build:compare"]
 run = [
-  "cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin",
+  "cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin",
   "node tools/comparison/dist/rd-gate.js",
 ]
 
@@ -642,7 +642,7 @@ run = [
 description = "Refresh the R-D gate baseline after an intended encoder change"
 depends = ["build:compare"]
 run = [
-  "cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin",
+  "cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin",
   "node tools/comparison/dist/rd-gate.js --update",
 ]
 
@@ -655,7 +655,7 @@ run = [
 # window-radius derivation is wrong and every ringing number is noise. Pure
 # computation: no iqa-cli, no corpus, no network.
 [tasks."selftest:metrics"]
-description = "Self-check the locally-computed metrics (ringing, aspect)"
+description = "Self-check the locally-computed metrics (ringing, spurious detail, aspect)"
 depends = ["build:compare"]
 run = "node tools/comparison/dist/metric-selftest.js"
 
@@ -706,7 +706,7 @@ run = "node tools/comparison/dist/verify-benchmark.js"
 description = "Build every benchmark harness (release), incl. both ThumbHash baselines"
 depends = ["cbuild:go", "cbuild:swift", "cbuild:ts", "cbuild:python", "cbuild:csharp"]
 run = [
-  "cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin",
+  "cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin",
   "pnpm --prefix typescript run build",
   "( cd go && CGO_ENABLED=1 go build -o encode-stdin ./cmd/encode-stdin )",
   "( cd bindings/uniffi/jvm && ./gradlew installDist -q )",

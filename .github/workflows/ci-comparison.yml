@@ -164,7 +164,7 @@ jobs:
         run: cargo install iqa-cli --locked --version 1.2.1
 
       - name: Build Rust harness
-        run: cargo build --manifest-path rust/Cargo.toml --example encode_stdin
+        run: cargo build --manifest-path rust/Cargo.toml --features research-render --example encode_stdin
 
       # The comparison report below proves the harness still runs; it does not
       # prove the format still performs. This gate (spec/EXPERIMENTS.md U18)
@@ -173,7 +173,7 @@ jobs:
       # silent rate-distortion regression cannot land unnoticed. It needs a
       # release build — the debug encoder is the same bytes but far slower.
       - name: Build Rust harness (release, for the R-D gate)
-        run: cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin
+        run: cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin
 
       # Asserts that fanning the image loop across cores does not move a
       # published number: the orchestrator runs twice over the generated
