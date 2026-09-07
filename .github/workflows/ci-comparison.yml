@@ -16,8 +16,16 @@ on:
       # EXPERIMENTS.md's tables are transcribed from sweep output by hand. CI
       # cannot check them -- the sweeps are gitignored and take hours -- but an
       # edit here must at least rebuild the tool that can, so a binding cannot
-      # be broken by a rename without the build noticing.
+      # be broken by a rename without the build noticing. It is also the source
+      # verify:claims checks the files below against, and that gate needs no
+      # sweep output, so it does run here.
       - "spec/EXPERIMENTS.md"
+      # The files that quote EXPERIMENTS.md figures by hand. verify:claims
+      # checks each registered figure against the cell it cites, so an edit to
+      # any of them must run it. rust/** is already listed above.
+      - "README.md"
+      - "spec/README.md"
+      - "spec/RATIONALE.md"
       - ".github/workflows/ci-comparison.yml"
   pull_request:
     paths:
@@ -33,8 +41,16 @@ on:
       # EXPERIMENTS.md's tables are transcribed from sweep output by hand. CI
       # cannot check them -- the sweeps are gitignored and take hours -- but an
       # edit here must at least rebuild the tool that can, so a binding cannot
-      # be broken by a rename without the build noticing.
+      # be broken by a rename without the build noticing. It is also the source
+      # verify:claims checks the files below against, and that gate needs no
+      # sweep output, so it does run here.
       - "spec/EXPERIMENTS.md"
+      # The files that quote EXPERIMENTS.md figures by hand. verify:claims
+      # checks each registered figure against the cell it cites, so an edit to
+      # any of them must run it. rust/** is already listed above.
+      - "README.md"
+      - "spec/README.md"
+      - "spec/RATIONALE.md"
       - ".github/workflows/ci-comparison.yml"
 
 jobs:
@@ -106,6 +122,15 @@ jobs:
       # the real lineup produces.
       - name: The locally-computed metrics hold their defining properties
         run: node tools/comparison/dist/metric-selftest.js
+
+      # The figures README.md, spec/README.md, spec/RATIONALE.md and
+      # rust/src/constants.rs quote from spec/EXPERIMENTS.md, each checked
+      # against the cell it cites. Reads four files and one markdown document:
+      # no sweep output, no iqa-cli, no corpus, no network. That is why this one
+      # can run in CI and verify:experiments cannot -- and it is the gate that
+      # would have caught the six figures the 2026-09 re-baseline stranded.
+      - name: The repo's quoted figures agree with EXPERIMENTS.md
+        run: node tools/comparison/dist/verify-claims.js
 
       # Reads spec/PERFORMANCE.md and the committed runs under baselines/ only —
       # no harness, no toolchain.

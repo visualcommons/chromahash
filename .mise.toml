@@ -686,6 +686,21 @@ description = "Check every table in spec/EXPERIMENTS.md against the sweep output
 depends = ["build:compare"]
 run = "node tools/comparison/dist/verify-experiments.js"
 
+# Check the figures the rest of the repo quotes FROM spec/EXPERIMENTS.md.
+# verify:experiments closes the loop between the sweeps and that document; this
+# closes the one after it, for README.md, spec/README.md, spec/RATIONALE.md and
+# rust/src/constants.rs, which restate its numbers by hand and had never been
+# checked. The 2026-09 re-baseline left six of them wrong, two citing a section
+# that had never held the figure. Deliberately checks against the *document*,
+# not the sweeps: that chain is already gated, so this needs no sweep output on
+# disk and can therefore run in CI on every push, which verify:experiments
+# cannot.
+#   --list   print the register and exit
+[tasks."verify:claims"]
+description = "Check the figures other files quote from spec/EXPERIMENTS.md"
+depends = ["build:compare"]
+run = "node tools/comparison/dist/verify-claims.js"
+
 # Check every table in spec/PERFORMANCE.md against the committed perf runs in
 # tools/comparison/baselines/. The document is transcribed by hand, so a re-run
 # silently invalidates it — and it had: the committed baseline was a bounded run
