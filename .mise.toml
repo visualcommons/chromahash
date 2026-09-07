@@ -692,6 +692,21 @@ description = "Check every table in spec/EXPERIMENTS.md against the sweep output
 depends = ["build:compare"]
 run = "node tools/comparison/dist/verify-experiments.js"
 
+# Assert every sweep arm sets the constants its own label names. A tune string
+# is applied on top of Tunables::DEFAULT, so an omitted knob inherits whatever
+# ships -- which meant that once §10 adopted the §8 recipe, every arm whose
+# label named a pre-adoption constant was measuring the adopted one. Four arms
+# of holdout-candidates returned one bit-identical number that way, and
+# v07-holdout-alpha's incumbent encoded to 40 bytes rather than the 32 its label
+# claimed. This is a property of the config alone: no corpus, no encoder, no
+# sweep output, so it runs in CI. Configs left unpinned on purpose declare
+# `unpinnedLabels` with the reason (EXPERIMENTS.md §9.5).
+#   --list   what each label is read to name
+[tasks."verify:sweep-labels"]
+description = "Check every sweep arm sets the constants its label names"
+depends = ["build:compare"]
+run = "node tools/comparison/dist/verify-sweep-labels.js"
+
 # Check the figures the rest of the repo quotes FROM spec/EXPERIMENTS.md.
 # verify:experiments closes the loop between the sweeps and that document; this
 # closes the one after it, for README.md, spec/README.md, spec/RATIONALE.md and

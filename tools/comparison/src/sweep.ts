@@ -89,6 +89,20 @@ interface SweepVariant {
 interface SweepConfig {
   name: string;
   description?: string;
+  /**
+   * Opt this config out of `verify:sweep-labels`, with the reason.
+   *
+   * That gate asserts every arm sets the constants its own label names, because
+   * a `tune` string is applied on top of `Tunables::DEFAULT` and an omitted
+   * knob inherits whatever ships -- so once §10 adopted the §8 recipe, an arm
+   * labelled with a pre-adoption constant was measuring the adopted one.
+   * `EXPERIMENTS.md` §9.5 leaves several configs unpinned on purpose:
+   * relabelling them moves no number and would change the row keys
+   * `verify-experiments.ts` matches on. This is where that decision is
+   * recorded. It takes a reason rather than a boolean, because an opt-out with
+   * a reason is a disclosure and one without is a silence.
+   */
+  unpinnedLabels?: string;
   /** First variant is the incumbent the guards compare against. */
   variants: SweepVariant[];
   /**

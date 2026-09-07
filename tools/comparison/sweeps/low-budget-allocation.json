@@ -94,5 +94,6 @@
       "label": "21B L15@4 C8@3",
       "tune": "l1=15:4 c=8:3"
     }
-  ]
+  ],
+  "unpinnedLabels": "Run and superseded before this file's round-3 numbers were taken, and its output no longer survives on disk (EXPERIMENTS.md 6). It informed no adopted constant and is kept as a record of what was tried."
 }

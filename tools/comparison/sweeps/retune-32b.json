@@ -3,22 +3,69 @@
   "description": "Retune the companding and encoder policy for the 4-bit-luma / 3-bit-chroma allocation that wins at 32 B. mu_L=5 / mu_C=8 were locked against the 5 b / 4 b layout, so they are not automatically right for a coarser one; aniso=1.2 and scale_fit are stacked on top of the winner.",
   "photoOnly": true,
   "variants": [
-    { "label": "SHIPPED L26@5 C9@4" },
-    { "label": "A L38@4 C8@3", "tune": "l1=38:4 c=8:3" },
-    { "label": "A mu_l=3", "tune": "l1=38:4 c=8:3 mu_l=3" },
-    { "label": "A mu_l=4", "tune": "l1=38:4 c=8:3 mu_l=4" },
-    { "label": "A mu_l=6", "tune": "l1=38:4 c=8:3 mu_l=6" },
-    { "label": "A mu_l=8", "tune": "l1=38:4 c=8:3 mu_l=8" },
-    { "label": "A mu_c=5", "tune": "l1=38:4 c=8:3 mu_c=5" },
-    { "label": "A mu_c=6", "tune": "l1=38:4 c=8:3 mu_c=6" },
-    { "label": "A mu_c=12", "tune": "l1=38:4 c=8:3 mu_c=12" },
-    { "label": "A mu_c=16", "tune": "l1=38:4 c=8:3 mu_c=16" },
-    { "label": "B L28@4 C15@3", "tune": "l1=28:4 c=15:3" },
-    { "label": "B mu_l=4", "tune": "l1=28:4 c=15:3 mu_l=4" },
-    { "label": "B mu_l=6", "tune": "l1=28:4 c=15:3 mu_l=6" },
-    { "label": "B mu_c=12", "tune": "l1=28:4 c=15:3 mu_c=12" },
-    { "label": "A aniso=1.2", "tune": "l1=38:4 c=8:3 aniso=1.2" },
-    { "label": "A scale_fit=1", "tune": "l1=38:4 c=8:3 scale_fit=1" },
+    {
+      "label": "SHIPPED L26@5 C9@4"
+    },
+    {
+      "label": "A L38@4 C8@3",
+      "tune": "l1=38:4 c=8:3"
+    },
+    {
+      "label": "A mu_l=3",
+      "tune": "l1=38:4 c=8:3 mu_l=3"
+    },
+    {
+      "label": "A mu_l=4",
+      "tune": "l1=38:4 c=8:3 mu_l=4"
+    },
+    {
+      "label": "A mu_l=6",
+      "tune": "l1=38:4 c=8:3 mu_l=6"
+    },
+    {
+      "label": "A mu_l=8",
+      "tune": "l1=38:4 c=8:3 mu_l=8"
+    },
+    {
+      "label": "A mu_c=5",
+      "tune": "l1=38:4 c=8:3 mu_c=5"
+    },
+    {
+      "label": "A mu_c=6",
+      "tune": "l1=38:4 c=8:3 mu_c=6"
+    },
+    {
+      "label": "A mu_c=12",
+      "tune": "l1=38:4 c=8:3 mu_c=12"
+    },
+    {
+      "label": "A mu_c=16",
+      "tune": "l1=38:4 c=8:3 mu_c=16"
+    },
+    {
+      "label": "B L28@4 C15@3",
+      "tune": "l1=28:4 c=15:3"
+    },
+    {
+      "label": "B mu_l=4",
+      "tune": "l1=28:4 c=15:3 mu_l=4"
+    },
+    {
+      "label": "B mu_l=6",
+      "tune": "l1=28:4 c=15:3 mu_l=6"
+    },
+    {
+      "label": "B mu_c=12",
+      "tune": "l1=28:4 c=15:3 mu_c=12"
+    },
+    {
+      "label": "A aniso=1.2",
+      "tune": "l1=38:4 c=8:3 aniso=1.2"
+    },
+    {
+      "label": "A scale_fit=1",
+      "tune": "l1=38:4 c=8:3 scale_fit=1"
+    },
     {
       "label": "A scale_fit=2 nearest",
       "tune": "l1=38:4 c=8:3 scale_fit=2 ac_nearest=1"
@@ -35,5 +82,6 @@
       "label": "SHIPPED aniso+fit2+near",
       "tune": "aniso=1.2 scale_fit=2 ac_nearest=1"
     }
-  ]
+  ],
+  "unpinnedLabels": "As `cfl` — see EXPERIMENTS.md 9.5's disclosed set."
 }

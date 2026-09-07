@@ -2243,7 +2243,12 @@ base budget is the same 192 bits as tier 0's alpha budget, so
 `sweeps/alpha-tier1.json` is the same allocations evaluated at 4× resolution.
 
 One arm in that file is **off-budget** and is excluded from the comparison
-below: `A20@4 L20@5 C1@4` at 106 B, against the 103–104 B the rest occupy. It
+below: `A20@4 L20@5 C2@4` at 106 B, against the 103–104 B the rest occupy. The
+label carried `C1@4` until the 2026-09 label audit, and the two extra chroma
+coefficients its arm actually sets are precisely why it is over budget — the
+name of the defect was written on it the whole time. Note that its **tier-0
+namesake in `alpha-ac-count` really is `C1@4`**, so the pair is not the
+like-for-like this section otherwise assumes. It
 posts the best raw ΔE00 in the file (10.768) and the best SSIMULACRA2 and
 Butteraugli, which is what 2–3 extra bytes buys; it is not an equal-budget
 result and is not treated as one. (It does *not* take DSSIM — `A16@4 L14@4 C9@4`

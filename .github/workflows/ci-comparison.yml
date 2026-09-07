@@ -132,6 +132,15 @@ jobs:
       - name: The repo's quoted figures agree with EXPERIMENTS.md
         run: node tools/comparison/dist/verify-claims.js
 
+      # Every sweep arm sets the constants its own label names. Reads the sweep
+      # JSON only -- no corpus, no encoder, no sweep output -- so it runs here
+      # even though the sweeps themselves cannot. This is the gate for the
+      # defect class EXPERIMENTS.md §9.5 documents: an omitted knob inherits
+      # Tunables::DEFAULT, so an arm labelled with a pre-adoption constant
+      # silently measures the adopted one.
+      - name: Every sweep arm sets the constants its label names
+        run: node tools/comparison/dist/verify-sweep-labels.js
+
       # Reads spec/PERFORMANCE.md and the committed runs under baselines/ only —
       # no harness, no toolchain.
       #
