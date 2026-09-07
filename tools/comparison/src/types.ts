@@ -312,6 +312,7 @@ export interface FormatStat {
   avgRinging: number | null;
   /** Mean invented detail in 8-bit levels, averaged across the set. */
   avgSpurious: number | null;
+  avgDeficit: number | null;
   /**
    * The scale both artifact metrics were measured at: the ringing envelope
    * radius and the spurious analysis grid, in reference pixels and samples.
