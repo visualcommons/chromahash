@@ -1502,10 +1502,12 @@ compatibility** with the v0.6 bitstream. The framing changes are:
   *reconstruction* rather than in the companded domain. Both are encoder-only: the decoder
   and the wire layout are untouched.
 
-Together the four constants-level and encoder-side changes above are worth **−3.50% mean
+Together the four constants-level and encoder-side changes above are worth **−3.72% mean
 ΔE00** at the default tier on a never-tuned holdout split, with SSIMULACRA2, Butteraugli and DSSIM
-all improving; the optimized 32-byte encode matches the v0.6 constants at 40 bytes.
-`spec/EXPERIMENTS.md` §8 records the measurements and what was rejected.
+all improving. `spec/EXPERIMENTS.md` §8 records the measurements and what was rejected —
+including the equal-quality byte saving this paragraph used to quote (the optimized 32-byte
+encode matching the v0.6 constants at 40 bytes), which §8.3 withdrew: it was read off a
+ladder of the *pre-adoption* signal path, and no current sweep produces one.
 
 The DCT, OKLAB color pipeline, ℓ2-ball candidate set, µ-law quantizer, decode-aware DC
 search, and gamut handling are **inherited from the v0.6 algorithm** (now parameterized by

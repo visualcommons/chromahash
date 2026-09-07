@@ -231,8 +231,8 @@ degrades and fails guards past 1.6. Extending it to the two-parameter family
 
 **Shipped in v1** (§6.2). On its own the weight is under the 3% retune
 threshold; it entered the spec as part of the default-tier recipe of
-`EXPERIMENTS.md` §8, which clears it as a whole (−3.50% holdout, all guards
-improving) and is worth −0.34 pp of that. The f64 ordering the sweep used is
+`EXPERIMENTS.md` §8, which clears it as a whole (−3.72% holdout, all guards
+improving) and is worth −0.36 pp of that. The f64 ordering the sweep used is
 *not* what shipped: the spec orders on an exact Q12 integer key, so the order
 is bit-exact across languages, and computing it once per candidate instead of
 inside the comparator made decode ~8% **faster** than the unweighted v0.6 sort
