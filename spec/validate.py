@@ -11,6 +11,7 @@ Usage:
 Exit code 0 on success, 1 on any validation failure.
 """
 import math
+import ast
 import os
 import re
 import sys
@@ -68,6 +69,12 @@ from constants import (
     B_SCALE_BITS,
     ALPHA_DC_BITS,
     ALPHA_SCALE_BITS,
+    A_DC_BITS,
+    A_SCALE_BITS,
+    B_DC_BITS,
+    RESERVED_FLAG_BIT,
+    TIER_BITS,
+    VERSION_BITS,
     SEL_Q,)
 from selection import (
     FORMAT_KS,
@@ -904,6 +911,36 @@ def validate_cross_implementation_constants():
          r"ALPHA_DC_BITS:\s*u32\s*=\s*(\d+)", r"ALPHA_DC_BITS\s*=\s*(\d+)"),
         ("ALPHA_SCALE_BITS", ALPHA_SCALE_BITS,
          r"ALPHA_SCALE_BITS:\s*u32\s*=\s*(\d+)", r"ALPHA_SCALE_BITS\s*=\s*(\d+)"),
+        # The header's own layout. Every one of these decides where a field
+        # starts or how wide it is, so a disagreement between two
+        # implementations is a wire-format split -- the exact failure this
+        # function exists to catch -- and none of them was checked. The three
+        # DC/scale widths below made it worse than an omission: L_DC_BITS,
+        # L_SCALE_BITS and B_SCALE_BITS were checked while their A and B
+        # siblings, declared on the neighbouring lines of all three files, were
+        # not. A reader of this list had every reason to believe the set was
+        # complete.
+        ("VERSION_BITS", VERSION_BITS,
+         r"VERSION_BITS:\s*u32\s*=\s*(\d+)", r"VERSION_BITS\s*=\s*(\d+)"),
+        ("TIER_BITS", TIER_BITS,
+         r"TIER_BITS:\s*u32\s*=\s*(\d+)", r"TIER_BITS\s*=\s*(\d+)"),
+        ("ALPHA_FLAG_BIT", ALPHA_FLAG_BIT,
+         r"ALPHA_FLAG_BIT:\s*u32\s*=\s*(\d+)", r"ALPHA_FLAG_BIT\s*=\s*(\d+)"),
+        ("RESERVED_FLAG_BIT", RESERVED_FLAG_BIT,
+         r"RESERVED_FLAG_BIT:\s*u32\s*=\s*(\d+)",
+         r"RESERVED_FLAG_BIT\s*=\s*(\d+)"),
+        ("DESCRIPTOR_BITS", DESCRIPTOR_BITS,
+         r"DESCRIPTOR_BITS:\s*u32\s*=\s*(\d+)", r"DESCRIPTOR_BITS\s*=\s*(\d+)"),
+        ("COMPACT_TIER", COMPACT_TIER,
+         r"COMPACT_TIER:\s*u8\s*=\s*(\d+)", r"COMPACT_TIER\s*=\s*(\d+)"),
+        ("DEFAULT_TIER", DEFAULT_TIER,
+         r"DEFAULT_TIER:\s*u8\s*=\s*(\d+)", r"DEFAULT_TIER\s*=\s*(\d+)"),
+        ("A_DC_BITS", A_DC_BITS,
+         r"A_DC_BITS:\s*u32\s*=\s*(\d+)", r"A_DC_BITS\s*=\s*(\d+)"),
+        ("B_DC_BITS", B_DC_BITS,
+         r"B_DC_BITS:\s*u32\s*=\s*(\d+)", r"B_DC_BITS\s*=\s*(\d+)"),
+        ("A_SCALE_BITS", A_SCALE_BITS,
+         r"A_SCALE_BITS:\s*u32\s*=\s*(\d+)", r"A_SCALE_BITS\s*=\s*(\d+)"),
     ]
 
     # `SEL_Q` lives in dct.rs, not constants.rs — read it from there.
@@ -936,6 +973,56 @@ def validate_cross_implementation_constants():
             + ("" if want == got_rust == got_ts
                else f" — spec {want}, Rust {got_rust}, TypeScript {got_ts}"),
         )
+
+    # --- Completeness: every numeric constant is named above, or excused ---
+    #
+    # The list above is written by hand, and for ten constants it silently was
+    # not: VERSION_BITS, TIER_BITS, ALPHA_FLAG_BIT, RESERVED_FLAG_BIT,
+    # DESCRIPTOR_BITS, COMPACT_TIER, DEFAULT_TIER, A_DC_BITS, B_DC_BITS and
+    # A_SCALE_BITS each existed in all three sources, each decides where a
+    # header field sits or how wide it is, and none was compared. Three of them
+    # sat next to siblings that were — L_DC_BITS checked, A_DC_BITS not — so
+    # the omission looked like a decision.
+    #
+    # Nothing could have found that by reading, so it is found by counting
+    # instead: constants.py is parsed, and a module-level numeric literal that
+    # this function does not compare fails the run. The exception register is
+    # empty on purpose — every one of the 30 is checked — and an entry added to
+    # it should carry the reason a constant the spec fixes is not one the
+    # implementations must agree on.
+    not_in_parity: dict[str, str] = {}
+
+    with open(os.path.join(os.path.dirname(__file__), "constants.py"),
+              encoding="utf-8") as f:
+        const_tree = ast.parse(f.read())
+    literals = []
+    for node in const_tree.body:
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)):
+            continue
+        value = node.value
+        if isinstance(value, ast.UnaryOp) and isinstance(value.op, ast.USub):
+            value = value.operand
+        if (isinstance(value, ast.Constant)
+                and isinstance(value.value, (int, float))
+                and not isinstance(value.value, bool)):
+            literals.append(node.targets[0].id)
+
+    compared = {name for name, _, _, _ in scalars}
+    missing = [n for n in literals
+               if n not in compared and n not in not_in_parity]
+    check(
+        not missing,
+        f"every numeric constant is compared ({len(literals)} in constants.py)"
+        + ("" if not missing
+           else f" — {len(missing)} unchecked: {', '.join(missing)}"),
+    )
+    stale = [n for n in not_in_parity if n not in literals or n in compared]
+    check(
+        not stale,
+        "no stale exception in not_in_parity"
+        + ("" if not stale else f" — {', '.join(stale)}"),
+    )
 
 
 if __name__ == "__main__":
