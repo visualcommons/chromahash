@@ -717,7 +717,7 @@ else:
 
 and MUST then normalize every coefficient by `dequantScale(scale_code)` — the exact
 value the decoder will use — not by `X_scale`. This costs no bits, changes no decoder,
-and is worth −0.43% mean ΔE00 at 32 bytes and −1.8% at 411 (`EXPERIMENTS.md` §7.11).
+and is worth −0.30% mean ΔE00 at 32 bytes and −1.04% at 411 (`EXPERIMENTS.md` §4.4).
 
 `MAX_A_SCALE = MAX_B_SCALE = 0.125`: across the reference corpus the chroma AC scale
 never exceeds 0.113. v0.5's 0.5 range wasted two bits of every chroma coefficient and
@@ -793,9 +793,10 @@ from the code-2 row that codes 2–4 scale.
 | Alpha AC | — | 3 b (all 16) | — | 3 b (all 28) | — | 3 b (all 112) |
 
 Code 1 trades precision for count because at 32 bytes that is measurably the better
-buy — 28 luma coefficients at 4 bits beat 26 at 5 by 3.5% mean ΔE00 on the never-tuned
-holdout split, with every guard metric improving (`EXPERIMENTS.md` §4.2, §8.3). By code 2
-the budget is loose enough that the 5-bit split wins again for the opaque row.
+buy — 28 luma coefficients at 4 bits beat 26 at 5 by **2.09% mean ΔE00** on the never-tuned
+holdout split, with every guard metric improving (`EXPERIMENTS.md` §4.5; on tune it is
+0.9%, §4.2). By code 2 the budget is loose enough that the 5-bit split wins again for the
+opaque row — at 108 bytes the same swap is +2.0% the *wrong* way.
 
 The alpha rows do not follow the opaque ones. Alpha AC is 3 bits at every tier — 2 bits
 fails the Butteraugli guard at any count — and it takes the largest share of the alpha
