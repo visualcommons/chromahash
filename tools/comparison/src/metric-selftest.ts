@@ -18,6 +18,13 @@
  * The aspect block is new: the docstring here and the `selftest:metrics` task
  * description had both claimed `aspect.ts` coverage since it was written, and
  * neither had any.
+ *
+ * The grid-pin block is here for the same reason and paid for itself the same
+ * way. Every cross-tier artifact figure in EXPERIMENTS.md §13 is read off a
+ * pinned grid, and no call in this file had ever passed the pin — so the first
+ * assertion that an ideal low-pass still scores exactly zero *through* a pin
+ * failed immediately, on a bias that grew with the pin ratio and so ran along
+ * the tier axis those figures are read down.
  */
 
 import { computeRinging } from "./metrics/local.ts";
@@ -508,11 +515,15 @@ check(
 // have must move `spurious` without moving `deficit` down past zero. Asserting
 // both directions is what makes the pair a pair rather than two numbers that
 // happen to be printed together.
+// `deficit >= 0` was the original second conjunct here and asserted nothing:
+// it is a sum of squares, so it holds for every input this function can be
+// given, including one where deficit and spurious had been wired to the same
+// side of the subtraction. The bound is absolute rather than relative for the
+// same reason — this case measures deficit at exactly 0.000 against a spurious
+// of 17.08, so a ratio test would divide by zero into another tautology.
 check(
   "invented structure does not register as deficit",
-  vertical !== null &&
-    vertical.deficit >= 0 &&
-    vertical.spurious > vertical.deficit,
+  vertical !== null && vertical.spurious > 1 && vertical.deficit < 0.05,
   `spurious=${vertical?.spurious.toFixed(3)} deficit=${vertical?.deficit.toFixed(3)}`,
 );
 
@@ -738,6 +749,83 @@ check(
     "a placeholder shorter than the real image reflows positive",
     tooShort !== null && tooShort.reflowPx > 0,
     `reflow=${tooShort?.reflowPx.toFixed(1)}px for a 1000px container`,
+  );
+}
+
+console.log("\nspurious — the pinned analysis grid\n");
+
+// The grid pin is what every cross-tier artifact number in EXPERIMENTS.md §13
+// rests on, and until these checks existed not one of the ten computeSpurious
+// calls above passed a seventh argument: the parameter the conclusions depend
+// on was the one parameter with no coverage at all.
+//
+// P1 is the null hypothesis one level down, and it is the one that mattered. An
+// ideal low-pass must score exactly zero — unpinned, that is asserted above at
+// 8 sizes; pinned, it was scoring 0.008 at 32->16, 0.020 at 64->32 and 0.032 at
+// 128->64, a floor that grew with the pin ratio and therefore landed hardest on
+// exactly the high tiers the pin exists to make comparable. The cause was in
+// `idealSpectrum`: the decode reached a pinned grid through two roundings and
+// the ideal through one.
+{
+  const failures: string[] = [];
+  for (const [dw, dh] of [
+    [32, 24],
+    [64, 48],
+    [128, 96],
+    [16, 12],
+  ] as const) {
+    const dec = boxDownscale(sRef, REF_W, REF_H, dw, dh);
+    for (const pin of [8, 16, 32, 64, 128]) {
+      const s = computeSpurious(sRef, dec, REF_W, REF_H, dw, dh, pin);
+      if (s === null || s.spurious > 0 || s.deficit > 0) {
+        failures.push(
+          `${dw}x${dh}@${pin}=spur ${s?.spurious.toFixed(4) ?? "null"} / def ${s?.deficit.toFixed(4) ?? "null"}`,
+        );
+      }
+    }
+  }
+  check(
+    "P1 the ideal low-pass scores 0 spurious AND 0 deficit at every pin",
+    failures.length === 0,
+    failures.length === 0
+      ? "4 decode rasters x 5 pins, all exactly zero"
+      : `false positives: ${failures.join(", ")}`,
+  );
+}
+
+// P2. A pin at or above the decode's long edge cannot bind, so it must return
+//     the unpinned score bit for bit rather than merely something close.
+{
+  const dec = addWave(sDec, SW, SH, 12, 0, 24);
+  const bare = computeSpurious(sRef, dec, REF_W, REF_H, SW, SH);
+  const wide = [SW, SW * 2, 512].map((pin) =>
+    computeSpurious(sRef, dec, REF_W, REF_H, SW, SH, pin),
+  );
+  check(
+    "P2 a pin at or above the decode's long edge is the unpinned score",
+    bare !== null &&
+      wide.every(
+        (s) =>
+          s !== null &&
+          s.spurious === bare.spurious &&
+          s.deficit === bare.deficit,
+      ),
+    `unpinned=${bare?.spurious.toFixed(6)} pinned=${wide.map((s) => s?.spurious.toFixed(6)).join(", ")}`,
+  );
+}
+
+// P3. And a pin below it must actually bind. Without this, a pin silently
+//     ignored — a dropped argument, a renamed field in the sweep config — would
+//     leave every arm scored on its own raster while the table said otherwise,
+//     which is precisely the §12.4 mistake the pin was added to prevent.
+{
+  const dec = addWave(sDec, SW, SH, 12, 0, 24);
+  const bare = computeSpurious(sRef, dec, REF_W, REF_H, SW, SH);
+  const pinned = computeSpurious(sRef, dec, REF_W, REF_H, SW, SH, 16);
+  check(
+    "P3 a pin below the decode's long edge changes the score",
+    bare !== null && pinned !== null && pinned.spurious !== bare.spurious,
+    `unpinned=${bare?.spurious.toFixed(4)} pinned@16=${pinned?.spurious.toFixed(4)}`,
   );
 }
 
