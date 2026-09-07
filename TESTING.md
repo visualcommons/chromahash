@@ -161,11 +161,20 @@ it can run where the sweeps cannot.
 > `--list-unbound-columns` gives the breakdown. Every unchecked column is either
 > bound or listed in `UNBOUND_COLUMN_NOTES` with the reason.
 
-> **`verify:benchmark` currently fails, and its CI job is red on `master`.**
-> `spec/PERFORMANCE.md` carries `TBD` placeholders throughout and no perf run is
-> committed, both of which the gate fails on deliberately — see the banner at
-> the top of that document. Do not bisect it, and do not silence it: the
-> re-measurement below is what clears it.
+> **`verify:benchmark` fails on six cells, and its CI job is still red.** A
+> baseline is now committed and **180 values are checked against it**; what is
+> left is §2's tier-3/4 encode and §3's 128/1024 rows, which the `bounded`
+> matrix does not produce — `mise run benchmark:full` is what closes them. Do
+> not bisect it and do not silence it; see the banner at the top of
+> `spec/PERFORMANCE.md`, which names the six.
+>
+> Swift's rows in §7 and §8 are a different case and are **not** counted as
+> failures: its binding consumes an xcframework only `xcodebuild` can assemble,
+> so those rows are empty on every run made off macOS. The gate reports an
+> unreachable target as *unavailable* rather than missing — without which no
+> Linux runner could ever pass it, and the CI comment saying to remove
+> `continue-on-error` "in the same change that commits the baseline" would have
+> been unachievable as written.
 
 **Re-measuring is a deliberate act.** The perf sweep is the one gate whose
 output depends on the machine, so a re-measurement is reviewed the way a test

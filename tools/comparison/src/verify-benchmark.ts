@@ -219,6 +219,12 @@ interface RunDoc {
   environment: { cpuModel: string; arch: string; cores: number };
   config: { mode: string; reps: number };
   cells: Cell[];
+  /**
+   * Targets the driver could not run, with the reason it recorded. Swift is the
+   * permanent case: its binding consumes a UniFFI xcframework only `xcodebuild`
+   * can assemble, so the row is empty on every run made off macOS.
+   */
+  unavailable?: { target: string; reason: string }[];
 }
 
 class Runs {
@@ -234,6 +240,16 @@ class Runs {
   readonly dirty: string[] = [];
   /** Runs rejected outright, with the reason. */
   readonly rejected: string[] = [];
+  /**
+   * Targets no loaded run could measure.
+   *
+   * A cell for one of these is not a document that has drifted and not a
+   * measurement anybody forgot: it is a row this host cannot fill. Reporting it
+   * as a missing cell made `verify:benchmark` unpassable on Linux — which is
+   * every CI runner this job uses — and so made `continue-on-error` permanent
+   * while its comment claimed it was pending a re-measurement.
+   */
+  readonly unavailable = new Map<string, string>();
 
   constructor(files: string[]) {
     for (const file of files) {
@@ -255,6 +271,11 @@ class Runs {
 
       this.loaded.push(doc);
       if (doc.git?.dirty) this.dirty.push(file);
+      for (const u of doc.unavailable ?? []) {
+        if (!this.unavailable.has(u.target)) {
+          this.unavailable.set(u.target, u.reason);
+        }
+      }
 
       const seen = new Set<string>();
       for (const c of doc.cells) {
@@ -263,6 +284,9 @@ class Runs {
           continue;
         }
         seen.add(c.id);
+        // A target one run could not reach but another did is available: the
+        // union of what was measured wins over any single run's gap.
+        this.unavailable.delete(c.id.split("/")[1] ?? "");
         const us = (c.nsPerOp ?? c.medianNsPerOp) / 1000;
         const prior = this.byId.get(c.id);
         if (!prior) {
@@ -531,9 +555,14 @@ const BINDINGS: Binding[] = [
   {
     section: "4",
     index: 1,
-    title: "The same levers at 100x100 and 512x512",
+    title: "The same levers at 100x100, 256x256 and 512x512",
     columns: {
       "100×100": (row, R) => timeOr(R, armId(100, row("lever"))),
+      // The middle column was in the document and not in this map, so its eight
+      // cells were never visited: not failed, not counted, not listed. The
+      // driver has measured them all along. Same blindness `verify-experiments`
+      // grew `--list-unbound-columns` for, one document over.
+      "256×256": (row, R) => timeOr(R, armId(256, row("lever"))),
       "512×512": (row, R) => timeOr(R, armId(512, row("lever"))),
     },
   },
@@ -708,7 +737,12 @@ function checkTable(
   table: DocTable,
   R: Runs,
   failures: Failure[],
-  counters: { checked: number; unbound: number; placeholders: number },
+  counters: {
+    checked: number;
+    unbound: number;
+    placeholders: number;
+    unavailable: number;
+  },
   edits: Edit[],
 ): void {
   const headerIndex = new Map<string, number>();
@@ -736,6 +770,15 @@ function checkTable(
       const placeholder = parsePlaceholder(raw);
       const doc = placeholder ?? parseDocNumber(raw);
       if (!doc) continue;
+
+      // A row naming a target no run could measure is not drift and not a
+      // forgotten measurement — it is a row this host cannot fill, and the
+      // document says so in prose beside it. Counted, never failed.
+      const rowTarget = bare(rowLabel);
+      if (R.unavailable.has(rowTarget)) {
+        counters.unavailable++;
+        continue;
+      }
 
       let expected: number | null;
       try {
@@ -857,7 +900,7 @@ for (const r of runs.loaded) {
 console.log();
 
 const failures: Failure[] = [];
-const counters = { checked: 0, unbound: 0, placeholders: 0 };
+const counters = { checked: 0, unbound: 0, placeholders: 0, unavailable: 0 };
 const edits: Edit[] = [];
 const missingTables: string[] = [];
 
@@ -950,8 +993,17 @@ if (values.fix) {
 console.log(
   `Checked ${counters.checked} documented value(s) against the committed runs` +
     `; ${counters.unbound} deliberately unbound` +
+    `${counters.unavailable > 0 ? `, ${counters.unavailable} on targets this run could not reach` : ""}` +
     `${counters.placeholders > 0 ? `, ${counters.placeholders} placeholder(s) not yet measured` : ""}.`,
 );
+const UNAVAILABLE_NOTE =
+  "               its rows are skipped, not failed — a host that cannot run a\n" +
+  "               target cannot be asked to document it.";
+for (const [target, reason] of runs.unavailable) {
+  console.log(
+    `  UNAVAILABLE  ${target}: ${reason.split("\n")[0]}\n${UNAVAILABLE_NOTE}`,
+  );
+}
 for (const m of missingTables)
   console.log(`  SKIP  ${m} — not found in the document`);
 

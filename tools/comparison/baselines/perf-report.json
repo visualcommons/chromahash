@@ -1,0 +1,2526 @@
+{
+  "schema": "chromahash-perf/2",
+  "generatedAt": "2026-09-07T02:59:56.328Z",
+  "git": {
+    "commit": "e53e6cd",
+    "dirty": false
+  },
+  "environment": {
+    "os": "linux",
+    "arch": "x64",
+    "cpuModel": "AMD Ryzen 7 7800X3D 8-Core Processor",
+    "cores": 16,
+    "node": "24.18.1",
+    "targetInfo": {
+      "Rust": "runtime=rust\nsimd=avx2\nfeature_simd=1\narch=x86_64\nthreads=16",
+      "Rust (scalar)": "runtime=rust\nsimd=scalar\nfeature_simd=0\narch=x86_64\nthreads=16",
+      "Go": "runtime=go\ngo_version=go1.24.13\narch=amd64\nthreads=16",
+      "TypeScript (wasm)": "runtime=typescript-wasm\nnode_version=24.18.1\nwasm=1\nthreads=1",
+      "TypeScript (pure)": "runtime=typescript-pure\nnode_version=24.18.1\nwasm=0\nthreads=1",
+      "Python": "runtime=python\npython_version=3.13.14\nimplementation=cpython\nthreads=16",
+      "Kotlin": "runtime=kotlin\njava_version=21.0.2\njvm=OpenJDK 64-Bit Server VM\narch=amd64\nthreads=16",
+      "C#": "runtime=csharp\ndotnet_version=9.0.19\narch=X64\nthreads=16"
+    }
+  },
+  "config": {
+    "mode": "bounded",
+    "reps": 7,
+    "maxCellMs": 5000
+  },
+  "unavailable": [
+    {
+      "target": "Swift",
+      "reason": "spawnSync /var/mnt/scratch/golem/dev/visualcommons/chromahash.worktrees/chromahash-docs-experiments-wikimedia-rebaseline/.build/release/ChromaHashCLI ENOENT"
+    }
+  ],
+  "cells": [
+    {
+      "id": "encode/Rust/t0/100x100/gradient",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 0,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 143,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1422560, 1410973, 1409910, 1411565, 1412337, 1412930, 1406665
+      ],
+      "nsPerOp": 1406665,
+      "medianNsPerOp": 1411565,
+      "minNsPerOp": 1406665,
+      "ci95NsPerOp": [1409910, 1412930],
+      "iqrPct": 0.0015528863353795257,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust/t0/natural",
+      "op": "decode",
+      "target": "Rust",
+      "tier": 0,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 685,
+      "reps": 7,
+      "samplesNsPerOp": [
+        280614, 280155, 279583, 282591, 279575, 279919, 280010
+      ],
+      "nsPerOp": 279575,
+      "medianNsPerOp": 280010,
+      "minNsPerOp": 279575,
+      "ci95NsPerOp": [279583, 280614],
+      "iqrPct": 0.00226241919931431,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/100x100/gradient",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 82,
+      "reps": 7,
+      "samplesNsPerOp": [
+        2464345, 2525849, 2480350, 2461217, 2468275, 2461418, 2494580
+      ],
+      "nsPerOp": 2461217,
+      "medianNsPerOp": 2468275,
+      "minNsPerOp": 2461217,
+      "ci95NsPerOp": [2461418, 2494580],
+      "iqrPct": 0.009959789731695212,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust/t1/natural",
+      "op": "decode",
+      "target": "Rust",
+      "tier": 1,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 636,
+      "reps": 7,
+      "samplesNsPerOp": [
+        315659, 315146, 314959, 316867, 315926, 315678, 316740
+      ],
+      "nsPerOp": 314959,
+      "medianNsPerOp": 315678,
+      "minNsPerOp": 314959,
+      "ci95NsPerOp": [315146, 316740],
+      "iqrPct": 0.00294762384455046,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t2/100x100/gradient",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 2,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 28,
+      "reps": 7,
+      "samplesNsPerOp": [
+        7108630, 7136672, 7303681, 7099690, 7172764, 7130684, 7177980
+      ],
+      "nsPerOp": 7099690,
+      "medianNsPerOp": 7136672,
+      "minNsPerOp": 7099690,
+      "ci95NsPerOp": [7108630, 7177980],
+      "iqrPct": 0.007806860116311917,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust/t2/natural",
+      "op": "decode",
+      "target": "Rust",
+      "tier": 2,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 153,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1266572, 1285608, 1282615, 1287799, 1281521, 1268741, 1261486
+      ],
+      "nsPerOp": 1261486,
+      "medianNsPerOp": 1281521,
+      "minNsPerOp": 1261486,
+      "ci95NsPerOp": [1266572, 1285608],
+      "iqrPct": 0.012840210968060609,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust (scalar)/t0/100x100/gradient",
+      "op": "encode",
+      "target": "Rust (scalar)",
+      "tier": 0,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 137,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1479010, 1471796, 1471444, 1466463, 1472646, 1473392, 1466252
+      ],
+      "nsPerOp": 1466252,
+      "medianNsPerOp": 1471796,
+      "minNsPerOp": 1466252,
+      "ci95NsPerOp": [1466463, 1473392],
+      "iqrPct": 0.0027622714017431762,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust (scalar)/t0/natural",
+      "op": "decode",
+      "target": "Rust (scalar)",
+      "tier": 0,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 703,
+      "reps": 7,
+      "samplesNsPerOp": [
+        286736, 287643, 287806, 286806, 287607, 286644, 287575
+      ],
+      "nsPerOp": 286644,
+      "medianNsPerOp": 287575,
+      "minNsPerOp": 286644,
+      "ci95NsPerOp": [286736, 287643],
+      "iqrPct": 0.00296966008867252,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust (scalar)/t1/100x100/gradient",
+      "op": "encode",
+      "target": "Rust (scalar)",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 80,
+      "reps": 7,
+      "samplesNsPerOp": [
+        2518447, 2533845, 2521392, 2536000, 2530793, 2519348, 2525865
+      ],
+      "nsPerOp": 2518447,
+      "medianNsPerOp": 2525865,
+      "minNsPerOp": 2518447,
+      "ci95NsPerOp": [2519348, 2533845],
+      "iqrPct": 0.004730656626541798,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust (scalar)/t1/natural",
+      "op": "decode",
+      "target": "Rust (scalar)",
+      "tier": 1,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 621,
+      "reps": 7,
+      "samplesNsPerOp": [
+        324577, 324978, 324406, 324366, 325527, 325368, 324514
+      ],
+      "nsPerOp": 324366,
+      "medianNsPerOp": 324577,
+      "minNsPerOp": 324366,
+      "ci95NsPerOp": [324406, 325368],
+      "iqrPct": 0.002196705250217976,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust (scalar)/t2/100x100/gradient",
+      "op": "encode",
+      "target": "Rust (scalar)",
+      "tier": 2,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 28,
+      "reps": 7,
+      "samplesNsPerOp": [
+        7304219, 7221949, 7217704, 7227126, 7196166, 7243320, 7184145
+      ],
+      "nsPerOp": 7184145,
+      "medianNsPerOp": 7221949,
+      "minNsPerOp": 7184145,
+      "ci95NsPerOp": [7196166, 7243320],
+      "iqrPct": 0.003916948181162731,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust (scalar)/t2/natural",
+      "op": "decode",
+      "target": "Rust (scalar)",
+      "tier": 2,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 158,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1256749, 1262813, 1254164, 1256857, 1268960, 1264253, 1257259
+      ],
+      "nsPerOp": 1254164,
+      "medianNsPerOp": 1257259,
+      "minNsPerOp": 1254164,
+      "ci95NsPerOp": [1256749, 1264253],
+      "iqrPct": 0.005352914554598536,
+      "noisy": false
+    },
+    {
+      "id": "encode/Go/t0/100x100/gradient",
+      "op": "encode",
+      "target": "Go",
+      "tier": 0,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 141,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1418036, 1409602, 1429408, 1435579, 1426823, 1418835, 1412517
+      ],
+      "nsPerOp": 1409602,
+      "medianNsPerOp": 1418835,
+      "minNsPerOp": 1409602,
+      "ci95NsPerOp": [1412517, 1429408],
+      "iqrPct": 0.009048973277371928,
+      "noisy": false
+    },
+    {
+      "id": "decode/Go/t0/natural",
+      "op": "decode",
+      "target": "Go",
+      "tier": 0,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 703,
+      "reps": 7,
+      "samplesNsPerOp": [
+        282767, 285699, 284255, 284393, 282003, 286786, 282145
+      ],
+      "nsPerOp": 282003,
+      "medianNsPerOp": 284255,
+      "minNsPerOp": 282003,
+      "ci95NsPerOp": [282145, 285699],
+      "iqrPct": 0.009111537176127069,
+      "noisy": false
+    },
+    {
+      "id": "encode/Go/t1/100x100/gradient",
+      "op": "encode",
+      "target": "Go",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 82,
+      "reps": 7,
+      "samplesNsPerOp": [
+        2455726, 2497317, 2463129, 2482553, 2498008, 2460415, 2464449
+      ],
+      "nsPerOp": 2455726,
+      "medianNsPerOp": 2464449,
+      "minNsPerOp": 2455726,
+      "ci95NsPerOp": [2460415, 2497317],
+      "iqrPct": 0.01142770655834225,
+      "noisy": false
+    },
+    {
+      "id": "decode/Go/t1/natural",
+      "op": "decode",
+      "target": "Go",
+      "tier": 1,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 622,
+      "reps": 7,
+      "samplesNsPerOp": [
+        320810, 322175, 321787, 324254, 324972, 319947, 324434
+      ],
+      "nsPerOp": 319947,
+      "medianNsPerOp": 322175,
+      "minNsPerOp": 319947,
+      "ci95NsPerOp": [320810, 324434],
+      "iqrPct": 0.009452937068363467,
+      "noisy": false
+    },
+    {
+      "id": "encode/Go/t2/100x100/gradient",
+      "op": "encode",
+      "target": "Go",
+      "tier": 2,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 28,
+      "reps": 7,
+      "samplesNsPerOp": [
+        7093012, 7123778, 7114343, 7118208, 7245934, 7261732, 7153023
+      ],
+      "nsPerOp": 7093012,
+      "medianNsPerOp": 7123778,
+      "minNsPerOp": 7093012,
+      "ci95NsPerOp": [7114343, 7245934],
+      "iqrPct": 0.01167961719188891,
+      "noisy": false
+    },
+    {
+      "id": "decode/Go/t2/natural",
+      "op": "decode",
+      "target": "Go",
+      "tier": 2,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 152,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1309154, 1315914, 1299884, 1325988, 1314269, 1278771, 1305942
+      ],
+      "nsPerOp": 1278771,
+      "medianNsPerOp": 1309154,
+      "minNsPerOp": 1278771,
+      "ci95NsPerOp": [1299884, 1315914],
+      "iqrPct": 0.009302572501019743,
+      "noisy": false
+    },
+    {
+      "id": "encode/TypeScript (wasm)/t0/100x100/gradient",
+      "op": "encode",
+      "target": "TypeScript (wasm)",
+      "tier": 0,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 191,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1057168, 1063186, 1065546, 1059569, 1061105, 1063269, 1052968
+      ],
+      "nsPerOp": 1052968,
+      "medianNsPerOp": 1061105,
+      "minNsPerOp": 1052968,
+      "ci95NsPerOp": [1057168, 1063269],
+      "iqrPct": 0.004579188675955725,
+      "noisy": false
+    },
+    {
+      "id": "decode/TypeScript (wasm)/t0/natural",
+      "op": "decode",
+      "target": "TypeScript (wasm)",
+      "tier": 0,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 566,
+      "reps": 7,
+      "samplesNsPerOp": [
+        349774, 341998, 344401, 340200, 342251, 341333, 341482
+      ],
+      "nsPerOp": 340200,
+      "medianNsPerOp": 341998,
+      "minNsPerOp": 340200,
+      "ci95NsPerOp": [341333, 344401],
+      "iqrPct": 0.005609681927964491,
+      "noisy": false
+    },
+    {
+      "id": "encode/TypeScript (wasm)/t1/100x100/gradient",
+      "op": "encode",
+      "target": "TypeScript (wasm)",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 121,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1664010, 1655507, 1648734, 1675499, 1685596, 1682744, 1662092
+      ],
+      "nsPerOp": 1648734,
+      "medianNsPerOp": 1664010,
+      "minNsPerOp": 1648734,
+      "ci95NsPerOp": [1655507, 1682744],
+      "iqrPct": 0.012212666991183948,
+      "noisy": false
+    },
+    {
+      "id": "decode/TypeScript (wasm)/t1/natural",
+      "op": "decode",
+      "target": "TypeScript (wasm)",
+      "tier": 1,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 479,
+      "reps": 7,
+      "samplesNsPerOp": [
+        401211, 404162, 404387, 402665, 403585, 403544, 398092
+      ],
+      "nsPerOp": 398092,
+      "medianNsPerOp": 403544,
+      "minNsPerOp": 398092,
+      "ci95NsPerOp": [401211, 404162],
+      "iqrPct": 0.004796255179113059,
+      "noisy": false
+    },
+    {
+      "id": "encode/TypeScript (wasm)/t2/100x100/gradient",
+      "op": "encode",
+      "target": "TypeScript (wasm)",
+      "tier": 2,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 44,
+      "reps": 7,
+      "samplesNsPerOp": [
+        4747022, 4644798, 4699400, 4634284, 4692679, 4716162, 4616500
+      ],
+      "nsPerOp": 4616500,
+      "medianNsPerOp": 4692679,
+      "minNsPerOp": 4616500,
+      "ci95NsPerOp": [4634284, 4716162],
+      "iqrPct": 0.014541800110342088,
+      "noisy": false
+    },
+    {
+      "id": "decode/TypeScript (wasm)/t2/natural",
+      "op": "decode",
+      "target": "TypeScript (wasm)",
+      "tier": 2,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 112,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1804277, 1761025, 1771040, 1772022, 1761371, 1764537, 1768886
+      ],
+      "nsPerOp": 1761025,
+      "medianNsPerOp": 1768886,
+      "minNsPerOp": 1761025,
+      "ci95NsPerOp": [1761371, 1772022],
+      "iqrPct": 0.004848814451581391,
+      "noisy": false
+    },
+    {
+      "id": "decode/TypeScript (pure)/t0/natural",
+      "op": "decode",
+      "target": "TypeScript (pure)",
+      "tier": 0,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 222,
+      "reps": 7,
+      "samplesNsPerOp": [
+        929422, 912813, 916304, 920396, 930657, 918086, 916008
+      ],
+      "nsPerOp": 912813,
+      "medianNsPerOp": 918086,
+      "minNsPerOp": 912813,
+      "ci95NsPerOp": [916008, 929422],
+      "iqrPct": 0.009533965227658411,
+      "noisy": false
+    },
+    {
+      "id": "decode/TypeScript (pure)/t1/natural",
+      "op": "decode",
+      "target": "TypeScript (pure)",
+      "tier": 1,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 128,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1545993, 1540663, 1536447, 1540140, 1535946, 1549891, 1564498
+      ],
+      "nsPerOp": 1535946,
+      "medianNsPerOp": 1540663,
+      "minNsPerOp": 1535946,
+      "ci95NsPerOp": [1536447, 1549891],
+      "iqrPct": 0.006262563584638561,
+      "noisy": false
+    },
+    {
+      "id": "decode/TypeScript (pure)/t2/natural",
+      "op": "decode",
+      "target": "TypeScript (pure)",
+      "tier": 2,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 12,
+      "reps": 7,
+      "samplesNsPerOp": [
+        17824774, 17441736, 17590713, 17662234, 17654619, 17497711, 17585009
+      ],
+      "nsPerOp": 17441736,
+      "medianNsPerOp": 17590713,
+      "minNsPerOp": 17441736,
+      "ci95NsPerOp": [17497711, 17662234],
+      "iqrPct": 0.006655017337841848,
+      "noisy": false
+    },
+    {
+      "id": "encode/Python/t0/100x100/gradient",
+      "op": "encode",
+      "target": "Python",
+      "tier": 0,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 30,
+      "reps": 7,
+      "samplesNsPerOp": [
+        6643230, 6674715, 6726351, 6683744, 6683414, 6672044, 6643031
+      ],
+      "nsPerOp": 6643031,
+      "medianNsPerOp": 6674715,
+      "minNsPerOp": 6643031,
+      "ci95NsPerOp": [6643230, 6683744],
+      "iqrPct": 0.0038866078926216327,
+      "noisy": false
+    },
+    {
+      "id": "decode/Python/t0/natural",
+      "op": "decode",
+      "target": "Python",
+      "tier": 0,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 643,
+      "reps": 7,
+      "samplesNsPerOp": [
+        305510, 306083, 307073, 306534, 306627, 305878, 306601
+      ],
+      "nsPerOp": 305510,
+      "medianNsPerOp": 306534,
+      "minNsPerOp": 305510,
+      "ci95NsPerOp": [305878, 306627],
+      "iqrPct": 0.002066654922455584,
+      "noisy": false
+    },
+    {
+      "id": "encode/Python/t1/100x100/gradient",
+      "op": "encode",
+      "target": "Python",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 26,
+      "reps": 7,
+      "samplesNsPerOp": [
+        7728866, 7845917, 7794658, 7759619, 7747164, 7884348, 7794565
+      ],
+      "nsPerOp": 7728866,
+      "medianNsPerOp": 7794565,
+      "minNsPerOp": 7728866,
+      "ci95NsPerOp": [7747164, 7845917],
+      "iqrPct": 0.008582390422044079,
+      "noisy": false
+    },
+    {
+      "id": "decode/Python/t1/natural",
+      "op": "decode",
+      "target": "Python",
+      "tier": 1,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 572,
+      "reps": 7,
+      "samplesNsPerOp": [
+        344481, 346127, 348947, 345817, 352239, 347090, 347624
+      ],
+      "nsPerOp": 344481,
+      "medianNsPerOp": 347090,
+      "minNsPerOp": 344481,
+      "ci95NsPerOp": [345817, 348947],
+      "iqrPct": 0.006665418191247227,
+      "noisy": false
+    },
+    {
+      "id": "encode/Python/t2/100x100/gradient",
+      "op": "encode",
+      "target": "Python",
+      "tier": 2,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 16,
+      "reps": 7,
+      "samplesNsPerOp": [
+        12653296, 12650868, 12612734, 12688317, 12685222, 12701525, 12599960
+      ],
+      "nsPerOp": 12599960,
+      "medianNsPerOp": 12653296,
+      "minNsPerOp": 12599960,
+      "ci95NsPerOp": [12612734, 12688317],
+      "iqrPct": 0.004344204071413488,
+      "noisy": false
+    },
+    {
+      "id": "decode/Python/t2/natural",
+      "op": "decode",
+      "target": "Python",
+      "tier": 2,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 147,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1349742, 1343555, 1344997, 1334204, 1341408, 1339050, 1347029
+      ],
+      "nsPerOp": 1334204,
+      "medianNsPerOp": 1343555,
+      "minNsPerOp": 1334204,
+      "ci95NsPerOp": [1339050, 1347029],
+      "iqrPct": 0.004304996818142912,
+      "noisy": false
+    },
+    {
+      "id": "encode/Kotlin/t0/100x100/gradient",
+      "op": "encode",
+      "target": "Kotlin",
+      "tier": 0,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 128,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1537683, 1504326, 1524188, 1507293, 1499266, 1513475, 1502704
+      ],
+      "nsPerOp": 1499266,
+      "medianNsPerOp": 1507293,
+      "minNsPerOp": 1499266,
+      "ci95NsPerOp": [1502704, 1524188],
+      "iqrPct": 0.01016159432837544,
+      "noisy": false
+    },
+    {
+      "id": "decode/Kotlin/t0/natural",
+      "op": "decode",
+      "target": "Kotlin",
+      "tier": 0,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 676,
+      "reps": 7,
+      "samplesNsPerOp": [
+        292492, 303185, 306194, 302562, 304321, 318429, 293408
+      ],
+      "nsPerOp": 292492,
+      "medianNsPerOp": 303185,
+      "minNsPerOp": 292492,
+      "ci95NsPerOp": [293408, 306194],
+      "iqrPct": 0.023987004634134276,
+      "noisy": false
+    },
+    {
+      "id": "encode/Kotlin/t1/100x100/gradient",
+      "op": "encode",
+      "target": "Kotlin",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 79,
+      "reps": 7,
+      "samplesNsPerOp": [
+        2597523, 2562256, 2557713, 2584456, 2567550, 2573063, 2721449
+      ],
+      "nsPerOp": 2557713,
+      "medianNsPerOp": 2573063,
+      "minNsPerOp": 2557713,
+      "ci95NsPerOp": [2562256, 2597523],
+      "iqrPct": 0.010138305980071222,
+      "noisy": false
+    },
+    {
+      "id": "decode/Kotlin/t1/natural",
+      "op": "decode",
+      "target": "Kotlin",
+      "tier": 1,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 606,
+      "reps": 7,
+      "samplesNsPerOp": [
+        330887, 330414, 336109, 344662, 339522, 341038, 343701
+      ],
+      "nsPerOp": 330414,
+      "medianNsPerOp": 339522,
+      "minNsPerOp": 330414,
+      "ci95NsPerOp": [330887, 343701],
+      "iqrPct": 0.026129381895723988,
+      "noisy": false
+    },
+    {
+      "id": "encode/Kotlin/t2/100x100/gradient",
+      "op": "encode",
+      "target": "Kotlin",
+      "tier": 2,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 28,
+      "reps": 7,
+      "samplesNsPerOp": [
+        7205450, 7307947, 7261813, 7226249, 7217600, 7170340, 7261612
+      ],
+      "nsPerOp": 7170340,
+      "medianNsPerOp": 7226249,
+      "minNsPerOp": 7170340,
+      "ci95NsPerOp": [7205450, 7261813],
+      "iqrPct": 0.006945166157435206,
+      "noisy": false
+    },
+    {
+      "id": "decode/Kotlin/t2/natural",
+      "op": "decode",
+      "target": "Kotlin",
+      "tier": 2,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 148,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1332075, 1323755, 1330602, 1326659, 1319917, 1319229, 1316339
+      ],
+      "nsPerOp": 1316339,
+      "medianNsPerOp": 1323755,
+      "minNsPerOp": 1316339,
+      "ci95NsPerOp": [1319229, 1330602],
+      "iqrPct": 0.006842278216135161,
+      "noisy": false
+    },
+    {
+      "id": "encode/C#/t0/100x100/gradient",
+      "op": "encode",
+      "target": "C#",
+      "tier": 0,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 139,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1417861, 1412735, 1416732, 1411002, 1413860, 1419846, 1411443
+      ],
+      "nsPerOp": 1411002,
+      "medianNsPerOp": 1413860,
+      "minNsPerOp": 1411002,
+      "ci95NsPerOp": [1411443, 1417861],
+      "iqrPct": 0.0036831793812683008,
+      "noisy": false
+    },
+    {
+      "id": "decode/C#/t0/natural",
+      "op": "decode",
+      "target": "C#",
+      "tier": 0,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 675,
+      "reps": 7,
+      "samplesNsPerOp": [
+        282669, 283119, 282549, 284385, 282991, 283544, 284998
+      ],
+      "nsPerOp": 282549,
+      "medianNsPerOp": 283119,
+      "minNsPerOp": 282549,
+      "ci95NsPerOp": [282669, 284385],
+      "iqrPct": 0.004007148937372624,
+      "noisy": false
+    },
+    {
+      "id": "encode/C#/t1/100x100/gradient",
+      "op": "encode",
+      "target": "C#",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 82,
+      "reps": 7,
+      "samplesNsPerOp": [
+        2463924, 2467071, 2476596, 2476358, 2457843, 2452582, 2469912
+      ],
+      "nsPerOp": 2452582,
+      "medianNsPerOp": 2467071,
+      "minNsPerOp": 2452582,
+      "ci95NsPerOp": [2457843, 2476358],
+      "iqrPct": 0.0049660103012843975,
+      "noisy": false
+    },
+    {
+      "id": "decode/C#/t1/natural",
+      "op": "decode",
+      "target": "C#",
+      "tier": 1,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 583,
+      "reps": 7,
+      "samplesNsPerOp": [
+        324213, 324366, 325390, 322885, 327706, 326134, 325143
+      ],
+      "nsPerOp": 322885,
+      "medianNsPerOp": 325143,
+      "minNsPerOp": 322885,
+      "ci95NsPerOp": [324213, 326134],
+      "iqrPct": 0.004528776569078836,
+      "noisy": false
+    },
+    {
+      "id": "encode/C#/t2/100x100/gradient",
+      "op": "encode",
+      "target": "C#",
+      "tier": 2,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 29,
+      "reps": 7,
+      "samplesNsPerOp": [
+        7070065, 7133675, 7199965, 7166217, 7082089, 7074186, 7202472
+      ],
+      "nsPerOp": 7070065,
+      "medianNsPerOp": 7133675,
+      "minNsPerOp": 7070065,
+      "ci95NsPerOp": [7074186, 7199965],
+      "iqrPct": 0.01471240279379142,
+      "noisy": false
+    },
+    {
+      "id": "decode/C#/t2/natural",
+      "op": "decode",
+      "target": "C#",
+      "tier": 2,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 108,
+      "iters": 153,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1315303, 1316324, 1313604, 1315252, 1282701, 1292552, 1299097
+      ],
+      "nsPerOp": 1282701,
+      "medianNsPerOp": 1313604,
+      "minNsPerOp": 1282701,
+      "ci95NsPerOp": [1292552, 1315303],
+      "iqrPct": 0.01480887695226263,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/64x64/gradient",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 64,
+        "h": 64,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 123,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1574885, 1576406, 1585976, 1583388, 1579204, 1598858, 1600903
+      ],
+      "nsPerOp": 1574885,
+      "medianNsPerOp": 1583388,
+      "minNsPerOp": 1574885,
+      "ci95NsPerOp": [1576406, 1598858],
+      "iqrPct": 0.009228312959299932,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/gradient",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 17,
+      "reps": 7,
+      "samplesNsPerOp": [
+        12355214, 12404784, 12412158, 12349174, 12322940, 12401892, 12393528
+      ],
+      "nsPerOp": 12322940,
+      "medianNsPerOp": 12393528,
+      "minNsPerOp": 12322940,
+      "ci95NsPerOp": [12349174, 12404784],
+      "iqrPct": 0.004126669984527408,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/512x512/gradient",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        46738813, 46773889, 47621289, 47287141, 46809055, 47222335, 47011395
+      ],
+      "nsPerOp": 46738813,
+      "medianNsPerOp": 47011395,
+      "minNsPerOp": 46738813,
+      "ci95NsPerOp": [46773889, 47287141],
+      "iqrPct": 0.009854334252365836,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust/t0/capped32",
+      "op": "decode",
+      "target": "Rust",
+      "tier": 0,
+      "source": null,
+      "tune": null,
+      "decodeCap": [32, 32],
+      "threads": null,
+      "bytes": 21,
+      "iters": 713,
+      "reps": 7,
+      "samplesNsPerOp": [
+        279364, 279262, 279489, 279037, 280083, 279461, 279433
+      ],
+      "nsPerOp": 279037,
+      "medianNsPerOp": 279433,
+      "minNsPerOp": 279037,
+      "ci95NsPerOp": [279262, 279489],
+      "iqrPct": 0.0005797454130328201,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust/t1/capped32",
+      "op": "decode",
+      "target": "Rust",
+      "tier": 1,
+      "source": null,
+      "tune": null,
+      "decodeCap": [32, 32],
+      "threads": null,
+      "bytes": 32,
+      "iters": 636,
+      "reps": 7,
+      "samplesNsPerOp": [
+        317654, 319216, 318151, 317049, 317365, 319954, 316395
+      ],
+      "nsPerOp": 316395,
+      "medianNsPerOp": 317654,
+      "minNsPerOp": 316395,
+      "ci95NsPerOp": [317049, 319216],
+      "iqrPct": 0.004648139170292205,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust/t2/capped32",
+      "op": "decode",
+      "target": "Rust",
+      "tier": 2,
+      "source": null,
+      "tune": null,
+      "decodeCap": [32, 32],
+      "threads": null,
+      "bytes": 108,
+      "iters": 375,
+      "reps": 7,
+      "samplesNsPerOp": [
+        534487, 531045, 531391, 535625, 535378, 531275, 527839
+      ],
+      "nsPerOp": 527839,
+      "medianNsPerOp": 531391,
+      "minNsPerOp": 527839,
+      "ci95NsPerOp": [531045, 535378],
+      "iqrPct": 0.0070992922349080055,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust/t3/natural",
+      "op": "decode",
+      "target": "Rust",
+      "tier": 3,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 411,
+      "iters": 13,
+      "reps": 7,
+      "samplesNsPerOp": [
+        15917763, 15445295, 15820247, 15512685, 15415052, 15784677, 15704040
+      ],
+      "nsPerOp": 15415052,
+      "medianNsPerOp": 15704040,
+      "minNsPerOp": 15415052,
+      "ci95NsPerOp": [15445295, 15820247],
+      "iqrPct": 0.020598011721824447,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust/t3/capped32",
+      "op": "decode",
+      "target": "Rust",
+      "tier": 3,
+      "source": null,
+      "tune": null,
+      "decodeCap": [32, 32],
+      "threads": null,
+      "bytes": 411,
+      "iters": 133,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1571496, 1599904, 1598728, 1605801, 1604986, 1583392, 1607751
+      ],
+      "nsPerOp": 1571496,
+      "medianNsPerOp": 1599904,
+      "minNsPerOp": 1571496,
+      "ci95NsPerOp": [1583392, 1605801],
+      "iqrPct": 0.00895897503850231,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust/t4/natural",
+      "op": "decode",
+      "target": "Rust",
+      "tier": 4,
+      "source": null,
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 1623,
+      "iters": 1,
+      "reps": 7,
+      "samplesNsPerOp": [
+        240565363, 237640405, 238003455, 245574651, 241602853, 241542793,
+        233797427
+      ],
+      "nsPerOp": 233797427,
+      "medianNsPerOp": 240565363,
+      "minNsPerOp": 233797427,
+      "ci95NsPerOp": [237640405, 241602853],
+      "iqrPct": 0.01559199110472109,
+      "noisy": false
+    },
+    {
+      "id": "decode/Rust/t4/capped32",
+      "op": "decode",
+      "target": "Rust",
+      "tier": 4,
+      "source": null,
+      "tune": null,
+      "decodeCap": [32, 32],
+      "threads": null,
+      "bytes": 1623,
+      "iters": 40,
+      "reps": 7,
+      "samplesNsPerOp": [
+        5058794, 5083378, 5126684, 5002211, 5081683, 4951654, 5023509
+      ],
+      "nsPerOp": 4951654,
+      "medianNsPerOp": 5058794,
+      "minNsPerOp": 4951654,
+      "ci95NsPerOp": [5002211, 5083378],
+      "iqrPct": 0.013772155972352304,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/100x100/gradient/shipped",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 82,
+      "reps": 7,
+      "samplesNsPerOp": [
+        2462286, 2449573, 2447397, 2463878, 2456957, 2473059, 2446037
+      ],
+      "nsPerOp": 2446037,
+      "medianNsPerOp": 2456957,
+      "minNsPerOp": 2446037,
+      "ci95NsPerOp": [2447397, 2463878],
+      "iqrPct": 0.005941088916086037,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/gradient/shipped",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 17,
+      "reps": 7,
+      "samplesNsPerOp": [
+        12305670, 12380024, 12336805, 12547526, 12341293, 12359370, 12431351
+      ],
+      "nsPerOp": 12305670,
+      "medianNsPerOp": 12359370,
+      "minNsPerOp": 12305670,
+      "ci95NsPerOp": [12336805, 12431351],
+      "iqrPct": 0.0053917392229539205,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/512x512/gradient/shipped",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        46974709, 46766817, 47432371, 48040436, 47213537, 46821695, 46702701
+      ],
+      "nsPerOp": 46702701,
+      "medianNsPerOp": 46974709,
+      "minNsPerOp": 46702701,
+      "ci95NsPerOp": [46766817, 47432371],
+      "iqrPct": 0.011254949977444246,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/100x100/gradient/scale_fit=0",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": "scale_fit=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 107,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1582554, 1557881, 1561204, 1558731, 1558677, 1572139, 1561596
+      ],
+      "nsPerOp": 1557881,
+      "medianNsPerOp": 1561204,
+      "minNsPerOp": 1557881,
+      "ci95NsPerOp": [1558677, 1572139],
+      "iqrPct": 0.005228977122784723,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/gradient/scale_fit=0",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "gradient"
+      },
+      "tune": "scale_fit=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 18,
+      "reps": 7,
+      "samplesNsPerOp": [
+        11489636, 11588129, 11443915, 11567044, 11460917, 11500530, 11520910
+      ],
+      "nsPerOp": 11443915,
+      "medianNsPerOp": 11500530,
+      "minNsPerOp": 11443915,
+      "ci95NsPerOp": [11460917, 11567044],
+      "iqrPct": 0.005973681212952794,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/512x512/gradient/scale_fit=0",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": "scale_fit=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        46121973, 46450461, 46199003, 45878284, 45831747, 46500325, 46568439
+      ],
+      "nsPerOp": 45831747,
+      "medianNsPerOp": 46199003,
+      "minNsPerOp": 45831747,
+      "ci95NsPerOp": [45878284, 46500325],
+      "iqrPct": 0.010287332391134068,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/100x100/gradient/scale_fit=1",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": "scale_fit=1",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 129,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1559750, 1564448, 1551903, 1555241, 1555099, 1563130, 1552345
+      ],
+      "nsPerOp": 1551903,
+      "medianNsPerOp": 1555241,
+      "minNsPerOp": 1551903,
+      "ci95NsPerOp": [1552345, 1563130],
+      "iqrPct": 0.00496257493211663,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/gradient/scale_fit=1",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "gradient"
+      },
+      "tune": "scale_fit=1",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 18,
+      "reps": 7,
+      "samplesNsPerOp": [
+        11392731, 11570026, 11449097, 11480762, 11417104, 11592754, 11627717
+      ],
+      "nsPerOp": 11392731,
+      "medianNsPerOp": 11480762,
+      "minNsPerOp": 11392731,
+      "ci95NsPerOp": [11417104, 11592754],
+      "iqrPct": 0.012916346493377357,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/512x512/gradient/scale_fit=1",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": "scale_fit=1",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        45897243, 46192051, 45856835, 46563975, 45977012, 46276331, 46231847
+      ],
+      "nsPerOp": 45856835,
+      "medianNsPerOp": 46192051,
+      "minNsPerOp": 45856835,
+      "ci95NsPerOp": [45897243, 46276331],
+      "iqrPct": 0.006861819147194828,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/100x100/gradient/ac_nearest=0",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": "ac_nearest=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 114,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1741054, 1738775, 1750943, 1732409, 1731366, 1735740, 1738921
+      ],
+      "nsPerOp": 1731366,
+      "medianNsPerOp": 1738775,
+      "minNsPerOp": 1731366,
+      "ci95NsPerOp": [1732409, 1741054],
+      "iqrPct": 0.003400670011933689,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/gradient/ac_nearest=0",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "gradient"
+      },
+      "tune": "ac_nearest=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 18,
+      "reps": 7,
+      "samplesNsPerOp": [
+        11617143, 11620844, 11637291, 11762734, 11617865, 11684608, 11606890
+      ],
+      "nsPerOp": 11606890,
+      "medianNsPerOp": 11620844,
+      "minNsPerOp": 11606890,
+      "ci95NsPerOp": [11617143, 11684608],
+      "iqrPct": 0.00373858387566342,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/512x512/gradient/ac_nearest=0",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": "ac_nearest=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        46047079, 46293139, 46028549, 45938369, 45913645, 46281347, 46160689
+      ],
+      "nsPerOp": 45913645,
+      "medianNsPerOp": 46047079,
+      "minNsPerOp": 45913645,
+      "ci95NsPerOp": [45938369, 46281347],
+      "iqrPct": 0.005159046027653567,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/100x100/gradient/dc_search=0",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": "dc_search=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 82,
+      "reps": 7,
+      "samplesNsPerOp": [
+        2442539, 2440914, 2449681, 2469282, 2451572, 2441446, 2446682
+      ],
+      "nsPerOp": 2440914,
+      "medianNsPerOp": 2446682,
+      "minNsPerOp": 2440914,
+      "ci95NsPerOp": [2441446, 2451572],
+      "iqrPct": 0.0035288607183115747,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/gradient/dc_search=0",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "gradient"
+      },
+      "tune": "dc_search=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 16,
+      "reps": 7,
+      "samplesNsPerOp": [
+        12374147, 12329568, 12351206, 12313039, 12318534, 12408853, 12371344
+      ],
+      "nsPerOp": 12313039,
+      "medianNsPerOp": 12351206,
+      "minNsPerOp": 12313039,
+      "ci95NsPerOp": [12318534, 12374147],
+      "iqrPct": 0.003942489502644519,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/512x512/gradient/dc_search=0",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": "dc_search=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        47076337, 46568525, 46824707, 47580715, 46909927, 46676269, 47069575
+      ],
+      "nsPerOp": 46568525,
+      "medianNsPerOp": 46909927,
+      "minNsPerOp": 46568525,
+      "ci95NsPerOp": [46676269, 47076337],
+      "iqrPct": 0.006874195306251489,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/100x100/gradient/no encoder search",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": "scale_fit=0 ac_nearest=0 dc_search=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 130,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1553964, 1542026, 1537020, 1540063, 1543772, 1539848, 1543055
+      ],
+      "nsPerOp": 1537020,
+      "medianNsPerOp": 1542026,
+      "minNsPerOp": 1537020,
+      "ci95NsPerOp": [1539848, 1543772],
+      "iqrPct": 0.0022425043416907367,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/gradient/no encoder search",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "gradient"
+      },
+      "tune": "scale_fit=0 ac_nearest=0 dc_search=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 18,
+      "reps": 7,
+      "samplesNsPerOp": [
+        11445210, 11400365, 11475155, 11476784, 11498244, 11402775, 11404291
+      ],
+      "nsPerOp": 11400365,
+      "medianNsPerOp": 11445210,
+      "minNsPerOp": 11400365,
+      "ci95NsPerOp": [11402775, 11476784],
+      "iqrPct": 0.006328979546902154,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/512x512/gradient/no encoder search",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": "scale_fit=0 ac_nearest=0 dc_search=0",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        46055873, 46119843, 46220999, 45667106, 46512675, 46604195, 46956639
+      ],
+      "nsPerOp": 45667106,
+      "medianNsPerOp": 46220999,
+      "minNsPerOp": 45667106,
+      "ci95NsPerOp": [46055873, 46604195],
+      "iqrPct": 0.010181021833820598,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/100x100/gradient/refine_passes=1",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": "refine_passes=1",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 10,
+      "reps": 7,
+      "samplesNsPerOp": [
+        20489074, 20752139, 20504345, 20416927, 20502098, 20268286, 20310091
+      ],
+      "nsPerOp": 20268286,
+      "medianNsPerOp": 20489074,
+      "minNsPerOp": 20268286,
+      "ci95NsPerOp": [20310091, 20504345],
+      "iqrPct": 0.006818878198204565,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/gradient/refine_passes=1",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "gradient"
+      },
+      "tune": "refine_passes=1",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 2,
+      "reps": 7,
+      "samplesNsPerOp": [
+        127426438, 127719992, 127280663, 129027297, 130321496, 127742008,
+        127563343
+      ],
+      "nsPerOp": 127280663,
+      "medianNsPerOp": 127719992,
+      "minNsPerOp": 127280663,
+      "ci95NsPerOp": [127426438, 129027297],
+      "iqrPct": 0.0069665052907300525,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/512x512/gradient/refine_passes=1",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": "refine_passes=1",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 1,
+      "reps": 7,
+      "samplesNsPerOp": [
+        509088562, 514880559, 507325023, 506165824, 504474934, 505228534,
+        507720603
+      ],
+      "nsPerOp": 504474934,
+      "medianNsPerOp": 507325023,
+      "minNsPerOp": 504474934,
+      "ci95NsPerOp": [505228534, 509088562],
+      "iqrPct": 0.005336625195402593,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/100x100/gradient/refine_passes=2",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": "refine_passes=2",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 6,
+      "reps": 7,
+      "samplesNsPerOp": [
+        37475403, 37819215, 37601510, 37524147, 37423960, 37592520, 37453937
+      ],
+      "nsPerOp": 37423960,
+      "medianNsPerOp": 37524147,
+      "minNsPerOp": 37423960,
+      "ci95NsPerOp": [37453937, 37601510],
+      "iqrPct": 0.0035269289399170087,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/gradient/refine_passes=2",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "gradient"
+      },
+      "tune": "refine_passes=2",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 1,
+      "reps": 7,
+      "samplesNsPerOp": [
+        241902233, 243807471, 241193033, 240365164, 240574433, 242088533,
+        240212694
+      ],
+      "nsPerOp": 240212694,
+      "medianNsPerOp": 241193033,
+      "minNsPerOp": 240212694,
+      "ci95NsPerOp": [240365164, 242088533],
+      "iqrPct": 0.006325159897964383,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/512x512/gradient/refine_passes=2",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": "refine_passes=2",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 1,
+      "reps": 7,
+      "samplesNsPerOp": [
+        980832384, 976177816, 977033486, 979159585, 983713322, 980531494,
+        988028830
+      ],
+      "nsPerOp": 976177816,
+      "medianNsPerOp": 980531494,
+      "minNsPerOp": 976177816,
+      "ci95NsPerOp": [977033486, 983713322],
+      "iqrPct": 0.0042592385104970425,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/100x100/gradient/dct_separable",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": "dct_separable=1",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 170,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1291148, 1199509, 1194429, 1190442, 1211154, 1242865, 1192149
+      ],
+      "nsPerOp": 1190442,
+      "medianNsPerOp": 1199509,
+      "minNsPerOp": 1190442,
+      "ci95NsPerOp": [1192149, 1242865],
+      "iqrPct": 0.028111919126909427,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/gradient/dct_separable",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "gradient"
+      },
+      "tune": "dct_separable=1",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 52,
+      "reps": 7,
+      "samplesNsPerOp": [
+        3882051, 3880701, 3865001, 3863899, 3878050, 3879724, 3848750
+      ],
+      "nsPerOp": 3848750,
+      "medianNsPerOp": 3878050,
+      "minNsPerOp": 3848750,
+      "ci95NsPerOp": [3863899, 3880701],
+      "iqrPct": 0.004064542746999136,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/512x512/gradient/dct_separable",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": "dct_separable=1",
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 16,
+      "reps": 7,
+      "samplesNsPerOp": [
+        12765662, 12842402, 12716028, 12694450, 12676727, 12873565, 12814239
+      ],
+      "nsPerOp": 12676727,
+      "medianNsPerOp": 12765662,
+      "minNsPerOp": 12676727,
+      "ci95NsPerOp": [12694450, 12842402],
+      "iqrPct": 0.00964160730559841,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/noise",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "noise"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 17,
+      "reps": 7,
+      "samplesNsPerOp": [
+        12423225, 12266558, 12268760, 12333455, 12297137, 12283851, 12257868
+      ],
+      "nsPerOp": 12257868,
+      "medianNsPerOp": 12283851,
+      "minNsPerOp": 12257868,
+      "ci95NsPerOp": [12266558, 12333455],
+      "iqrPct": 0.0038780183836485804,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t1/256x256/solid",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "solid"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 18,
+      "reps": 7,
+      "samplesNsPerOp": [
+        11421035, 11490132, 11506371, 11455120, 11498363, 11426374, 11461528
+      ],
+      "nsPerOp": 11421035,
+      "medianNsPerOp": 11461528,
+      "minNsPerOp": 11421035,
+      "ci95NsPerOp": [11426374, 11498363],
+      "iqrPct": 0.004667833119632914,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust (scalar)/t1/256x256/gradient",
+      "op": "encode",
+      "target": "Rust (scalar)",
+      "tier": 1,
+      "source": {
+        "w": 256,
+        "h": 256,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 16,
+      "reps": 7,
+      "samplesNsPerOp": [
+        12637884, 12632461, 12611134, 12607895, 12728370, 12641772, 12612436
+      ],
+      "nsPerOp": 12607895,
+      "medianNsPerOp": 12632461,
+      "minNsPerOp": 12607895,
+      "ci95NsPerOp": [12611134, 12641772],
+      "iqrPct": 0.00221991581846166,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust (scalar)/t1/512x512/gradient",
+      "op": "encode",
+      "target": "Rust (scalar)",
+      "tier": 1,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        47770668, 47928783, 47693847, 47634604, 47675447, 48481890, 48643542
+      ],
+      "nsPerOp": 47634604,
+      "medianNsPerOp": 47770668,
+      "minNsPerOp": 47634604,
+      "ci95NsPerOp": [47675447, 48481890],
+      "iqrPct": 0.010899774313392478,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust/t0/512x512/gradient",
+      "op": "encode",
+      "target": "Rust",
+      "tier": 0,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 7,
+      "reps": 7,
+      "samplesNsPerOp": [
+        29190070, 29192781, 29832361, 29510297, 29718555, 30413105, 29553068
+      ],
+      "nsPerOp": 29190070,
+      "medianNsPerOp": 29553068,
+      "minNsPerOp": 29190070,
+      "ci95NsPerOp": [29192781, 29832361],
+      "iqrPct": 0.014344331356730881,
+      "noisy": false
+    },
+    {
+      "id": "encode/Rust (scalar)/t0/512x512/gradient",
+      "op": "encode",
+      "target": "Rust (scalar)",
+      "tier": 0,
+      "source": {
+        "w": 512,
+        "h": 512,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": null,
+      "bytes": 21,
+      "iters": 7,
+      "reps": 7,
+      "samplesNsPerOp": [
+        30666551, 30252805, 30195419, 30134962, 30376408, 30511096, 30245996
+      ],
+      "nsPerOp": 30134962,
+      "medianNsPerOp": 30252805,
+      "minNsPerOp": 30134962,
+      "ci95NsPerOp": [30195419, 30511096],
+      "iqrPct": 0.007372688251552212,
+      "noisy": false
+    },
+    {
+      "id": "batch/Rust/t1/100x100/threads=1",
+      "op": "batch",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 1,
+      "bytes": 32,
+      "iters": 1,
+      "reps": 7,
+      "samplesNsPerOp": [
+        492819480, 489493613, 491026681, 489069493, 492347151, 489864752,
+        491644891
+      ],
+      "nsPerOp": 489069493,
+      "medianNsPerOp": 491026681,
+      "minNsPerOp": 489069493,
+      "ci95NsPerOp": [489493613, 492347151],
+      "iqrPct": 0.004718355620272292,
+      "noisy": false
+    },
+    {
+      "id": "batch/Rust/t1/100x100/threads=auto",
+      "op": "batch",
+      "target": "Rust",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 0,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        41442168, 41744088, 41968568, 41723398, 41976528, 41984068, 41824198
+      ],
+      "nsPerOp": 41442168,
+      "medianNsPerOp": 41824198,
+      "minNsPerOp": 41442168,
+      "ci95NsPerOp": [41723398, 41976528],
+      "iqrPct": 0.0057097329158589,
+      "noisy": false
+    },
+    {
+      "id": "batch/Rust (scalar)/t1/100x100/threads=1",
+      "op": "batch",
+      "target": "Rust (scalar)",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 1,
+      "bytes": 32,
+      "iters": 1,
+      "reps": 7,
+      "samplesNsPerOp": [
+        505147755, 508445242, 504759084, 507459213, 504133615, 505104544,
+        505303094
+      ],
+      "nsPerOp": 504133615,
+      "medianNsPerOp": 505147755,
+      "minNsPerOp": 504133615,
+      "ci95NsPerOp": [504759084, 507459213],
+      "iqrPct": 0.0028691397430836846,
+      "noisy": false
+    },
+    {
+      "id": "batch/Rust (scalar)/t1/100x100/threads=auto",
+      "op": "batch",
+      "target": "Rust (scalar)",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 0,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        42622147, 43694957, 46783096, 43050427, 44400287, 43436877, 43053337
+      ],
+      "nsPerOp": 42622147,
+      "medianNsPerOp": 43436877,
+      "minNsPerOp": 42622147,
+      "ci95NsPerOp": [43050427, 44400287],
+      "iqrPct": 0.02292383957529912,
+      "noisy": false
+    },
+    {
+      "id": "batch/Go/t1/100x100/threads=1",
+      "op": "batch",
+      "target": "Go",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 1,
+      "bytes": 32,
+      "iters": 1,
+      "reps": 7,
+      "samplesNsPerOp": [
+        493808990, 492574911, 492714740, 493471981, 495301909, 492880251,
+        495219149
+      ],
+      "nsPerOp": 492574911,
+      "medianNsPerOp": 493471981,
+      "minNsPerOp": 492574911,
+      "ci95NsPerOp": [492714740, 495219149],
+      "iqrPct": 0.003478564267258773,
+      "noisy": false
+    },
+    {
+      "id": "batch/Go/t1/100x100/threads=auto",
+      "op": "batch",
+      "target": "Go",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 0,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        40994308, 42033668, 41996268, 41153918, 42275758, 42095498, 41276468
+      ],
+      "nsPerOp": 40994308,
+      "medianNsPerOp": 41996268,
+      "minNsPerOp": 40994308,
+      "ci95NsPerOp": [41153918, 42095498],
+      "iqrPct": 0.020225368597038194,
+      "noisy": false
+    },
+    {
+      "id": "batch/TypeScript (wasm)/t1/100x100/threads=1",
+      "op": "batch",
+      "target": "TypeScript (wasm)",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 1,
+      "bytes": 32,
+      "iters": 1,
+      "reps": 7,
+      "samplesNsPerOp": [
+        333595924, 330959296, 335334463, 340716851, 333765274, 330933556,
+        332815335
+      ],
+      "nsPerOp": 330933556,
+      "medianNsPerOp": 333595924,
+      "minNsPerOp": 330933556,
+      "ci95NsPerOp": [330959296, 335334463],
+      "iqrPct": 0.00798137149901148,
+      "noisy": false
+    },
+    {
+      "id": "batch/Python/t1/100x100/threads=1",
+      "op": "batch",
+      "target": "Python",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 1,
+      "bytes": 32,
+      "iters": 1,
+      "reps": 7,
+      "samplesNsPerOp": [
+        1563133848, 1570594724, 1566503115, 1563012098, 1562921007, 1563136148,
+        1569481864
+      ],
+      "nsPerOp": 1562921007,
+      "medianNsPerOp": 1563136148,
+      "minNsPerOp": 1562921007,
+      "ci95NsPerOp": [1563012098, 1569481864],
+      "iqrPct": 0.003147209221854679,
+      "noisy": false
+    },
+    {
+      "id": "batch/Kotlin/t1/100x100/threads=1",
+      "op": "batch",
+      "target": "Kotlin",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 1,
+      "bytes": 32,
+      "iters": 1,
+      "reps": 7,
+      "samplesNsPerOp": [
+        508458992, 510595602, 512101660, 510734661, 507666993, 508927352,
+        512473571
+      ],
+      "nsPerOp": 507666993,
+      "medianNsPerOp": 510595602,
+      "minNsPerOp": 507666993,
+      "ci95NsPerOp": [508458992, 512101660],
+      "iqrPct": 0.0053368820438841145,
+      "noisy": false
+    },
+    {
+      "id": "batch/Kotlin/t1/100x100/threads=auto",
+      "op": "batch",
+      "target": "Kotlin",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 0,
+      "bytes": 32,
+      "iters": 4,
+      "reps": 7,
+      "samplesNsPerOp": [
+        66548575, 67445414, 62507967, 57405710, 55553501, 56875940, 56498570
+      ],
+      "nsPerOp": 55553501,
+      "medianNsPerOp": 57405710,
+      "minNsPerOp": 55553501,
+      "ci95NsPerOp": [56498570, 66548575],
+      "iqrPct": 0.1365894786424556,
+      "noisy": true
+    },
+    {
+      "id": "batch/C#/t1/100x100/threads=1",
+      "op": "batch",
+      "target": "C#",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 1,
+      "bytes": 32,
+      "iters": 1,
+      "reps": 7,
+      "samplesNsPerOp": [
+        492852900, 493170300, 495402300, 490884000, 494087400, 490518100,
+        493453600
+      ],
+      "nsPerOp": 490518100,
+      "medianNsPerOp": 493170300,
+      "minNsPerOp": 490518100,
+      "ci95NsPerOp": [490884000, 494087400],
+      "iqrPct": 0.003856781318745269,
+      "noisy": false
+    },
+    {
+      "id": "batch/C#/t1/100x100/threads=auto",
+      "op": "batch",
+      "target": "C#",
+      "tier": 1,
+      "source": {
+        "w": 100,
+        "h": 100,
+        "content": "gradient"
+      },
+      "tune": null,
+      "decodeCap": null,
+      "threads": 0,
+      "bytes": 32,
+      "iters": 5,
+      "reps": 7,
+      "samplesNsPerOp": [
+        42150800, 42093900, 43381300, 41851400, 41967500, 42321700, 43504700
+      ],
+      "nsPerOp": 41851400,
+      "medianNsPerOp": 42150800,
+      "minNsPerOp": 41851400,
+      "ci95NsPerOp": [41967500, 43381300],
+      "iqrPct": 0.019472940015373374,
+      "noisy": false
+    }
+  ]
+}
