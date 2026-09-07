@@ -197,6 +197,28 @@ function parseDocNumber(raw: string): DocNumber | null {
   return { value, unit, decimals: dot < 0 ? 0 : m[1].length - dot - 1 };
 }
 
+/**
+ * Read a cell that declares a target this run cannot reach — "*macOS only*".
+ *
+ * A token rather than free prose, and asserted rather than tolerated, because
+ * the alternative is what this gate shipped with: the unavailable-target skip
+ * sat *below* `if (!doc) continue`, so a prose cell exited before ever reaching
+ * it and the branch was live only for the one case that must never take it — a
+ * documented *number* on a target no committed run measured. Fabricated Swift
+ * figures passed, and the run said "Every bound value in PERFORMANCE.md agrees
+ * with a committed run".
+ *
+ * The shape is "<host or toolchain> only", which is what §0's disclosure table
+ * already writes and what PERFORMANCE.md:55 already says is written instead of
+ * `TBD`: these rows are not pending anybody's run. Asserting the shape is what
+ * separates a deliberate marker from a typo, an emptied cell, or a sentence
+ * that used to be a number.
+ */
+function parseUnavailableMarker(raw: string): string | null {
+  const text = clean(raw).replace(/[*_`]/g, "").trim();
+  return /^[A-Za-z][A-Za-z0-9 .+#-]* only$/.test(text) ? text : null;
+}
+
 const TIME_UNITS = new Set<Unit>(["us", "ms", "s"]);
 const PER_US: Record<string, number> = { us: 1, ms: 1e3, s: 1e6 };
 
@@ -450,6 +472,113 @@ const STAGE_ROWS: Record<string, string> = {
   dct_forward: "dct_forward",
   quantize_and_pack: "quantize_and_pack",
 };
+
+/**
+ * Figures the prose derives from §1's table, bound to the same baseline.
+ *
+ * The table is checked cell by cell; the sentences underneath it were not, and
+ * that is where §1's numbers actually drifted. "the per-pixel colour pipeline
+ * is 16.6% — `linearize` 5.5%" is a sum of three cells and one of the cells,
+ * and both were wrong: `linearize` measures 5.4340%, which the table two dozen
+ * lines above correctly rounds to 5.4%, and the three stages sum to 16.5183%.
+ * The 16.6% is what you get by rounding each part up first and adding the
+ * rounded parts, and it was repeated in §10 and in the lever table, so a single
+ * transcription slip became three published figures no run supports.
+ *
+ * A derived figure is a claim like any other. These bind the sentence to the
+ * arithmetic, so restating a cell in prose is checked the same way as writing
+ * it in the table.
+ */
+interface ProseClaim {
+  what: string;
+  /** Must match exactly once in the document, capturing the figure. */
+  pattern: RegExp;
+  /** The cell key in `perf-stages.json`. */
+  cell: string;
+  /** Stages to sum; a single-element list is a single cell. */
+  stages: string[];
+}
+
+const PROSE_CLAIMS: ProseClaim[] = [
+  {
+    what: "§1: the per-pixel colour pipeline's share at 512x512 t1",
+    pattern: /the per-pixel colour pipeline is ([\d.]+)%\*\* — `linearize`/,
+    cell: "512x512-t1",
+    stages: ["linearize", "oklab_forward", "composite"],
+  },
+  {
+    what: "§1: `linearize`'s share, quoted in prose",
+    pattern: /colour pipeline is [\d.]+%\*\* — `linearize` ([\d.]+)%/,
+    cell: "512x512-t1",
+    stages: ["linearize"],
+  },
+  {
+    what: "§1: `oklab_forward`'s share, quoted in prose",
+    pattern: /`oklab_forward` ([\d.]+)%, `composite`/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§1: `composite`'s share, quoted in prose",
+    pattern: /`oklab_forward` [\d.]+%, `composite` ([\d.]+)%/,
+    cell: "512x512-t1",
+    stages: ["composite"],
+  },
+  {
+    what: "§1: `oklab_forward` as the SIMD-covered share of the budget",
+    pattern: /covers ([\d.]+) points of a 100-point budget/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§1: `quantize_and_pack`'s share at 100x100 t1, quoted in prose",
+    pattern: /At 100×100, `quantize_and_pack` is ([\d.]+)%\*\*/,
+    cell: "100x100-t1",
+    stages: ["quantize_and_pack"],
+  },
+  {
+    what: "§1: `dct_forward`'s share at 100x100 t1, quoted in prose",
+    pattern: /([\d.]+)% of a 100×100\nencode/,
+    cell: "100x100-t1",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§1: `dct_forward`'s share at 512x512 t4, quoted in prose",
+    pattern: /and \*\*([\d.]+)%\*\* at 512×512 tier 4/,
+    cell: "512x512-t4",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§12 summary: the pipeline share, restated",
+    pattern: /the per-pixel colour pipeline is \*\*([\d.]+)%\*\* at 512×512/,
+    cell: "512x512-t1",
+    stages: ["linearize", "oklab_forward", "composite"],
+  },
+  {
+    what: "§12 summary: `quantize_and_pack`, restated",
+    pattern: /`quantize_and_pack` is \*\*([\d.]+)%\*\* of a 100×100 one/,
+    cell: "100x100-t1",
+    stages: ["quantize_and_pack"],
+  },
+  {
+    what: "§12 summary: `dct_forward` at tier 4, restated",
+    pattern: /encode and \*\*([\d.]+)%\*\* at tier 4/,
+    cell: "512x512-t4",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§12 summary: the SIMD-covered points, restated",
+    pattern: /because it covers ([\d.]+) of those points/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§10 lever 6: the pipeline share, restated",
+    pattern: /for a stage §1 prices at ([\d.]+)%/,
+    cell: "512x512-t1",
+    stages: ["linearize", "oklab_forward", "composite"],
+  },
+];
 
 const BINDINGS: Binding[] = [
   {
@@ -769,16 +898,49 @@ function checkTable(
       const raw = cellsOfRow[i] ?? "";
       const placeholder = parsePlaceholder(raw);
       const doc = placeholder ?? parseDocNumber(raw);
-      if (!doc) continue;
 
-      // A row naming a target no run could measure is not drift and not a
-      // forgotten measurement — it is a row this host cannot fill, and the
-      // document says so in prose beside it. Counted, never failed.
+      // Before `!doc`, not after. A row naming a target no committed run
+      // measured is not drift and not a forgotten measurement — it is a row
+      // this host cannot fill, and the document says so with a marker beside
+      // it. But that is a claim about the *cell*, so the cell has to be read
+      // before it can be honoured, and it was being read afterwards: a prose
+      // cell left at `!doc` first and never arrived, while a cell carrying a
+      // number arrived and was waved through. Exactly inverted. The only case
+      // the skip actually caught was the one it must never catch.
       const rowTarget = bare(rowLabel);
+      const marker = parseUnavailableMarker(raw);
       if (R.unavailable.has(rowTarget)) {
-        counters.unavailable++;
+        if (marker) {
+          counters.unavailable++;
+          continue;
+        }
+        // No committed run holds a measurement for this target, so whatever is
+        // in this cell is not backed by one — a number least of all.
+        failures.push({
+          where: `§${binding.section} ${binding.title} (line ${sourceLine})`,
+          column,
+          row: rowLabel,
+          documented: raw === "" ? "(empty)" : raw,
+          measured: "—",
+          detail: `no committed run measured ${rowTarget} (${R.unavailable.get(rowTarget) ?? "unavailable"}), so this cell cannot be verified — write it as a marker such as "*macOS only*"`,
+        });
         continue;
       }
+      // And the converse. A marker on a target the committed runs *did* measure
+      // is a row that has stopped describing the run behind it, which is the
+      // same drift in the other direction and just as invisible.
+      if (marker) {
+        failures.push({
+          where: `§${binding.section} ${binding.title} (line ${sourceLine})`,
+          column,
+          row: rowLabel,
+          documented: raw,
+          measured: "—",
+          detail: `cell reads "${marker}" but a committed run measured ${rowTarget}`,
+        });
+        continue;
+      }
+      if (!doc) continue;
 
       let expected: number | null;
       try {
@@ -990,15 +1152,122 @@ if (values.fix) {
   process.exit(0);
 }
 
+// §1's baseline gets the provenance check its sibling already had. A stages
+// file is *merged* one cell per run — the table is three columns and each is
+// its own invocation — so it is the one artifact here that can hold cells from
+// three different builds and read as one measurement. Nothing looked. The
+// dirty flag was recorded on every cell and read on none, while the same flag
+// on a perf-report has failed the run since that check was written.
+if (STAGES) {
+  const dirty = Object.entries(STAGES)
+    .filter(([, c]) => c.git?.dirty)
+    .map(([k]) => k);
+  if (dirty.length > 0) {
+    failures.push({
+      where: STAGES_BASELINE,
+      column: "git.dirty",
+      row: dirty.join(", "),
+      documented: "—",
+      measured: "dirty",
+      detail:
+        "recorded from a working tree with uncommitted changes, so these shares cannot be traced to a source state — re-run benchmark:stages from a clean tree",
+    });
+  }
+  const revs = new Map<string, string[]>();
+  for (const [key, cell] of Object.entries(STAGES)) {
+    const rev = cell.git?.rev ?? "(none)";
+    revs.set(rev, [...(revs.get(rev) ?? []), key]);
+  }
+  if (revs.size > 1) {
+    failures.push({
+      where: STAGES_BASELINE,
+      column: "git.rev",
+      row: [...revs.keys()].join(" vs "),
+      documented: "one commit",
+      measured: `${revs.size} commits`,
+      detail: `§1 reads as one measurement across its three columns, and these cells are from different builds: ${[...revs.entries()].map(([r, ks]) => `${r} (${ks.join(", ")})`).join("; ")}`,
+    });
+  }
+}
+
+// The prose figures §1 derives from its own table. Checked against the same
+// baseline the table is checked against, and to the precision the sentence
+// itself claims — the same tolerance rule the cells use, so tightening a figure
+// in the document tightens the assertion on it.
+let proseChecked = 0;
+if (STAGES) {
+  for (const claim of PROSE_CLAIMS) {
+    const all = [...doc.matchAll(new RegExp(claim.pattern, "g"))];
+    if (all.length !== 1) {
+      failures.push({
+        where: "PERFORMANCE.md prose",
+        column: claim.what,
+        row: "—",
+        documented: `${all.length} match(es)`,
+        measured: "—",
+        detail:
+          all.length === 0
+            ? "the sentence was edited without updating its binding here, so the figure is no longer checked"
+            : "the pattern must name one figure",
+      });
+      continue;
+    }
+    const quotedRaw = all[0]?.[1];
+    const cell = STAGES[claim.cell];
+    if (quotedRaw === undefined || !cell) continue;
+    const quoted = Number(quotedRaw);
+    if (!Number.isFinite(quoted)) {
+      failures.push({
+        where: "PERFORMANCE.md prose",
+        column: claim.what,
+        row: "—",
+        documented: quotedRaw,
+        measured: "—",
+        detail: "captured text is not a number",
+      });
+      continue;
+    }
+    let expected = 0;
+    let missing = false;
+    for (const st of claim.stages) {
+      const v = cell.sharePct[st];
+      if (v === undefined) {
+        missing = true;
+        break;
+      }
+      expected += v;
+    }
+    if (missing) continue;
+    const dot = quotedRaw.indexOf(".");
+    const places = dot < 0 ? 0 : quotedRaw.length - dot - 1;
+    const tol = 0.5 * 10 ** -places;
+    proseChecked++;
+    if (Math.abs(expected - quoted) > tol) {
+      failures.push({
+        where: "PERFORMANCE.md prose",
+        column: claim.what,
+        row: claim.stages.join(" + "),
+        documented: `${quotedRaw}%`,
+        measured: `${expected.toFixed(Math.max(places, 2))}%`,
+        detail: `from ${claim.cell} in ${STAGES_BASELINE}`,
+      });
+    }
+  }
+}
+
 console.log(
   `Checked ${counters.checked} documented value(s) against the committed runs` +
     `; ${counters.unbound} deliberately unbound` +
     `${counters.unavailable > 0 ? `, ${counters.unavailable} on targets this run could not reach` : ""}` +
     `${counters.placeholders > 0 ? `, ${counters.placeholders} placeholder(s) not yet measured` : ""}.`,
 );
+console.log(
+  `Checked ${proseChecked} figure(s) the prose derives from §1's table.`,
+);
 const UNAVAILABLE_NOTE =
-  "               its rows are skipped, not failed — a host that cannot run a\n" +
-  "               target cannot be asked to document it.";
+  '               a cell marked "<host> only" is skipped, not failed — a target no\n' +
+  "               committed run reached cannot be asked to document a number. A cell\n" +
+  "               holding one anyway IS failed: nothing measured it.";
 for (const [target, reason] of runs.unavailable) {
   console.log(
     `  UNAVAILABLE  ${target}: ${reason.split("\n")[0]}\n${UNAVAILABLE_NOTE}`,
