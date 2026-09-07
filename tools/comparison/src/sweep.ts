@@ -713,8 +713,16 @@ async function main(): Promise<void> {
   const showArtifacts = rows.some(
     (r) => r.meanRinging !== null || r.meanSpurious !== null,
   );
+  // A pinned grid makes Spur and Deficit comparable down the table and leaves
+  // Ring exactly as incomparable as it was: ringing takes its envelope radius
+  // from each arm's own upscale factor and has no equivalent knob. The
+  // config's prose says so and the document says so, and neither is in front of
+  // whoever is reading this table — which is how EXPERIMENTS.md §12.4's
+  // withdrawn claim got made in the first place. So the column says it itself.
+  const pinned = config.artifactGridEdge;
+  const ringLabel = showArtifacts && pinned !== undefined ? "Ring*" : "Ring";
   console.log(
-    `  ${"Variant".padEnd(28)} ${"Bytes".padStart(6)} ${"ΔE00".padStart(8)} ${"Δ%".padStart(7)} ${"Med".padStart(8)} ${"SSIM2".padStart(8)} ${"Butter".padStart(8)} ${"DSSIM".padStart(8)}${showAlpha ? ` ${"αMAE".padStart(8)}` : ""}${showArtifacts ? ` ${"Ring".padStart(7)} ${"Spur".padStart(7)} ${"Deficit".padStart(8)} ${"Sp:V/H/D".padStart(20)}` : ""} ${"paired 95% CI".padStart(18)} ${"win/n".padStart(7)} Guards`,
+    `  ${"Variant".padEnd(28)} ${"Bytes".padStart(6)} ${"ΔE00".padStart(8)} ${"Δ%".padStart(7)} ${"Med".padStart(8)} ${"SSIM2".padStart(8)} ${"Butter".padStart(8)} ${"DSSIM".padStart(8)}${showAlpha ? ` ${"αMAE".padStart(8)}` : ""}${showArtifacts ? ` ${ringLabel.padStart(7)} ${"Spur".padStart(7)} ${"Deficit".padStart(8)} ${"Sp:V/H/D".padStart(20)}` : ""} ${"paired 95% CI".padStart(18)} ${"win/n".padStart(7)} Guards`,
   );
   const cell = (v: number | null, d: number, w: number) =>
     (v !== null ? v.toFixed(d) : "N/A").padStart(w);
@@ -738,6 +746,14 @@ async function main(): Promise<void> {
     const winN = r.wins !== null ? `${r.wins}/${r.pairs}` : "—";
     console.log(
       `  ${r.label.padEnd(28)} ${r.bytes.toFixed(0).padStart(6)} ${cell(r.meanCiede, 3, 8)} ${cell(r.ciedeDeltaPct, 2, 7)} ${cell(r.medianCiede, 3, 8)} ${cell(r.meanSsimulacra2, 1, 8)} ${cell(r.meanButteraugli, 2, 8)} ${cell(r.meanDssim, 4, 8)}${alpha}${artifacts} ${ci.padStart(18)} ${winN.padStart(7)} ${guards}`,
+    );
+  }
+  if (showArtifacts && pinned !== undefined) {
+    console.log(
+      `\n  * Spur and Deficit are pinned to a ${pinned} px analysis grid, so they ARE
+    comparable down this table. Ring is NOT: it derives its envelope radius
+    from each arm's own upscale factor and has no equivalent knob. Reading it
+    down the column compares instruments (EXPERIMENTS.md §12.4).`,
     );
   }
 }
