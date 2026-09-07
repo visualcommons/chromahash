@@ -371,7 +371,88 @@ function timeOr<T>(R: Runs, id: string): number | null {
   return R.has(id) ? R.us(id) : null;
 }
 
+/**
+ * §1's source, which is not a `perf/run.js` sweep.
+ *
+ * `benchmark:stages` runs the instrumented build and reports *shares* of one
+ * encode, taken inside a single process. §1 has carried a note since it was
+ * written saying it "writes no committed artifact, so this table is transcribed
+ * by hand. That is a remaining gap" — and it was the worst possible table to
+ * leave ungated, because it is the one that orders §10's whole roadmap.
+ *
+ * It is bound separately rather than folded into `Runs` because it is a
+ * different measurement: a ratio within one process rather than a wall-clock
+ * cell, which is also why it is readable on a host whose absolute timings would
+ * not be.
+ */
+const STAGES_BASELINE = "perf-stages.json";
+const STAGES_SCHEMA = "chromahash-perf-stages/1";
+
+interface StageCell {
+  ns: Record<string, number>;
+  sharePct: Record<string, number>;
+  git: { rev: string; dirty: boolean };
+}
+
+function loadStages(): Record<string, StageCell> | null {
+  const full = path.join(BASELINE_DIR, STAGES_BASELINE);
+  if (!existsSync(full)) return null;
+  const doc = JSON.parse(readFileSync(full, "utf8")) as {
+    schema?: string;
+    cells?: Record<string, StageCell>;
+  };
+  if (doc.schema !== STAGES_SCHEMA) return null;
+  return doc.cells ?? null;
+}
+
+const STAGES = loadStages();
+
+/** §1's column headers name a fixture; map each to the recorded cell key. */
+const STAGE_COLUMNS: Record<string, string> = {
+  "100×100 t1": "100x100-t1",
+  "512×512 t1": "512x512-t1",
+  "512×512 t4": "512x512-t4",
+};
+
+/** Doc row label -> the stage the instrumented build reports it as. */
+const STAGE_ROWS: Record<string, string> = {
+  eotf_lut: "eotf_lut",
+  linearize: "linearize",
+  oklab_forward: "oklab_forward",
+  alpha_average: "alpha_average",
+  composite: "composite",
+  selection: "selection",
+  cos_tables: "cos_tables",
+  dct_forward: "dct_forward",
+  quantize_and_pack: "quantize_and_pack",
+};
+
 const BINDINGS: Binding[] = [
+  {
+    section: "1",
+    index: 0,
+    title: "Where encode time goes (shares of one encode)",
+    columns: Object.fromEntries(
+      Object.entries(STAGE_COLUMNS).map(([header, key]) => [
+        header,
+        (row: (h: string) => string) => {
+          if (!STAGES) return null;
+          const cell = STAGES[key];
+          if (!cell) return null;
+          const label = clean(row("stage"));
+          // The total row is the one absolute number in the table, and it is in
+          // milliseconds rather than a share.
+          if (label === "total") {
+            const whole = cell.ns.whole_encode;
+            return whole === undefined ? null : whole / 1e3;
+          }
+          const stage = STAGE_ROWS[label];
+          return stage === undefined ? null : (cell.sharePct[stage] ?? null);
+        },
+      ]),
+    ) as Record<string, Resolve>,
+  },
+
   {
     section: "2",
     index: 0,
