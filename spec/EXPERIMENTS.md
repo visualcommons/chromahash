@@ -1634,8 +1634,20 @@ bindings match on, so they are left alone: read their "shipped" row as "the
 default as of that run", not as the pre-adoption format.
 
 A check that reconciles an arm's label against the constants it sets would have
-caught all of this, and is the obvious next thing to build. It is not in this
-change.
+caught all of this, and is the obvious next thing to build.
+
+> **Built** — `mise run verify:sweep-labels`. Over 548 label-bearing arms in 49
+> configs it reports two things: a label naming a constant nothing in the arm's
+> `tune` string writes, and a label naming one value where the tune sets
+> another. Both are properties of the config alone, so it needs no corpus, no
+> encoder and no sweep output, and runs in CI where the sweeps cannot. It found
+> fourteen. Two incumbents were pinned and their sweeps re-run byte-identical;
+> one arm was relabelled (§11.3's off-budget `C2@4`); the six configs disclosed
+> above declare `unpinnedLabels` with the reason, so the decision is recorded on
+> the config rather than only here. **It also found an eighth config this
+> subsection missed** — `v07-holdout-alpha`, whose incumbent inherited the
+> adopted alpha allocation and encoded to 40 bytes rather than 32, which made
+> §11.12's source table score the default against itself.
 
 5. **A column nobody checks, inside a table that passes.** `verify:experiments`
    binds *columns*, not tables, and a table is reported green when the columns
@@ -1652,6 +1664,17 @@ change.
    where three were. Listing them is a few lines against the existing bindings —
    `--list-unbound` already does the table-level version — and it is the second
    obvious thing to build.
+
+   > **Built.** Every run now reports column coverage and prints a `PARTIAL`
+   > line per bound table with an unchecked column, naming it;
+   > `--list-unbound-columns` gives the full breakdown. Then the coverage it
+   > exposed was closed: `guardsOk` became a bindable metric (six tables),
+   > `rowBaselines` made a per-row delta base expressible — which is what §10.3's
+   > Δ% and §7.11's "vs native tier 0" needed and never had — and §11.14's byte
+   > column, the stale x-axis named above, is bound. 739 checked cells became
+   > 813. Five columns remain unbound and each carries its reason in
+   > `UNBOUND_COLUMN_NOTES`; the interesting one is §7.10's, where every row
+   > names a different control and two state it in prose inside the cell.
 
 #### What was not re-measured
 
