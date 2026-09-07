@@ -674,6 +674,12 @@ run = "node tools/comparison/dist/determinism-check.js"
 # notices. Needs the sweep outputs on disk (they are gitignored), so it reports
 # what it could not check rather than failing on a missing file.
 #   --list-unbound   tables with no binding, and why
+#   --list-unbound-columns
+#                    per bound table, which of its columns are checked and which
+#                    are not. A binding is a per-COLUMN map, so a table is green
+#                    on what it binds and silent about the rest; four stale
+#                    columns survived behind passing tables that way (§9.5).
+#                    The normal run prints a PARTIAL line for each.
 #   --section 11.5   just one section
 #   --fix            rewrite disagreeing cells from the measured values
 #   --strict         treat a SKIP as a failure. A missing sweep output is

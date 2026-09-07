@@ -16,6 +16,14 @@
  * fields, and paired CIs go through the same seeded `bootstrapCI` the report
  * uses, so a reproduction is exact rather than approximate.
  *
+ * A binding is a per-*column* map, which means a bound table is green on the
+ * columns it names and says nothing about the rest. §9.5 records what that
+ * cost -- §10.3's Δ%, §7.11's "vs native tier 0", §7.10's "vs its own control"
+ * and §7.5's guards were all unbound and all stale, §7.10's with every sign
+ * inverted -- so the run now reports column coverage per table and
+ * `--list-unbound-columns` breaks it down. An unchecked column is either bound
+ * or listed in `UNBOUND_COLUMN_NOTES` with the reason; it is never silent.
+ *
  * Usage:
  *   node dist/verify-experiments.js              # every bound table
  *   node dist/verify-experiments.js --section 11.5
@@ -164,6 +172,7 @@ export type Metric =
   | "meanSpurious"
   | "ciedeDeltaPct"
   | "bytes"
+  | "guardsOk"
   | "ci"
   | "winN";
 
@@ -197,6 +206,17 @@ interface RowBinding extends CommonBinding {
    * shipped shape while its CI is against the leader, in one table.
    */
   baselines?: Partial<Record<string, string>>;
+  /**
+   * Per-*row* override, keyed by doc label. A table that stacks several
+   * experiments each measured against its own control needs one base per row,
+   * not one per table: §10.3 puts two tiers in one table and reports each
+   * DEFAULT row against the pre-adoption row of *its* tier, and §7.11 reports
+   * every truncation against a native tier-0 encode rather than against the
+   * first row. Both columns were unbound and both were stale (§9.5) --
+   * §7.10's with every sign inverted -- precisely because there was no way to
+   * say this. Column overrides win where both apply.
+   */
+  rowBaselines?: Partial<Record<string, string>>;
 }
 
 /**
@@ -312,6 +332,13 @@ function measure(
       if (d.length === 0) return null;
       return `${d.filter((x) => x > 0).length}/${d.length}`;
     }
+    // The guard verdict the sweep computed, as the document spells it. This is
+    // a claim the document makes and had been getting wrong: §9.5 records §7.5
+    // printing `ok` for two arms that fail their guards, invisible because the
+    // column was unbound. `guardsOk` is null on the incumbent, which `compare`
+    // already treats as "asserts nothing".
+    case "guardsOk":
+      return row.guardsOk === null ? null : row.guardsOk ? "ok" : "FAIL";
     default:
       return row[metric];
   }
@@ -447,11 +474,11 @@ function checkRowTable(
     for (const [i, header] of table.header.entries()) {
       const metric = b.columns[header];
       if (!metric) continue;
-      const columnBase = b.baselines?.[header];
+      const overrideBase = b.baselines?.[header] ?? b.rowBaselines?.[docLabel];
       const measured = measure(
         metric,
         sweepRow,
-        columnBase ? findRow(sweep, columnBase) : baseline,
+        overrideBase ? findRow(sweep, overrideBase) : baseline,
       );
       if (measured === null) continue;
       compare(
@@ -818,6 +845,7 @@ const BINDINGS: Binding[] = [
       SSIM2: "meanSsimulacra2",
       Butter: "meanButteraugli",
       DSSIM: "meanDssim",
+      Guards: "guardsOk",
     },
     aliases: {
       shipped: "32B SHIPPED",
@@ -871,7 +899,7 @@ const BINDINGS: Binding[] = [
     section: "7.5",
     table: 0,
     sweep: "prefix-shrink",
-    columns: { "ΔE00 Δ%": "ciedeDeltaPct" },
+    columns: { "ΔE00 Δ%": "ciedeDeltaPct", guards: "guardsOk" },
     aliases: {
       "aspect 8 → 5 b": "cost aspect 5b (-3)",
       "aspect 8 → 4 b": "cost aspect 4b (-4)",
@@ -924,7 +952,11 @@ const BINDINGS: Binding[] = [
     section: "7.11",
     table: 0,
     sweep: "embedded-tiers",
-    columns: { ΔE00: "meanCiede", SSIM2: "meanSsimulacra2" },
+    columns: {
+      ΔE00: "meanCiede",
+      "vs native tier 0 (11.473)": "ciedeDeltaPct",
+      SSIM2: "meanSsimulacra2",
+    },
     aliases: {
       "first 32 B, interleaved": "t1 interleaved, trunc 32 B",
       "first 32 B, channel-sequential": "t1 seq, trunc 32 B",
@@ -945,6 +977,7 @@ const BINDINGS: Binding[] = [
       SSIM2: "meanSsimulacra2",
       Butter: "meanButteraugli",
       DSSIM: "meanDssim",
+      Guards: "guardsOk",
     },
     aliases: {
       shipped: "32B shipped",
@@ -989,6 +1022,7 @@ const BINDINGS: Binding[] = [
     sweep: "adopted-defaults-holdout",
     columns: {
       ΔE00: "meanCiede",
+      "Δ%": "ciedeDeltaPct",
       SSIM2: "meanSsimulacra2",
       Butter: "meanButteraugli",
       DSSIM: "meanDssim",
@@ -998,6 +1032,13 @@ const BINDINGS: Binding[] = [
       "holdout, tier 0, **DEFAULT**": "t0 DEFAULT (post-adoption)",
       "holdout, tier 1, pre-adoption": "t1 pre-adoption constants",
       "holdout, tier 1, **DEFAULT**": "t1 DEFAULT (post-adoption)",
+    },
+    // Each tier's Δ% is against the pre-adoption row of its own tier, which is
+    // why one table-wide baseline could not express it and the column went
+    // unbound.
+    rowBaselines: {
+      "holdout, tier 0, **DEFAULT**": "t0 pre-adoption constants",
+      "holdout, tier 1, **DEFAULT**": "t1 pre-adoption constants",
     },
     skipRows: ["tune, tier 0, pre-adoption", "tune, tier 0, **DEFAULT**"],
     note: "§10.3 mixes splits in one table, so its tune rows are bound separately below. Its Δ% column is measured against the pre-adoption row rather than the sweep incumbent, so it is checked by hand in the section text.",
@@ -1009,6 +1050,7 @@ const BINDINGS: Binding[] = [
     sweep: "adopted-defaults",
     columns: {
       ΔE00: "meanCiede",
+      "Δ%": "ciedeDeltaPct",
       SSIM2: "meanSsimulacra2",
       Butter: "meanButteraugli",
       DSSIM: "meanDssim",
@@ -1016,6 +1058,9 @@ const BINDINGS: Binding[] = [
     aliases: {
       "tune, tier 0, pre-adoption": "t0 pre-adoption constants",
       "tune, tier 0, **DEFAULT**": "t0 DEFAULT (post-adoption)",
+    },
+    rowBaselines: {
+      "tune, tier 0, **DEFAULT**": "t0 pre-adoption constants",
     },
     skipRows: [
       "holdout, tier 0, pre-adoption",
@@ -1035,6 +1080,7 @@ const BINDINGS: Binding[] = [
       ΔE00: "meanCiede",
       "Δ%": "ciedeDeltaPct",
       αMAE: "meanAlphaMae",
+      guards: "guardsOk",
     },
     aliases: {
       "**shipped** alpha DC 5 b, scale 4 b, AC 5 @ 4 b":
@@ -1273,6 +1319,10 @@ const BINDINGS: Binding[] = [
     labelColumn: 1,
     resolve: byFormatAndBytes,
     columns: {
+      // §9.5: this column carried a stale x-axis while its four metric columns
+      // were re-transcribed, because a binding checks columns and nobody had
+      // bound this one. It is the table's independent variable.
+      Bytes: "bytes",
       "ΔE00 ↓": "meanCiede",
       "SSIM2 ↑": "meanSsimulacra2",
       "Butter ↓": "meanButteraugli",
@@ -1296,6 +1346,7 @@ const BINDINGS: Binding[] = [
       Ring: "meanRinging",
       Spur: "meanSpurious",
       "paired 95% CI": "ci",
+      guards: "guardsOk",
     },
   },
   {
@@ -1311,9 +1362,86 @@ const BINDINGS: Binding[] = [
       Ring: "meanRinging",
       Spur: "meanSpurious",
       "paired 95% CI": "ci",
+      guards: "guardsOk",
     },
   },
 ];
+
+/**
+ * Which of a bound table's columns the binding actually checks.
+ *
+ * A binding is a per-column map, so a table is reported green when the columns
+ * it names agree and says nothing whatever about the rest. §9.5 is the record
+ * of what that cost: §10.3's Δ%, §7.11's "vs native tier 0", §7.10's "vs its
+ * own control" and §7.5's `guards` were all unbound and all stale, §7.10's with
+ * every sign inverted and §7.5's reporting `ok` for two arms that fail. Nothing
+ * in the output distinguished those tables from fully-checked ones. This is
+ * what makes the difference visible — "a SKIP is not a pass", one level down,
+ * and worse, because a SKIP is at least printed.
+ *
+ * For a transposed (`columns`) binding the doc's columns are sweep variants and
+ * its *rows* are the series, so there the uncovered axis is rows; `axis` says
+ * which is being reported so the output cannot be misread.
+ */
+interface Coverage {
+  section: string;
+  table: number;
+  axis: "columns" | "rows";
+  covered: string[];
+  uncovered: string[];
+}
+
+function coverageOf(b: Binding, table: DocTable): Coverage {
+  const base = { section: b.section, table: b.table ?? 0 };
+
+  if (b.kind === "rows") {
+    const labelCol = b.labelColumn ?? 0;
+    const covered: string[] = [];
+    const uncovered: string[] = [];
+    for (const [i, header] of table.header.entries()) {
+      if (i === labelCol) continue;
+      (b.columns[header] ? covered : uncovered).push(header);
+    }
+    return { ...base, axis: "columns", covered, uncovered };
+  }
+
+  if (b.kind === "row-ratio") {
+    const named = new Set([b.delta, b.cand, b.base]);
+    const covered: string[] = [];
+    const uncovered: string[] = [];
+    for (const [i, header] of table.header.entries()) {
+      if (i === 0) continue;
+      (named.has(header.trim()) ? covered : uncovered).push(header);
+    }
+    return { ...base, axis: "columns", covered, uncovered };
+  }
+
+  const named = new Set(b.series.map((x) => x.docRow));
+  const covered: string[] = [];
+  const uncovered: string[] = [];
+  for (const row of table.rows) {
+    const label = (row[0] ?? "").trim();
+    (named.has(label) ? covered : uncovered).push(label);
+  }
+  return { ...base, axis: "rows", covered, uncovered };
+}
+
+/**
+ * A column left unbound on purpose, and why. Same contract as
+ * `UNBOUND_NOTES` one level up: absent means "not bound yet", present means
+ * "deliberately not bound, and here is the reason".
+ */
+const UNBOUND_COLUMN_NOTES: Record<string, string> = {
+  "4.5#1":
+    "the `pre-adoption shipped` rows are round 2's baseline, which no current build reproduces; the two Δ rows derive from them",
+  "7.12#1": "as §4.5 table 1, same rows and same reason",
+  "7.5#0":
+    "`bits saved` is a property of the header layout each arm sets, not a measurement the sweep makes",
+  "7.10#0":
+    "every row names a *different* control, and two state it in prose inside the cell (\u201c-0.04% vs the same layout without CfL\u201d). rowBaselines could address the first half; the prose cells would still need the sentence parsed, and a binding that silently checked five rows of seven would recreate the problem this listing exists to expose",
+  "11.10#1":
+    "ranks, derived by ordering two other sweeps' results rather than read from either",
+};
 
 // ─── Entry point ────────────────────────────────────────────────────────────
 
@@ -1321,6 +1449,7 @@ const { values } = parseArgs({
   options: {
     section: { type: "string" },
     "list-unbound": { type: "boolean", default: false },
+    "list-unbound-columns": { type: "boolean", default: false },
     fix: { type: "boolean", default: false },
     strict: { type: "boolean", default: false },
   },
@@ -1383,9 +1512,39 @@ if (values["list-unbound"]) {
   process.exit(0);
 }
 
+if (values["list-unbound-columns"]) {
+  console.log(
+    "Columns within BOUND tables, and whether each is checked.\n" +
+      "A bound table is green on the columns it binds and silent about the\n" +
+      "rest; this is that distinction, per table.\n",
+  );
+  for (const binding of BINDINGS) {
+    const table = tables.find(
+      (t) => t.section === binding.section && t.index === (binding.table ?? 0),
+    );
+    if (!table) continue;
+    const c = coverageOf(binding, table);
+    const what = c.axis === "columns" ? "columns" : "rows";
+    console.log(
+      `  §${c.section} table ${c.table} (line ${table.line}) — ` +
+        `${c.covered.length}/${c.covered.length + c.uncovered.length} ${what}`,
+    );
+    if (c.covered.length) {
+      console.log(`      checked:   ${c.covered.join(", ")}`);
+    }
+    if (c.uncovered.length) {
+      const why = UNBOUND_COLUMN_NOTES[`${c.section}#${c.table}`];
+      console.log(`      UNCHECKED: ${c.uncovered.join(", ")}`);
+      if (why) console.log(`      ${why}`);
+    }
+  }
+  process.exit(0);
+}
+
 const failures: Failure[] = [];
 const stats = { cells: 0 };
 const skipped: string[] = [];
+const coverage: Coverage[] = [];
 let checked = 0;
 
 for (const binding of BINDINGS) {
@@ -1407,14 +1566,37 @@ for (const binding of BINDINGS) {
     skipped.push(`§${binding.section} table ${binding.table ?? 0}: ${problem}`);
     continue;
   }
+  coverage.push(coverageOf(binding, table));
   checked++;
 }
 
+const partial = coverage.filter((c) => c.uncovered.length > 0);
+const totalAxes = coverage.reduce(
+  (n, c) => n + c.covered.length + c.uncovered.length,
+  0,
+);
+const coveredAxes = coverage.reduce((n, c) => n + c.covered.length, 0);
+
 console.log(
   `Checked ${stats.cells} cells across ${checked} tables ` +
-    `(${BINDINGS.length} bound of ${tables.length} in the document).`,
+    `(${BINDINGS.length} bound of ${tables.length} in the document; ` +
+    `${coveredAxes} of ${totalAxes} value columns within them).`,
 );
 for (const s of skipped) console.log(`  SKIP  ${s}`);
+
+// A bound table with an unbound column is green on the columns it checks and
+// silent about the rest, which is how four stale columns survived behind
+// passing tables until §9.5 went looking. Print it rather than imply it.
+for (const c of partial) {
+  const what = c.axis === "columns" ? "columns" : "rows";
+  const named = c.uncovered.map((x) => JSON.stringify(x)).join(", ");
+  const why = UNBOUND_COLUMN_NOTES[`${c.section}#${c.table}`];
+  console.log(
+    `  PARTIAL  §${c.section} table ${c.table}: ` +
+      `${c.covered.length} of ${c.covered.length + c.uncovered.length} ${what} bound; ` +
+      `unchecked ${named}${why ? ` — ${why}` : ""}`,
+  );
+}
 
 // A missing sweep output is reported rather than fatal, so the tool stays
 // useful on a machine that has run only part of section 6. That also means a
