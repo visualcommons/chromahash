@@ -809,13 +809,6 @@ run = "node tools/comparison/dist/perf/run.js --full"
 
 # Where encode time actually goes. Needs the off-by-default `bench-internals`
 # feature, which is what compiles the stage marks in rust/src/encode.rs.
-[tasks."benchmark:stages"]
-description = "Per-stage encode timing (Rust only — the core is the only tunable surface)"
-run = """
-cargo run --manifest-path rust/Cargo.toml --release --features bench-internals \
-    --example bench_stages -- ${1:-512} ${2:-512} ${3:-1} ${4:-20} < /dev/null
-"""
-
 [tasks."benchmark:quick"]
 description = "Smoke-test the bench contract across every harness (~2 min, numbers not meaningful)"
 depends = ["build:compare"]

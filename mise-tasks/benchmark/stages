@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+#MISE description="Per-stage encode timing (Rust only — the core is the only tunable surface)"
+#
+# Usage: mise run benchmark:stages [W] [H] [TIER] [ITERS]
+#
+# Was an inline `run` string using ${1:-512} placeholders. mise appends a task's
+# arguments to the command line rather than binding them as shell positionals,
+# so every invocation silently measured the defaults: `benchmark:stages 100 100 1`
+# reported a 512x512 tier-1 run, with the arguments landing as stray words after
+# a redirect. A file task gets real positionals, which is why every other
+# parameterized task in this repo is one (see mise-tasks/mutants/rust/diff).
+#
+# Writes tools/comparison/output/perf/perf-stages.json alongside the human
+# output, so spec/PERFORMANCE.md §1 can be checked by `verify:benchmark` rather
+# than transcribed by hand — a gap §1 has carried a note about since it was
+# written.
+set -euo pipefail
+
+w="${1:-512}"
+h="${2:-512}"
+tier="${3:-1}"
+iters="${4:-20}"
+
+out_dir="tools/comparison/output/perf"
+mkdir -p "$out_dir"
+
+raw="$(cargo run -q --manifest-path rust/Cargo.toml --release \
+    --features bench-internals --example bench_stages \
+    -- "$w" "$h" "$tier" "$iters" < /dev/null)"
+
+echo "$raw"
+
+# The recorder reads the run on stdin, so it is written out first rather than
+# heredoc'd: a script heredoc and a stdin redirect cannot both be `<`.
+recorder="$(mktemp)"
+trap 'rm -f "$recorder"' EXIT
+cat > "$recorder" <<'RECORDER_EOF'
+import datetime
+import json
+import os
+import subprocess
+import sys
+
+w, h, tier, iters, out = sys.argv[1:6]
+stages = {}
+for line in sys.stdin:
+    line = line.strip()
+    if not line or line.startswith("#"):
+        continue
+    k, _, v = line.partition("=")
+    stages[k] = int(v)
+
+cell = f"{w}x{h}-t{tier}"
+# Merge rather than replace: section 1 is a three-column table, so each column is
+# its own run, and a fresh file per run would leave the other two unmeasured.
+doc = {"schema": "chromahash-perf-stages/1", "cells": {}}
+if os.path.exists(out):
+    with open(out, encoding="utf-8") as f:
+        existing = json.load(f)
+    if existing.get("schema") == doc["schema"]:
+        doc = existing
+
+rev = subprocess.run(
+    ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True
+).stdout.strip()
+dirty = (
+    subprocess.run(
+        ["git", "status", "--porcelain"], capture_output=True, text=True
+    ).stdout.strip()
+    != ""
+)
+
+total = stages.get("whole_encode", 0)
+doc["cells"][cell] = {
+    "width": int(w),
+    "height": int(h),
+    "tier": int(tier),
+    "iters": int(iters),
+    "ns": stages,
+    # Shares of the whole encode, which is what section 1 publishes: a ratio
+    # taken inside one process, and the reason that table is readable on a host
+    # whose absolute wall-clock is not.
+    "sharePct": {
+        k: (v * 100.0 / total if total else 0.0)
+        for k, v in stages.items()
+        if k not in ("stage_sum", "whole_encode")
+    },
+    "git": {"rev": rev, "dirty": dirty},
+    "recordedAt": datetime.datetime.now(datetime.UTC).isoformat(),
+}
+
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(doc, f, indent=2, sort_keys=True)
+    f.write("\n")
+print(f"\nrecorded cell {cell} -> {out}")
+RECORDER_EOF
+
+printf '%s\n' "$raw" | python3 "$recorder" "$w" "$h" "$tier" "$iters" \
+    "$out_dir/perf-stages.json"
