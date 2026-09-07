@@ -12,15 +12,6 @@ upscale to a 512 px display-resolution reference. **Tune split = 31 photos,
 holdout split = 32 (Kodak24 + 8 held-out curated).** Candidates are chosen on
 tune and validated on holdout, per the pre-registered rule in `RATIONALE.md`.
 
-> **Two corpora, and §12 is on the second one.** The photographic corpus was
-> re-sourced from Wikimedia Commons in `85f6af3`, which moved every photographic
-> mean — the R-D gate's tier-1 ΔE00 went 8.8459 → 11.1369 (+25.9%) over its
-> eight images. **§1–§11 have not been re-baselined and still describe the
-> retired Picsum set**; §6 must be re-run in full before those numbers mean
-> anything again. §12 is measured on the current corpus and compares itself to
-> nothing above. Never read a §12 figure against a §1–§11 one: as §7.14 puts it,
-> a run that mixes the two sets reproduces nothing.
-
 > **Corpus revision (2026-08).** Every number below was re-measured on a
 > corpus extended from 26 to 39 curated photographs, after an audit found the
 > old set had no interior illuminant, no achromatic photograph, no high-key
@@ -30,10 +21,12 @@ tune and validated on holdout, per the pre-registered rule in `RATIONALE.md`.
 
 > **Corpus re-source (2026-09).** The photographic corpus was then re-sourced
 > from Wikimedia Commons for licensing reasons (`85f6af3`), which moved every
-> photographic number below. §1–§11 were re-measured against it. **§9.5 records
-> what moved, what was not re-measured, and which tables are views onto sweeps
-> rather than transcriptions of them** — read it before quoting a figure from
-> this file. The alpha and graphic corpora were untouched by the re-source.
+> photographic number below — the R-D gate's tier-1 ΔE00 went 8.8459 → 11.1369
+> (+25.9%) over its eight images. §1–§11 were re-measured against it, and §12
+> was measured on it from the start. **§9.5 records what moved, what was not
+> re-measured, and which tables are views onto sweeps rather than
+> transcriptions of them** — read it before quoting a figure from this file.
+> The alpha and graphic corpora were untouched by the re-source.
 
 > **Tier numbering.** Every section below was written before the tier codes
 > were reordered by quality, and uses the *old* numbering, where code 0 was the
@@ -2428,12 +2421,12 @@ of, and a decode path that can tell the format's own reconstruction apart from
 the browser's interpolation of it. Then it uses both on the one lever §5 listed
 that has never been refuted with a number.
 
-> **These numbers are on the Wikimedia corpus** (`85f6af3`), which §1–§11 are
-> not. Every table above still describes the retired Picsum set; the CHANGELOG
-> says so and §6 has not been re-run. Nothing here is compared to a number from
-> those sections. Each table below is a self-contained sweep with its own
-> incumbent, which is what makes it readable anyway — guards, Δ% and the paired
-> CI are all measured *within* the run.
+> **These numbers are on the Wikimedia corpus** (`85f6af3`) — the same corpus
+> §1–§11 were re-baselined onto in §9.5, so a figure here and a figure above are
+> now comparable. They were written not to be: each table below is a
+> self-contained sweep with its own incumbent, so guards, Δ% and the paired CI
+> are all measured *within* the run, which is the reading that stays valid
+> across a corpus change. Prefer it.
 
 ### 12.1 Ringing could not see the artifact, and no sweep could see ringing
 
