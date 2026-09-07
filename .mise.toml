@@ -676,6 +676,11 @@ run = "node tools/comparison/dist/determinism-check.js"
 #   --list-unbound   tables with no binding, and why
 #   --section 11.5   just one section
 #   --fix            rewrite disagreeing cells from the measured values
+#   --strict         treat a SKIP as a failure. A missing sweep output is
+#                    normally reported and tolerated, which means a table whose
+#                    sweep nobody ran passes silently -- three of EXPERIMENTS.md's
+#                    tables sat that way until the 2026-09 re-baseline (§9.5).
+#                    Use it after a full §6 run.
 [tasks."verify:experiments"]
 description = "Check every table in spec/EXPERIMENTS.md against the sweep output"
 depends = ["build:compare"]

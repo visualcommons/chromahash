@@ -1,31 +1,43 @@
 {
   "name": "thumbhash-headtohead",
-  "description": "ChromaHash at ThumbHash's own byte cost. ThumbHash is 21 B on this corpus (landscape photos, no alpha); the shipped format cannot go below 32 B, so these are hypothetical sub-tier-0 layouts. Incumbent is the 21 B layout the shipped 26:9 / 5 b:4 b constants would produce if simply scaled down.",
+  "description": "ChromaHash at ThumbHash's own byte cost. ThumbHash is 21 B on this corpus (landscape photos, no alpha); the shipped format cannot go below 32 B, so these are hypothetical sub-tier-0 layouts. Incumbent is the 21 B layout the shipped 26:9 / 5 b:4 b constants would produce if simply scaled down. Every arm pins all four selection/encoder knobs: 'stack' is the three-knob aniso+fit2+nearest form and the plain rows are the PRE-adoption signal path. Without this the plain rows inherit the adopted knobs and become byte-identical to their own +stack rows.",
   "photoOnly": true,
   "variants": [
-    { "label": "21B shipped-shape L13@5 C6@4", "tune": "l1=13:5 c=6:4" },
-    { "label": "21B L26@3 C6@3", "tune": "l1=26:3 c=6:3" },
-    { "label": "21B L22@3 C8@3", "tune": "l1=22:3 c=8:3" },
-    { "label": "21B L19@4 C6@3", "tune": "l1=19:4 c=6:3" },
+    {
+      "label": "21B shipped-shape L13@5 C6@4",
+      "tune": "l1=13:5 c=6:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "21B L26@3 C6@3",
+      "tune": "l1=26:3 c=6:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "21B L22@3 C8@3",
+      "tune": "l1=22:3 c=8:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "21B L19@4 C6@3",
+      "tune": "l1=19:4 c=6:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
     {
       "label": "21B L26@3 C6@3 +stack",
-      "tune": "l1=26:3 c=6:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=26:3 c=6:3 aniso=1.2 scale_fit=2 ac_nearest=1 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "21B L22@3 C8@3 +stack",
-      "tune": "l1=22:3 c=8:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=22:3 c=8:3 aniso=1.2 scale_fit=2 ac_nearest=1 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "21B L19@4 C6@3 +stack",
-      "tune": "l1=19:4 c=6:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=19:4 c=6:3 aniso=1.2 scale_fit=2 ac_nearest=1 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "24B L22@4 C8@3 +stack",
-      "tune": "l1=22:4 c=8:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=22:4 c=8:3 aniso=1.2 scale_fit=2 ac_nearest=1 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "24B L27@3 C9@3 +stack",
-      "tune": "l1=27:3 c=9:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=27:3 c=9:3 aniso=1.2 scale_fit=2 ac_nearest=1 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     }
   ]
 }

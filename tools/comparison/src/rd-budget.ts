@@ -100,10 +100,15 @@ function allocate(targetBytes: number): { nL: number; nC: number } | null {
 }
 
 /**
- * Quality tier to decode a coefficient count at. The decoder drops any selected
- * (cx, cy) pair outside the render raster, so the raster edge (32 << tier) has
- * to clear the top selected frequency index (~sqrt(4·nL/π)) with margin.
+ * Quality tier to decode a coefficient count at. Selection draws only from the
+ * candidate box of the encoding tier's own render, so the raster edge — which is
+ * `32 << levelOf(code)`, one less than the returned code — has to clear the top
+ * selected frequency index (~sqrt(4·nL/π)) with margin. Below that bound the
+ * encoder is forced to substitute coefficients it would not otherwise pick
+ * (§4.1); nothing is dropped at decode.
  */
+const levelOf = (tier: number): number => Math.max(0, tier - 1);
+
 function tierFor(nL: number): number {
   // Returns a tier *code*, not a render level: the codes are ordered by quality
   // and code 1 is level 0, so the code is the level plus one.
@@ -592,7 +597,10 @@ async function main(): Promise<void> {
         continue;
       }
       const tier = tierFor(a.nL);
-      const s = 4 ** tier;
+      // `l1=`/`c=` are counts at the *default* tier, which the encoder scales
+      // by 4^level. Passing the tier *code* here divides by an extra factor of
+      // four and synthesizes a layout at a quarter of the budget.
+      const s = 4 ** levelOf(tier);
       // Express the target counts as base counts at the chosen tier.
       const l1 = Math.round(a.nL / s);
       const c = Math.round(a.nC / s);

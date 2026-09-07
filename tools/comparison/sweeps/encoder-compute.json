@@ -1,30 +1,59 @@
 {
   "name": "encoder-compute",
-  "description": "Encoder-only levers: zero wire cost, decoder untouched, bytes unchanged. ac_nearest picks the AC code nearest in RECONSTRUCTION instead of nearest in the companded domain; scale_fit=1 normalizes by the dequantized scale the decoder actually uses (removing the shipped encoder/decoder scale mismatch); scale_fit=2 searches every scale code for minimum reconstruction SSE. Measured at the 21 B (ThumbHash-equal), 32 B (shipped tier 0) and 108 B (tier 1) budgets.",
+  "description": "Encoder-only levers: zero wire cost, decoder untouched, bytes unchanged. ac_nearest picks the AC code nearest in RECONSTRUCTION instead of nearest in the companded domain; scale_fit=1 normalizes by the dequantized scale the decoder actually uses (removing the shipped encoder/decoder scale mismatch); scale_fit=2 searches every scale code for minimum reconstruction SSE. Measured at the 21 B (ThumbHash-equal), 32 B (shipped tier 0) and 108 B (tier 1) budgets. Every arm pins all four selection/encoder knobs explicitly: this round measured the levers against the PRE-adoption constants, and since §10 adopted scale_fit=2 and ac_nearest=1 as defaults, an arm that omitted them would measure the levers against a control that already contained them.",
   "photoOnly": true,
   "variants": [
-    { "label": "32 B shipped" },
-    { "label": "32 B ac_nearest", "tune": "ac_nearest=1" },
-    { "label": "32 B scale_fit=1", "tune": "scale_fit=1" },
-    { "label": "32 B fit1+nearest", "tune": "scale_fit=1 ac_nearest=1" },
-    { "label": "32 B scale_fit=2", "tune": "scale_fit=2" },
-    { "label": "32 B fit2+nearest", "tune": "scale_fit=2 ac_nearest=1" },
-    { "label": "21 B shipped-quant", "tune": "l1=13:5 c=6:4" },
+    {
+      "label": "32 B shipped",
+      "tune": "l1=26:5 c=9:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "32 B ac_nearest",
+      "tune": "l1=26:5 c=9:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=1"
+    },
+    {
+      "label": "32 B scale_fit=1",
+      "tune": "l1=26:5 c=9:4 aniso=0 sel_hv=0 scale_fit=1 ac_nearest=0"
+    },
+    {
+      "label": "32 B fit1+nearest",
+      "tune": "l1=26:5 c=9:4 aniso=0 sel_hv=0 scale_fit=1 ac_nearest=1"
+    },
+    {
+      "label": "32 B scale_fit=2",
+      "tune": "l1=26:5 c=9:4 aniso=0 sel_hv=0 scale_fit=2 ac_nearest=0"
+    },
+    {
+      "label": "32 B fit2+nearest",
+      "tune": "l1=26:5 c=9:4 aniso=0 sel_hv=0 scale_fit=2 ac_nearest=1"
+    },
+    {
+      "label": "21 B shipped-quant",
+      "tune": "l1=13:5 c=6:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
     {
       "label": "21 B fit2+nearest",
-      "tune": "l1=13:5 c=6:4 scale_fit=2 ac_nearest=1"
+      "tune": "l1=13:5 c=6:4 aniso=0 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
-    { "label": "108 B shipped-quant", "tier": 2 },
+    {
+      "label": "108 B shipped-quant",
+      "tier": 2,
+      "tune": "aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
     {
       "label": "108 B fit2+nearest",
       "tier": 2,
-      "tune": "scale_fit=2 ac_nearest=1"
+      "tune": "aniso=0 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
-    { "label": "411 B shipped-quant", "tier": 3 },
+    {
+      "label": "411 B shipped-quant",
+      "tier": 3,
+      "tune": "aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
     {
       "label": "411 B fit2+nearest",
       "tier": 3,
-      "tune": "scale_fit=2 ac_nearest=1"
+      "tune": "aniso=0 sel_hv=0 scale_fit=2 ac_nearest=1"
     }
   ]
 }

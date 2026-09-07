@@ -38,7 +38,7 @@ crates.io, PyPI, NuGet, Go and SwiftPM coordinates are unchanged.
 ### ⚠ Breaking changes
 
 - **comparison**: `ComparisonJson.schemaVersion` 3 -> 4. `encodeTimeMs`, `decodeTimeMs`, `avgEncode` and `avgDecode` are gone; `implementations[]` gains `error`. No consumer pins the version.  Verified against the pre-change baseline over eight cold-cache photographs: every per-image metric, and every summary field other than the removed timing, is byte-identical.
-- **comparison**: Every number measured on the photographic corpus moves. The new corpus is materially harder — the R-D gate's mean ΔE00 at tier 1 goes 8.8459 -> 11.1369 (+25.9%) over its 8 images. `baselines/rd-gate.json` is regenerated here and passes at 0.00% drift; **`spec/EXPERIMENTS.md` has NOT been re-baselined yet** and its tables still describe the Picsum corpus. §6 must be re-run in full before those numbers mean anything again.
+- **comparison**: Every number measured on the photographic corpus moves. The new corpus is materially harder — the R-D gate's mean ΔE00 at tier 1 goes 8.8459 -> 11.1369 (+25.9%) over its 8 images. `baselines/rd-gate.json` is regenerated here and passes at 0.00% drift; **`spec/EXPERIMENTS.md` was not re-baselined in this release** and its tables still described the Picsum corpus. §6 had to be re-run in full before those numbers meant anything again — done after 0.7.2, and recorded in `spec/EXPERIMENTS.md` §9.5.
 
 
 ### Added

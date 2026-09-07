@@ -20,6 +20,7 @@
  *   node dist/verify-experiments.js              # every bound table
  *   node dist/verify-experiments.js --section 11.5
  *   node dist/verify-experiments.js --list-unbound
+ *   node dist/verify-experiments.js --strict        # a SKIP is a failure
  *
  * Exit status is non-zero on any disagreement, so `mise run verify:experiments`
  * gates a documentation change the way `mise run rd:gate` gates a quality change.
@@ -451,6 +452,15 @@ function compare(
   }
 }
 
+/** Whether the document writes negatives with U+2212 rather than an ASCII hyphen. */
+let docMinusCache: boolean | undefined;
+function docUsesUnicodeMinus(): boolean {
+  if (docMinusCache === undefined) {
+    docMinusCache = readFileSync(DOC, "utf8").includes("\u2212");
+  }
+  return docMinusCache;
+}
+
 /**
  * Put a corrected value into a cell without disturbing anything else about it:
  * the document uses bold to mark winners, a unicode minus, and trailing units,
@@ -459,12 +469,21 @@ function compare(
 function rewriteCell(raw: string, value: string): string {
   const bold = raw.trim().startsWith("**") && raw.trim().endsWith("**");
   const body = raw.trim().replace(/^\*\*|\*\*$/g, "");
-  const usesUnicodeMinus = /[\u2212]/.test(body);
+  // The minus convention belongs to the document, not to the cell being
+  // replaced. Reading it from the cell alone gets it wrong in exactly the case
+  // that matters: a cell whose old value was positive has no minus to copy, so
+  // a newly-negative measurement lands as an ASCII hyphen among unicode ones.
+  const usesUnicodeMinus = /[\u2212]/.test(body) || docUsesUnicodeMinus();
   let next = value;
   if (usesUnicodeMinus) next = next.replace(/^-/, "\u2212");
-  // Preserve a trailing unit or annotation ("%", " B", " @32 px", "pp").
+  // Preserve a trailing unit or annotation ("%", " B", " @32 px", "pp") \u2014 but
+  // only when the measured value is a bare number. A composite value already
+  // carries what this regex reads as a suffix: on a win count the "unit" is
+  // `/31`, so appending it to `16/31` produced `16/31/31`. That stayed hidden
+  // while every win count happened to agree, and surfaced the first time one
+  // did not.
   const suffix = /^[-\u2212+]?[0-9.]+(.*)$/.exec(body)?.[1] ?? "";
-  if (!/^\[/.test(value)) next += suffix;
+  if (/^[-\u2212+]?[0-9.]+$/.test(value)) next += suffix;
   else if (usesUnicodeMinus) next = value.replace(/-/g, "\u2212");
   return bold ? `**${next}**` : next;
 }
@@ -762,6 +781,12 @@ const BINDINGS: Binding[] = [
       },
       "416 L / 144 C (411 B)": {
         cand: "t2 counts @tier0 (32px)",
+        base: "t2 shipped (411 B, 128px)",
+      },
+      // The control that separates "the raster is inert" from "the raster is
+      // below the bound": same counts, same base, a raster that clears it.
+      "416 L / 144 C (411 B) @64 px": {
+        cand: "t2 counts @tier1 (64px)",
         base: "t2 shipped (411 B, 128px)",
       },
       "1664 L / 576 C (1623 B)": {
@@ -1149,10 +1174,11 @@ const BINDINGS: Binding[] = [
       "Δ% vs shipped shape": "ciedeDeltaPct",
       "paired CI vs the leader": "ci",
     },
-    baselines: { "paired CI vs the leader": "L18@4 C7@3" },
+    baselines: { "paired CI vs the leader": "L19@4 C6@3  (§8.1 tune)" },
     aliases: {
-      "**L18@4 C7@3**": "L18@4 C7@3",
-      "L19@4 C6@3": "L19@4 C6@3  (§8.1 tune)",
+      "**L19@4 C6@3**": "L19@4 C6@3  (§8.1 tune)",
+      "L26@3 C6@3": "L26@3 C6@3  (§8.1 hold)",
+      "L18@4 C7@3": "L18@4 C7@3",
       "L24@3 C7@3": "L24@3 C7@3",
       "L35@3 C2@2 (count-maximal)": "L35@3 C2@2 (count-max)",
       "L19@5 C2@4 (precision-maximal)": "L19@5 C2@4 (precision-max)",
@@ -1252,7 +1278,10 @@ const BINDINGS: Binding[] = [
     aliases: {
       "**DEFAULT** aniso 1.2 / hv 0.15": "DEFAULT aniso=1.2 hv=0.15",
       "isotropic (aniso 0, hv 0)": "isotropic (aniso=0 hv=0)",
-      "**aniso 1.2 / hv 0.30**": "aniso=1.2 hv=0.3",
+      "**aniso 0.9 / hv 0.0**": "aniso=0.9 hv=0.0",
+      "**aniso 1.2 / hv 0.0** (shipped aniso, `sel_hv` off)":
+        "aniso=1.2 hv=0.0",
+      "aniso 1.2 / hv 0.30": "aniso=1.2 hv=0.3",
       "aniso 2.0 / hv 0.30": "aniso=2.0 hv=0.3",
       "aniso 1.2 / hv −0.15": "aniso=1.2 hv=-0.15",
       "aniso 1.2 / hv −0.30": "aniso=1.2 hv=-0.3",
@@ -1303,10 +1332,6 @@ const BINDINGS: Binding[] = [
     aliases: {
       "shipped A5@4 L20@5 C9@4": "SHIPPED A5@4 L20@5 C9@4",
       "**A28@3 L22@4 C3@3** (the tier-0 choice)": "A28@3 L22@4 C3@3",
-      // The config labelled this arm L26@4 while running `la1=28:4`. The label
-      // is fixed in sweeps/alpha-tier1.json; the committed *output* still
-      // carries the old one until the sweep is re-run, so map across it.
-      "A20@3 L28@4 C3@3": "A20@3 L26@4 C3@3",
     },
   },
 
@@ -1335,6 +1360,7 @@ const { values } = parseArgs({
     section: { type: "string" },
     "list-unbound": { type: "boolean", default: false },
     fix: { type: "boolean", default: false },
+    strict: { type: "boolean", default: false },
   },
 });
 
@@ -1370,6 +1396,8 @@ const UNBOUND_NOTES: Record<string, string> = {
   "7.13#0": "entropy-budget output, not a sweep",
   "9.3#0":
     "old-corpus vs new-corpus figures; the old corpus no longer exists, which is the point of the section",
+  "9.5#0":
+    "curated-corpus vs Wikimedia-corpus figures; the curated corpus no longer exists, same reason as §9.3",
   "10.2#0": "decode timings, not a corpus measurement",
   "11.0#0": "a two-row scoring demonstration on one synthetic fixture",
   "11.2#0":
@@ -1426,6 +1454,19 @@ console.log(
 );
 for (const s of skipped) console.log(`  SKIP  ${s}`);
 
+// A missing sweep output is reported rather than fatal, so the tool stays
+// useful on a machine that has run only part of section 6. That also means a
+// table whose sweep nobody ran passes silently: three of this document's
+// tables sat unreproducible behind a green run until the 2026-09 re-baseline
+// (section 9.5), because section 6 never listed the holdout runs they bind to.
+// `--strict` is for the case where every sweep is supposed to be on disk, and
+// a SKIP means the document has drifted out of reach of its own evidence.
+const strictFailed = values.strict && skipped.length > 0;
+const reportStrict = () =>
+  console.log(
+    `\n--strict: ${skipped.length} table(s) could not be checked. Run the sweeps named above, or drop the binding.`,
+  );
+
 if (failures.length > 0) {
   console.log(`\n${failures.length} disagreement(s):\n`);
   for (const f of failures) {
@@ -1460,6 +1501,12 @@ Re-run without --fix to confirm, and read the diff: a corrected number can
 invalidate the sentence beneath its table.`,
     );
   }
+  if (strictFailed) reportStrict();
+  process.exit(1);
+}
+
+if (strictFailed) {
+  reportStrict();
   process.exit(1);
 }
 console.log("\nEvery bound table agrees with its sweep output.");

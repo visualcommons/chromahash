@@ -79,11 +79,24 @@ const SHIPPED_LC_RATIO = SHIPPED.nL / SHIPPED.nC;
 const MAX_L = 180;
 const MAX_C = 60;
 
-/** Byte budgets scored, with the tier whose raster carries that many coefficients. */
+/**
+ * Byte budgets scored, with the tier *code* whose raster carries that many
+ * coefficients. Code 1 is the 32-byte default and code 2 is 108 B.
+ */
 const BUDGETS: ReadonlyArray<{ bytes: number; tier: number }> = [
   { bytes: 32, tier: 1 },
-  { bytes: 108, tier: 1 },
+  { bytes: 108, tier: 2 },
 ];
+
+/**
+ * Render level for a tier code. Counts scale by 4^level and the raster by
+ * 2^level; the codes are ordered by quality and code 1 is level 0, so the two
+ * differ by one. Conflating them multiplies every count by four.
+ *
+ * Saturates at zero, matching `render_level` in `rust/src/constants.rs`: code 0
+ * is the compact tier and is level 0, not level −1.
+ */
+const levelOf = (tier: number): number => Math.max(0, tier - 1);
 
 /** Precision families swept, as [luma bits, chroma bits]. */
 const PRECISION_FAMILIES: ReadonlyArray<readonly [number, number]> = [
@@ -257,7 +270,7 @@ interface Layout {
   cBits: number;
   /** Index into {@link LC_RATIOS}; 0 is the shipped 26:9 shape. */
   ratioIndex: number;
-  /** Quality tier: counts are multiplied by 4^tier, the raster by 2^tier. */
+  /** Quality tier *code*: counts are multiplied by 4^levelOf(tier). */
   tier: number;
   /** Byte budget this layout is a candidate for. */
   budgetBytes: number;
@@ -498,7 +511,7 @@ interface Row {
 function candidateLayouts(budgetBytes: number, tier: number): Layout[] {
   const budgetBits = budgetBytes * 8;
   const acBudget = budgetBits - PREFIX_BITS;
-  const scale = 4 ** tier;
+  const scale = 4 ** levelOf(tier);
   const seen = new Set<string>();
   const out: Layout[] = [];
 
@@ -606,7 +619,7 @@ async function main(): Promise<void> {
   const rows: Row[] = [];
   for (const { bytes: budgetBytes, tier } of BUDGETS) {
     const budgetBits = budgetBytes * 8;
-    const scale = 4 ** tier;
+    const scale = 4 ** levelOf(tier);
     // Group candidates by their (nL, nC) count pair: one dump per pair per
     // image serves every precision family at those counts, since the dumped
     // coefficients are pre-quantization.
@@ -676,7 +689,7 @@ async function main(): Promise<void> {
   // ── The shipped layout: what each coder actually costs ────────────────────
   const shippedRow = rows.find(
     (r) =>
-      r.tier === 0 &&
+      r.tier === 1 &&
       r.layout ===
         layoutLabel({ ...SHIPPED, ratioIndex: 0, tier: 1, budgetBytes: 32 }),
   );
@@ -808,9 +821,9 @@ async function main(): Promise<void> {
     for (const [key, r] of pool) {
       const { ciede } = await scoreCiede(
         {
-          nL: r.nL / 4 ** r.tier,
+          nL: r.nL / 4 ** levelOf(r.tier),
           lBits: r.lBits,
-          nC: r.nC / 4 ** r.tier,
+          nC: r.nC / 4 ** levelOf(r.tier),
           cBits: r.cBits,
           ratioIndex: r.ratioIndex,
           tier: r.tier,

@@ -13,6 +13,11 @@ on:
       # verify:benchmark checks this document against the committed perf runs,
       # so an edit to either must run the gate.
       - "spec/PERFORMANCE.md"
+      # EXPERIMENTS.md's tables are transcribed from sweep output by hand. CI
+      # cannot check them -- the sweeps are gitignored and take hours -- but an
+      # edit here must at least rebuild the tool that can, so a binding cannot
+      # be broken by a rename without the build noticing.
+      - "spec/EXPERIMENTS.md"
       - ".github/workflows/ci-comparison.yml"
   pull_request:
     paths:
@@ -25,6 +30,11 @@ on:
       # verify:benchmark checks this document against the committed perf runs,
       # so an edit to either must run the gate.
       - "spec/PERFORMANCE.md"
+      # EXPERIMENTS.md's tables are transcribed from sweep output by hand. CI
+      # cannot check them -- the sweeps are gitignored and take hours -- but an
+      # edit here must at least rebuild the tool that can, so a binding cannot
+      # be broken by a rename without the build noticing.
+      - "spec/EXPERIMENTS.md"
       - ".github/workflows/ci-comparison.yml"
 
 jobs:

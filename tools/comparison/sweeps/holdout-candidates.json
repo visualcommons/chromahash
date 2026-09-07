@@ -1,43 +1,65 @@
 {
   "name": "holdout-candidates",
-  "description": "Pre-registered validation of the tune-split winners on the never-tuned holdout split (Kodak24 + 4 held-out curated photos). Candidate A is the reallocation alone (luma 4 b x 38, chroma 3 b x 8); the stacked rows add the two encoder-only levers and the anisotropic selection weight. The 21 B rows test whether a sub-tier-0 budget is viable at all - ThumbHash's own size.",
+  "description": "Pre-registered validation of the tune-split winners on the never-tuned holdout split (Kodak24 + 4 held-out curated photos). Candidate A is the reallocation alone (luma 4 b x 38, chroma 3 b x 8); the stacked rows add the two encoder-only levers and the anisotropic selection weight. The 21 B rows test whether a sub-tier-0 budget is viable at all - ThumbHash's own size. Every arm pins all four selection/encoder knobs explicitly: the incumbent is the PRE-adoption shipped format, and since §10 adopted L28@4 C15@3 + aniso + fit2 as the defaults, an arm that omitted them would measure the adopted recipe against itself. 'stack' here is the three-knob aniso+fit2+nearest form, without sel_hv; §7.12's STACK adds sel_hv=0.15.",
   "photoOnly": true,
   "variants": [
-    { "label": "32B SHIPPED" },
-    { "label": "32B A L38@4 C8@3", "tune": "l1=38:4 c=8:3" },
-    { "label": "32B B L28@4 C15@3", "tune": "l1=28:4 c=15:3" },
+    {
+      "label": "32B SHIPPED",
+      "tune": "l1=26:5 c=9:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "32B A L38@4 C8@3",
+      "tune": "l1=38:4 c=8:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "32B B L28@4 C15@3",
+      "tune": "l1=28:4 c=15:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
     {
       "label": "32B A + scale_fit2",
-      "tune": "l1=38:4 c=8:3 scale_fit=2 ac_nearest=1"
+      "tune": "l1=38:4 c=8:3 aniso=0 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "32B A + aniso+fit2",
-      "tune": "l1=38:4 c=8:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=38:4 c=8:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "32B B + aniso+fit2",
-      "tune": "l1=28:4 c=15:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=28:4 c=15:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "32B SHIPPED+aniso+fit2",
-      "tune": "aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=26:5 c=9:4 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
-    { "label": "21B shipped-shape", "tune": "l1=13:5 c=6:4" },
-    { "label": "21B L26@3 C6@3", "tune": "l1=26:3 c=6:3" },
-    { "label": "21B L19@4 C6@3", "tune": "l1=19:4 c=6:3" },
+    {
+      "label": "21B shipped-shape",
+      "tune": "l1=13:5 c=6:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "21B L26@3 C6@3",
+      "tune": "l1=26:3 c=6:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "21B L19@4 C6@3",
+      "tune": "l1=19:4 c=6:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
     {
       "label": "21B L19@4 C6@3 +stack",
-      "tune": "l1=19:4 c=6:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=19:4 c=6:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "24B L22@4 C8@3 +stack",
-      "tune": "l1=22:4 c=8:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=22:4 c=8:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
-    { "label": "108B SHIPPED (t1)", "tier": 2 },
+    {
+      "label": "108B SHIPPED (t1)",
+      "tier": 2,
+      "tune": "aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
     {
       "label": "108B t1 +aniso+fit2",
       "tier": 2,
-      "tune": "aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     }
   ]
 }

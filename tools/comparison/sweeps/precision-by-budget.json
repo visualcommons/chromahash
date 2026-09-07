@@ -1,130 +1,131 @@
 {
   "name": "precision-by-budget",
-  "description": "Where does the count-vs-precision optimum sit as the budget moves? The same six precision families (luma 3/4/5/6 bits x chroma 3/4 bits), each filled to the same byte target with as many coefficients as fit, at 16/21/24/48/80 B. The shipped format holds precision constant across its whole tier range; this asks whether that is true of the R-D optimum.",
+  "description": "Where does the count-vs-precision optimum sit as the budget moves? The same six precision families (luma 3/4/5/6 bits x chroma 3/4 bits), each filled to the same byte target with as many coefficients as fit, at 16/21/24/48/80 B. The shipped format holds precision constant across its whole tier range; this asks whether that is true of the R-D optimum. Every arm pins the four selection/encoder knobs to their PRE-adoption values so the comparison isolates the layout: §10 adopted aniso=1.2, sel_hv=0.15, scale_fit=2 and ac_nearest=1 as defaults, and an arm that omitted them would silently carry the adopted recipe — which had made the incumbent identical to the L28@4 C15@3 arm it was meant to be measured against.",
   "photoOnly": true,
   "variants": [
     {
-      "label": "32B SHIPPED L26@5 C9@4"
+      "label": "32B SHIPPED L26@5 C9@4",
+      "tune": "l1=26:5 c=9:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "16B L14@3 C5@3",
-      "tune": "l1=14:3 c=5:3"
+      "tune": "l1=14:3 c=5:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "16B L12@4 C4@3",
-      "tune": "l1=12:4 c=4:3"
+      "tune": "l1=12:4 c=4:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "16B L10@4 C4@4",
-      "tune": "l1=10:4 c=4:4"
+      "tune": "l1=10:4 c=4:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "16B L9@5 C3@4",
-      "tune": "l1=9:5 c=3:4"
+      "tune": "l1=9:5 c=3:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "16B L10@5 C4@3",
-      "tune": "l1=10:5 c=4:3"
+      "tune": "l1=10:5 c=4:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "16B L8@6 C3@4",
-      "tune": "l1=8:6 c=3:4"
+      "tune": "l1=8:6 c=3:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "21B L22@3 C8@3",
-      "tune": "l1=22:3 c=8:3"
+      "tune": "l1=22:3 c=8:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "21B L19@4 C6@3",
-      "tune": "l1=19:4 c=6:3"
+      "tune": "l1=19:4 c=6:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "21B L16@4 C6@4",
-      "tune": "l1=16:4 c=6:4"
+      "tune": "l1=16:4 c=6:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "21B L14@5 C5@4",
-      "tune": "l1=14:5 c=5:4"
+      "tune": "l1=14:5 c=5:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "21B L16@5 C5@3",
-      "tune": "l1=16:5 c=5:3"
+      "tune": "l1=16:5 c=5:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "21B L13@6 C4@4",
-      "tune": "l1=13:6 c=4:4"
+      "tune": "l1=13:6 c=4:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "24B L27@3 C9@3",
-      "tune": "l1=27:3 c=9:3"
+      "tune": "l1=27:3 c=9:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "24B L22@4 C8@3",
-      "tune": "l1=22:4 c=8:3"
+      "tune": "l1=22:4 c=8:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "24B L20@4 C7@4",
-      "tune": "l1=20:4 c=7:4"
+      "tune": "l1=20:4 c=7:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "24B L17@5 C6@4",
-      "tune": "l1=17:5 c=6:4"
+      "tune": "l1=17:5 c=6:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "24B L19@5 C7@3",
-      "tune": "l1=19:5 c=7:3"
+      "tune": "l1=19:5 c=7:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "24B L16@6 C5@4",
-      "tune": "l1=16:6 c=5:4"
+      "tune": "l1=16:6 c=5:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "48B L65@3 C22@3",
-      "tune": "l1=65:3 c=22:3"
+      "tune": "l1=65:3 c=22:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "48B L54@4 C19@3",
-      "tune": "l1=54:4 c=19:3"
+      "tune": "l1=54:4 c=19:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "48B L48@4 C17@4",
-      "tune": "l1=48:4 c=17:4"
+      "tune": "l1=48:4 c=17:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "48B L42@5 C15@4",
-      "tune": "l1=42:5 c=15:4"
+      "tune": "l1=42:5 c=15:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "48B L46@5 C16@3",
-      "tune": "l1=46:5 c=16:3"
+      "tune": "l1=46:5 c=16:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "48B L37@6 C13@4",
-      "tune": "l1=37:6 c=13:4"
+      "tune": "l1=37:6 c=13:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "80B L115@3 C40@3",
-      "tune": "l1=115:3 c=40:3"
+      "tune": "l1=115:3 c=40:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "80B L96@4 C33@3",
-      "tune": "l1=96:4 c=33:3"
+      "tune": "l1=96:4 c=33:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "80B L86@4 C30@4",
-      "tune": "l1=86:4 c=30:4"
+      "tune": "l1=86:4 c=30:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "80B L75@5 C26@4",
-      "tune": "l1=75:5 c=26:4"
+      "tune": "l1=75:5 c=26:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "80B L82@5 C29@3",
-      "tune": "l1=82:5 c=29:3"
+      "tune": "l1=82:5 c=29:3 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     },
     {
       "label": "80B L66@6 C23@4",
-      "tune": "l1=66:6 c=23:4"
+      "tune": "l1=66:6 c=23:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     }
   ]
 }
