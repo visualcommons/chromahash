@@ -129,7 +129,7 @@ any size or tier that matters":
   not a rounding error at all. That is exactly the trap §4 documents, and it is
   why the encoder-only levers look decisive on a thumbnail and vanish on a
   photograph.
-* **At 512×512 the per-pixel colour pipeline is 16.6%** — `linearize` 5.5%,
+* **At 512×512 the per-pixel colour pipeline is 16.5%** — `linearize` 5.4%,
   `oklab_forward` 6.9%, `composite` 4.2%. Only the middle one has a SIMD
   backend, which bounds what §5 can buy before §5 is measured at all: the
   `simd` feature covers 6.9 points of a 100-point budget at the size a caller
@@ -483,7 +483,7 @@ version, a regenerated vector set, and nine languages landing together.
 
 The measured context, from §1 and §5: the forward DCT is **79%** of a 512×512
 encode and **97%** at tier 4; `quantize_and_pack` is **37.5%** of a 100×100 one;
-the per-pixel colour pipeline is **16.6%** at 512×512; and the shipped `simd`
+the per-pixel colour pipeline is **16.5%** at 512×512; and the shipped `simd`
 feature buys **1.02×** because it covers 6.9 of those points.
 
 ### 12.1 Byte-identical — legal in a patch release
@@ -498,7 +498,7 @@ and `mise run rd:gate` are sufficient evidence, and no version moves.
 | 3 | `dct.rs:227` | **Vectorize across coefficients, not pixels.** The inner sum must keep its exact left-to-right order, which is why `simd/mod.rs` never touched it. Lanes over *distinct `(cx, cy)` pairs* preserve each coefficient's own order and are as parallel as the per-pixel case. | Per-lane arithmetic is unchanged; only which coefficient a lane holds |
 | 4 | `decode.rs:372`, `dct.rs:265` | **Flatten `cos_x`/`cos_y`.** They are `Vec<Vec<f64>>`, a pointer chase per coefficient per pixel in the `O(w·h·K)` render loop. A strided `Vec<f64>` removes it. And there is **no SIMD in decode at all** — a scalar per-pixel OKLAB inverse plus three gamma lookups — while §2 puts tier-4 decode at 234 ms, the most expensive operation the format asks for. | A layout change reads the same values |
 | 5 | `encode.rs:736` | **Early-exit `sse_with_delta`.** `acc` accumulates monotonically and the caller keeps only strict improvements, so it can abort the moment `acc >= best`. Off by default (`refine_passes: 0`) but §4 measures refinement at **20–37 ms against 2.45 ms shipped**, and it is what the `refine-*` sweeps spend their time in. | Changes when the loop stops, never which code wins |
-| 6 | `encode.rs:224,240,263` | **Fuse the per-pixel passes.** Four full `W·H` passes and five allocations — ~10 MB of f64 traffic at 512×512 — for a stage §1 prices at 16.6%. `linearize` and `composite` fuse; `alpha_average` is a reduction and must stay in scalar pixel order. | Elementwise work, unchanged order |
+| 6 | `encode.rs:224,240,263` | **Fuse the per-pixel passes.** Four full `W·H` passes and five allocations — ~10 MB of f64 traffic at 512×512 — for a stage §1 prices at 16.5%. `linearize` and `composite` fuse; `alpha_average` is a reduction and must stay in scalar pixel order. | Elementwise work, unchanged order |
 | 7 | `bitpack.rs:3` | **Word-at-a-time bit writing**, against the current divide-and-modulo per bit. Correct and genuinely small — ≤1623 bytes — and listed for completeness rather than for its size. | Same bits |
 
 Items 1 and 2 are the ones worth doing first, and not because they are the
