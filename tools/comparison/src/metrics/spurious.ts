@@ -1,8 +1,9 @@
 /**
- * **Spurious detail** — structure the placeholder asserts that the original does
- * not have. The second metric this harness computes itself; see `local.ts` for
- * the first (ringing) and for why the seven iqa-cli metrics stay in their own
- * module.
+ * **Spurious detail**, and its mirror **spectral deficit** — structure the
+ * placeholder asserts that the original does not have, and structure the
+ * original has that the placeholder drops. The second and third metrics this
+ * harness computes itself; see `local.ts` for the first (ringing) and for why
+ * the seven iqa-cli metrics stay in their own module.
  *
  * ## Why ringing is not enough
  *
@@ -43,6 +44,24 @@
  *    reference the excess clamps to zero. That is not an oversight: a placeholder
  *    is a low-pass by design, and losing detail is what ΔE00, SSIMULACRA2 and
  *    DSSIM already charge for. This metric answers the other question.
+ *
+ *    That clamp is also a measurement nobody was taking, so it is now reported
+ *    as its own score. **Spectral deficit** is the same comparison with the sign
+ *    flipped — `max(0, |I| - |D|)`, energy the reference has that the decode
+ *    lacks — and the pair is what separates *smooth but wrong* from *sharp with
+ *    artifacts*. Nothing in the harness could tell those apart: ΔE00,
+ *    SSIMULACRA2, Butteraugli and DSSIM are aggregate fidelity scores that
+ *    charge for both at once, which is exactly why §12.3's verdict on the
+ *    synthesis window came down to a single SSIMULACRA2 number and could not say
+ *    what that number was reacting to. Deficit costs one subtraction per
+ *    frequency on spectra this function already has, so it is computed in the
+ *    same pass rather than in a module that would pay for both transforms
+ *    again.
+ *
+ *    It is **not** a fidelity score either, for the same reason spurious is not:
+ *    it is magnitude-only. A placeholder is *supposed* to have a deficit — the
+ *    ideal low-pass has the largest one available at its raster — so it is read
+ *    as a trade against spurious, never minimized on its own.
  * 2. **It is magnitude-only, so it is blind to phase.** A decode whose spectrum
  *    has the right magnitudes in the wrong places scores zero here and badly
  *    everywhere else. That is the correct division of labour — putting energy
@@ -120,12 +139,19 @@ export const SPURIOUS_DEAD_ZONE = 1.0;
  */
 export const SPURIOUS_DIAGONAL_BAND = 1 / 3;
 
-/** Spurious-detail scores for one decode, in 8-bit sRGB levels. */
+/** Spurious-detail and spectral-deficit scores, in 8-bit sRGB levels. */
 export interface SpuriousScores {
   spurious: number;
   spuriousVertical: number;
   spuriousHorizontal: number;
   spuriousDiagonal: number;
+  /**
+   * Spectral deficit: RMS energy the reference has that the decode does not.
+   * The mirror of {@link spurious}, from the same two spectra. Higher means
+   * more of the original's structure is missing — which a placeholder is
+   * expected to have, so it is read against `spurious` rather than alone.
+   */
+  deficit: number;
   spuriousGridEdge: number;
 }
 
@@ -254,10 +280,11 @@ function analysisGrid(
   decH: number,
   refW: number,
   refH: number,
+  maxEdge: number = SPURIOUS_MAX_EDGE,
 ): { w: number; h: number } {
   const k = Math.min(
     1,
-    SPURIOUS_MAX_EDGE / Math.max(decW, decH),
+    maxEdge / Math.max(decW, decH),
     refW / decW,
     refH / decH,
   );
@@ -319,15 +346,29 @@ export function computeSpurious(
   refH: number,
   decW: number,
   decH: number,
+  /**
+   * Override the grid cap, so several decodes at *different* rasters can be
+   * scored on one frequency plane.
+   *
+   * Both scores carry their grid with them: a tier-4 decode is judged on
+   * frequencies a tier-0 decode does not have, so reading the two side by side
+   * compares instruments as much as formats. §12.4 records a whole conclusion
+   * withdrawn for exactly that mistake, with ringing rather than this. Pinning
+   * the cap to the smallest raster in a comparison asks every arm the same
+   * question — how much structure does it invent among the frequencies they can
+   * all represent — which is the reading that survives being quoted.
+   */
+  maxEdge?: number,
 ): SpuriousScores | null {
   if (refW <= 0 || refH <= 0 || decW <= 0 || decH <= 0) return null;
-  const { w, h } = analysisGrid(decW, decH, refW, refH);
+  const { w, h } = analysisGrid(decW, decH, refW, refH, maxEdge);
   if (w * h < 2) return null;
 
   let sumSq = 0;
   let sumSqV = 0;
   let sumSqH = 0;
   let sumSqD = 0;
+  let sumSqDeficit = 0;
 
   // A quarter turn is split into three equal angular bands; `diagLo`/`diagHi`
   // are the boundaries in units of the quarter turn.
@@ -344,8 +385,18 @@ export function computeSpurious(
         // make a uniformly-too-bright decode read as invented texture.
         if (k === 0 && l === 0) continue;
         const i = l * w + k;
-        const excess =
-          Math.abs(dec[i] ?? 0) - Math.abs(ideal[i] ?? 0) - SPURIOUS_DEAD_ZONE;
+        const magDec = Math.abs(dec[i] ?? 0);
+        const magIdeal = Math.abs(ideal[i] ?? 0);
+
+        // The mirror term, taken here because both spectra are in hand: energy
+        // the reference carries that the decode does not. Same dead zone, same
+        // units, same exclusion of DC — so the two scores are read against each
+        // other without a conversion, and an ideal low-pass scores exactly zero
+        // on both.
+        const missing = magIdeal - magDec - SPURIOUS_DEAD_ZONE;
+        if (missing > 0) sumSqDeficit += missing * missing;
+
+        const excess = magDec - magIdeal - SPURIOUS_DEAD_ZONE;
         if (excess <= 0) continue;
         const e2 = excess * excess;
         sumSq += e2;
@@ -375,6 +426,7 @@ export function computeSpurious(
     spuriousVertical: rms(sumSqV),
     spuriousHorizontal: rms(sumSqH),
     spuriousDiagonal: rms(sumSqD),
+    deficit: rms(sumSqDeficit),
     spuriousGridEdge: Math.max(w, h),
   };
 }
@@ -386,11 +438,13 @@ export const NULL_SPURIOUS: Pick<
   | "spuriousVertical"
   | "spuriousHorizontal"
   | "spuriousDiagonal"
+  | "deficit"
   | "spuriousGridEdge"
 > = {
   spurious: null,
   spuriousVertical: null,
   spuriousHorizontal: null,
   spuriousDiagonal: null,
+  deficit: null,
   spuriousGridEdge: null,
 };

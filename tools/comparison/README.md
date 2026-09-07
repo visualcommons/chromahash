@@ -98,9 +98,17 @@ questions:
   are exactly what a truncated cosine basis produces. It measures energy the
   decode carries at frequencies the reference has none at, through the format's
   own basis, and **the ideal low-pass of the reference scores exactly zero**.
-  Missing detail is free, by design: that is what the fidelity metrics charge
-  for. It splits by orientation, which is how the deliberately anisotropic
+  It splits by orientation, which is how the deliberately anisotropic
   selection order (`aniso_oblique`, `sel_hv`) would show up if it were visible.
+- **Spectral deficit** (same module, same pass) is invented detail with the sign
+  flipped: energy the *reference* has that the decode drops. Invented detail
+  clamps that direction to zero by design — losing detail is what the fidelity
+  metrics charge for — and the clamp was a measurement nobody was taking. The
+  pair is what separates *smooth but wrong* from *sharp with artifacts*, which no
+  single score here can: it costs one subtraction on spectra the module already
+  has, and the ideal low-pass scores **exactly zero** on both. A placeholder is
+  *supposed* to have a deficit, so it is read against invented detail as an
+  exchange rate, never minimized on its own (`spec/EXPERIMENTS.md` §13).
 - **Aspect error** (`src/aspect.ts`) exists because `upscaleRgba` stretches every
   decode back into the reference frame before scoring, so every other metric here
   is structurally blind to a format decoding to the wrong shape.
@@ -163,7 +171,8 @@ src/
   metrics.ts           scoring config, compositing, blur, the scoring path
   metrics/iqa.ts       iqa-cli subprocess wrapper + content-addressed cache
   metrics/local.ts     ringing
-  metrics/spurious.ts  invented detail
+  metrics/spurious.ts  invented detail + spectral deficit
+  stratify.ts          per-image scores against the corpus covariates
   corpus.ts            the three corpus axes
   adapters/            one per format
   rd/                  rate-distortion lineup, byte targeting, charts

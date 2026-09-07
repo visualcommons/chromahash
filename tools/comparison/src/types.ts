@@ -118,6 +118,23 @@ export interface LocalMetrics {
   /** Oblique part; the three partition the plane and recombine in quadrature. */
   spuriousDiagonal: number | null;
   /**
+   * Spectral deficit: RMS energy the *reference* has that the decode does not,
+   * in 8-bit sRGB levels — {@link spurious} with the sign flipped, from the same
+   * two spectra.
+   *
+   * The pair is what separates *smooth but wrong* from *sharp with artifacts*.
+   * Every other metric here is an aggregate fidelity score that charges for both
+   * at once, so a placeholder that loses detail and one that invents it are
+   * indistinguishable to them — which is why §12.3's verdict on the synthesis
+   * window reduced to one SSIMULACRA2 number that could not say what it was
+   * reacting to.
+   *
+   * A placeholder is *supposed* to have a deficit: the ideal low-pass has the
+   * largest one available at its raster. Read it against {@link spurious} as an
+   * exchange rate, never minimize it on its own.
+   */
+  deficit: number | null;
+  /**
    * Longest edge of the analysis grid, in samples. Reported for the same reason
    * as {@link ringWindowRadius}: it is derived per format per image, so two
    * scores are directly comparable only at equal grids.
@@ -138,6 +155,7 @@ export const NULL_LOCAL_METRICS: LocalMetrics = {
   spuriousVertical: null,
   spuriousHorizontal: null,
   spuriousDiagonal: null,
+  deficit: null,
   spuriousGridEdge: null,
 };
 

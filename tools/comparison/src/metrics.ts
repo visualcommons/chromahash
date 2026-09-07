@@ -88,6 +88,18 @@ export interface ScoringConfig {
    * opts in by default, and why a sweep has to ask.
    */
   artifacts?: boolean;
+  /**
+   * Cap the spurious/deficit analysis grid to this longest edge, for every
+   * decode regardless of its own raster.
+   *
+   * Only meaningful with {@link artifacts}, and only wanted when a run compares
+   * decodes at *different* rasters — a tier ladder, above all. Both spectral
+   * scores are defined on the decode's own grid, so without this a tier-4 row
+   * and a tier-0 row are answers to different questions and their difference is
+   * partly the instrument. Set it to the smallest raster in the comparison and
+   * every arm is asked the same one.
+   */
+  artifactGridEdge?: number;
 }
 
 let scoringConfig: ScoringConfig = {
@@ -378,6 +390,7 @@ export async function computeAllMetrics(
           referenceH,
           decodedW,
           decodedH,
+          scoringConfig.artifactGridEdge,
         ) ?? NULL_SPURIOUS;
       artifactsScored = true;
     }

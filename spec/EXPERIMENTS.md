@@ -646,6 +646,19 @@ mise run selftest:metrics                           # §12.1, §12.5
 # per-format `local` block.
 node tools/comparison/dist/main.js --skip-harnesses --images 'fixtures/natural/chroma-black-and-white.jpg'
 
+# Round 5 — the ladder, and the corpus read by content (§13)
+mise run sweep artifact-ladder                      # §13.1 table 0
+mise run sweep artifact-ladder-common-grid          # §13.1 table 1, §13.2
+
+# §13.3's table comes from `stratify`, not a sweep, so verify:experiments does
+# not bind it. It reads the per-image scores the sweep above already wrote.
+mise run stratify artifact-ladder-common-grid --metric spurious --by detail
+mise run stratify artifact-ladder-common-grid --metric deficit  --by detail
+mise run stratify artifact-ladder-common-grid --metric ringing  --by detail
+mise run stratify artifact-ladder-common-grid --metric ciede    --by detail
+mise run stratify artifact-ladder-common-grid --metric spurious --by chroma
+mise run stratify artifact-ladder-common-grid --metric spurious --by lightness
+
 # Check the tables in this file against the results above
 mise run verify:experiments
 mise run verify:experiments --list-unbound
@@ -2709,3 +2722,158 @@ format's own render does not look different enough for any metric to tell.
   computed metrics arguably does that; §12.3 is what it looks like when it
   happens — a decision that now turns on whether SSIMULACRA2 is right about
   placeholders, which nothing here can say.
+
+## 13. Round 5: where the format fails, on real photographs (2026-09)
+
+Every table above chooses a constant, and the unit that decides a constant is a
+mean over a corpus. This round asks a different question — not *how much* is the
+reconstruction wrong, but *what kind* of wrong, at which tier, on which content
+— because that is the question a wire change starts from and no aggregate can
+answer it. Three things were missing and are added here.
+
+**A third locally-computed metric.** `spurious` measures energy the decode has
+that the reference does not, and clamps the other direction to zero by design.
+That clamp was a measurement nobody was taking. **Spectral deficit** is the same
+comparison with the sign flipped — `max(0, |I| − |D|)`, structure the original
+has that the placeholder drops — computed in the same pass from the same two
+spectra. The pair is the only thing here that separates *smooth but wrong* from
+*sharp with artifacts*: ΔE00, SSIMULACRA2, Butteraugli and DSSIM are aggregate
+fidelity scores that charge for both at once, which is exactly why §12.3's
+verdict came down to one SSIMULACRA2 number that could not say what it was
+reacting to. It holds the same discipline as its siblings — an ideal low-pass
+scores **exactly zero** on both, asserted in `selftest:metrics` over 8 decode
+sizes × 3 content shapes — and it is not a fidelity score either: a placeholder
+is *supposed* to have a deficit, so it is read against `spurious` as an exchange
+rate, never minimized.
+
+**The ladder.** §12 measured artifacts at codes 1 and 2, against one knob. No
+run has ever taken them along the tier ladder, so the format's most-repeated
+informal criticism — that the upper tiers look *textured* rather than merely
+soft — had never had a number attached in either direction.
+
+**The corpus's own covariates, read back.** `natural-images.ts` records mean L*,
+mean chroma C* and Laplacian detail energy for all 39 photographs, measured on
+the same 512 px reference the harness scores against, because §9.1's audit
+needed them to choose the set. Nothing had read them since. `mise run stratify`
+does.
+
+### 13.1 The instrument has to be held still first
+
+`sweeps/artifact-ladder.json` scores each tier on its **own** raster, which is
+what a viewer of that tier receives:
+
+| tier | bytes | ΔE00 | SSIM2 | DSSIM | Ring | Spur | Deficit |
+|---|---|---|---|---|---|---|---|
+| code 0 (compact) | 21 | 12.147 | −371.1 | 0.2664 | 1.34 | 3.98 | 27.05 |
+| code 1 (default) | 32 | 11.473 | −341.7 | 0.2638 | 1.02 | 3.53 | 24.79 |
+| code 2 | 108 | 9.667 | −212.9 | 0.2559 | 1.32 | 3.65 | 23.23 |
+| code 3 | 411 | 7.828 | −89.5 | 0.2451 | 1.48 | 4.47 | 19.33 |
+| code 4 | 1623 | 6.726 | −63.8 | 0.2342 | 2.30 | 6.56 | 13.24 |
+
+**Do not read the artifact columns down this table.** Both spectral scores are
+defined on the decode's own grid, so a tier-4 row is judged on frequencies a
+tier-0 row does not have, and part of any difference between them is the
+instrument rather than the format. §12.4 is the record of that exact mistake
+being made and caught, with ringing: a withdrawn claim that a native render
+"overshoots 2.7× more", produced by two envelope radii and not by two pictures.
+
+So the ladder is run again with the spectral grid pinned to 32 px — the compact
+tier's natural raster, and therefore the largest grid all five arms can be asked
+about on equal terms. `sweeps/artifact-ladder-common-grid.json`, 31 tune
+photographs:
+
+| tier | bytes | ΔE00 | Spur | Deficit | Spur / Deficit |
+|---|---|---|---|---|---|
+| code 0 (compact) | 21 | 12.147 | 3.98 | 27.05 | 0.15 |
+| code 1 (default) | 32 | 11.473 | 3.53 | 24.79 | 0.14 |
+| **code 2** | 108 | 9.667 | **3.49** | 17.01 | 0.21 |
+| code 3 | 411 | 7.828 | 5.23 | 8.96 | 0.58 |
+| code 4 | 1623 | 6.726 | 6.23 | 6.32 | **0.99** |
+
+Ringing is deliberately still reported per row and still not comparable across
+them: it derives its envelope radius from the upscale factor and has no
+equivalent knob, which is the asymmetry §12.4 documents.
+
+### 13.2 The upper tiers buy fidelity by inventing
+
+Three findings, on one instrument.
+
+1. **Invented structure has a minimum, and it is code 2.** Spurious falls
+   3.98 → 3.53 → **3.49** and then rises, 5.23 at code 3 and 6.23 at code 4.
+   From its minimum to the top tier it grows **78%** while ΔE00 improves 30%.
+   That code 2 is also where §11.14 puts the format's strongest cross-format
+   position is not a coincidence worth asserting from two numbers, but it is
+   worth writing down.
+2. **At code 4 the format invents almost exactly as much as it still lacks.**
+   Spurious 6.23 against deficit 6.32 — a ratio of 0.99, against 0.14 at the
+   default tier. Read plainly: on the frequencies every tier can represent, the
+   archival tier's remaining error is half missing structure and half fabricated
+   structure. Every fidelity metric improves monotonically across that same
+   range, and none of them can say this, because each charges for both halves at
+   once.
+3. **Deficit falls monotonically and fidelity tracks it, not spurious.**
+   27.05 → 6.32, a 77% reduction, alongside ΔE00 −45% and SSIMULACRA2
+   −371 → −64. The tiers do work. What the pair adds is the price: **the last
+   two tiers spend 63% of the remaining deficit and buy 78% more invention.**
+
+This is the number behind the informal criticism, and it does not refute it.
+
+### 13.3 The artifact moves from smooth content to textured content
+
+`mise run stratify artifact-ladder-common-grid --metric spurious --by detail`.
+Equal-count terciles of the tune corpus by Laplacian detail energy, bins held
+fixed across arms; `r` is Pearson over all 31.
+
+| tier | smooth (6.8–14.1) | mid (14.8–24.6) | textured (25.2–75.9) | r |
+|---|---|---|---|---|
+| code 0 | 4.33 | 4.25 | 3.31 | **−0.29** |
+| code 1 | 3.65 | 3.78 | 3.16 | −0.17 |
+| code 2 | 3.65 | 3.55 | 3.26 | −0.20 |
+| code 3 | 4.98 | 5.29 | 5.45 | +0.03 |
+| code 4 | 5.60 | 6.38 | 6.77 | **+0.06** |
+
+**The correlation changes sign.** At the low tiers the format invents most on
+the *smooth* photographs — a handful of coefficients laid across a near-flat
+field, which is the classic low-order-basis banding, and which is also why
+ringing is highest on smooth content at every tier (r = −0.13 to −0.30). At the
+upper tiers it inverts: the invention follows the texture.
+
+Those are two different defects wearing one number, and they want two different
+answers. Nothing above distinguishes them, and no aggregate could.
+
+Two supporting axes, same sweep:
+
+* **Chroma.** Spurious tracks mean C* strongly at the low tiers (r = +0.44,
+  +0.41, +0.53 at codes 0–2) and not at all above them (+0.07, +0.08).
+  Saturated content drives invented structure exactly where the chroma budget is
+  tightest — 6 coefficients at code 0, 15 at code 1.
+* **Lightness.** Spurious is lowest on high-key photographs at every tier
+  (r = −0.10 to −0.36), which is the DC-dominated case: little AC amplitude to
+  get wrong.
+
+And the fidelity side, for contrast: ΔE00's correlation with detail *strengthens*
+monotonically with tier, +0.23 at code 0 to **+0.56** at code 4. The upper tiers
+help smooth photographs far more than textured ones — so the format's error is
+becoming more content-dependent as the budget grows, not less.
+
+### 13.4 What this says for v0.8, and what it does not
+
+Stated as measurements, not as a plan. Nothing here adopts anything.
+
+* **The upper tiers are the artifact problem, and code 2 is the floor.** Any
+  change aimed at invented structure should be evaluated at codes 3–4, where
+  §13.2 puts the exchange rate at ~1:1, and not at the default tier where it is
+  1:7. §12.2–§12.3 measured the synthesis window at codes 1 and 2 — the two
+  tiers where there is least to gain.
+* **The window's verdict was taken on the wrong tiers.** §12.3 found the
+  lightest taper statistically free on ΔE00 at code 2 and failing SSIMULACRA2
+  alone. §13.2 says code 2 is where invented structure is at its *minimum*. The
+  interesting measurement — the same taper at codes 3 and 4 — has not been made.
+* **Two defects, not one.** A change that suppresses low-order banding on smooth
+  content and a change that stops the basis fighting real texture are different
+  changes, and §13.3 says a single corpus mean will always report their sum.
+* **U19 is still the ceiling, and this round raises it again.** §12.5 said so of
+  two metrics; there are now three, and §13.2's central claim — that a 1:1
+  invention-to-deficit ratio is *worse* than a 3:1 one at the same ΔE00 — is a
+  claim about human judgement that nothing in this repo has ever validated.
+  It is stated as an exchange rate rather than a verdict for that reason.

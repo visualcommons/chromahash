@@ -144,6 +144,20 @@ interface SweepConfig {
    */
   artifactGuardRise?: number;
   /**
+   * Cap the spurious/deficit analysis grid to this longest edge, for every arm.
+   *
+   * Wanted only when the arms decode at *different* rasters — a tier ladder is
+   * the case. Both spectral scores live on the decode's own grid, so a tier-4
+   * row and a tier-0 row otherwise answer different questions and their
+   * difference is partly the instrument; §12.4 records a conclusion withdrawn
+   * for exactly that, with ringing. Set it to the smallest raster in the sweep.
+   *
+   * It does **not** make ringing comparable — that metric derives its envelope
+   * radius from the upscale factor and has no equivalent knob — so a ladder
+   * that sets this still reads ringing per row, never across.
+   */
+  artifactGridEdge?: number;
+  /**
    * Byte length every arm must encode to. A sweep comparing layouts is only
    * meaningful at a fixed budget, and a config that overrides part of a layout
    * inherits the rest from the shipped default — so when a default moves, arms
@@ -190,6 +204,27 @@ interface SweepRow {
   meanSpuriousVertical: number | null;
   meanSpuriousHorizontal: number | null;
   meanSpuriousDiagonal: number | null;
+  /**
+   * Mean spectral deficit — energy the reference has that the decode drops. The
+   * mirror of `meanSpurious`, and the reason both are reported: a placeholder
+   * that loses detail and one that invents it are indistinguishable to every
+   * aggregate fidelity metric here, so the pair is the only thing that says
+   * which trade an arm is making.
+   */
+  meanDeficit: number | null;
+  /**
+   * Per-image artifact scores, aligned with `imageNames` exactly as
+   * `perImageCiede` is, or null when the arm scored no artifacts.
+   *
+   * The means alone cannot answer which *content* an artifact appears on, and
+   * that is the question a design round needs: a mean over 31 photographs says
+   * the format invents structure, not that it invents it on the textured ones.
+   * `stratify.ts` joins these to the covariates `natural-images.ts` records per
+   * image (Laplacian detail energy, mean L*, mean C*).
+   */
+  perImageSpurious: (number | null)[] | null;
+  perImageDeficit: (number | null)[] | null;
+  perImageRinging: (number | null)[] | null;
   /** ΔE00 change vs the incumbent, in percent (negative = better). */
   ciedeDeltaPct: number | null;
   /** All guard metrics within tolerance of the incumbent. */
@@ -399,6 +434,7 @@ async function scoreVariant(
   const spuriousV: (number | null)[] = [];
   const spuriousH: (number | null)[] = [];
   const spuriousD: (number | null)[] = [];
+  const deficits: (number | null)[] = [];
   let bytesSum = 0;
 
   for (const input of inputs) {
@@ -454,6 +490,7 @@ async function scoreVariant(
     spuriousV.push(local.spuriousVertical);
     spuriousH.push(local.spuriousHorizontal);
     spuriousD.push(local.spuriousDiagonal);
+    deficits.push(local.deficit);
   }
 
   return {
@@ -478,6 +515,12 @@ async function scoreVariant(
     meanSpuriousVertical: mean(spuriousV),
     meanSpuriousHorizontal: mean(spuriousH),
     meanSpuriousDiagonal: mean(spuriousD),
+    meanDeficit: mean(deficits),
+    // Null rather than an array of nulls when the run scored no artifacts, so a
+    // consumer cannot mistake "not measured" for "measured as nothing".
+    perImageSpurious: spuriouses.some((v) => v !== null) ? spuriouses : null,
+    perImageDeficit: deficits.some((v) => v !== null) ? deficits : null,
+    perImageRinging: ringings.some((v) => v !== null) ? ringings : null,
     ciedeDeltaPct: null,
     guardsOk: null,
     pairedCi: null,
@@ -571,6 +614,12 @@ async function main(): Promise<void> {
     backdrops: BACKDROP_SETS[config.backdrops ?? "white"],
     alphaFidelity: config.alphaFidelity ?? false,
     artifacts: config.artifacts ?? false,
+    // Spread rather than assigned: `exactOptionalPropertyTypes` distinguishes
+    // "absent" from "present and undefined", and the metric's own default
+    // applies only to the former.
+    ...(config.artifactGridEdge !== undefined
+      ? { artifactGridEdge: config.artifactGridEdge }
+      : {}),
   });
   if (!config.variants?.length) {
     throw new Error(`config ${config.name} declares no variants`);
@@ -580,6 +629,14 @@ async function main(): Promise<void> {
   if (config.artifactGuardRise !== undefined && !config.artifacts) {
     throw new Error(
       `config ${config.name} sets artifactGuardRise but not artifacts, so the guard would pass unconditionally on unscored metrics`,
+    );
+  }
+  // Same failure shape as the guard above: without `artifacts` the grid cap
+  // applies to a computation that never runs, so the config would read as
+  // making its arms comparable while doing nothing at all.
+  if (config.artifactGridEdge !== undefined && !config.artifacts) {
+    throw new Error(
+      `config ${config.name} sets artifactGridEdge but not artifacts, so the cap would apply to a metric that is never computed`,
     );
   }
 
@@ -644,7 +701,7 @@ async function main(): Promise<void> {
   const outPath = path.join(outDir, `${config.name}${suffix}.json`);
   await fs.writeFile(
     outPath,
-    `${JSON.stringify({ name: config.name, description: config.description ?? null, split, images: inputs.length, guardTolerances: { ssimulacra2Drop: GUARD_SSIM2_DROP, relativeRise: GUARD_REL_RISE }, corpus, backdrops: config.backdrops ?? "white", alphaFidelity: config.alphaFidelity ?? false, artifacts: config.artifacts ?? false, artifactGuardRise: config.artifactGuardRise ?? null, forceOpaque: config.forceOpaque ?? false, expectBytes: config.expectBytes ?? null, rows }, null, 2)}\n`,
+    `${JSON.stringify({ name: config.name, description: config.description ?? null, split, images: inputs.length, guardTolerances: { ssimulacra2Drop: GUARD_SSIM2_DROP, relativeRise: GUARD_REL_RISE }, corpus, backdrops: config.backdrops ?? "white", alphaFidelity: config.alphaFidelity ?? false, artifacts: config.artifacts ?? false, artifactGuardRise: config.artifactGuardRise ?? null, artifactGridEdge: config.artifactGridEdge ?? null, forceOpaque: config.forceOpaque ?? false, expectBytes: config.expectBytes ?? null, rows }, null, 2)}\n`,
   );
 
   console.log(`\nDecision table (${split} split) → ${outPath}`);
@@ -657,7 +714,7 @@ async function main(): Promise<void> {
     (r) => r.meanRinging !== null || r.meanSpurious !== null,
   );
   console.log(
-    `  ${"Variant".padEnd(28)} ${"Bytes".padStart(6)} ${"ΔE00".padStart(8)} ${"Δ%".padStart(7)} ${"Med".padStart(8)} ${"SSIM2".padStart(8)} ${"Butter".padStart(8)} ${"DSSIM".padStart(8)}${showAlpha ? ` ${"αMAE".padStart(8)}` : ""}${showArtifacts ? ` ${"Ring".padStart(7)} ${"Spur".padStart(7)} ${"Sp:V/H/D".padStart(20)}` : ""} ${"paired 95% CI".padStart(18)} ${"win/n".padStart(7)} Guards`,
+    `  ${"Variant".padEnd(28)} ${"Bytes".padStart(6)} ${"ΔE00".padStart(8)} ${"Δ%".padStart(7)} ${"Med".padStart(8)} ${"SSIM2".padStart(8)} ${"Butter".padStart(8)} ${"DSSIM".padStart(8)}${showAlpha ? ` ${"αMAE".padStart(8)}` : ""}${showArtifacts ? ` ${"Ring".padStart(7)} ${"Spur".padStart(7)} ${"Deficit".padStart(8)} ${"Sp:V/H/D".padStart(20)}` : ""} ${"paired 95% CI".padStart(18)} ${"win/n".padStart(7)} Guards`,
   );
   const cell = (v: number | null, d: number, w: number) =>
     (v !== null ? v.toFixed(d) : "N/A").padStart(w);
@@ -672,7 +729,7 @@ async function main(): Promise<void> {
       .map((v) => (v !== null ? v.toFixed(2) : "N/A"))
       .join("/");
     const artifacts = showArtifacts
-      ? ` ${cell(r.meanRinging, 2, 7)} ${cell(r.meanSpurious, 2, 7)} ${vhd.padStart(20)}`
+      ? ` ${cell(r.meanRinging, 2, 7)} ${cell(r.meanSpurious, 2, 7)} ${cell(r.meanDeficit, 2, 8)} ${vhd.padStart(20)}`
       : "";
     const signed = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(3)}`;
     const ci = r.pairedCi

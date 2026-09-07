@@ -655,7 +655,7 @@ run = [
 # window-radius derivation is wrong and every ringing number is noise. Pure
 # computation: no iqa-cli, no corpus, no network.
 [tasks."selftest:metrics"]
-description = "Self-check the locally-computed metrics (ringing, spurious detail, aspect)"
+description = "Self-check the locally-computed metrics (ringing, spurious detail, deficit, aspect)"
 depends = ["build:compare"]
 run = "node tools/comparison/dist/metric-selftest.js"
 
@@ -704,6 +704,20 @@ run = "node tools/comparison/dist/verify-experiments.js"
 description = "Regenerate the curated corpus attribution file from the pin table"
 depends = ["build:compare"]
 run = "node tools/comparison/dist/corpus-licenses.js"
+
+# Read a sweep's per-image scores against the covariates natural-images.ts
+# records per image -- mean L*, mean chroma C*, Laplacian detail energy, all
+# measured on the same 512 px reference the harness scores against, for §9.1's
+# corpus audit, and never read back since. Every table in EXPERIMENTS.md is an
+# aggregate, which is the right unit for choosing a constant and the wrong one
+# for deciding what to change: a mean says the format invents structure, not
+# which pictures it invents it on.
+#   stratify <sweep> [--metric spurious|deficit|ringing|ciede]
+#                    [--by detail|lightness|chroma] [--bins 3]
+[tasks."stratify"]
+description = "Read a sweep's per-image scores against the corpus covariates"
+depends = ["build:compare"]
+run = "node tools/comparison/dist/stratify.js"
 
 # Assert every sweep arm sets the constants its own label names. A tune string
 # is applied on top of Tunables::DEFAULT, so an omitted knob inherits whatever

@@ -63,6 +63,7 @@ export interface SweepRow {
   meanAlphaMae: number | null;
   meanRinging: number | null;
   meanSpurious: number | null;
+  meanDeficit: number | null;
   ciedeDeltaPct: number | null;
   guardsOk: boolean | null;
   perImageCiede: (number | null)[];
@@ -102,6 +103,7 @@ function fromRdRow(r: RdRow): SweepRow {
     // the two locally-computed metrics are opt-in per entry point.
     meanRinging: null,
     meanSpurious: null,
+    meanDeficit: null,
     ciedeDeltaPct: null,
     guardsOk: null,
     perImageCiede: [],
@@ -170,6 +172,7 @@ export type Metric =
   | "meanAlphaMae"
   | "meanRinging"
   | "meanSpurious"
+  | "meanDeficit"
   | "ciedeDeltaPct"
   | "bytes"
   | "guardsOk"
@@ -733,6 +736,20 @@ const ALPHA_HOLDOUT_ALIASES: Record<string, string> = {
   "`alpha_ac_fit`": "alpha_ac_fit alone",
   "A28@3 + `alpha_ac_fit`": "+ alpha_ac_fit",
   "compact alpha A16@3 L12@4 C1@3": "compact 21B ADOPTED A16@3 L12@4 C1@3",
+};
+
+/**
+ * §13's ladder rows. The document names a tier by its code and role; the sweep
+ * labels carry the byte count too, because a decision table read on its own
+ * needs it.
+ */
+const ARTIFACT_LADDER_ALIASES: Record<string, string> = {
+  "code 0 (compact)": "code 0 (compact, 21 B)",
+  "code 1 (default)": "code 1 (default, 32 B)",
+  "**code 2**": "code 2 (108 B)",
+  "code 2": "code 2 (108 B)",
+  "code 3": "code 3 (411 B)",
+  "code 4": "code 4 (1623 B)",
 };
 
 const BINDINGS: Binding[] = [
@@ -1412,6 +1429,39 @@ const BINDINGS: Binding[] = [
       guards: "guardsOk",
     },
   },
+
+  // §13 — the tier ladder, on each tier's own raster and then on one common
+  // spectral grid. Both tables are bound: the first table's artifact columns
+  // may not be read *across* rows, but each cell is still a claim.
+  {
+    kind: "rows",
+    section: "13.1",
+    table: 0,
+    sweep: "artifact-ladder",
+    columns: {
+      bytes: "bytes",
+      ΔE00: "meanCiede",
+      SSIM2: "meanSsimulacra2",
+      DSSIM: "meanDssim",
+      Ring: "meanRinging",
+      Spur: "meanSpurious",
+      Deficit: "meanDeficit",
+    },
+    aliases: ARTIFACT_LADDER_ALIASES,
+  },
+  {
+    kind: "rows",
+    section: "13.1",
+    table: 1,
+    sweep: "artifact-ladder-common-grid",
+    columns: {
+      bytes: "bytes",
+      ΔE00: "meanCiede",
+      Spur: "meanSpurious",
+      Deficit: "meanDeficit",
+    },
+    aliases: ARTIFACT_LADDER_ALIASES,
+  },
 ];
 
 /**
@@ -1492,6 +1542,8 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
     "`verdict` is the section's conclusion in words, not a measurement",
   "11.12#0":
     "`verdict` as in table 1; the tune and holdout columns are quoted from two sweeps and bound in §11.5 and §7.12 respectively",
+  "13.1#1":
+    "`Spur / Deficit` is the ratio of two columns in the same row, both of which are bound; it is the reading, not a measurement",
 };
 
 // ─── Entry point ────────────────────────────────────────────────────────────
@@ -1549,6 +1601,8 @@ const UNBOUND_NOTES: Record<string, string> = {
   "11.12#0":
     "verdict prose: tune and holdout deltas quoted side by side from two sweeps",
   "11.12#1": "verdict prose, as §11.12 table 0",
+  "13.3#0":
+    "stratify output, not a sweep: bin means over per-image scores joined to natural-images.ts's covariates. Reproduce with `mise run stratify artifact-ladder-common-grid --metric spurious --by detail`",
 };
 
 if (values["list-unbound"]) {

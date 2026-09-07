@@ -428,15 +428,22 @@ function addWave(
         dw,
         dh,
       );
-      if (s === null || s.spurious > 0) {
+      // Both scores, together: they are the same comparison with the sign
+      // flipped, so the ideal low-pass has to be exactly zero on each. Deficit
+      // is the one that could plausibly leak — its clamp faces the other way,
+      // so a rounding asymmetry between the two sides would show up here and
+      // nowhere in `spurious`.
+      if (s === null || s.spurious > 0 || s.deficit > 0) {
         failures.push(
-          `${label} ${dw}x${dh}=${s?.spurious.toFixed(4) ?? "null"}`,
+          `${label} ${dw}x${dh}=` +
+            `spur ${s?.spurious.toFixed(4) ?? "null"} / ` +
+            `def ${s?.deficit.toFixed(4) ?? "null"}`,
         );
       }
     }
   }
   check(
-    "the ideal low-pass decode scores 0 at every decode size",
+    "the ideal low-pass decode scores 0 spurious AND 0 deficit at every size",
     failures.length === 0,
     failures.length === 0
       ? "8 sizes x 3 content shapes, 4px to 512px against a 512px reference"
@@ -467,6 +474,46 @@ check(
   "invented structure registers",
   vertical !== null && vertical.spurious > 1,
   `spurious=${vertical?.spurious.toFixed(3)}`,
+);
+
+// S3b. Deficit is the mirror, and has to behave like one: a decode that is
+// *flatter* than the ideal low-pass has dropped structure the reference has, so
+// deficit must rise while spurious stays at zero. Without this, `deficit` could
+// be wired to the wrong side of the subtraction and every table would still
+// look plausible — the two scores move together often enough that only a case
+// built to separate them can tell.
+{
+  const flattened = new Uint8Array(sDec);
+  for (let i = 0; i < SW * SH; i++) {
+    for (let c = 0; c < 3; c++) {
+      const v = flattened[i * 4 + c] ?? 0;
+      flattened[i * 4 + c] = Math.round(128 + (v - 128) * 0.4);
+    }
+  }
+  const s = computeSpurious(sRef, flattened, REF_W, REF_H, SW, SH);
+  // `spurious` is asserted negligible rather than exactly zero, on the same
+  // grounds as S8 below: the exact zero belongs to the ideal-low-pass case,
+  // where both sides are the same array. Here the contracted decode carries its
+  // own 8-bit rounding, and across ~9000 coefficients the largest residue
+  // occasionally grazes the one-level dead zone. Measured at 0.006 against a
+  // deficit of 14.5 — three orders of magnitude apart, which is the claim.
+  check(
+    "a decode flatter than the ideal low-pass scores deficit, not spurious",
+    s !== null && s.deficit > 1 && s.spurious < 0.05,
+    `deficit=${s?.deficit.toFixed(3)} spurious=${s?.spurious.toFixed(4)}`,
+  );
+}
+
+// S3c. And the converse, on the same pair: adding energy the reference does not
+// have must move `spurious` without moving `deficit` down past zero. Asserting
+// both directions is what makes the pair a pair rather than two numbers that
+// happen to be printed together.
+check(
+  "invented structure does not register as deficit",
+  vertical !== null &&
+    vertical.deficit >= 0 &&
+    vertical.spurious > vertical.deficit,
+  `spurious=${vertical?.spurious.toFixed(3)} deficit=${vertical?.deficit.toFixed(3)}`,
 );
 
 // S4/S5. Orientation. A pattern varying along x is *vertical* stripes; one

@@ -1,0 +1,29 @@
+{
+  "name": "artifact-ladder-common-grid",
+  "description": "The tier ladder again, with the spectral analysis grid pinned to 32 px -- the compact tier's natural raster, and so the largest grid every arm can be asked about on equal terms. `artifact-ladder` scores each arm on its own raster, which is what a viewer receives but is NOT comparable across rows: a tier-4 decode is judged on frequencies a tier-0 decode cannot represent, so part of any difference is the instrument rather than the format. EXPERIMENTS.md 12.4 is the record of that mistake being made and caught, with ringing rather than these. With the grid pinned, every arm answers one question -- among the frequencies all five tiers can represent, how much structure does this one invent, and how much does it drop -- and a rise down the column is a fact about the format. Ringing is deliberately still reported and still not comparable: it derives its envelope radius from the upscale factor and has no equivalent knob, which is exactly the asymmetry 12.4 documents.",
+  "photoOnly": true,
+  "artifacts": true,
+  "artifactGridEdge": 32,
+  "variants": [
+    {
+      "label": "code 0 (compact, 21 B)",
+      "tier": 0
+    },
+    {
+      "label": "code 1 (default, 32 B)",
+      "tier": 1
+    },
+    {
+      "label": "code 2 (108 B)",
+      "tier": 2
+    },
+    {
+      "label": "code 3 (411 B)",
+      "tier": 3
+    },
+    {
+      "label": "code 4 (1623 B)",
+      "tier": 4
+    }
+  ]
+}
