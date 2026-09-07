@@ -10,10 +10,26 @@
 # a redirect. A file task gets real positionals, which is why every other
 # parameterized task in this repo is one (see mise-tasks/mutants/rust/diff).
 #
-# Writes tools/comparison/output/perf/perf-stages.json alongside the human
-# output, so spec/PERFORMANCE.md §1 can be checked by `verify:benchmark` rather
-# than transcribed by hand — a gap §1 has carried a note about since it was
-# written.
+# Writes tools/comparison/baselines/perf-stages.json alongside the human output,
+# so spec/PERFORMANCE.md §1 can be checked by `verify:benchmark` rather than
+# transcribed by hand — a gap §1 has carried a note about since it was written.
+#
+# baselines/, not output/. It wrote to output/perf/ and the gate read from
+# baselines/, which meant a hand-copy nobody had written down stood between the
+# measurement and the check: re-running this task appeared to change nothing,
+# and the committed artifact could sit any distance from what the task
+# produced with no way to tell. PERFORMANCE.md already documented it as writing
+# here. Writing a committed file does dirty the tree, and that is the point —
+# `verify:benchmark` fails a run recorded from a dirty tree, so a stray
+# experiment cannot quietly become the baseline.
+#
+# This deliberately does NOT follow `benchmark`/`benchmark:full`, which write to
+# output/perf/ and are copied into baselines/ by hand (PERFORMANCE.md §0). Those
+# runs are a whole-machine wall-clock sweep a maintainer publishes on a quiet
+# host, and the copy step is the decision to publish. A stage share is a ratio
+# taken inside one process, reproducible on any host, and merged one cell per
+# invocation — there is no run to decide about, only a cell to record, and an
+# uncopied cell is just a measurement the gate cannot see.
 set -euo pipefail
 
 w="${1:-512}"
@@ -21,7 +37,7 @@ h="${2:-512}"
 tier="${3:-1}"
 iters="${4:-20}"
 
-out_dir="tools/comparison/output/perf"
+out_dir="tools/comparison/baselines"
 mkdir -p "$out_dir"
 
 raw="$(cargo run -q --manifest-path rust/Cargo.toml --release \
