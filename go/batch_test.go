@@ -147,3 +147,29 @@ func TestBatchEncodeInvalidPanics(t *testing.T) {
 		{W: 2, H: 2, Rgba: make([]byte, 3), Gamut: GamutSRGB}, // wrong length
 	})
 }
+
+// NewImageInput is the non-trap path to the default tier: Go cannot default a
+// struct field, so a literal that omits Quality encodes at CompactTier (pinned
+// above). This asserts the constructor agrees with Encode, which is the whole
+// reason it exists — if the two ever disagree, one of them is wrong about what
+// "default" means and callers have no way to tell which.
+func TestNewImageInputMatchesEncode(t *testing.T) {
+	rgba := solidImage(8, 8, 200, 100, 50, 255)
+	be := NewBatchEncoder()
+	defer be.Close()
+
+	in := NewImageInput(8, 8, rgba, GamutSRGB)
+	if in.Quality != DefaultTier {
+		t.Fatalf("NewImageInput set Quality %d, want DefaultTier (%d)", in.Quality, DefaultTier)
+	}
+
+	got := be.EncodeBatch([]ImageInput{in})
+	want := Encode(8, 8, rgba, GamutSRGB)
+	if !bytes.Equal(got[0].Hash, want.Hash) {
+		t.Error("NewImageInput did not produce the same bytes as Encode")
+	}
+	if len(got[0].Hash) != tierByteLengths[DefaultTier] {
+		t.Errorf("NewImageInput produced %d bytes, want %d (DefaultTier)",
+			len(got[0].Hash), tierByteLengths[DefaultTier])
+	}
+}

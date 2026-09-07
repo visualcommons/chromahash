@@ -692,6 +692,19 @@ description = "Check every table in spec/EXPERIMENTS.md against the sweep output
 depends = ["build:compare"]
 run = "node tools/comparison/dist/verify-experiments.js"
 
+# Regenerate fixtures/natural/LICENSES.md from the pin table in
+# src/natural-images.ts, so the attribution 39 Wikimedia Commons images require
+# cannot drift from the table that names them. `--check` fails when the two
+# disagree and is what ci-comparison.yml runs. Three source files and the
+# generated file itself have referenced this task by name since it was written;
+# it did not exist until now, so the generator was reachable only as a bare
+# `node dist/corpus-licenses.js` and nothing ran `--check` anywhere.
+#   --check   fail if LICENSES.md is stale rather than rewriting it
+[tasks."corpus:licenses"]
+description = "Regenerate the curated corpus attribution file from the pin table"
+depends = ["build:compare"]
+run = "node tools/comparison/dist/corpus-licenses.js"
+
 # Assert every sweep arm sets the constants its own label names. A tune string
 # is applied on top of Tunables::DEFAULT, so an omitted knob inherits whatever
 # ships -- which meant that once §10 adopted the §8 recipe, every arm whose

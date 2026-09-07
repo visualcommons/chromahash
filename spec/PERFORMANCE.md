@@ -52,10 +52,18 @@ cell cannot be published here.
 > ```bash
 > mise run benchmark          # -> tools/comparison/output/perf/perf.json
 > mise run benchmark:full     # -> tools/comparison/output/perf/perf-full.json
-> cp tools/comparison/output/perf/perf*.json tools/comparison/baselines/
+> cp tools/comparison/output/perf/perf.json      tools/comparison/baselines/perf-report.json
+> cp tools/comparison/output/perf/perf-full.json tools/comparison/baselines/perf-report-full.json
 > mise run verify:benchmark -- --fix   # rewrites every TBD from the runs
 > mise run verify:benchmark            # must pass
 > ```
+>
+> The two `cp` lines **rename** as they copy, and that is not cosmetic: the gate
+> reads `baselines/perf-report-full.json` then `baselines/perf-report.json` and
+> ignores anything else in the directory (`verify-benchmark.ts`). This block used
+> to say `cp …/perf*.json tools/comparison/baselines/`, which lands the files
+> under their output names, leaves the gate reading nothing, and reports the
+> document as unmeasured with no hint as to why. `TESTING.md` had it right.
 >
 > Run it on a quiet machine, from a clean tree — the driver records
 > `git.dirty`, and the gate fails on a run that cannot be traced to a revision.

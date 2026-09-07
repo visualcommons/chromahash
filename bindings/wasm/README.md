@@ -22,9 +22,9 @@ import init, { ChromaHash, Gamut } from "chromahash-wasm";
 
 await init();                                  // load + instantiate the .wasm
 const hash = ChromaHash.encode(w, h, rgba, Gamut.Srgb);  // rgba: Uint8Array
-const bytes = hash.asBytes();                  // Uint8Array(32)
+const bytes = hash.asBytes();                  // Uint8Array(32) at the default tier
 
-const back = ChromaHash.fromBytes(bytes);      // throws on non-32-byte input
+const back = ChromaHash.fromBytes(bytes);      // throws unless the length matches the header
 const { width, height, rgba: pixels } = back.decode();
 ```
 
