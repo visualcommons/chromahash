@@ -1266,14 +1266,23 @@ tier is written down.
 no alpha, so this needs its own sweep before it is written down.
 
 **2. Selection weights** `aniso = 1.2`, `sel_hv = 0.15` — key
-`priority · (1 + 1.2·sin²2θ) · (1 + 0.15·cos2θ)`. Worth −1.03% on its own on
-tune, and −0.34 pp of the holdout verdict (§7.12: −3.16% without them, −3.50%
-with). This is the weakest of the three constants-level changes and the one the
-corpus revision cut hardest (§7.4) — it is carried by the holdout result, not by
-tune. **Blocker:** it is a float sort and costs **+32% decode time**; it needs
-the integer reformulation `RATIONALE.md` already flags before it can be
-normative. If the integer reformulation proves awkward, dropping `sel_hv` and
-keeping the layout still clears the ≥3% rule (−3.16%).
+`priority · (1 + 1.2·sin²2θ) · (1 + 0.15·cos2θ)`. Worth **−0.36 pp** of the
+holdout verdict (§7.12: −3.37% without them, −3.72% with). This is the weakest
+of the three constants-level changes, and dropping `sel_hv` while keeping the
+layout still clears the ≥3% rule (−3.37%).
+
+> **Three claims this paragraph used to make, and what became of them.** It said
+> the weights were worth −1.03% on tune, citing §7.4 — a table since retired as
+> not reproducible, because its arms named constants they did not set. §11.5 is
+> the grid that replaces it, and on the Wikimedia corpus the weights buy nothing
+> on tune: isotropic is −0.17% with a CI straddling zero, and `aniso 1.2 / hv 0`
+> is −0.46% with a CI that *excludes* it, pointing the other way. It also called
+> them a blocker — a float sort costing **+32% decode time**, pending an integer
+> reformulation. §10.2 delivered that: the exact Q12 key selects the identical
+> order at tier 0 over all 256 aspect bytes, and computing it once per candidate
+> made decode ~8% *faster* than v0.6's unweighted sort. The blocker is gone; what
+> is left is a lever with no in-sample support, carried entirely by §7.12's
+> holdout delta.
 
 **3. Everything else stays.** Aspect 8 b (§7.5 — narrowing it only looks free
 because the evaluation is blind to aspect error), DC 7/7/7, scales 6/6/5 on the
@@ -1953,7 +1962,7 @@ Three findings, and the first two are uncomfortable:
 2. **Isotropic is statistically indistinguishable from the adopted weights.**
    On the current corpus the selection weights buy nothing measurable on tune;
    their justification rests entirely on the holdout delta §7.12 recorded
-   (−3.16% without them, −3.50% with). §8.1 already called them "the weakest of
+   (−3.37% without them, −3.72% with). §8.1 already called them "the weakest of
    the three constants-level changes"; this is weaker still.
 3. **Large `aniso` is real, and negative `hv` no longer is.** Every arm at
    `aniso ≥ 2.0` is significantly worse whatever `hv` does, so the weight is not
