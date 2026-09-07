@@ -2305,7 +2305,17 @@ unchanged; the reason it is rejected is now over-determined.
 | **A28@3 L22@4 C3@3** | −17.10% | **−16.19%**, every guard improving | **adopted** |
 | `alpha_ac_fit` | −0.21% | +0.09% | **rejected** |
 | A28@3 + `alpha_ac_fit` | — | −14.48% (worse than without) | rejected |
-| compact alpha A16@3 L12@4 C1@3 | −13.00% | −6.96%, guards ok | adopted |
+| compact alpha A16@3 L12@4 C1@3 | −13.00% | −9.49%, guards ok | adopted |
+
+> **The last row is measured against the 21-byte shipped shape**, not against
+> the 32-byte incumbent the three rows above it use — a 21 B candidate against a
+> 32 B baseline is a byte-count comparison wearing an allocation comparison's
+> clothes. That was already true of its tune figure and was not stated; its
+> holdout figure was against the 32 B incumbent instead, so one row was reporting
+> its two columns against two different baselines. Both are now the 21 B shape,
+> which moves the holdout cell from −6.96% to **−9.49%** and strengthens the
+> verdict rather than changing it. The binding in `verify-experiments.ts` records
+> the baseline per row, so the two columns cannot drift apart again.
 
 The alpha allocation validates emphatically: SSIMULACRA2 −307.2 → −242.7,
 Butteraugli 57.56 → 44.36, DSSIM 0.2319 → 0.2179, αMAE 0.2696 → 0.1675.

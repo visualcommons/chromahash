@@ -137,6 +137,43 @@ const REGISTER: Claim[] = [
     transform: abs,
   },
 
+  // ── The alpha allocation ─────────────────────────────────────────────────
+  // Quoted in three files. Its source table, §11.12's alpha holdout, was
+  // unbound until the 2026-09 audit, and its sweep had drifted so far it no
+  // longer reproduced the figure: the incumbent labelled `SHIPPED A5@4` set no
+  // alpha AC knobs, inherited the adopted A28@3, and encoded to 40 bytes.
+  {
+    file: "README.md",
+    what: "the alpha allocation on holdout",
+    pattern:
+      /Worth \*\*−([\d.]+)% mean ΔE00\*\* on a never-tuned alpha holdout/,
+    section: "11.12",
+    table: 1,
+    row: "**A28@3 L22@4 C3@3**",
+    column: "holdout",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "the alpha allocation on holdout",
+    pattern: /Worth \*\*−([\d.]+)% mean ΔE00\*\* on a never-tuned/,
+    section: "11.12",
+    table: 1,
+    row: "**A28@3 L22@4 C3@3**",
+    column: "holdout",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the alpha allocation on holdout",
+    pattern: /−([\d.]+)% mean ΔE00 on a never-tuned alpha holdout/,
+    section: "11.12",
+    table: 1,
+    row: "**A28@3 L22@4 C3@3**",
+    column: "holdout",
+    transform: abs,
+  },
+
   // ── Cross-format positioning ─────────────────────────────────────────────
   {
     file: "README.md",

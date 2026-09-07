@@ -73,13 +73,23 @@ export function parseTables(markdown: string): DocTable[] {
   return tables;
 }
 
-/** Parse a doc cell like "**10.100**", "−0.81%", "8.57 @32 px", "—". */
+/**
+ * Parse a doc cell like "**10.100**", "−0.81%", "8.57 @32 px", "—".
+ *
+ * A trailing prose clause after a comma is dropped, so a verdict cell like
+ * "**−16.19%**, every guard improving" yields its figure rather than nothing.
+ * That matters more than it looks: a cell that fails to parse is silently
+ * skipped by `compare`, so a bound column full of unparseable cells checks
+ * nothing while reporting as bound — the same class of invisible gap that
+ * `--list-unbound-columns` exists to expose, one level further down.
+ */
 export function parseCell(raw: string): number | null {
   const cleaned = raw
     .replace(/[*`]/g, "")
     .replace(/[−–—]/g, "-")
     .replace(/%/g, "")
     .replace(/@.*$/, "")
+    .replace(/^(\s*[-+]?[0-9.]+)\s*,.*$/, "$1")
     .replace(/\s*B$/i, "")
     .trim();
   if (cleaned === "" || cleaned === "-" || cleaned.toLowerCase() === "n/a") {

@@ -716,6 +716,25 @@ const byFormatAndBytes: Resolver = (rows, docCells) => {
     .find((r) => Math.abs((r.bytes ?? 0) - bytes) < 1);
 };
 
+/**
+ * §11.12's alpha rows, shared by its two bindings: the `tune` and `holdout`
+ * columns are the same candidates measured by two runs of one config.
+ */
+const ALPHA_HOLDOUT_ROW_BASELINES: Record<string, string> = {
+  // A 21-byte candidate against the 32-byte incumbent measures the byte count,
+  // not the allocation. The document's tune column already did this and did not
+  // say so; its holdout column did not, so one row reported two columns against
+  // two baselines. Pinned here so they cannot part again.
+  "compact alpha A16@3 L12@4 C1@3": "compact 21B shipped shape",
+};
+
+const ALPHA_HOLDOUT_ALIASES: Record<string, string> = {
+  "**A28@3 L22@4 C3@3**": "ADOPTED A28@3 L22@4 C3@3",
+  "`alpha_ac_fit`": "alpha_ac_fit alone",
+  "A28@3 + `alpha_ac_fit`": "+ alpha_ac_fit",
+  "compact alpha A16@3 L12@4 C1@3": "compact 21B ADOPTED A16@3 L12@4 C1@3",
+};
+
 const BINDINGS: Binding[] = [
   // §4.1 — the raster-vs-coefficients table. Its Δ is derived from the two
   // columns beside it, and was an order of magnitude wrong through two hand
@@ -1330,6 +1349,34 @@ const BINDINGS: Binding[] = [
     },
   },
 
+  // §11.12's alpha table — bound after the 2026-09 audit found its source
+  // sweep no longer reproduced it. `v07-holdout-alpha`'s incumbent, labelled
+  // `SHIPPED A5@4`, set no alpha AC knobs and so inherited the ADOPTED A28@3:
+  // it encoded to 40 bytes rather than 32 and reported the adopted allocation's
+  // own alpha MAE, i.e. the sweep was scoring the adopted layout against
+  // itself. The document's figures were right -- they predate the drift -- and
+  // reproduce to the digit once the arms are pinned. Nothing noticed for the
+  // usual reason: the table was unbound.
+  {
+    kind: "rows",
+    section: "11.12",
+    table: 1,
+    sweep: "v07-holdout-alpha",
+    columns: { tune: "ciedeDeltaPct" },
+    aliases: ALPHA_HOLDOUT_ALIASES,
+    skipRows: ["A28@3 + `alpha_ac_fit`"],
+    rowBaselines: ALPHA_HOLDOUT_ROW_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "11.12",
+    table: 1,
+    sweep: "v07-holdout-alpha-holdout",
+    columns: { holdout: "ciedeDeltaPct" },
+    aliases: ALPHA_HOLDOUT_ALIASES,
+    rowBaselines: ALPHA_HOLDOUT_ROW_BASELINES,
+  },
+
   // §12 — the synthesis window, with the artifact columns that decide it. These
   // are the first bindings to check `meanRinging`/`meanSpurious`, which is the
   // point: §12's verdict turns on them, so a stale artifact cell would be a
@@ -1441,6 +1488,10 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
     "every row names a *different* control, and two state it in prose inside the cell (\u201c-0.04% vs the same layout without CfL\u201d). rowBaselines could address the first half; the prose cells would still need the sentence parsed, and a binding that silently checked five rows of seven would recreate the problem this listing exists to expose",
   "11.10#1":
     "ranks, derived by ordering two other sweeps' results rather than read from either",
+  "11.12#1":
+    "`verdict` is the section's conclusion in words, not a measurement",
+  "11.12#0":
+    "`verdict` as in table 1; the tune and holdout columns are quoted from two sweeps and bound in §11.5 and §7.12 respectively",
 };
 
 // ─── Entry point ────────────────────────────────────────────────────────────
@@ -1570,12 +1621,37 @@ for (const binding of BINDINGS) {
   checked++;
 }
 
-const partial = coverage.filter((c) => c.uncovered.length > 0);
-const totalAxes = coverage.reduce(
+// Two bindings can share one table -- §10.3 splits by corpus split and §11.12
+// by which sweep each column came from -- so coverage is the union across
+// them. Reporting per binding would show each as partial while together they
+// cover the table, which is the opposite of the point.
+const merged = new Map<string, Coverage>();
+for (const c of coverage) {
+  const key = `${c.section}#${c.table}`;
+  const prev = merged.get(key);
+  if (!prev) {
+    merged.set(key, {
+      ...c,
+      covered: [...c.covered],
+      uncovered: [...c.uncovered],
+    });
+    continue;
+  }
+  const covered = new Set([...prev.covered, ...c.covered]);
+  prev.covered = [...covered];
+  prev.uncovered = [...new Set([...prev.uncovered, ...c.uncovered])].filter(
+    (x) => !covered.has(x),
+  );
+}
+const partial = [...merged.values()].filter((c) => c.uncovered.length > 0);
+const totalAxes = [...merged.values()].reduce(
   (n, c) => n + c.covered.length + c.uncovered.length,
   0,
 );
-const coveredAxes = coverage.reduce((n, c) => n + c.covered.length, 0);
+const coveredAxes = [...merged.values()].reduce(
+  (n, c) => n + c.covered.length,
+  0,
+);
 
 console.log(
   `Checked ${stats.cells} cells across ${checked} tables ` +

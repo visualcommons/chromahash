@@ -3,11 +3,11 @@
   "corpus": "alpha",
   "backdrops": "white-black-grey",
   "alphaFidelity": true,
-  "description": "SS11.12 - the single holdout validation of the alpha-mode changes. Run once, after every tune decision was settled. The incumbent is the alpha layout as shipped at the start of SS11, so the delta is what stabilizing v0.7 moves alpha mode by. The tier-0 candidate is A28@3 L22@4 C3@3 and the compact-tier candidate A16@3 L12@4 C1@3; both were chosen on tune by protecting the mostly-opaque subgroup rather than by taking the deltaE00-optimal corner.",
+  "description": "SS11.12 - the single holdout validation of the alpha-mode changes. Run once, after every tune decision was settled. The incumbent is the alpha layout as shipped at the start of SS11, so the delta is what stabilizing v0.7 moves alpha mode by. The tier-0 candidate is A28@3 L22@4 C3@3 and the compact-tier candidate A16@3 L12@4 C1@3; both were chosen on tune by protecting the mostly-opaque subgroup rather than by taking the deltaE00-optimal corner. Every arm pins alpha_ac_count and alpha_ac_bits explicitly. They are applied on top of Tunables::DEFAULT, so an arm that omitted them inherited the ADOPTED A28@3 -- which is what the incumbent labelled `SHIPPED A5@4` was doing: it encoded to 40 bytes rather than 32 and reported the adopted allocation's own alpha MAE, so this sweep was scoring the adopted layout against itself with a different luma/chroma split. Same defect class as EXPERIMENTS.md 9.5's seven configs; this one was not among them.",
   "variants": [
     {
       "label": "SHIPPED A5@4 L20@5 C9@4",
-      "tune": "la1=20:5 ca=9:4"
+      "tune": "la1=20:5 ca=9:4 alpha_ac_count=5 alpha_ac_bits=4"
     },
     {
       "label": "ADOPTED A28@3 L22@4 C3@3",
@@ -23,15 +23,15 @@
     },
     {
       "label": "alt A16@4 L14@4 C9@4",
-      "tune": "la1=14:4 ca=9:4 alpha_ac_count=16"
+      "tune": "la1=14:4 ca=9:4 alpha_ac_count=16 alpha_ac_bits=4"
     },
     {
       "label": "alpha_ac_fit alone",
-      "tune": "alpha_ac_fit=1"
+      "tune": "la1=20:5 ca=9:4 alpha_ac_count=5 alpha_ac_bits=4 alpha_ac_fit=1"
     },
     {
       "label": "compact 21B shipped shape",
-      "tune": "la1=9:5 ca=5:4"
+      "tune": "la1=9:5 ca=5:4 alpha_ac_count=5 alpha_ac_bits=4"
     },
     {
       "label": "compact 21B ADOPTED A16@3 L12@4 C1@3",
