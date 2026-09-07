@@ -460,11 +460,18 @@ encoding.
 
 ## Future work / open questions
 Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
-1. ~~**Chroma-from-luma**~~ — **refuted in v0.7** (`EXPERIMENTS.md` §7.10).
-   Built as a signalled per-channel least-squares gain and measured at every
-   tier; it does not pay at any of them. Listed here as "the largest expected
-   v0.8 win" until it was run, and kept struck through rather than deleted so
-   the prediction can be read against the outcome.
+1. ~~**Chroma-from-luma**~~ — **built in v0.7, and it does not pay for itself**
+   (`EXPERIMENTS.md` §7.10). Implemented as a signalled per-channel
+   least-squares gain and measured at every tier. The prediction is real and
+   grows with tier — given away free it is −0.09% ΔE00 at 32 B and −0.90% at
+   code 3 — but the gain field that signals it costs +2.18% at 32 B, which is
+   more than it returns. Note what is *not* being claimed: an earlier reading
+   had a free predictor scoring *worse* than none, which is not physically
+   expected and prompted an audit; on the Wikimedia corpus that anti-correlation
+   is gone and the three measurements (residual energy, coefficient error, ΔE00)
+   agree. Listed here as "the largest expected v0.8 win" until it was run, and
+   kept struck through rather than deleted so the prediction can be read against
+   the outcome.
 2. ~~**Alpha-mode default-tier layout**~~ — **resolved in v0.7** (`EXPERIMENTS.md`
    §11.3). It got its own corpus and sweep, and the answer was not the
    arithmetic's `L 22 @ 4, a/b 14 @ 3`. The binding constraint was not the
