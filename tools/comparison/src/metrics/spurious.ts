@@ -181,6 +181,30 @@ function areaChannel(
   dh: number,
   channel: number,
 ): Float32Array {
+  const out = new Float32Array(sw * sh);
+  for (let i = 0; i < sw * sh; i++) out[i] = rgba[i * 4 + channel] ?? 0;
+  return areaPlane(out, sw, sh, dw, dh);
+}
+
+/**
+ * The same area average over a plane that has already been sampled.
+ *
+ * Split out of {@link areaChannel} so the reference can be taken down to the
+ * analysis grid by the same *route* the decode takes, which is what makes the
+ * two comparable when the grid is pinned below the decode's own raster. The
+ * rounding is the modelling choice: a decode is an 8-bit raster, so the ideal
+ * it is judged against is what an 8-bit raster of the ideal low-pass would
+ * hold, not the unquantized average. That is why an ideal low-pass scores
+ * exactly zero rather than approximately zero.
+ */
+function areaPlane(
+  src: Float32Array,
+  sw: number,
+  sh: number,
+  dw: number,
+  dh: number,
+): Float32Array {
+  if (dw === sw && dh === sh) return src;
   const out = new Float32Array(dw * dh);
   for (let y = 0; y < dh; y++) {
     const y0 = Math.floor((y * sh) / dh);
@@ -193,7 +217,7 @@ function areaChannel(
       for (let sy = y0; sy < y1; sy++) {
         const row = sy * sw;
         for (let sx = x0; sx < x1; sx++) {
-          acc += rgba[(row + sx) * 4 + channel] ?? 0;
+          acc += src[row + sx] ?? 0;
           n++;
         }
       }
@@ -308,6 +332,8 @@ function idealSpectrum(
   refRgba: Uint8Array,
   refW: number,
   refH: number,
+  decW: number,
+  decH: number,
   w: number,
   h: number,
   channel: number,
@@ -319,11 +345,36 @@ function idealSpectrum(
   }
   // refW/refH are in the key even though they are a function of the buffer's
   // identity today: nothing enforces that, and a caller scoring one reference at
-  // two sizes would otherwise get a stale spectrum with no error.
-  const key = `${channel}:${refW}x${refH}:${w}x${h}`;
+  // two sizes would otherwise get a stale spectrum with no error. decW/decH
+  // join them because the route below depends on the decode's raster, so two
+  // decodes pinned to one grid from different rasters need different entries.
+  const key = `${channel}:${refW}x${refH}:${decW}x${decH}:${w}x${h}`;
   const hit = perBuffer.get(key);
   if (hit) return hit;
-  const built = dct2(areaChannel(refRgba, refW, refH, w, h, channel), w, h);
+  // The decode reaches the grid in two steps whenever the grid is pinned below
+  // its raster: it is already an 8-bit raster at decW x decH, and `areaPlane`
+  // averages it down and rounds again. Taking the reference there in one step
+  // would compare a singly-quantized ideal against a doubly-quantized decode,
+  // and the difference is not noise -- it is a floor that grows with the pin
+  // ratio, so it lands hardest on exactly the high-tier arms the pin exists to
+  // make comparable. A provably-ideal low-pass scored 0.008 at 32->16, 0.020 at
+  // 64->32 and 0.032 at 128->64 against a null hypothesis of exactly zero.
+  //
+  // So the ideal takes the decode's route: reference to the decode's raster,
+  // then down to the grid. When the grid *is* the decode's raster the second
+  // step is the identity and this is bit-for-bit what it always was, which is
+  // why no unpinned number moves.
+  const viaDecode = decW <= refW && decH <= refH && (w !== decW || h !== decH);
+  const plane = viaDecode
+    ? areaPlane(
+        areaChannel(refRgba, refW, refH, decW, decH, channel),
+        decW,
+        decH,
+        w,
+        h,
+      )
+    : areaChannel(refRgba, refW, refH, w, h, channel);
+  const built = dct2(plane, w, h);
   perBuffer.set(key, built);
   return built;
 }
@@ -377,7 +428,7 @@ export function computeSpurious(
 
   for (let c = 0; c < 3; c++) {
     const dec = dct2(areaChannel(decRgba, decW, decH, w, h, c), w, h);
-    const ideal = idealSpectrum(refRgba, refW, refH, w, h, c);
+    const ideal = idealSpectrum(refRgba, refW, refH, decW, decH, w, h, c);
     for (let l = 0; l < h; l++) {
       for (let k = 0; k < w; k++) {
         // DC carries the average colour, not structure. A level error there is

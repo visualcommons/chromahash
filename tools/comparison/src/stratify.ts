@@ -43,20 +43,50 @@ interface Covariates {
  * 6.8, detail 9.85". Parsed rather than restructured because the field is also
  * read by humans, and because a schema change here would touch all 39 entries
  * for no measurement gain.
+ *
+ * The trade that buys is a regex over prose a human is invited to edit, so the
+ * failure is loud rather than quiet. An entry whose sentence stops matching
+ * used to be skipped, which silently shrank the corpus every table here is
+ * computed over: the bins would still be equal-count terciles, of a different
+ * set, and nothing printed would say so. A caption reworded to "detail energy
+ * 9.85" is enough to do it.
  */
 function covariates(): Map<string, Covariates> {
   const out = new Map<string, Covariates>();
+  const unparsed: string[] = [];
   for (const img of CURATED_IMAGES) {
     const l = /mean L\*\s*([\d.]+)/.exec(img.notes);
     const c = /mean C\*\s*([\d.]+)/.exec(img.notes);
     const d = /detail\s*([\d.]+)/.exec(img.notes);
-    if (!l || !c || !d) continue;
+    if (!l || !c || !d) {
+      const missing = [
+        l ? null : "mean L*",
+        c ? null : "mean C*",
+        d ? null : "detail",
+      ].filter((x) => x !== null);
+      unparsed.push(
+        `${img.label}: no ${missing.join(", ")} in ${JSON.stringify(img.notes)}`,
+      );
+      continue;
+    }
     out.set(img.label, {
       lightness: Number(l[1]),
       chroma: Number(c[1]),
       detail: Number(d[1]),
       axis: img.axis,
     });
+  }
+  if (unparsed.length > 0) {
+    console.error(
+      `${unparsed.length} curated image(s) carry covariates this tool cannot read:\n`,
+    );
+    for (const u of unparsed) console.error(`  ${u}`);
+    console.error(
+      "\nEvery table this tool prints is computed over the images it could read, so\n" +
+        "a skipped entry silently changes the corpus rather than the output. Restore\n" +
+        "the phrasing in natural-images.ts, or teach the regexes the new one.",
+    );
+    process.exit(1);
   }
   return out;
 }
@@ -156,6 +186,29 @@ if (!firstRow) {
   console.error("sweep has no rows");
   process.exit(1);
 }
+// Every row is indexed positionally against the first row's image list — the
+// bins are built from `firstRow`, and `series[i]` below is read as "the same
+// image" in every other row. `sweep.ts` scores every arm over one input list so
+// that holds today, but nothing here required it, and a row that had been
+// filtered or reordered would produce a table of the right shape built from
+// mismatched pairs. That is the failure this tool exists to make visible, so it
+// is asserted rather than assumed.
+for (const row of sweep.rows) {
+  if (row.imageNames.length !== firstRow.imageNames.length) {
+    console.error(
+      `arm "${row.label}" scored ${row.imageNames.length} images against "${firstRow.label}"'s ${firstRow.imageNames.length}; the per-image series cannot be compared positionally`,
+    );
+    process.exit(1);
+  }
+  const off = row.imageNames.findIndex((n, i) => n !== firstRow.imageNames[i]);
+  if (off !== -1) {
+    console.error(
+      `arm "${row.label}" has "${row.imageNames[off]}" at position ${off} where "${firstRow.label}" has "${firstRow.imageNames[off]}"; the per-image series are not aligned`,
+    );
+    process.exit(1);
+  }
+}
+
 const named = firstRow.imageNames
   .map((n, i) => ({ n, i, c: cov.get(n) }))
   .filter(

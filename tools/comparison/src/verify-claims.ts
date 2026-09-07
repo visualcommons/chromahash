@@ -335,8 +335,31 @@ for (const claim of REGISTER) {
     continue;
   }
 
-  const quotedRaw = all[0]?.[1] ?? "";
+  // A pattern that matches but captures nothing, or captures something that is
+  // not a number, used to reach the comparison anyway: `Number(undefined ?? "")`
+  // is 0, and `Number("n/a")` is NaN. Neither is a figure, and the NaN is the
+  // dangerous one -- every comparison against NaN is false, so
+  // `Math.abs(expected - quoted) > tol` was false, the claim passed, and
+  // `checked++` below counted it as verified. A register entry whose capture
+  // group drifted off the number would have reported a clean run forever.
+  const quotedRaw = all[0]?.[1];
+  if (quotedRaw === undefined) {
+    failures.push({
+      claim,
+      detail:
+        "the claim's pattern matched but captured nothing — it needs a capture " +
+        "group around the figure itself",
+    });
+    continue;
+  }
   const quoted = Number(quotedRaw);
+  if (!Number.isFinite(quoted)) {
+    failures.push({
+      claim,
+      detail: `the claim's pattern captured "${quotedRaw}", which is not a number`,
+    });
+    continue;
+  }
 
   const raw = rawCellOf(
     claim.section,
@@ -380,11 +403,24 @@ for (const claim of REGISTER) {
     failures.push({ claim, detail: (e as Error).message });
     continue;
   }
+  // A transform that divides by a zero cell returns Infinity, and one that
+  // divides zero by zero returns NaN. Both compare false against everything,
+  // so both would pass as agreement rather than fail as nonsense.
+  if (!Number.isFinite(expected)) {
+    failures.push({
+      claim,
+      detail: `§${claim.section}'s cell "${raw}" gives ${expected} through this claim's transform, which cannot be compared`,
+    });
+    continue;
+  }
 
   // Tolerance is the precision the *quoting* file claims, so tightening a
   // figure there tightens the assertion, exactly as in verify-experiments.
   const places = decimals(quotedRaw);
   const tol = 0.5 * 10 ** -places;
+  // Position is load-bearing: every path that reaches here has a finite quoted
+  // figure and a finite expected one, so the comparison below genuinely runs.
+  // Counting earlier is what let an uncomparable claim be reported as checked.
   checked++;
 
   if (Math.abs(expected - quoted) > tol) {

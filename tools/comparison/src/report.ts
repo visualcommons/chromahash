@@ -199,6 +199,7 @@ export function computeFormatStats(
       ciCiede: ciedeValues.length > 0 ? bootstrapCI(ciedeValues) : null,
       avgRinging: avgMetricLocal(results, (m) => m.ringing),
       avgSpurious: avgMetricLocal(results, (m) => m.spurious),
+      avgDeficit: avgMetricLocal(results, (m) => m.deficit),
       artifactScale: artifactScaleOf(results),
       p90Ringing: ringSorted.length > 0 ? quantile(ringSorted, 0.9) : null,
       avgRingArea: avgMetricLocal(results, (m) => m.ringArea),
@@ -321,8 +322,14 @@ function formatStatsTable(stats: FormatStat[]): string {
   const hasBlurred = stats.some((s) => s.avgCiedeBlurred !== null);
   const hasRinging = stats.some((s) => s.avgRinging !== null);
   const hasSpurious = stats.some((s) => s.avgSpurious !== null);
+  // Deficit is measured in the same pass, on the same grid and in the same
+  // units as spurious, so it appears under the same condition. The pair is the
+  // reading: a report showing only the invented half leaves a reader exactly
+  // where the aggregate fidelity scores do, unable to tell a placeholder that
+  // is merely soft from one that has replaced the picture with its own.
+  const hasDeficit = stats.some((s) => s.avgDeficit !== null);
   return `<div class="table-scroll"><table>
-<tr><th>Format</th><th>Images</th><th>Avg Size (B)</th>${metricTh("ciede2000", "Avg ")}${metricTh("ciede2000", "Median ")}${metricTh("ciede2000", "p90 ")}<th>95% CI ΔE00</th>${hasBlurred ? metricTh("blurRecovery") : ""}${hasRinging ? metricTh("ringing", "Avg ") : ""}${hasSpurious ? metricTh("spurious", "Avg ") : ""}${hasRinging || hasSpurious ? '<th title="Envelope radius / analysis grid the artifact columns were measured at. Neither is comparable across different sizes.">Scale</th>' : ""}${metricTh("ssimulacra2", "Avg ")}${metricTh("butteraugli", "Avg ")}${metricTh("dssim", "Avg ")}${metricTh("msSsim", "Avg ")}${metricTh("psnrHvsM", "Avg ")}${metricTh("psnrDb", "Avg ")}</tr>
+<tr><th>Format</th><th>Images</th><th>Avg Size (B)</th>${metricTh("ciede2000", "Avg ")}${metricTh("ciede2000", "Median ")}${metricTh("ciede2000", "p90 ")}<th>95% CI ΔE00</th>${hasBlurred ? metricTh("blurRecovery") : ""}${hasRinging ? metricTh("ringing", "Avg ") : ""}${hasSpurious ? metricTh("spurious", "Avg ") : ""}${hasDeficit ? metricTh("deficit", "Avg ") : ""}${hasRinging || hasSpurious ? '<th title="Envelope radius / analysis grid the artifact columns were measured at. Neither is comparable across different sizes.">Scale</th>' : ""}${metricTh("ssimulacra2", "Avg ")}${metricTh("butteraugli", "Avg ")}${metricTh("dssim", "Avg ")}${metricTh("msSsim", "Avg ")}${metricTh("psnrHvsM", "Avg ")}${metricTh("psnrDb", "Avg ")}</tr>
 ${stats
   .map(
     (s) => `<tr>
@@ -341,7 +348,7 @@ ${stats
             : "N/A"
         }</td>\n  `
       : ""
-  }${hasRinging ? `<td>${fmt(s.avgRinging, 2)}</td>\n  ` : ""}${hasSpurious ? `<td>${fmt(s.avgSpurious, 2)}</td>\n  ` : ""}${hasRinging || hasSpurious ? `<td>${esc(s.artifactScale ?? "—")}</td>\n  ` : ""}<td>${fmt(s.avgSsimulacra2, 1)}</td>
+  }${hasRinging ? `<td>${fmt(s.avgRinging, 2)}</td>\n  ` : ""}${hasSpurious ? `<td>${fmt(s.avgSpurious, 2)}</td>\n  ` : ""}${hasDeficit ? `<td>${fmt(s.avgDeficit, 2)}</td>\n  ` : ""}${hasRinging || hasSpurious ? `<td>${esc(s.artifactScale ?? "—")}</td>\n  ` : ""}<td>${fmt(s.avgSsimulacra2, 1)}</td>
   <td>${fmt(s.avgButteraugli, 2)}</td>
   <td>${gradeCell(s.avgDssim, 4, 0.1, 0.25)}</td>
   <td>${fmt(s.avgMsSsim, 4)}</td>
@@ -643,6 +650,7 @@ ${galleries}`;
 function headlineTable(stats: FormatStat[]): string {
   const hasRinging = stats.some((s) => s.avgRinging !== null);
   const hasSpurious = stats.some((s) => s.avgSpurious !== null);
+  const hasDeficit = stats.some((s) => s.avgDeficit !== null);
   return `<div class="table-scroll"><table class="headline">
 <tr>
   <th>Format</th>
@@ -651,6 +659,7 @@ function headlineTable(stats: FormatStat[]): string {
   ${metricTh("ssimulacra2", "Perceptual ")}
   ${hasRinging ? metricTh("ringing", "Artifacts ") : ""}
   ${hasSpurious ? metricTh("spurious", "") : ""}
+  ${hasDeficit ? metricTh("deficit", "") : ""}
   ${metricTh("reflow", "Layout ")}
 </tr>
 ${stats
@@ -662,6 +671,7 @@ ${stats
   <td>${fmt(s.avgSsimulacra2, 0)}</td>
   ${hasRinging ? `<td>${fmt(s.avgRinging, 2)}</td>` : ""}
   ${hasSpurious ? `<td>${fmt(s.avgSpurious, 2)}</td>` : ""}
+  ${hasDeficit ? `<td>${fmt(s.avgDeficit, 2)}</td>` : ""}
   <td>${s.aspectImages > 0 ? `${fmt(s.maxAbsReflowPx, 0)}&nbsp;px` : '<span class="na" title="This format carries no shape of its own; the dimensions must come from elsewhere.">—</span>'}</td>
 </tr>`,
   )
