@@ -14,7 +14,10 @@
  * what its columns mean — is written by hand here. Claimed values are
  * recomputed from `perImageCiede` rather than read back from the summary
  * fields, and paired CIs go through the same seeded `bootstrapCI` the report
- * uses, so a reproduction is exact rather than approximate.
+ * uses, so a reproduction is exact rather than approximate. `guardsOk` was the
+ * one bound column that broke that rule — it was read back, so the gate
+ * checked the transcription and not the guard — and is now recomputed from the
+ * metrics beside it at the tolerances the run recorded.
  *
  * A binding is a per-*column* map, which means a bound table is green on the
  * columns it names and says nothing about the rest. §9.5 records what that
@@ -22,7 +25,9 @@
  * and §7.5's guards were all unbound and all stale, §7.10's with every sign
  * inverted -- so the run now reports column coverage per table and
  * `--list-unbound-columns` breaks it down. An unchecked column is either bound
- * or listed in `UNBOUND_COLUMN_NOTES` with the reason; it is never silent.
+ * or listed in `UNBOUND_COLUMN_NOTES` with the reason; it is never silent, and
+ * the run fails if it is — a sentence a register audit enforces rather than a
+ * convention the next binding can quietly break.
  *
  * Usage:
  *   node dist/verify-experiments.js              # every bound table
@@ -75,6 +80,9 @@ interface SweepFile {
   split: string;
   images: number;
   rows: SweepRow[];
+  /** The tolerances the run itself applied, written into its own output. */
+  guardTolerances?: { ssimulacra2Drop: number; relativeRise: number };
+  artifactGuardRise?: number | null;
 }
 
 /** A row as `rd-budget` writes it — one format at one byte budget. */
@@ -111,6 +119,95 @@ function fromRdRow(r: RdRow): SweepRow {
   };
 }
 
+/**
+ * `sweep.ts`'s zero-base allowance, in metric levels. Duplicated rather than
+ * imported because that module runs the encoder at import time; a drift
+ * between the two is caught by the recomputation below disagreeing with every
+ * stored `guardsOk` at once, which is the loudest failure this file has.
+ */
+const ARTIFACT_ZERO_BASE_ALLOWANCE = 1.0;
+
+/** `sweep.ts`'s `roseNoMoreThan`, on the same terms. */
+function roseNoMoreThan(
+  value: number | null,
+  base: number | null,
+  rise: number,
+): boolean {
+  if (value === null || base === null) return true;
+  if (base === 0) return value <= ARTIFACT_ZERO_BASE_ALLOWANCE;
+  return value <= base * (1 + rise);
+}
+
+/**
+ * Where a stored `guardsOk` disagrees with the metrics stored beside it.
+ *
+ * This file's premise, stated at the top, is that a claimed value is
+ * recomputed rather than read back from a summary field -- and `guardsOk` was
+ * the one bound column read back. A document cell reading `ok` was therefore
+ * checked against the sweep's own boolean, so the gate confirmed the
+ * transcription and said nothing about the guard: a hand-edited output, a
+ * tolerance changed after a run, or a bug in `applyGuards` would all pass, and
+ * §12.2 and §12.3 turn their verdicts on that column.
+ *
+ * It is recomputed here from the row's own metrics, against the incumbent, at
+ * the tolerances the run recorded in its own header. A disagreement is
+ * reported rather than quietly corrected: the output contradicting itself is a
+ * finding about the sweep, not about the document, and the two have different
+ * fixes.
+ */
+const guardDrift: string[] = [];
+
+/**
+ * Recompute every row's `guardsOk` from the metrics stored beside it.
+ *
+ * Mirrors `applyGuards` in `sweep.ts`, reading the tolerances out of the
+ * output's own `guardTolerances` and `artifactGuardRise` rather than
+ * re-declaring them, so a run taken under different tolerances is still judged
+ * by the ones it actually used. An output written before those fields existed
+ * carries no tolerances; its rows are left as they are and reported, because
+ * inventing a tolerance for them would be the read-back this exists to remove.
+ */
+function recomputeGuards(file: SweepFile): void {
+  const tol = file.guardTolerances;
+  const base = file.rows[0];
+  if (!base) return;
+  if (!tol) {
+    if (file.rows.some((r) => r.guardsOk !== null)) {
+      guardDrift.push(
+        `${file.name}: rows carry guardsOk but the output records no guardTolerances, so the column cannot be recomputed — re-run the sweep`,
+      );
+    }
+    return;
+  }
+  const artifactRise = file.artifactGuardRise ?? undefined;
+  for (const row of file.rows.slice(1)) {
+    const ssim2Ok =
+      row.meanSsimulacra2 === null ||
+      base.meanSsimulacra2 === null ||
+      row.meanSsimulacra2 >= base.meanSsimulacra2 - tol.ssimulacra2Drop;
+    const butterOk =
+      row.meanButteraugli === null ||
+      base.meanButteraugli === null ||
+      row.meanButteraugli <= base.meanButteraugli * (1 + tol.relativeRise);
+    const dssimOk =
+      row.meanDssim === null ||
+      base.meanDssim === null ||
+      row.meanDssim <= base.meanDssim * (1 + tol.relativeRise);
+    const artifactOk =
+      artifactRise === undefined ||
+      (roseNoMoreThan(row.meanRinging, base.meanRinging, artifactRise) &&
+        roseNoMoreThan(row.meanSpurious, base.meanSpurious, artifactRise));
+    const computed = ssim2Ok && butterOk && dssimOk && artifactOk;
+    if (row.guardsOk !== null && row.guardsOk !== computed) {
+      guardDrift.push(
+        `${file.name} "${row.label}": output stores guardsOk=${row.guardsOk}, ` +
+          `its own metrics give ${computed}`,
+      );
+    }
+    row.guardsOk = computed;
+  }
+}
+
 const sweepCache = new Map<string, SweepFile | null>();
 
 function loadSweep(name: string): SweepFile | null {
@@ -132,6 +229,7 @@ function loadSweep(name: string): SweepFile | null {
   } catch {
     parsed = null;
   }
+  if (parsed) recomputeGuards(parsed);
   sweepCache.set(name, parsed);
   return parsed;
 }
@@ -1524,6 +1622,34 @@ function coverageOf(b: Binding, table: DocTable): Coverage {
 }
 
 /**
+ * Two bindings can share one table -- §10.3 splits by corpus split and §11.12
+ * by which sweep each column came from -- so coverage is the union across
+ * them. Reporting per binding would show each as partial while together they
+ * cover the table, which is the opposite of the point.
+ */
+function mergeCoverage(list: Coverage[]): Map<string, Coverage> {
+  const merged = new Map<string, Coverage>();
+  for (const c of list) {
+    const key = `${c.section}#${c.table}`;
+    const prev = merged.get(key);
+    if (!prev) {
+      merged.set(key, {
+        ...c,
+        covered: [...c.covered],
+        uncovered: [...c.uncovered],
+      });
+      continue;
+    }
+    const covered = new Set([...prev.covered, ...c.covered]);
+    prev.covered = [...covered];
+    prev.uncovered = [...new Set([...prev.uncovered, ...c.uncovered])].filter(
+      (x) => !covered.has(x),
+    );
+  }
+  return merged;
+}
+
+/**
  * A column left unbound on purpose, and why. Same contract as
  * `UNBOUND_NOTES` one level up: absent means "not bound yet", present means
  * "deliberately not bound, and here is the reason".
@@ -1540,8 +1666,6 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
     "ranks, derived by ordering two other sweeps' results rather than read from either",
   "11.12#1":
     "`verdict` is the section's conclusion in words, not a measurement",
-  "11.12#0":
-    "`verdict` as in table 1; the tune and holdout columns are quoted from two sweeps and bound in §11.5 and §7.12 respectively",
   "13.1#1":
     "`Spur / Deficit` is the ratio of two columns in the same row, both of which are bound; it is the reading, not a measurement",
 };
@@ -1599,8 +1723,7 @@ const UNBOUND_NOTES: Record<string, string> = {
   "11.3#2":
     "an alpha subgroup breakdown computed from alpha-ceiling's perImageCiede",
   "11.12#0":
-    "verdict prose: tune and holdout deltas quoted side by side from two sweeps",
-  "11.12#1": "verdict prose, as §11.12 table 0",
+    "verdict prose: tune and holdout deltas quoted side by side from two sweeps, and bound in §11.5 and §7.12 respectively",
   "13.3#0":
     "stratify output, not a sweep: bin means over per-image scores joined to natural-images.ts's covariates. Reproduce with `mise run stratify artifact-ladder-common-grid --metric spurious --by detail`",
 };
@@ -1675,28 +1798,7 @@ for (const binding of BINDINGS) {
   checked++;
 }
 
-// Two bindings can share one table -- §10.3 splits by corpus split and §11.12
-// by which sweep each column came from -- so coverage is the union across
-// them. Reporting per binding would show each as partial while together they
-// cover the table, which is the opposite of the point.
-const merged = new Map<string, Coverage>();
-for (const c of coverage) {
-  const key = `${c.section}#${c.table}`;
-  const prev = merged.get(key);
-  if (!prev) {
-    merged.set(key, {
-      ...c,
-      covered: [...c.covered],
-      uncovered: [...c.uncovered],
-    });
-    continue;
-  }
-  const covered = new Set([...prev.covered, ...c.covered]);
-  prev.covered = [...covered];
-  prev.uncovered = [...new Set([...prev.uncovered, ...c.uncovered])].filter(
-    (x) => !covered.has(x),
-  );
-}
+const merged = mergeCoverage(coverage);
 const partial = [...merged.values()].filter((c) => c.uncovered.length > 0);
 const totalAxes = [...merged.values()].reduce(
   (n, c) => n + c.covered.length + c.uncovered.length,
@@ -1727,6 +1829,88 @@ for (const c of partial) {
       `unchecked ${named}${why ? ` — ${why}` : ""}`,
   );
 }
+
+// ─── Register audit ─────────────────────────────────────────────────────────
+//
+// The invariant at the top of this file -- "an unchecked column is either
+// bound or listed in `UNBOUND_COLUMN_NOTES` with the reason; it is never
+// silent" -- was documentation only. An undeclared PARTIAL printed the same
+// line with the reason simply missing, and the run still exited 0, which is
+// exactly the silence that sentence promises does not happen. A PARTIAL with
+// no note is now a failure, which is the sentence made enforceable.
+//
+// Staleness is checked in the same pass, because a note is an audit trail only
+// while it is attached to something. §11.12 is the case that motivated it: the
+// same two keys sat in *both* registers, so table 0's column note and table
+// 1's table note were each unreachable, and a wrong reason in either could
+// never have been found by reading the output. The registers are keyed alike
+// and mean different things, and nothing had ever told them apart.
+//
+// The audit reads every binding whose table exists, not only the ones that
+// checked, so a machine missing half the sweeps reaches the same verdict about
+// the registers as CI does. `--section` narrows the run to one section and so
+// cannot see the whole register; it is skipped there rather than reported
+// wrongly.
+const registerProblems: string[] = [];
+if (!values.section) {
+  const auditCoverage: Coverage[] = [];
+  for (const binding of BINDINGS) {
+    const table = tables.find(
+      (t) => t.section === binding.section && t.index === (binding.table ?? 0),
+    );
+    if (table) auditCoverage.push(coverageOf(binding, table));
+  }
+  const audited = mergeCoverage(auditCoverage);
+  const needsNote = new Set(
+    [...audited.values()]
+      .filter((c) => c.uncovered.length > 0)
+      .map((c) => `${c.section}#${c.table}`),
+  );
+
+  for (const key of needsNote) {
+    if (UNBOUND_COLUMN_NOTES[key] !== undefined) continue;
+    const c = audited.get(key);
+    const what = c?.axis === "columns" ? "column(s)" : "row(s)";
+    const named = (c?.uncovered ?? []).map((x) => JSON.stringify(x)).join(", ");
+    registerProblems.push(
+      `§${key.replace("#", " table ")}: ${c?.uncovered.length} unchecked ${what} (${named}) with no UNBOUND_COLUMN_NOTES entry`,
+    );
+  }
+  for (const key of Object.keys(UNBOUND_COLUMN_NOTES)) {
+    if (needsNote.has(key)) continue;
+    const why = bound.has(key)
+      ? "that table's columns are all bound"
+      : "that table has no binding, so it belongs in UNBOUND_NOTES";
+    registerProblems.push(
+      `UNBOUND_COLUMN_NOTES["${key}"] explains nothing: ${why}`,
+    );
+  }
+  for (const key of Object.keys(UNBOUND_NOTES)) {
+    if (!bound.has(key)) continue;
+    registerProblems.push(
+      `UNBOUND_NOTES["${key}"] explains nothing: that table is bound, so an unchecked column of it belongs in UNBOUND_COLUMN_NOTES`,
+    );
+  }
+}
+
+const reportGuardDrift = () => {
+  console.error(
+    `\n${guardDrift.length} sweep output(s) disagree with their own metrics on
+\`guardsOk\`. The document is checked against the recomputed value, so a green
+run below does not make these agree — re-run the sweep, or find what edited
+its output:\n`,
+  );
+  for (const g of guardDrift) console.error(`  ${g}`);
+};
+
+const reportRegister = () => {
+  console.error(
+    `\n${registerProblems.length} register problem(s) — an unchecked column is
+either bound or listed with its reason, and a reason is listed only against
+something it explains:\n`,
+  );
+  for (const r of registerProblems) console.error(`  ${r}`);
+};
 
 // A missing sweep output is reported rather than fatal, so the tool stays
 // useful on a machine that has run only part of section 6. That also means a
@@ -1775,12 +1959,16 @@ Re-run without --fix to confirm, and read the diff: a corrected number can
 invalidate the sentence beneath its table.`,
     );
   }
+  if (guardDrift.length > 0) reportGuardDrift();
+  if (registerProblems.length > 0) reportRegister();
   if (strictFailed) reportStrict();
   process.exit(1);
 }
 
-if (strictFailed) {
-  reportStrict();
+if (guardDrift.length > 0 || registerProblems.length > 0 || strictFailed) {
+  if (guardDrift.length > 0) reportGuardDrift();
+  if (registerProblems.length > 0) reportRegister();
+  if (strictFailed) reportStrict();
   process.exit(1);
 }
 console.log("\nEvery bound table agrees with its sweep output.");
