@@ -1516,10 +1516,14 @@ range in §3 is unchanged at its lower end and slightly tighter at the top.
 The corpus is still a set of professional photographs from one source, and the
 following are *not* covered by this revision:
 
-* **Source bias.** Every curated image is Picsum/Unsplash — a professional
-  aesthetic. No smartphone snapshots: no sensor noise, motion blur, harsh
-  on-camera flash or heavy JPEG history, which is what a real LQIP pipeline
-  ingests.
+* **Source bias.** Every curated image was Picsum/Unsplash at the time of this
+  audit — a professional aesthetic. The 2026-09 re-source (§9.5) replaced them
+  with Wikimedia Commons originals, which narrows *that* bias without closing
+  this gap: selection still required camera EXIF and excluded Commons' artwork
+  categories, and none of the 39 axes below is a degradation axis. No smartphone
+  snapshots: no sensor noise, motion blur, harsh on-camera flash or heavy JPEG
+  history, which is what a real LQIP pipeline ingests. The corpus spans what a
+  picture *contains*, not what a camera did to it.
 * **Non-photographic content** — screenshots, text-heavy graphics, logos,
   charts. The synthetic fixtures (`illust-*`, `textui-*`) exist but are excluded
   from every `photoOnly` sweep, so no constant has ever been chosen against
