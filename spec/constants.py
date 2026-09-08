@@ -24,7 +24,8 @@ MU_L = 5         # Luminance AC
 MU_C = 8         # Chroma a/b AC
 MU_ALPHA = 5     # Alpha AC
 
-# Decode-side synthesis window (§7.6): w = w_min + (1-w_min)*hann(rho)^w_exp,
+# Decode-side synthesis window (EXPERIMENTS.md §12.2): w = w_min +
+# (1-w_min)*hann(rho)^w_exp,
 # applied to the reconstructed AC plane. w_min = 1.0 disables it, which is what
 # v1 ships -- EXPERIMENTS.md §12.2 measured the window's invented structure as
 # entirely luma and withdrew it. They are carried here, at their disabling

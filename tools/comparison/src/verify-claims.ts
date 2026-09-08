@@ -106,9 +106,17 @@ const abs = (n: number): number => Math.abs(n);
 /**
  * The delta inside a cell like "11.546 (−0.9%)" — or "9.913 (+2.0%)", because
  * §4.2's two columns put the same allocation on opposite sides of zero and the
- * spec quotes both. The sign is inside the capture rather than dropped: a claim
- * bound to the 108 B column is quoting a regression, and reading it unsigned
- * would let a "+2.0%" quote agree with a "−2.0%" cell.
+ * spec quotes both.
+ *
+ * The sign is inside the capture, but capturing it only matters where the claim
+ * does not then discard it. Most entries here quote a magnitude ("worth −X%")
+ * and set `transform: abs`, so for those a "+2.0%" quote would agree with a
+ * "−2.0%" cell — the register cannot tell a regression from an improvement, and
+ * an earlier version of this comment claimed it could. Where the claim is about
+ * the *direction* rather than the size, the quote captures its own sign and the
+ * entry omits `abs`, which is what makes the comparison mean anything: see the
+ * 108 B entry below, the one figure in this file whose whole content is that the
+ * trade runs the wrong way.
  */
 const PARENTHESISED_DELTA = /\(([+−–—-]?[\d.]+)%\)/;
 
@@ -312,12 +320,16 @@ const REGISTER: Claim[] = [
   {
     file: "spec/README.md",
     what: "the 4-bit layout at 108 B, against it",
-    pattern: /at 108 bytes the same swap is \+([\d.]+)% the \*wrong\* way/,
+    // The `+` is inside the capture, and there is no `abs` below, so this claim
+    // fails if §4.2's cell ever changes sign. That is the entire point of the
+    // sentence it binds: at 32 B the swap is the better buy and at 108 B it is
+    // not, and a magnitude comparison would hold just as happily if the table
+    // said the opposite.
+    pattern: /at 108 bytes the same swap is (\+[\d.]+)% the \*wrong\* way/,
     section: "4.2",
     row: "L28@4 C15@3",
     column: "108 B ΔE00",
     cellPattern: PARENTHESISED_DELTA,
-    transform: abs,
   },
 
   // ── Cross-format positioning ─────────────────────────────────────────────
@@ -618,6 +630,14 @@ if (failures.length > 0) {
  * be caught by this scan if it were dropped. So a green run means "no
  * ΔE00-or-pp figure in a gated file is unregistered", never "every claim in
  * the repo is registered".
+ *
+ * It is narrow in a second way, which the phrase "the gated files" above would
+ * otherwise oversell: it reads the files the register already names, not every
+ * file `ci-comparison.yml` gates. The path filter includes `rust/**`, a whole
+ * tree — so a figure of exactly the right shape in, say, `rust/src/lib.rs`, or
+ * in a file gated but unregistered like `CHANGELOG.md`, is not read here at all.
+ * The scan breaks the register's circularity one level and reinstates it at the
+ * file level; closing that needs a file list this gate does not yet have.
  *
  * That is a smaller promise than the sentence at the top of this file, and it
  * is worth having anyway: three of the four figures this scan first flagged

@@ -1636,9 +1636,14 @@ already did and is the only sweep that survived the adoption intact. §4.2, §4.
 **Two groups are not fixed, and are disclosed instead.** `selection-hv` is
 retired in place (§7.4): a number measured at a point its label does not name is
 worse than no number, and `selection-weights` already is its corrected
-replacement. Separately, `cfl`, `prefix-shrink`, `retune-32b` and
-`combined-optimizer` carry an inaccurate *incumbent label* but a valid set of
-deltas around it, because every arm in them shares one base. Relabelling would
+replacement. Separately, `cfl`, `prefix-shrink` and `retune-32b` carry an
+inaccurate *incumbent label* but a valid set of deltas around it, because every
+arm in them shares one base. `combined-optimizer` declares for a different
+reason and its note says so: its incumbent is a bare `32B shipped`, naming no
+constant to be wrong about, and the arm at fault is a *candidate* —
+`32B L26@5C9 stack`, which sets the four stack knobs and no `l1`/`c`, inherits
+`LAYOUT_T0`, and so measures 28@4 C15@3 and ties the incumbent to thirteen
+decimal places. Relabelling would
 move no number and would change the row keys the bindings match on, so they are
 left alone: read their "shipped" row as "the default as of that run", not as the
 pre-adoption format. `low-budget-allocation` belongs with them and this
@@ -1673,8 +1678,8 @@ still the obvious next thing to build.
 > the arms of the six configs that declare `unpinnedLabels` — `cfl`,
 > `prefix-shrink`, `retune-32b`, `combined-optimizer`, `low-budget-allocation`
 > and `selection-hv`, six of them `selection-hv`'s — so the decision is recorded
-> on the config rather than only here. **It also found an eighth config this
-> subsection missed** — `v07-holdout-alpha`, whose incumbent inherited the
+> on the config rather than only here. **It also found a config this
+> subsection missed entirely** — `v07-holdout-alpha`, whose incumbent inherited the
 > adopted alpha allocation and encoded to 40 bytes rather than 32, which made
 > §11.12's source table score the default against itself.
 >
