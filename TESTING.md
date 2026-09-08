@@ -42,7 +42,7 @@ mapping, OKLAB bounds, µ-law round-trips, the tier tables and byte lengths, and
 the aspect encoding. It also replays `unit-aspect.json` (45 cases) and
 `unit-selection.json` (488 cases) against its own implementation, which is the
 one place the golden vectors are checked by something that did not produce them.
-174 assertions; exit code 0 = pass.
+213 assertions; exit code 0 = pass.
 
 ### Step 2: Check the manifest versions agree
 
@@ -141,7 +141,7 @@ in CI:
 | Gate | What it asserts | Reads |
 | --- | --- | --- |
 | `verify:experiments` | every table in `EXPERIMENTS.md` matches the run that produced it | the sweep output |
-| `verify:claims` | every figure `README.md`, `spec/README.md`, `spec/RATIONALE.md` and `rust/src/constants.rs` quote from `EXPERIMENTS.md` matches the cell it cites | five files |
+| `verify:claims` | every figure `README.md`, `spec/README.md`, `spec/RATIONALE.md`, `rust/src/constants.rs` and `spec/constants.py` quote from `EXPERIMENTS.md` matches the cell it cites, and no figure in them is unregistered | five files |
 | `verify:sweep-labels` | every sweep arm sets the constants its own label names | the sweep configs |
 | `validate:spec` | `spec/constants.py`, `rust/src/constants.rs` and `typescript/src/header.ts` agree on every shared constant | three sources |
 

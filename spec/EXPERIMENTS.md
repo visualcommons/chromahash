@@ -1717,7 +1717,10 @@ still the obvious next thing to build.
    > `rowBaselines` made a per-row delta base expressible — which is what §10.3's
    > Δ% and §7.11's "vs native tier 0" needed and never had — and §11.14's byte
    > column, the stale x-axis named above, is bound. 739 checked cells became
-   > 813. Five columns remain unbound and each carries its reason in
+   > 820 — 813 when that work landed, and seven more once `parseCell` learned
+   > the score-plus-delta cell shape, which took §11.10's bound `graphics ΔE00`
+   > from six of six cells unreadable to six checked. Five columns remain
+   > unbound and each carries its reason in
    > `UNBOUND_COLUMN_NOTES`; the interesting one is §7.10's, where every row
    > names a different control and two state it in prose inside the cell.
 
