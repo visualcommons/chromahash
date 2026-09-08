@@ -1496,6 +1496,16 @@ papered over:
 | WebP takes the ΔE00 lead at | 200–400 B | **~190 B** | crossover moved down |
 | Precision optimum by budget | 3 b ≤ 20 B, 4 b to ~56 B, 5 b above | same, gains smaller at 16 B (−7.5% → −4.7%) | unchanged |
 
+> **Both columns are the retired curated corpus** — the pre-§9 set and the §9
+> revision of it — so every figure in this table is a round-2-vs-round-3 reading
+> and none of them is current. `85f6af3` has since re-sourced the corpus and
+> §9.5 re-measures the whole file on it. Where a row here and a section above
+> disagree, the section above is right: the **−3.50%** recipe verdict in
+> particular is now **−3.72%** (§7.12, §10.3, and the same row in §9.5's table),
+> and it is the −3.72% that `verify:claims` gates and the rest of the repo
+> quotes. Nothing in this table is re-derivable — the corpus it was measured on
+> no longer exists.
+
 **Nothing was refuted and nothing was resurrected**: every accepted item in §8
 still clears its bar, and every rejected item in §8.4 is still rejected, with
 the same sign and comparable magnitude. The two results that changed materially
@@ -1553,6 +1563,7 @@ reproduces what did not change is measuring the corpus rather than the weather.
 |---|---|---|---|
 | Tier 1, tune / holdout ΔE00 | 10.28 / 11.38 | 11.65 / 11.54 | Tune is 13.3% harder; **holdout only 1.4%**, being three-quarters Kodak24 |
 | R-D gate, mean of 8 | 8.8459 | 11.1369 | +25.9%, and 0.00% drift against its own baseline |
+| §8 recipe on holdout | −3.50% | **−3.72%** | grew — still clears the pre-registered ≥3%, and this is the figure the repo quotes (§7.12, §10.3) |
 | Compact tier vs ThumbHash, holdout | wins all four | wins all four | unchanged |
 | 108 B vs size-matched WebP, holdout | −9.5% ΔE00 | **−10.8%** | **grew** |
 | ΔE00 crossover with WebP | between 193 and 411 B | between 193 and 411 B | unchanged |
@@ -1625,29 +1636,63 @@ already did and is the only sweep that survived the adoption intact. §4.2, §4.
 **Two groups are not fixed, and are disclosed instead.** `selection-hv` is
 retired in place (§7.4): a number measured at a point its label does not name is
 worse than no number, and `selection-weights` already is its corrected
-replacement. Separately, `cfl`, `prefix-shrink`, `retune-32b`,
-`combined-optimizer`, `detail-synthesis`, `refine-grid`, `refine-objective`,
-`embedded-tiers` and `budget-ladder-optimized` carry an inaccurate *incumbent
-label* but a valid set of deltas around it, because every arm in them shares one
-base. Relabelling would move no number and would change the row keys the
-bindings match on, so they are left alone: read their "shipped" row as "the
-default as of that run", not as the pre-adoption format.
+replacement. Separately, `cfl`, `prefix-shrink`, `retune-32b` and
+`combined-optimizer` carry an inaccurate *incumbent label* but a valid set of
+deltas around it, because every arm in them shares one base. Relabelling would
+move no number and would change the row keys the bindings match on, so they are
+left alone: read their "shipped" row as "the default as of that run", not as the
+pre-adoption format. `low-budget-allocation` belongs with them and this
+subsection first left it out entirely — its `32B SHIPPED L26@5 C9@4` incumbent
+carries no `tune` string at all — though it is unfixed for its own reason: it
+was run and superseded before this file's round-3 numbers were taken, its output
+no longer survives on disk (§6), and it informed no adopted constant. Those six
+configs, and only those six, declare `unpinnedLabels` with the reason, so each
+decision is recorded on the sweep it applies to rather than only here.
+
+**Five more were named here as disclosed and are not.** `detail-synthesis`,
+`refine-grid`, `refine-objective`, `embedded-tiers` and
+`budget-ladder-optimized` carry the same inaccurate incumbent and are read the
+same way — but their incumbents are labelled `32B shipped`, `32B shipped (ref)`
+and `t0 native 32 B`, which name no constant to be inaccurate about. Nothing
+checks them because there is nothing in the label to check, which is not the
+same thing as a decision to leave them, and the distinction is the subject of
+the next paragraph.
 
 A check that reconciles an arm's label against the constants it sets would have
-caught all of this, and is the obvious next thing to build.
+caught every one of these that spells a constant out — most of them, and not all
+of them, because an arm labelled `32B shipped` names nothing to reconcile. It is
+still the obvious next thing to build.
 
-> **Built** — `mise run verify:sweep-labels`. Over 548 label-bearing arms in 49
+> **Built** — `mise run verify:sweep-labels`. Over 584 label-bearing arms in 49
 > configs it reports two things: a label naming a constant nothing in the arm's
 > `tune` string writes, and a label naming one value where the tune sets
 > another. Both are properties of the config alone, so it needs no corpus, no
 > encoder and no sweep output, and runs in CI where the sweeps cannot. It found
 > fourteen. Two incumbents were pinned and their sweeps re-run byte-identical;
-> one arm was relabelled (§11.3's off-budget `C2@4`); the six configs disclosed
-> above declare `unpinnedLabels` with the reason, so the decision is recorded on
-> the config rather than only here. **It also found an eighth config this
+> one arm was relabelled (§11.3's off-budget `C2@4`); the remaining eleven are
+> the arms of the six configs that declare `unpinnedLabels` — `cfl`,
+> `prefix-shrink`, `retune-32b`, `combined-optimizer`, `low-budget-allocation`
+> and `selection-hv`, six of them `selection-hv`'s — so the decision is recorded
+> on the config rather than only here. **It also found an eighth config this
 > subsection missed** — `v07-holdout-alpha`, whose incumbent inherited the
 > adopted alpha allocation and encoded to 40 bytes rather than 32, which made
 > §11.12's source table score the default against itself.
+>
+> **584 is not 807, and 584 was 548.** The gate reads the arms whose labels it
+> can parse and *skips* the rest: 223 of the 807 arms in those 49 configs — 28%
+> — name no constant in any form it recognizes, and each of those is passed
+> over, not failed. 36 were recovered by adding one token shape, the tune syntax
+> written out (`deadzone_l=0.02`), which is where the 548 this note first
+> reported became 584; all 36 pass, and that they pass was not knowable while
+> they sat in the residue. So a clean run says "every label that states
+> something checkable states it truthfully", not "every arm is what it claims",
+> and two of the differences are above this line: the five configs of the
+> previous paragraph are green by that silence rather than by any decision, and
+> two of `v07-holdout-alpha`'s four mislabelled arms — `alpha_ac_fit alone` and
+> `compact 21B shipped shape` — name nothing readable and were found by reading
+> the config, not by running the gate. `--list-unnamed` prints the residue,
+> which is what makes the skip auditable rather than silent and is how the 36
+> were found. Read a passing run as a statement about 584 arms.
 
 5. **A column nobody checks, inside a table that passes.** `verify:experiments`
    binds *columns*, not tables, and a table is reported green when the columns
@@ -2344,6 +2389,16 @@ unchanged; the reason it is rejected is now over-determined.
 > which moves the holdout cell from −6.96% to **−9.49%** and strengthens the
 > verdict rather than changing it. The binding in `verify-experiments.ts` records
 > the baseline per row, so the two columns cannot drift apart again.
+>
+> **The moved cell's provenance**, because nothing automatic can supply it: both
+> the pinning and the figures in this table are one re-run of `mise run sweep
+> v07-holdout-alpha --split holdout` (§6) in `bd6a530`, against the Wikimedia
+> corpus of `85f6af3` (§9.5). That output lands in the gitignored
+> `output/sweeps/`, so the only check that holds this row to it is
+> `verify:experiments`, which needs the sweep on disk and therefore does not run
+> in CI — it reports a missing output as SKIP (§6). A reviewer re-deriving
+> −9.49% runs that command on that corpus; a reviewer who has not is taking the
+> cell on the commit that produced it, which is why the commit is named.
 
 The alpha allocation validates emphatically: SSIMULACRA2 −307.2 → −242.7,
 Butteraugli 57.56 → 44.36, DSSIM 0.2319 → 0.2179, αMAE 0.2696 → 0.1675.
