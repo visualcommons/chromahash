@@ -29,10 +29,24 @@
  * the run fails if it is — a sentence a register audit enforces rather than a
  * convention the next binding can quietly break.
  *
+ * The same blindness runs one level further down, *inside* a bound column. A
+ * cell whose text `parseCell` cannot read was skipped without a word, so §11.10
+ * table 1's `graphics ΔE00` — six cells all written "10.855 (−2.78%)" — checked
+ * nothing at all while counting as one of this run's covered columns. Unparsed
+ * cells are now counted, rolled up per column with the denominator that shows
+ * when a column checked *none* of its cells, and named in full by
+ * `--list-unparsed`. They are reported rather than fatal, on the user's call
+ * and because several are unparseable on purpose: §7.8's "+5.0 pp" is quoted
+ * against a different baseline than the column's metric, and that binding's own
+ * `note` says so. What the count buys is that the next shape nobody anticipated
+ * is loud rather than silent.
+ *
  * Usage:
  *   node dist/verify-experiments.js              # every bound table
  *   node dist/verify-experiments.js --section 11.5
  *   node dist/verify-experiments.js --list-unbound
+ *   node dist/verify-experiments.js --list-unbound-columns
+ *   node dist/verify-experiments.js --list-unparsed # name the unreadable cells
  *   node dist/verify-experiments.js --strict        # a SKIP is a failure
  *
  * Exit status is non-zero on any disagreement, so `mise run verify:experiments`
@@ -43,8 +57,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import {
-  cells,
   type DocTable,
+  cells,
   decimals,
   parseCell,
   parseTables,
@@ -388,6 +402,36 @@ interface Failure {
     | undefined;
 }
 
+/**
+ * A cell inside a *bound* column that `parseCell` could not read, and so was
+ * compared against nothing. Recorded rather than dropped: the count is the only
+ * thing standing between "this column is bound" and "this column checks cells".
+ */
+interface UnparsedCell {
+  section: string;
+  /** Index of the table within its section, since a section has several. */
+  table: number;
+  column: string;
+  row: string;
+  /** The cell exactly as the document writes it, so the shape is diagnosable. */
+  raw: string;
+}
+
+/** What a run accumulates about the cells it looked at, checked or not. */
+interface Stats {
+  /** Cells whose claimed value was actually compared against a measurement. */
+  cells: number;
+  /** Cells in a bound column that no parser could read. Never compared. */
+  unparsed: UnparsedCell[];
+  /**
+   * Cells reached per bound column — parsed or not — keyed
+   * `section#table#column`. This is the denominator: without it "6 unparsed"
+   * cannot be told apart from "6 unparsed out of 40", and it is the difference
+   * between a column with a gap and a column that checked nothing.
+   */
+  reached: Map<string, number>;
+}
+
 /** Recompute one metric from the raw per-image data wherever possible. */
 function measure(
   metric: Metric,
@@ -447,6 +491,7 @@ const signed = (n: number): string => `${n >= 0 ? "+" : ""}${n.toFixed(3)}`;
 function compare(
   ctx: {
     section: string;
+    table: number;
     row: string;
     column: string;
     fix?: { line: number; rowIndex: number; colIndex: number };
@@ -454,12 +499,22 @@ function compare(
   raw: string,
   measured: number | string,
   failures: Failure[],
-  stats: { cells: number },
+  stats: Stats,
 ): void {
   const blank = raw.replace(/[*`\s]/g, "");
   // The incumbent and the reference row assert nothing: no delta, no interval,
   // no win count.
   if (["", "—", "-", "(base)", "(leader)", "(control)"].includes(blank)) return;
+
+  // Every cell past that point is one this run undertook to check, so it counts
+  // toward its column's total whether or not the check comes off.
+  const key = `${ctx.section}#${ctx.table}#${ctx.column}`;
+  stats.reached.set(key, (stats.reached.get(key) ?? 0) + 1);
+
+  // `ctx` carries the table index for the unparsed listing; a `Failure` is
+  // addressed by section, row and column, so the two are spread separately
+  // rather than letting the extra field ride along into the failure record.
+  const where = { section: ctx.section, row: ctx.row, column: ctx.column };
 
   if (typeof measured === "string") {
     stats.cells++;
@@ -472,7 +527,7 @@ function compare(
       const hi = Number(straddlesZero[2]);
       if (!(lo <= 0 && hi >= 0)) {
         failures.push({
-          ...ctx,
+          ...where,
           claimed,
           measured: `${measured} — excludes zero`,
           fix: ctx.fix && { ...ctx.fix, cell: rewriteCell(raw, measured) },
@@ -482,7 +537,7 @@ function compare(
     }
     if (normalize(claimed) !== normalize(measured)) {
       failures.push({
-        ...ctx,
+        ...where,
         claimed,
         measured,
         fix: ctx.fix && { ...ctx.fix, cell: rewriteCell(raw, measured) },
@@ -491,13 +546,27 @@ function compare(
     return;
   }
   const claimed = parseCell(raw);
-  if (claimed === null) return;
+  if (claimed === null) {
+    // Recorded, not skipped. Returning here without a word is what let §11.10's
+    // one bound column check six cells' worth of nothing behind a green run,
+    // and what would let the next unreadable shape do it again. The run still
+    // continues — an unparseable cell is a hole in the evidence, not a
+    // disagreement with it, and some of them are deliberate (see the header).
+    stats.unparsed.push({
+      section: ctx.section,
+      table: ctx.table,
+      column: ctx.column,
+      row: ctx.row,
+      raw: raw.trim(),
+    });
+    return;
+  }
   stats.cells++;
   const tol = 0.5 * 10 ** -decimals(raw) + 1e-9;
   if (Math.abs(claimed - measured) > tol) {
     const rounded = measured.toFixed(decimals(raw));
     failures.push({
-      ...ctx,
+      ...where,
       claimed: raw.trim(),
       measured: `${rounded}  (exact ${measured.toFixed(decimals(raw) + 3)})`,
       fix: ctx.fix && { ...ctx.fix, cell: rewriteCell(raw, rounded) },
@@ -545,7 +614,7 @@ function checkRowTable(
   b: RowBinding,
   table: DocTable,
   failures: Failure[],
-  stats: { cells: number },
+  stats: Stats,
 ): string | null {
   const sweep = loadSweep(b.sweep);
   if (!sweep) return `no output/sweeps/${b.sweep}.json — run the sweep`;
@@ -582,6 +651,7 @@ function checkRowTable(
       compare(
         {
           section: b.section,
+          table: table.index,
           row: docLabel,
           column: header,
           fix: {
@@ -608,7 +678,7 @@ function checkRatioTable(
   b: RatioBinding,
   table: DocTable,
   failures: Failure[],
-  stats: { cells: number },
+  stats: Stats,
 ): string | null {
   const col = (name: string): number => {
     const i = table.header.findIndex((h) => h.trim() === name);
@@ -648,6 +718,7 @@ function checkRatioTable(
 
     const ctx = (column: string, colIndex: number) => ({
       section: b.section,
+      table: table.index,
       row: label,
       column,
       fix: { line: table.line, rowIndex, colIndex },
@@ -683,7 +754,7 @@ function checkColumnTable(
   b: ColumnBinding,
   table: DocTable,
   failures: Failure[],
-  stats: { cells: number },
+  stats: Stats,
 ): string | null {
   // Column index → measured value, per series, so derived rows can be checked
   // against what the rows above them actually measured.
@@ -759,6 +830,7 @@ function checkColumnTable(
       compare(
         {
           section: b.section,
+          table: table.index,
           row: series.docRow,
           column: colLabel,
           fix: {
@@ -1625,6 +1697,13 @@ const { values } = parseArgs({
     section: { type: "string" },
     "list-unbound": { type: "boolean", default: false },
     "list-unbound-columns": { type: "boolean", default: false },
+    // Unlike its two siblings above, this one cannot answer before the run and
+    // exit: which cells are unreadable is only known once every bound table has
+    // been walked. So it is not a listing *mode* but a detail level — the run
+    // proceeds and reports exactly as it always does, and each unparsed cell is
+    // named under its column instead of only counted. The rollup and the count
+    // print either way, because a number nobody has to ask for is the point.
+    "list-unparsed": { type: "boolean", default: false },
     fix: { type: "boolean", default: false },
     strict: { type: "boolean", default: false },
   },
@@ -1716,7 +1795,7 @@ if (values["list-unbound-columns"]) {
 }
 
 const failures: Failure[] = [];
-const stats = { cells: 0 };
+const stats: Stats = { cells: 0, unparsed: [], reached: new Map() };
 const skipped: string[] = [];
 const coverage: Coverage[] = [];
 let checked = 0;
@@ -1755,10 +1834,16 @@ const coveredAxes = [...merged.values()].reduce(
   0,
 );
 
+// `stats.cells` counts comparisons made, not cells seen, so an unparseable
+// cell was never in it — but nothing said so, and a reader took the covered
+// column count to mean those columns had been checked cell by cell. The two
+// numbers are reconciled in one sentence rather than left to be inferred.
+const unparsedNote =
+  stats.unparsed.length > 0
+    ? `, and read past ${stats.unparsed.length} cell(s) no parser could interpret, which are therefore unchecked.`
+    : ".";
 console.log(
-  `Checked ${stats.cells} cells across ${checked} tables ` +
-    `(${BINDINGS.length} bound of ${tables.length} in the document; ` +
-    `${coveredAxes} of ${totalAxes} value columns within them).`,
+  `Checked ${stats.cells} cells across ${checked} tables (${BINDINGS.length} bound of ${tables.length} in the document; ${coveredAxes} of ${totalAxes} value columns within them)${unparsedNote}`,
 );
 for (const s of skipped) console.log(`  SKIP  ${s}`);
 
@@ -1773,6 +1858,52 @@ for (const c of partial) {
     `  PARTIAL  §${c.section} table ${c.table}: ` +
       `${c.covered.length} of ${c.covered.length + c.uncovered.length} ${what} bound; ` +
       `unchecked ${named}${why ? ` — ${why}` : ""}`,
+  );
+}
+
+// ─── Unparsed cells ─────────────────────────────────────────────────────────
+//
+// A bound column is worth only the cells inside it a parser can read. `compare`
+// used to return on `parseCell(raw) === null` in silence, which is how §11.10
+// table 1's `graphics ΔE00` — its only bound column — reported as covered for
+// six cells not one of which was ever compared, behind a green run. Printing
+// the tally with its denominator is what turns "bound" into "checked N of M".
+//
+// Grouped per column rather than listed per cell by default, because the shape
+// of the problem is a column: one odd cell in a column of forty is a
+// transcription with prose in it, and six of six is a binding that checks
+// nothing.
+const unparsedByColumn = new Map<string, UnparsedCell[]>();
+for (const u of stats.unparsed) {
+  const key = `${u.section}#${u.table}#${u.column}`;
+  const seen = unparsedByColumn.get(key);
+  if (seen) seen.push(u);
+  else unparsedByColumn.set(key, [u]);
+}
+for (const [key, group] of unparsedByColumn) {
+  const first = group[0];
+  if (!first) continue;
+  // A column absent from `reached` is impossible — every entry here passed
+  // through the same increment — but the fallback keeps the arithmetic honest
+  // rather than printing "of undefined" if that ever stops being true.
+  const seen = stats.reached.get(key) ?? group.length;
+  const nothing =
+    group.length >= seen
+      ? " — every cell of this bound column, so it checks nothing"
+      : "";
+  console.log(
+    `  UNPARSED  §${first.section} table ${first.table} [${first.column}]: ` +
+      `${group.length} of ${seen} cell(s) unreadable${nothing}`,
+  );
+  if (values["list-unparsed"]) {
+    for (const u of group) console.log(`      ${u.row}: ${u.raw}`);
+  }
+}
+if (stats.unparsed.length > 0 && !values["list-unparsed"]) {
+  console.log(
+    "  Run with --list-unparsed to see the cells themselves. An unreadable " +
+      "cell is\n  unchecked, not wrong: widen the parser, bind the column " +
+      "elsewhere, or leave it\n  — but knowingly.",
   );
 }
 
