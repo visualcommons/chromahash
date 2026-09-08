@@ -164,8 +164,10 @@ pub const LAYOUT_B: AcLayout = AcLayout {
 /// Layout T0: the **v1 default-tier layout** (the shipped default at code 1). At a
 /// 32-byte budget the AC payload is 202 bits, and spending it on 28 luma
 /// coefficients at 4 bits plus 15 chroma at 3 beats the 26@5 / 9@4 split of
-/// [`LAYOUT_B`] by 3.5% mean ΔE00 on the never-tuned holdout split, with
-/// SSIMULACRA2, Butteraugli and DSSIM all improving (spec/EXPERIMENTS.md §8.3).
+/// [`LAYOUT_B`] by 2.09% mean ΔE00 on the never-tuned holdout split, with
+/// SSIMULACRA2, Butteraugli and DSSIM all improving (spec/EXPERIMENTS.md §4.5;
+/// the 3.5% this comment used to quote was the whole v0.7 recipe, not the
+/// layout alone, and §8.3 is where that recipe is measured).
 /// Sized to the same anchor: no-alpha = 54 prefix + 28·4 L + 2·15·3 chroma =
 /// 256 bits.
 ///
