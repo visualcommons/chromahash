@@ -39,6 +39,10 @@ from constants import (
     MAX_CHROMA_B,
     MAX_L_SCALE,
     MU_ALPHA,
+    W_EXP_C,
+    W_EXP_L,
+    W_MIN_C,
+    W_MIN_L,
     MU_C,
     MU_L,
     ANISO_OBLIQUE,
@@ -802,9 +806,32 @@ def _ts_source() -> str:
 
 
 def _num(text: str, pattern: str):
-    """First capture of `pattern` in `text`, as a float, or None."""
-    m = re.search(pattern, text)
+    """First capture of `pattern` in `text`, as a float, or None.
+
+    Searched with `re.M` so a pattern can anchor to the start of the line its
+    constant is declared on; see the pattern table for why that is not
+    optional.
+    """
+    m = re.search(pattern, text, re.M)
     return float(m.group(1)) if m else None
+
+
+def _rust_tunables(src: str) -> str:
+    """Body of `const DEFAULT: Tunables = Tunables { .. };`, or `""`.
+
+    The 11 tunable defaults are struct fields, not `const`s, so they have no
+    declaration line of their own to anchor a pattern to; scoping the search to
+    `DEFAULT`'s body is that anchor. Searched over the whole file instead,
+    `max_chroma_a` is answered by whichever `Tunables { .. }` literal comes
+    first -- a doc example, a test fixture, a second literal written above this
+    one -- and the shipped value below it is never read.
+    """
+    m = re.search(
+        r"const\s+DEFAULT\s*:\s*Tunables\s*=\s*Tunables\s*\{(.*?)\n\s*\};",
+        src,
+        re.S,
+    )
+    return m.group(1) if m else ""
 
 
 def _rust_layout(src: str, name: str):
@@ -876,41 +903,91 @@ def validate_cross_implementation_constants():
     ts = _ts_source()
 
     # --- Scalars: (spec value, Rust pattern, TypeScript pattern) ---
+    #
+    # Both patterns are anchored to the declaration they mean to read: the Rust
+    # and TypeScript `const`s to the start of their own line, the `Tunables`
+    # fields to `DEFAULT`'s body (`_rust_tunables`) with the same left word
+    # boundary `_rust_layout` needs. Unanchored, `re.search` takes the first
+    # line that merely quotes the name -- a comment reading
+    # `MAX_CHROMA_B = 0.33`, a doc example, a second `Tunables { .. }` -- and
+    # never reaches the drifted declaration below it. The check then compares
+    # prose against prose and passes.
     scalars = [
         ("MAX_CHROMA_A", MAX_CHROMA_A,
-         r"max_chroma_a:\s*([\d.]+)", r"MAX_CHROMA_A\s*=\s*([\d.]+)"),
+         r"(?<![A-Za-z_])max_chroma_a:\s*([\d.]+)",
+         r"^(?:export )?const MAX_CHROMA_A\s*=\s*([\d.]+)"),
         ("MAX_CHROMA_B", MAX_CHROMA_B,
-         r"max_chroma_b:\s*([\d.]+)", r"MAX_CHROMA_B\s*=\s*([\d.]+)"),
+         r"(?<![A-Za-z_])max_chroma_b:\s*([\d.]+)",
+         r"^(?:export )?const MAX_CHROMA_B\s*=\s*([\d.]+)"),
         ("MAX_L_SCALE", MAX_L_SCALE,
-         r"max_l_scale:\s*([\d.]+)", r"MAX_L_SCALE\s*=\s*([\d.]+)"),
+         r"(?<![A-Za-z_])max_l_scale:\s*([\d.]+)",
+         r"^(?:export )?const MAX_L_SCALE\s*=\s*([\d.]+)"),
         ("MAX_A_SCALE", MAX_A_SCALE,
-         r"max_a_scale:\s*([\d.]+)", r"MAX_A_SCALE\s*=\s*([\d.]+)"),
+         r"(?<![A-Za-z_])max_a_scale:\s*([\d.]+)",
+         r"^(?:export )?const MAX_A_SCALE\s*=\s*([\d.]+)"),
         ("MAX_B_SCALE", MAX_B_SCALE,
-         r"max_b_scale:\s*([\d.]+)", r"MAX_B_SCALE\s*=\s*([\d.]+)"),
+         r"(?<![A-Za-z_])max_b_scale:\s*([\d.]+)",
+         r"^(?:export )?const MAX_B_SCALE\s*=\s*([\d.]+)"),
         ("MAX_A_ALPHA_SCALE", MAX_A_ALPHA_SCALE,
-         r"max_alpha_scale:\s*([\d.]+)", r"MAX_ALPHA_SCALE\s*=\s*([\d.]+)"),
-        ("MU_L", MU_L, r"mu_l:\s*([\d.]+)", r"MU_L\s*=\s*([\d.]+)"),
-        ("MU_C", MU_C, r"mu_c:\s*([\d.]+)", r"MU_C\s*=\s*([\d.]+)"),
-        ("MU_ALPHA", MU_ALPHA, r"mu_alpha:\s*([\d.]+)", r"MU_ALPHA\s*=\s*([\d.]+)"),
+         r"(?<![A-Za-z_])max_alpha_scale:\s*([\d.]+)",
+         r"^(?:export )?const MAX_ALPHA_SCALE\s*=\s*([\d.]+)"),
+        ("MU_L", MU_L,
+         r"(?<![A-Za-z_])mu_l:\s*([\d.]+)",
+         r"^(?:export )?const MU_L\s*=\s*([\d.]+)"),
+        ("MU_C", MU_C,
+         r"(?<![A-Za-z_])mu_c:\s*([\d.]+)",
+         r"^(?:export )?const MU_C\s*=\s*([\d.]+)"),
+        ("MU_ALPHA", MU_ALPHA,
+         r"(?<![A-Za-z_])mu_alpha:\s*([\d.]+)",
+         r"^(?:export )?const MU_ALPHA\s*=\s*([\d.]+)"),
+        # The synthesis window, disabled in v1 but declared and read by both
+        # decoders. Rust holds these as Tunables fields, so the Rust patterns
+        # are unanchored and resolve inside DEFAULT's body like the rest.
+        ("W_MIN_L", W_MIN_L,
+         r"(?<![A-Za-z_])w_min_l:\s*([\d.]+)",
+         r"^(?:export )?const W_MIN_L\s*=\s*([\d.]+)"),
+        ("W_EXP_L", W_EXP_L,
+         r"(?<![A-Za-z_])w_exp_l:\s*([\d.]+)",
+         r"^(?:export )?const W_EXP_L\s*=\s*([\d.]+)"),
+        ("W_MIN_C", W_MIN_C,
+         r"(?<![A-Za-z_])w_min_c:\s*([\d.]+)",
+         r"^(?:export )?const W_MIN_C\s*=\s*([\d.]+)"),
+        ("W_EXP_C", W_EXP_C,
+         r"(?<![A-Za-z_])w_exp_c:\s*([\d.]+)",
+         r"^(?:export )?const W_EXP_C\s*=\s*([\d.]+)"),
         ("ANISO_OBLIQUE", ANISO_OBLIQUE,
-         r"aniso_oblique:\s*([\d.]+)", r"ANISO_OBLIQUE\s*=\s*([\d.]+)"),
-        ("SEL_HV", SEL_HV, r"sel_hv:\s*([\d.]+)", r"SEL_HV\s*=\s*([\d.]+)"),
-        ("SEL_Q", SEL_Q, r"SEL_Q:\s*u32\s*=\s*(\d+)", r"SEL_Q\s*=\s*(\d+)"),
+         r"(?<![A-Za-z_])aniso_oblique:\s*([\d.]+)",
+         r"^(?:export )?const ANISO_OBLIQUE\s*=\s*([\d.]+)"),
+        ("SEL_HV", SEL_HV,
+         r"(?<![A-Za-z_])sel_hv:\s*([\d.]+)",
+         r"^(?:export )?const SEL_HV\s*=\s*([\d.]+)"),
+        ("SEL_Q", SEL_Q,
+         r"^pub const SEL_Q:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const SEL_Q\s*=\s*(\d+)"),
         ("FORMAT_VERSION", FORMAT_VERSION,
-         r"FORMAT_VERSION:\s*u8\s*=\s*(\d+)", r"FORMAT_VERSION\s*=\s*(\d+)"),
+         r"^pub const FORMAT_VERSION:\s*u8\s*=\s*(\d+)",
+         r"^(?:export )?const FORMAT_VERSION\s*=\s*(\d+)"),
         ("BASE_LONG_EDGE", BASE_LONG_EDGE,
-         r"BASE_LONG_EDGE:\s*u32\s*=\s*(\d+)", r"BASE_LONG_EDGE\s*=\s*(\d+)"),
-        ("MAX_TIER", MAX_TIER, r"MAX_TIER:\s*u8\s*=\s*(\d+)", r"MAX_TIER\s*=\s*(\d+)"),
+         r"^pub const BASE_LONG_EDGE:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const BASE_LONG_EDGE\s*=\s*(\d+)"),
+        ("MAX_TIER", MAX_TIER,
+         r"^pub const MAX_TIER:\s*u8\s*=\s*(\d+)",
+         r"^(?:export )?const MAX_TIER\s*=\s*(\d+)"),
         ("L_DC_BITS", L_DC_BITS,
-         r"L_DC_BITS:\s*u32\s*=\s*(\d+)", r"L_DC_BITS\s*=\s*(\d+)"),
+         r"^pub const L_DC_BITS:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const L_DC_BITS\s*=\s*(\d+)"),
         ("L_SCALE_BITS", L_SCALE_BITS,
-         r"L_SCALE_BITS:\s*u32\s*=\s*(\d+)", r"L_SCALE_BITS\s*=\s*(\d+)"),
+         r"^pub const L_SCALE_BITS:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const L_SCALE_BITS\s*=\s*(\d+)"),
         ("B_SCALE_BITS", B_SCALE_BITS,
-         r"B_SCALE_BITS:\s*u32\s*=\s*(\d+)", r"B_SCALE_BITS\s*=\s*(\d+)"),
+         r"^pub const B_SCALE_BITS:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const B_SCALE_BITS\s*=\s*(\d+)"),
         ("ALPHA_DC_BITS", ALPHA_DC_BITS,
-         r"ALPHA_DC_BITS:\s*u32\s*=\s*(\d+)", r"ALPHA_DC_BITS\s*=\s*(\d+)"),
+         r"^pub const ALPHA_DC_BITS:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const ALPHA_DC_BITS\s*=\s*(\d+)"),
         ("ALPHA_SCALE_BITS", ALPHA_SCALE_BITS,
-         r"ALPHA_SCALE_BITS:\s*u32\s*=\s*(\d+)", r"ALPHA_SCALE_BITS\s*=\s*(\d+)"),
+         r"^pub const ALPHA_SCALE_BITS:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const ALPHA_SCALE_BITS\s*=\s*(\d+)"),
         # The header's own layout. Every one of these decides where a field
         # starts or how wide it is, so a disagreement between two
         # implementations is a wire-format split -- the exact failure this
@@ -921,34 +998,52 @@ def validate_cross_implementation_constants():
         # not. A reader of this list had every reason to believe the set was
         # complete.
         ("VERSION_BITS", VERSION_BITS,
-         r"VERSION_BITS:\s*u32\s*=\s*(\d+)", r"VERSION_BITS\s*=\s*(\d+)"),
+         r"^pub const VERSION_BITS:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const VERSION_BITS\s*=\s*(\d+)"),
         ("TIER_BITS", TIER_BITS,
-         r"TIER_BITS:\s*u32\s*=\s*(\d+)", r"TIER_BITS\s*=\s*(\d+)"),
+         r"^pub const TIER_BITS:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const TIER_BITS\s*=\s*(\d+)"),
         ("ALPHA_FLAG_BIT", ALPHA_FLAG_BIT,
-         r"ALPHA_FLAG_BIT:\s*u32\s*=\s*(\d+)", r"ALPHA_FLAG_BIT\s*=\s*(\d+)"),
+         r"^pub const ALPHA_FLAG_BIT:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const ALPHA_FLAG_BIT\s*=\s*(\d+)"),
         ("RESERVED_FLAG_BIT", RESERVED_FLAG_BIT,
-         r"RESERVED_FLAG_BIT:\s*u32\s*=\s*(\d+)",
-         r"RESERVED_FLAG_BIT\s*=\s*(\d+)"),
+         r"^pub const RESERVED_FLAG_BIT:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const RESERVED_FLAG_BIT\s*=\s*(\d+)"),
         ("DESCRIPTOR_BITS", DESCRIPTOR_BITS,
-         r"DESCRIPTOR_BITS:\s*u32\s*=\s*(\d+)", r"DESCRIPTOR_BITS\s*=\s*(\d+)"),
+         r"^pub const DESCRIPTOR_BITS:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const DESCRIPTOR_BITS\s*=\s*(\d+)"),
         ("COMPACT_TIER", COMPACT_TIER,
-         r"COMPACT_TIER:\s*u8\s*=\s*(\d+)", r"COMPACT_TIER\s*=\s*(\d+)"),
+         r"^pub const COMPACT_TIER:\s*u8\s*=\s*(\d+)",
+         r"^(?:export )?const COMPACT_TIER\s*=\s*(\d+)"),
         ("DEFAULT_TIER", DEFAULT_TIER,
-         r"DEFAULT_TIER:\s*u8\s*=\s*(\d+)", r"DEFAULT_TIER\s*=\s*(\d+)"),
+         r"^pub const DEFAULT_TIER:\s*u8\s*=\s*(\d+)",
+         r"^(?:export )?const DEFAULT_TIER\s*=\s*(\d+)"),
         ("A_DC_BITS", A_DC_BITS,
-         r"A_DC_BITS:\s*u32\s*=\s*(\d+)", r"A_DC_BITS\s*=\s*(\d+)"),
+         r"^pub const A_DC_BITS:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const A_DC_BITS\s*=\s*(\d+)"),
         ("B_DC_BITS", B_DC_BITS,
-         r"B_DC_BITS:\s*u32\s*=\s*(\d+)", r"B_DC_BITS\s*=\s*(\d+)"),
+         r"^pub const B_DC_BITS:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const B_DC_BITS\s*=\s*(\d+)"),
         ("A_SCALE_BITS", A_SCALE_BITS,
-         r"A_SCALE_BITS:\s*u32\s*=\s*(\d+)", r"A_SCALE_BITS\s*=\s*(\d+)"),
+         r"^pub const A_SCALE_BITS:\s*u32\s*=\s*(\d+)",
+         r"^(?:export )?const A_SCALE_BITS\s*=\s*(\d+)"),
     ]
 
     # `SEL_Q` lives in dct.rs, not constants.rs — read it from there.
     with open(os.path.join(REPO, "rust/src/dct.rs"), encoding="utf-8") as f:
         dct_src = f.read()
 
+    # A `^`-anchored Rust pattern reads a declaration line from the file that
+    # declares it; the `Tunables` fields, which have no such line, read
+    # `DEFAULT`'s body instead. The pattern says which, so there is no second
+    # hand-written list here to fall out of step with the first.
+    tunables = _rust_tunables(rust)
+
     for name, spec_value, rust_pat, ts_pat in scalars:
-        src = dct_src if name == "SEL_Q" else rust
+        if not rust_pat.startswith("^"):
+            src = tunables
+        else:
+            src = dct_src if name == "SEL_Q" else rust
         r = _num(src, rust_pat)
         t = _num(ts, ts_pat)
         check(
