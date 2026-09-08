@@ -61,8 +61,30 @@ const FULL = flag("--full");
 const QUICK = flag("--quick");
 const MAX_CELL_MS = Number.parseInt(value("--max-cell-ms") ?? "5000", 10);
 const REPS = Number.parseInt(value("--reps") ?? (QUICK ? "1" : "7"), 10);
+/**
+ * The three run shapes must not land on the same file: `verify:benchmark` reads
+ * `perf-report-full.json` and `perf-report.json` as two distinct baselines
+ * (see verify-benchmark.ts), so a shared default would have `benchmark:full`
+ * silently overwrite the bounded run it is meant to sit beside. An explicit
+ * `--out` still wins over all three.
+ *
+ * `--quick` takes precedence over `--full` in the name, which is the one
+ * ordering that is not arbitrary. Its own task description says the numbers are
+ * "not meaningful": it is a contract smoke test at one rep, and the only way it
+ * can do damage is by being mistaken for a baseline. Naming it after the matrix
+ * it swept would let `--quick --full` produce a `perf-full.json` that looks
+ * exactly like an hours-long sweep, so the reps win the name instead.
+ */
 const OUT =
-  value("--out") ?? path.join(ROOT, "tools/comparison/output/perf/perf.json");
+  value("--out") ??
+  path.join(
+    ROOT,
+    QUICK
+      ? "tools/comparison/output/perf/perf-quick.json"
+      : FULL
+        ? "tools/comparison/output/perf/perf-full.json"
+        : "tools/comparison/output/perf/perf.json",
+  );
 const only = value("--impls");
 const ONLY = only ? new Set(only.split(",").map((s) => s.trim())) : null;
 
