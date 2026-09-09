@@ -554,6 +554,12 @@ encode and **97%** at tier 4; `quantize_and_pack` is **37.5%** of a 100×100 one
 the per-pixel colour pipeline is **16.5%** at 512×512; and the shipped `simd`
 feature buys **1.02×** because it covers 6.9 of those points.
 
+One of those four is a different kind of number. `quantize_and_pack` is not a
+marked stage — §1 explains that it is the residual `whole_encode − stage_sum`,
+so it holds the quantizer searches *and* every unmarked line and every scrap of
+instrumentation overhead. Treat it as a ceiling on a bucket, never as the size
+of anything inside it.
+
 ### 12.1 Byte-identical — legal in a patch release
 
 Each of these produces the same bytes by construction, so `spec/test-vectors/`
@@ -561,18 +567,29 @@ and `mise run rd:gate` are sufficient evidence, and no version moves.
 
 | # | Where | What | Why it is safe |
 |---|---|---|---|
-| 1 | `mulaw.rs:41` ← `encode.rs:561` | **Precompute the dequantization table.** `mu_law_dequantize(index, bits, mu)` is a pure function of at most 2^bits − 1 ≤ 31 indices, and `bits`/`mu` are fixed for a channel — yet `scale_fit=2` calls it inside a 63-code search over every coefficient, each call a `portable_pow` = a 20-term series plus a degree-25 Taylor polynomial. Build a ≤32-entry table per `AcQuantJob`. | The table holds the same values the calls return |
-| 2 | `mulaw.rs:7`, `encode.rs:469,481` | **Hoist the loop-invariants.** `mu_compress` recomputes `portable_ln(1.0 + mu)` on every quantize call for a constant `mu`; `bits_at`/`gain_at` walk the tier list per index per call. | Same values, computed once |
-| 3 | `dct.rs:227` | **Vectorize across coefficients, not pixels.** The inner sum must keep its exact left-to-right order, which is why `simd/mod.rs` never touched it. Lanes over *distinct `(cx, cy)` pairs* preserve each coefficient's own order and are as parallel as the per-pixel case. | Per-lane arithmetic is unchanged; only which coefficient a lane holds |
+| 1 | `mulaw.rs:41` ← `encode.rs:561` | **Precompute the dequantization table, keyed on `(bits, index)`.** `mu_law_dequantize(index, bits, mu)` is a pure function of its arguments, and `mu` *is* fixed for a channel (`t.mu_l`) — yet `scale_fit=2` calls it inside a 63-code search over every coefficient, each call a `portable_pow` = a 20-term series plus a degree-25 Taylor polynomial. **`bits` is not fixed:** `AcQuantJob::bits_at(i)` (`encode.rs:468`) walks the job's tier list and returns a width that varies with the selection index. `LAYOUT_C` (`constants.rs:192`) is `l_tiers: [(8, 6), (14, 5)]` — 6-bit low band, 5-bit high band, one channel, reachable through `Tunables::layout_upper` and exercised by `constants.rs:823`. A table keyed on the index alone would hand the high band the low band's grid and dequantize it wrongly. Two widths per job at most, ≤ 2^6 − 1 = 63 indices each, so ≤ 128 entries — not the "≤ 32" an index-only table suggests. | The table holds the same values the calls return, *provided* `bits` is part of the key |
+| 2 | `mulaw.rs:7`, `encode.rs:469,481` | **Hoist the loop-invariants.** `mu_compress` recomputes `portable_ln(1.0 + mu)` on every quantize call for a constant `mu`; `bits_at`/`gain_at` walk the tier list per index per call. Note this is the *same* walk item 1 must key its table on: it is an inefficiency worth removing and a correctness constraint at once, so the two entries have to land together. | Same values, computed once |
+| 3 | `dct.rs:227` | **Vectorize across coefficients, not pixels.** The inner sum must keep its exact left-to-right order, which is why `simd/mod.rs` never touched it. Lanes over *distinct `(cx, cy)` pairs* preserve each coefficient's own order and are as parallel as the per-pixel case. | Per-lane arithmetic is unchanged; only which coefficient a lane holds — **but the arithmetic argument alone is not sufficient, and two things break it.** (a) **FMA contraction.** The kernel is `f += channel[x + y*w] * cx_row[x] * fy`; fusing the multiply-add keeps one rounding instead of two and changes the result. Rust does not contract today, but intrinsics backends are written by hand and `fmadd` is the obvious instruction to reach for. The lanes must use separate multiply and add. (b) **Regrouping.** `channel * (cx * fy)` is the natural vector form and is *not* `(channel * cx) * fy`; float multiplication is not associative, and this repo ships four hand-written backends that would each have to resist the same simplification. Both belong in the vector-diff gate, not in review |
 | 4 | `decode.rs:372`, `dct.rs:265` | **Flatten `cos_x`/`cos_y`.** They are `Vec<Vec<f64>>`, a pointer chase per coefficient per pixel in the `O(w·h·K)` render loop. A strided `Vec<f64>` removes it. And there is **no SIMD in decode at all** — a scalar per-pixel OKLAB inverse plus three gamma lookups — while §2 puts tier-4 decode at 234 ms, the most expensive operation the format asks for. | A layout change reads the same values |
 | 5 | `encode.rs:736` | **Early-exit `sse_with_delta`.** `acc` accumulates monotonically and the caller keeps only strict improvements, so it can abort the moment `acc >= best`. Off by default (`refine_passes: 0`) but §4 measures refinement at **20–37 ms against 2.45 ms shipped**, and it is what the `refine-*` sweeps spend their time in. | Changes when the loop stops, never which code wins |
-| 6 | `encode.rs:224,240,263` | **Fuse the per-pixel passes.** Four full `W·H` passes and five allocations — ~10 MB of f64 traffic at 512×512 — for a stage §1 prices at 16.5%. `linearize` and `composite` fuse; `alpha_average` is a reduction and must stay in scalar pixel order. | Elementwise work, unchanged order |
+| 6 | `encode.rs:224,233,240,263` | **Fuse the first three per-pixel passes; `composite` cannot join them.** Four full `W·H` passes and **eight** `W·H` allocations — `lin_r`/`lin_g`/`lin_b`/`alpha_pixels`, `oklab_pixels` (3 f64 each), `l_chan`/`a_chan`/`b_chan` — which is 10 f64 per pixel, or **20 MiB** at 512×512, for a stage §1 prices at 16.5%. **An earlier revision of this row said `linearize` and `composite` fuse. They do not:** `composite` (`encode.rs:263`) reads `avg_l`/`avg_a`/`avg_b`, which are the *completed* `alpha_average` reduction (`236`) after its normalization by `avg_alpha` (`250`). A full-array barrier sits between exactly the two passes that row paired, and fusing across it would composite against a running partial mean — different bytes, not merely a different order. What is available: fuse `linearize` + `oklab_forward` + `alpha_average` into one tiled pass, and drop `alpha_pixels` entirely by re-deriving alpha in `composite` from `rgba[i*4+3] as f64 / 255.0`, the identical expression. That is 8 buffers → 4 and 4 passes → 2; `oklab_pixels` must survive the barrier and cannot be tiled away. | Elementwise work in unchanged order, **and** the reduction still accumulates in flat pixel index order — which holds only if the tile length is a multiple of the SIMD lane count, so no pixel moves between `oklab_forward_batch`'s vector body and its scalar tail. `composite` stays a separate pass; nothing about this makes the barrier crossable |
 | 7 | `bitpack.rs:3` | **Word-at-a-time bit writing**, against the current divide-and-modulo per bit. Correct and genuinely small — ≤1623 bytes — and listed for completeness rather than for its size. | Same bits |
 
 Items 1 and 2 are the ones worth doing first, and not because they are the
-largest: they are in `quantize_and_pack`, which is **37.5% of a thumbnail
-encode** and 3.9% of a photograph. That is the shape §4 already documents for
-the encoder-only *quality* levers, and it applies to their cost too.
+largest: they sit inside `quantize_and_pack`, which is 37.5% of a thumbnail
+encode and 3.9% of a photograph. That is the shape §4 already documents for the
+encoder-only *quality* levers, and it applies to their cost too.
+
+**But 37.5% is an upper bound on a bucket, not the size of these two levers.**
+`quantize_and_pack` is §1's residual — `whole_encode` minus the marked stages —
+so it contains the scale and AC code searches, the DC search, the bit packing,
+every unmarked line of `encode.rs`, and the instrumentation's own overhead,
+with no way to tell from §1 which of them the 37.5 points belong to. Items 1
+and 2 are somewhere in there and cannot be larger than it. Sizing them needs
+`stage!` marks around the searches themselves, which is a change to
+`bench_stages.rs`, not a reading of the table above. **Nothing in §12.1 is
+measured** (§12.3), and this row is the one most likely to be misread as if it
+were.
 
 ### 12.2 Format changes — v0.8 work
 
