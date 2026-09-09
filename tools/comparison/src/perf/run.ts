@@ -68,9 +68,36 @@ const ONLY = only ? new Set(only.split(",").map((s) => s.trim())) : null;
 
 const targets = allTargets().filter((t) => (ONLY ? ONLY.has(t.name) : true));
 
+/**
+ * Why a target could not be measured, and whether that is a fact about the host
+ * or a fact about the target.
+ *
+ * This used to be a bare `ok: false`, identical for a missing binary, a
+ * non-zero exit, a timeout and a crash — and `verify-benchmark` skips a
+ * target's rows on that alone. So on macOS, where `xcodebuild` exists, a Swift
+ * *build regression* was indistinguishable from no Swift toolchain, and the
+ * gate would have waved the rows through in both cases. Only `absent` may be
+ * skipped; `broken` is reported.
+ */
+type Availability = "absent" | "broken";
+
+/**
+ * Strip the author's checkout path out of a probe message.
+ *
+ * The reason is committed in `baselines/perf-report.json` and echoed into CI
+ * logs by `verify-benchmark`, and Node's ENOENT message quotes the absolute
+ * command — which for this repo was a maintainer's worktree path, published in
+ * the baseline and reprinted on every CI run. Repo-relative says the same
+ * thing and belongs to the repo rather than to whoever measured.
+ */
+function repoRelative(message: string): string {
+  return message.split(`${ROOT}/`).join("").split(ROOT).join(".");
+}
+
 /** A target is available if its binary exists and answers `bench-info`. */
 function probeAvailability(t: Target): {
   ok: boolean;
+  kind?: Availability;
   reason?: string;
   info?: string;
 } {
@@ -81,17 +108,24 @@ function probeAvailability(t: Target): {
     env: { ...process.env, ...t.env },
   });
   if (proc.error || proc.status !== 0) {
+    // ENOENT is the only outcome that means "nothing on this host could have
+    // measured it". A spawn that succeeded and then exited non-zero, timed out
+    // (ETIMEDOUT / SIGTERM) or died on a signal all mean the target is present
+    // and not working.
+    const code = (proc.error as NodeJS.ErrnoException | undefined)?.code;
+    const kind: Availability = code === "ENOENT" ? "absent" : "broken";
     const why =
       proc.error?.message ??
       proc.stderr?.slice(0, 200) ??
-      `exit ${proc.status}`;
-    return { ok: false, reason: why.trim() };
+      (proc.signal ? `killed by ${proc.signal}` : `exit ${proc.status}`);
+    return { ok: false, kind, reason: repoRelative(why.trim()) };
   }
   return { ok: true, info: proc.stdout.trim() };
 }
 
 const available: Target[] = [];
-const unavailable: { target: string; reason: string }[] = [];
+const unavailable: { target: string; reason: string; kind: Availability }[] =
+  [];
 const info: Record<string, string> = {};
 for (const t of targets) {
   const a = probeAvailability(t);
@@ -99,13 +133,28 @@ for (const t of targets) {
     available.push(t);
     info[t.name] = a.info ?? "";
   } else {
-    unavailable.push({ target: t.name, reason: a.reason ?? "unknown" });
+    unavailable.push({
+      target: t.name,
+      reason: a.reason ?? "unknown",
+      kind: a.kind ?? "broken",
+    });
   }
 }
 
-const unavailableNote = unavailable.length
-  ? `, ${unavailable.length} unavailable`
+const broken = unavailable.filter((u) => u.kind === "broken");
+const brokenNote = broken.length
+  ? ` (${broken.length} present but failing)`
   : "";
+const unavailableNote = unavailable.length
+  ? `, ${unavailable.length} unavailable${brokenNote}`
+  : "";
+const BROKEN_NOTE =
+  "      recorded as broken, not absent, so verify:benchmark will not skip its rows";
+for (const u of broken) {
+  process.stderr.write(
+    `perf: WARNING ${u.target} is built but its probe failed — ${u.reason.split("\n")[0]}\n${BROKEN_NOTE}\n`,
+  );
+}
 process.stderr.write(
   `perf: ${available.length} target(s) available${unavailableNote}\n`,
 );

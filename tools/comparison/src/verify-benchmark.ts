@@ -197,6 +197,60 @@ function parseDocNumber(raw: string): DocNumber | null {
   return { value, unit, decimals: dot < 0 ? 0 : m[1].length - dot - 1 };
 }
 
+/**
+ * Read a cell that declares a target this run cannot reach — "*macOS only*".
+ *
+ * A token rather than free prose, and asserted rather than tolerated, because
+ * the alternative is what this gate shipped with: the unavailable-target skip
+ * sat *below* `if (!doc) continue`, so a prose cell exited before ever reaching
+ * it and the branch was live only for the one case that must never take it — a
+ * documented *number* on a target no committed run measured. Fabricated Swift
+ * figures passed, and the run said "Every bound value in PERFORMANCE.md agrees
+ * with a committed run".
+ *
+ * The shape is "<host or toolchain> only", which is what §0's disclosure table
+ * already writes and what PERFORMANCE.md:55 already says is written instead of
+ * `TBD`: these rows are not pending anybody's run. Asserting the shape is what
+ * separates a deliberate marker from a typo, an emptied cell, or a sentence
+ * that used to be a number.
+ *
+ * Two constraints, both because the first version of this was
+ * `^[A-Za-z][A-Za-z0-9 .+#-]* only$` against the de-emphasised text, which
+ * matches any English phrase ending in "only". Every bound column of every
+ * bound table runs through here, so an ordinary prose cell — "encoder only",
+ * "batch only" — became a hard failure with a message about committed runs
+ * that had nothing to do with it.
+ *
+ *  1. The emphasis is part of the marker. §0 and §7/§8 write `*macOS only*`,
+ *     and the failure message tells an author to write exactly that. A bare
+ *     phrase is prose.
+ *  2. The qualifier must name a platform this repo builds for, from the list
+ *     below. A marker says "no run on this host can fill this cell"; only a
+ *     host can make that true, and the vocabulary for hosts is closed.
+ */
+const MARKER_PLATFORMS = [
+  "macOS",
+  "Linux",
+  "Windows",
+  "iOS",
+  "Android",
+  "arm64",
+  "aarch64",
+  "x86_64",
+  "wasm",
+] as const;
+
+const MARKER_RE = new RegExp(
+  `^\\*(?:\\*)?(${MARKER_PLATFORMS.join("|")}) only(?:\\*)?\\*$`,
+);
+
+function parseUnavailableMarker(raw: string): string | null {
+  // The raw cell, not `clean(raw)` — `clean` strips the emphasis that
+  // constraint 1 depends on.
+  const m = MARKER_RE.exec(raw.trim());
+  return m?.[1] ? `${m[1]} only` : null;
+}
+
 const TIME_UNITS = new Set<Unit>(["us", "ms", "s"]);
 const PER_US: Record<string, number> = { us: 1, ms: 1e3, s: 1e6 };
 
@@ -219,6 +273,42 @@ interface RunDoc {
   environment: { cpuModel: string; arch: string; cores: number };
   config: { mode: string; reps: number };
   cells: Cell[];
+  /**
+   * Targets the driver could not run, with the reason it recorded. Swift is the
+   * permanent case: its binding consumes a UniFFI xcframework only `xcodebuild`
+   * can assemble, so the row is empty on every run made off macOS.
+   */
+  unavailable?: { target: string; reason: string; kind?: string }[];
+}
+
+/**
+ * Why a target was not measured — and whether that is a fact about the host or
+ * a fact about the target.
+ *
+ * `probeAvailability` used to answer only "did `bench-info` succeed", and the
+ * gate skipped every row of every target that answered no. A missing binary, a
+ * non-zero exit, a timeout and a crash were one outcome, so on macOS a genuine
+ * Swift *build regression* was indistinguishable from no `xcodebuild`, and the
+ * gate would have skipped the rows in both cases, reporting green.
+ *
+ *  - `absent`  — the binary is not there (spawn ENOENT). Nothing on this host
+ *                could have measured it. Rows are skipped.
+ *  - `broken`  — it is there and it failed: non-zero exit, timeout, crash.
+ *                That is a regression, not an unavailable platform, and it is
+ *                reported rather than skipped.
+ *  - missing   — a run recorded before this distinction existed. Not skipped:
+ *                the fail-safe direction is to report, since an old run cannot
+ *                say which of the two it saw.
+ */
+type Availability = "absent" | "broken" | "unclassified";
+
+interface Unavailable {
+  reason: string;
+  kind: Availability;
+}
+
+function classify(kind: string | undefined): Availability {
+  return kind === "absent" || kind === "broken" ? kind : "unclassified";
 }
 
 class Runs {
@@ -234,6 +324,16 @@ class Runs {
   readonly dirty: string[] = [];
   /** Runs rejected outright, with the reason. */
   readonly rejected: string[] = [];
+  /**
+   * Targets no loaded run could measure.
+   *
+   * A cell for one of these is not a document that has drifted and not a
+   * measurement anybody forgot: it is a row this host cannot fill. Reporting it
+   * as a missing cell made `verify:benchmark` unpassable on Linux — which is
+   * every CI runner this job uses — and so made `continue-on-error` permanent
+   * while its comment claimed it was pending a re-measurement.
+   */
+  readonly unavailable = new Map<string, Unavailable>();
 
   constructor(files: string[]) {
     for (const file of files) {
@@ -255,6 +355,20 @@ class Runs {
 
       this.loaded.push(doc);
       if (doc.git?.dirty) this.dirty.push(file);
+      for (const u of doc.unavailable ?? []) {
+        const prior = this.unavailable.get(u.target);
+        // A `broken` probe outranks an `absent` one: if any run got far enough
+        // to see the target fail, "not built on this host" is not the story.
+        if (
+          !prior ||
+          (prior.kind === "absent" && classify(u.kind) !== "absent")
+        ) {
+          this.unavailable.set(u.target, {
+            reason: u.reason,
+            kind: classify(u.kind),
+          });
+        }
+      }
 
       const seen = new Set<string>();
       for (const c of doc.cells) {
@@ -278,10 +392,34 @@ class Runs {
         }
       }
     }
+
+    // "The union of what was measured wins over any single run's gap" — as a
+    // second pass, over every cell of every loaded run.
+    //
+    // It used to run inline: a file's `unavailable` entries went in, then that
+    // file's cells came out again. The result depended on the order `BASELINES`
+    // lists the files. With `["perf-report-full.json", "perf-report.json"]`, a
+    // target the full sweep measured and the bounded one did not was inserted
+    // by the bounded run *after* the full run's cells had already been walked,
+    // so it stayed marked unavailable while committed cells held it — and the
+    // gate then skipped, or failed, rows it had the measurement for. That is
+    // the exact shape of taking the full sweep on macOS (Swift present) and the
+    // bounded one on Linux (Swift absent).
+    for (const id of this.byId.keys()) {
+      this.unavailable.delete(id.split("/")[1] ?? "");
+    }
   }
 
   has(id: string): boolean {
     return this.byId.has(id);
+  }
+
+  /** Whether any committed run holds a cell for this target, at any id. */
+  measuredTarget(target: string): boolean {
+    for (const id of this.byId.keys()) {
+      if ((id.split("/")[1] ?? "") === target) return true;
+    }
+    return false;
   }
 
   /** Median microseconds per op. Throws if the id is not in any committed run. */
@@ -371,7 +509,229 @@ function timeOr<T>(R: Runs, id: string): number | null {
   return R.has(id) ? R.us(id) : null;
 }
 
+/**
+ * §1's source, which is not a `perf/run.js` sweep.
+ *
+ * `benchmark:stages` runs the instrumented build and reports *shares* of one
+ * encode, taken inside a single process. §1 has carried a note since it was
+ * written saying it "writes no committed artifact, so this table is transcribed
+ * by hand. That is a remaining gap" — and it was the worst possible table to
+ * leave ungated, because it is the one that orders §10's whole roadmap.
+ *
+ * It is bound separately rather than folded into `Runs` because it is a
+ * different measurement: a ratio within one process rather than a wall-clock
+ * cell, which is also why it is readable on a host whose absolute timings would
+ * not be.
+ */
+const STAGES_BASELINE = "perf-stages.json";
+const STAGES_SCHEMA = "chromahash-perf-stages/1";
+
+interface StageCell {
+  ns: Record<string, number>;
+  sharePct: Record<string, number>;
+  git: { rev: string; dirty: boolean };
+}
+
+/**
+ * The stages baseline, or the reason there is none.
+ *
+ * This returned a bare `null` for "no file" and for "wrong schema" alike, and
+ * §1's resolvers turned that into `null` per cell, which `checkTable` counts as
+ * `unbound` — a *pass*. Deleting `perf-stages.json` therefore produced a green
+ * run for the one table this gate exists for: thirty cells silently reclassified
+ * as deliberately unbound, and all thirteen `PROSE_CLAIMS` skipped along with
+ * them, since both blocks are guarded by `if (STAGES)`. `Runs` has never
+ * behaved that way — a missing perf report exits 1 with the command to
+ * regenerate it. §1 gets the same treatment.
+ */
+function loadStages(): {
+  cells: Record<string, StageCell> | null;
+  error: string | null;
+} {
+  const full = path.join(BASELINE_DIR, STAGES_BASELINE);
+  const where = `tools/comparison/baselines/${STAGES_BASELINE}`;
+  if (!existsSync(full)) {
+    return {
+      cells: null,
+      error: `${where} does not exist — record §1's three columns with \`mise run benchmark:stages 100 100 1\`, \`… 512 512 1\`, \`… 512 512 4\``,
+    };
+  }
+  let doc: { schema?: string; cells?: Record<string, StageCell> };
+  try {
+    doc = JSON.parse(readFileSync(full, "utf8")) as typeof doc;
+  } catch (e) {
+    return {
+      cells: null,
+      error: `${where} is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+  if (doc.schema !== STAGES_SCHEMA) {
+    return {
+      cells: null,
+      error: `${where}: schema ${doc.schema ?? "(none)"}, expected ${STAGES_SCHEMA} — re-record §1's three columns with \`mise run benchmark:stages\``,
+    };
+  }
+  if (!doc.cells || Object.keys(doc.cells).length === 0) {
+    return { cells: null, error: `${where} holds no cells` };
+  }
+  return { cells: doc.cells, error: null };
+}
+
+const { cells: STAGES, error: STAGES_ERROR } = loadStages();
+
+/** §1's column headers name a fixture; map each to the recorded cell key. */
+const STAGE_COLUMNS: Record<string, string> = {
+  "100×100 t1": "100x100-t1",
+  "512×512 t1": "512x512-t1",
+  "512×512 t4": "512x512-t4",
+};
+
+/** Doc row label -> the stage the instrumented build reports it as. */
+const STAGE_ROWS: Record<string, string> = {
+  eotf_lut: "eotf_lut",
+  linearize: "linearize",
+  oklab_forward: "oklab_forward",
+  alpha_average: "alpha_average",
+  composite: "composite",
+  selection: "selection",
+  cos_tables: "cos_tables",
+  dct_forward: "dct_forward",
+  quantize_and_pack: "quantize_and_pack",
+};
+
+/**
+ * Figures the prose derives from §1's table, bound to the same baseline.
+ *
+ * The table is checked cell by cell; the sentences underneath it were not, and
+ * that is where §1's numbers actually drifted. "the per-pixel colour pipeline
+ * is 16.6% — `linearize` 5.5%" is a sum of three cells and one of the cells,
+ * and both were wrong: `linearize` measures 5.4340%, which the table two dozen
+ * lines above correctly rounds to 5.4%, and the three stages sum to 16.5183%.
+ * The 16.6% is what you get by rounding each part up first and adding the
+ * rounded parts, and it was repeated in §10 and in the lever table, so a single
+ * transcription slip became three published figures no run supports.
+ *
+ * A derived figure is a claim like any other. These bind the sentence to the
+ * arithmetic, so restating a cell in prose is checked the same way as writing
+ * it in the table.
+ */
+interface ProseClaim {
+  what: string;
+  /** Must match exactly once in the document, capturing the figure. */
+  pattern: RegExp;
+  /** The cell key in `perf-stages.json`. */
+  cell: string;
+  /** Stages to sum; a single-element list is a single cell. */
+  stages: string[];
+}
+
+const PROSE_CLAIMS: ProseClaim[] = [
+  {
+    what: "§1: the per-pixel colour pipeline's share at 512x512 t1",
+    pattern: /the per-pixel colour pipeline is ([\d.]+)%\*\* — `linearize`/,
+    cell: "512x512-t1",
+    stages: ["linearize", "oklab_forward", "composite"],
+  },
+  {
+    what: "§1: `linearize`'s share, quoted in prose",
+    pattern: /colour pipeline is [\d.]+%\*\* — `linearize` ([\d.]+)%/,
+    cell: "512x512-t1",
+    stages: ["linearize"],
+  },
+  {
+    what: "§1: `oklab_forward`'s share, quoted in prose",
+    pattern: /`oklab_forward` ([\d.]+)%, `composite`/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§1: `composite`'s share, quoted in prose",
+    pattern: /`oklab_forward` [\d.]+%, `composite` ([\d.]+)%/,
+    cell: "512x512-t1",
+    stages: ["composite"],
+  },
+  {
+    what: "§1: `oklab_forward` as the SIMD-covered share of the budget",
+    pattern: /covers ([\d.]+) points of a 100-point budget/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§1: `quantize_and_pack`'s share at 100x100 t1, quoted in prose",
+    pattern: /At 100×100, `quantize_and_pack` is ([\d.]+)%\*\*/,
+    cell: "100x100-t1",
+    stages: ["quantize_and_pack"],
+  },
+  {
+    what: "§1: `dct_forward`'s share at 100x100 t1, quoted in prose",
+    pattern: /([\d.]+)% of a 100×100\nencode/,
+    cell: "100x100-t1",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§1: `dct_forward`'s share at 512x512 t4, quoted in prose",
+    pattern: /and \*\*([\d.]+)%\*\* at 512×512 tier 4/,
+    cell: "512x512-t4",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§12 summary: the pipeline share, restated",
+    pattern: /the per-pixel colour pipeline is \*\*([\d.]+)%\*\* at 512×512/,
+    cell: "512x512-t1",
+    stages: ["linearize", "oklab_forward", "composite"],
+  },
+  {
+    what: "§12 summary: `quantize_and_pack`, restated",
+    pattern: /`quantize_and_pack` is \*\*([\d.]+)%\*\* of a 100×100 one/,
+    cell: "100x100-t1",
+    stages: ["quantize_and_pack"],
+  },
+  {
+    what: "§12 summary: `dct_forward` at tier 4, restated",
+    pattern: /encode and \*\*([\d.]+)%\*\* at tier 4/,
+    cell: "512x512-t4",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§12 summary: the SIMD-covered points, restated",
+    pattern: /because it covers ([\d.]+) of those points/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§10 lever 6: the pipeline share, restated",
+    pattern: /for a stage §1 prices at ([\d.]+)%/,
+    cell: "512x512-t1",
+    stages: ["linearize", "oklab_forward", "composite"],
+  },
+];
+
 const BINDINGS: Binding[] = [
+  {
+    section: "1",
+    index: 0,
+    title: "Where encode time goes (shares of one encode)",
+    columns: Object.fromEntries(
+      Object.entries(STAGE_COLUMNS).map(([header, key]) => [
+        header,
+        (row: (h: string) => string) => {
+          if (!STAGES) return null;
+          const cell = STAGES[key];
+          if (!cell) return null;
+          const label = clean(row("stage"));
+          // The total row is the one absolute number in the table, and it is in
+          // milliseconds rather than a share.
+          if (label === "total") {
+            const whole = cell.ns.whole_encode;
+            return whole === undefined ? null : whole / 1e3;
+          }
+          const stage = STAGE_ROWS[label];
+          return stage === undefined ? null : (cell.sharePct[stage] ?? null);
+        },
+      ]),
+    ) as Record<string, Resolve>,
+  },
+
   {
     section: "2",
     index: 0,
@@ -450,9 +810,14 @@ const BINDINGS: Binding[] = [
   {
     section: "4",
     index: 1,
-    title: "The same levers at 100x100 and 512x512",
+    title: "The same levers at 100x100, 256x256 and 512x512",
     columns: {
       "100×100": (row, R) => timeOr(R, armId(100, row("lever"))),
+      // The middle column was in the document and not in this map, so its eight
+      // cells were never visited: not failed, not counted, not listed. The
+      // driver has measured them all along. Same blindness `verify-experiments`
+      // grew `--list-unbound-columns` for, one document over.
+      "256×256": (row, R) => timeOr(R, armId(256, row("lever"))),
       "512×512": (row, R) => timeOr(R, armId(512, row("lever"))),
     },
   },
@@ -627,7 +992,12 @@ function checkTable(
   table: DocTable,
   R: Runs,
   failures: Failure[],
-  counters: { checked: number; unbound: number; placeholders: number },
+  counters: {
+    checked: number;
+    unbound: number;
+    placeholders: number;
+    unavailable: number;
+  },
   edits: Edit[],
 ): void {
   const headerIndex = new Map<string, number>();
@@ -654,6 +1024,91 @@ function checkTable(
       const raw = cellsOfRow[i] ?? "";
       const placeholder = parsePlaceholder(raw);
       const doc = placeholder ?? parseDocNumber(raw);
+
+      // Before `!doc`, not after. A row naming a target no committed run
+      // measured is not drift and not a forgotten measurement — it is a row
+      // this host cannot fill, and the document says so with a marker beside
+      // it. But that is a claim about the *cell*, so the cell has to be read
+      // before it can be honoured, and it was being read afterwards: a prose
+      // cell left at `!doc` first and never arrived, while a cell carrying a
+      // number arrived and was waved through. Exactly inverted. The only case
+      // the skip actually caught was the one it must never catch.
+      // `R.unavailable` is keyed on the target name the driver records, which
+      // is the row label verbatim — "Rust (scalar)" included. Looking it up
+      // under `bare(rowLabel)` alone stripped the parenthetical, so a
+      // parenthesised target could never match its own record. Try the label as
+      // written first, then bare.
+      const rowLabelClean = clean(rowLabel);
+      const rowTarget = R.unavailable.has(rowLabelClean)
+        ? rowLabelClean
+        : bare(rowLabel);
+      const unavailable = R.unavailable.get(rowTarget);
+      const marker = parseUnavailableMarker(raw);
+      const where = `§${binding.section} ${binding.title} (line ${sourceLine})`;
+      if (unavailable) {
+        // Only an *absent* target may be skipped. A target that was found and
+        // then failed its probe is a regression, and skipping its rows is how a
+        // broken Swift build passes for "no xcodebuild".
+        if (unavailable.kind !== "absent") {
+          failures.push({
+            where,
+            column,
+            row: rowLabel,
+            documented: raw === "" ? "(empty)" : raw,
+            measured: "—",
+            detail:
+              unavailable.kind === "broken"
+                ? `${rowTarget}'s probe was found and failed (${unavailable.reason.split("\n")[0]}) — that is a regression in the target, not an unavailable platform, so this row is not skipped`
+                : `${rowTarget} is recorded unavailable by a run made before absent/broken were distinguished, so it cannot be told apart from a build regression — regenerate the run with \`mise run benchmark\``,
+          });
+          continue;
+        }
+        if (marker) {
+          counters.unavailable++;
+          continue;
+        }
+        // No committed run holds a measurement for this target, so whatever is
+        // in this cell is not backed by one — a number least of all.
+        failures.push({
+          where,
+          column,
+          row: rowLabel,
+          documented: raw === "" ? "(empty)" : raw,
+          measured: "—",
+          detail: `no committed run measured ${rowTarget} (${unavailable.reason}), so this cell cannot be verified — write it as a marker such as "*macOS only*"`,
+        });
+        continue;
+      }
+      // And the converse. A marker on a target the committed runs *did* measure
+      // is a row that has stopped describing the run behind it, which is the
+      // same drift in the other direction and just as invisible.
+      //
+      // But only if a run measured it. The message asserts "a committed run
+      // measured T" and nothing checked that: a target no run ever *probed* —
+      // `--impls Rust,Go` leaves seven of them — is in neither `unavailable`
+      // nor `cells`, and the gate stated a falsehood about it. Ask `R`.
+      if (marker) {
+        if (!R.measuredTarget(rowTarget)) {
+          failures.push({
+            where,
+            column,
+            row: rowLabel,
+            documented: raw,
+            measured: "—",
+            detail: `cell reads "${marker}", but no committed run measured ${rowTarget} and none recorded it as unavailable either — it was never probed, so nothing here is evidence either way (was the run made with \`--impls\`?)`,
+          });
+          continue;
+        }
+        failures.push({
+          where,
+          column,
+          row: rowLabel,
+          documented: raw,
+          measured: "—",
+          detail: `cell reads "${marker}" but a committed run measured ${rowTarget}`,
+        });
+        continue;
+      }
       if (!doc) continue;
 
       let expected: number | null;
@@ -776,9 +1231,31 @@ for (const r of runs.loaded) {
 console.log();
 
 const failures: Failure[] = [];
-const counters = { checked: 0, unbound: 0, placeholders: 0 };
+const counters = { checked: 0, unbound: 0, placeholders: 0, unavailable: 0 };
 const edits: Edit[] = [];
 const missingTables: string[] = [];
+
+// §1's baseline is a hard requirement whenever §1 is in the binding set, and it
+// is the one table this gate was extended to cover. Without this, a missing or
+// schema-bumped `perf-stages.json` made every §1 resolver return null, which
+// `checkTable` counts as `unbound` and therefore as a pass — a green run for
+// the table, and all thirteen prose claims skipped with it. `Runs` exits 1 on
+// the same condition; so does this now.
+const stagesBound = BINDINGS.some(
+  (b) => b.section === "1" && (!values.section || values.section === b.section),
+);
+if (stagesBound && !STAGES) {
+  console.error(
+    [
+      `No committed stages run for PERFORMANCE.md §1: ${STAGES_ERROR ?? "unavailable"}`,
+      "",
+      "§1 orders §10's whole acceleration roadmap and is bound cell by cell to",
+      "this artifact, together with the figures §1, §10 and §12 derive from it.",
+      "Without it those checks do not become optional — they become unrun.",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
 
 for (const binding of BINDINGS) {
   if (values.section && binding.section !== values.section) continue;
@@ -866,11 +1343,129 @@ if (values.fix) {
   process.exit(0);
 }
 
+// §1's baseline gets the provenance check its sibling already had. A stages
+// file is *merged* one cell per run — the table is three columns and each is
+// its own invocation — so it is the one artifact here that can hold cells from
+// three different builds and read as one measurement. Nothing looked. The
+// dirty flag was recorded on every cell and read on none, while the same flag
+// on a perf-report has failed the run since that check was written.
+if (STAGES) {
+  const dirty = Object.entries(STAGES)
+    .filter(([, c]) => c.git?.dirty)
+    .map(([k]) => k);
+  if (dirty.length > 0) {
+    failures.push({
+      where: STAGES_BASELINE,
+      column: "git.dirty",
+      row: dirty.join(", "),
+      documented: "—",
+      measured: "dirty",
+      detail:
+        "recorded from a working tree with uncommitted changes, so these shares cannot be traced to a source state — re-run benchmark:stages from a clean tree",
+    });
+  }
+  const revs = new Map<string, string[]>();
+  for (const [key, cell] of Object.entries(STAGES)) {
+    const rev = cell.git?.rev ?? "(none)";
+    revs.set(rev, [...(revs.get(rev) ?? []), key]);
+  }
+  if (revs.size > 1) {
+    failures.push({
+      where: STAGES_BASELINE,
+      column: "git.rev",
+      row: [...revs.keys()].join(" vs "),
+      documented: "one commit",
+      measured: `${revs.size} commits`,
+      detail: `§1 reads as one measurement across its three columns, and these cells are from different builds: ${[...revs.entries()].map(([r, ks]) => `${r} (${ks.join(", ")})`).join("; ")}`,
+    });
+  }
+}
+
+// The prose figures §1 derives from its own table. Checked against the same
+// baseline the table is checked against, and to the precision the sentence
+// itself claims — the same tolerance rule the cells use, so tightening a figure
+// in the document tightens the assertion on it.
+let proseChecked = 0;
+if (STAGES) {
+  for (const claim of PROSE_CLAIMS) {
+    const all = [...doc.matchAll(new RegExp(claim.pattern, "g"))];
+    if (all.length !== 1) {
+      failures.push({
+        where: "PERFORMANCE.md prose",
+        column: claim.what,
+        row: "—",
+        documented: `${all.length} match(es)`,
+        measured: "—",
+        detail:
+          all.length === 0
+            ? "the sentence was edited without updating its binding here, so the figure is no longer checked"
+            : "the pattern must name one figure",
+      });
+      continue;
+    }
+    const quotedRaw = all[0]?.[1];
+    const cell = STAGES[claim.cell];
+    if (quotedRaw === undefined || !cell) continue;
+    const quoted = Number(quotedRaw);
+    if (!Number.isFinite(quoted)) {
+      failures.push({
+        where: "PERFORMANCE.md prose",
+        column: claim.what,
+        row: "—",
+        documented: quotedRaw,
+        measured: "—",
+        detail: "captured text is not a number",
+      });
+      continue;
+    }
+    let expected = 0;
+    let missing = false;
+    for (const st of claim.stages) {
+      const v = cell.sharePct[st];
+      if (v === undefined) {
+        missing = true;
+        break;
+      }
+      expected += v;
+    }
+    if (missing) continue;
+    const dot = quotedRaw.indexOf(".");
+    const places = dot < 0 ? 0 : quotedRaw.length - dot - 1;
+    const tol = 0.5 * 10 ** -places;
+    proseChecked++;
+    if (Math.abs(expected - quoted) > tol) {
+      failures.push({
+        where: "PERFORMANCE.md prose",
+        column: claim.what,
+        row: claim.stages.join(" + "),
+        documented: `${quotedRaw}%`,
+        measured: `${expected.toFixed(Math.max(places, 2))}%`,
+        detail: `from ${claim.cell} in ${STAGES_BASELINE}`,
+      });
+    }
+  }
+}
+
 console.log(
   `Checked ${counters.checked} documented value(s) against the committed runs` +
     `; ${counters.unbound} deliberately unbound` +
+    `${counters.unavailable > 0 ? `, ${counters.unavailable} on targets this run could not reach` : ""}` +
     `${counters.placeholders > 0 ? `, ${counters.placeholders} placeholder(s) not yet measured` : ""}.`,
 );
+console.log(
+  `Checked ${proseChecked} figure(s) the prose derives from §1's table.`,
+);
+const UNAVAILABLE_NOTE =
+  '               a cell marked "<host> only" is skipped, not failed — a target no\n' +
+  "               committed run reached cannot be asked to document a number. A cell\n" +
+  "               holding one anyway IS failed: nothing measured it.";
+for (const [target, u] of runs.unavailable) {
+  const label = u.kind === "absent" ? "UNAVAILABLE" : `PROBE-${u.kind}`;
+  // Only an absent target is skipped, so only an absent target gets the note
+  // explaining why a marker is acceptable in its rows.
+  const note = u.kind === "absent" ? `\n${UNAVAILABLE_NOTE}` : "";
+  console.log(`  ${label}  ${target}: ${u.reason.split("\n")[0]}${note}`);
+}
 for (const m of missingTables)
   console.log(`  SKIP  ${m} — not found in the document`);
 

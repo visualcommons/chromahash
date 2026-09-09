@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+#MISE description="Per-stage encode timing (Rust only — the core is the only tunable surface)"
+#
+# Usage: mise run benchmark:stages [W] [H] [TIER] [ITERS]
+#
+# Was an inline `run` string using ${1:-512} placeholders. mise appends a task's
+# arguments to the command line rather than binding them as shell positionals,
+# so every invocation silently measured the defaults: `benchmark:stages 100 100 1`
+# reported a 512x512 tier-1 run, with the arguments landing as stray words after
+# a redirect. A file task gets real positionals, which is why every other
+# parameterized task in this repo is one (see mise-tasks/mutants/rust/diff).
+#
+# Writes tools/comparison/baselines/perf-stages.json alongside the human output,
+# so spec/PERFORMANCE.md §1 can be checked by `verify:benchmark` rather than
+# transcribed by hand — a gap §1 has carried a note about since it was written.
+#
+# baselines/, not output/. It wrote to output/perf/ and the gate read from
+# baselines/, which meant a hand-copy nobody had written down stood between the
+# measurement and the check: re-running this task appeared to change nothing,
+# and the committed artifact could sit any distance from what the task
+# produced with no way to tell. PERFORMANCE.md already documented it as writing
+# here.
+#
+# §1 is three columns, so filling it is three invocations of this task, and
+# each one writes the same committed artifact. The recorder therefore probes the
+# tree *after* its own write and *excludes* the artifact from the probe. It used
+# to probe before the write with no exclusion, which made the gate's provenance
+# check unsatisfiable: cell 1 recorded `dirty: false`, cells 2 and 3 observed
+# cell 1's write and recorded `dirty: true`, and `verify:benchmark` failed them
+# with "re-run benchmark:stages from a clean tree" — advice no three-invocation
+# table can follow. Any *other* uncommitted change still records `dirty: true`,
+# so a stray experiment still cannot quietly become the baseline.
+#
+# This deliberately does NOT follow `benchmark`/`benchmark:full`, which write to
+# output/perf/ and are copied into baselines/ by hand (PERFORMANCE.md §0). Those
+# runs are a whole-machine wall-clock sweep a maintainer publishes on a quiet
+# host, and the copy step is the decision to publish. A stage share is a ratio
+# taken inside one process, reproducible on any host, and merged one cell per
+# invocation — there is no run to decide about, only a cell to record, and an
+# uncopied cell is just a measurement the gate cannot see.
+set -euo pipefail
+
+w="${1:-512}"
+h="${2:-512}"
+tier="${3:-1}"
+iters="${4:-20}"
+
+out_dir="tools/comparison/baselines"
+mkdir -p "$out_dir"
+
+raw="$(cargo run -q --manifest-path rust/Cargo.toml --release \
+    --features bench-internals --example bench_stages \
+    -- "$w" "$h" "$tier" "$iters" < /dev/null)"
+
+echo "$raw"
+
+# The recorder is a module under tools/benchmark/, not a heredoc here: it
+# defines the schema `verify:benchmark` gates §1 against, and only tools/
+# benchmark/ is covered by `mise run lint:benchmark` and `format:check:benchmark`.
+printf '%s\n' "$raw" | python3 tools/benchmark/record_stages.py \
+    "$w" "$h" "$tier" "$iters" "$out_dir/perf-stages.json"

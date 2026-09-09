@@ -151,14 +151,23 @@ jobs:
       # Reads spec/PERFORMANCE.md and the committed runs under baselines/ only —
       # no harness, no toolchain.
       #
-      # `continue-on-error` because `baselines/perf-report*.json` is not in the
-      # tree, so this step has failed on master continuously — and because it ran
-      # first and the job stopped there, it took the R-D quality gate and the
-      # report build down with it. Every gate downstream of it was dead. Restoring
-      # the baseline needs `mise run benchmark:full` across all seven language
-      # toolchains; until that lands, a drifted document must not mask a
-      # rate-distortion regression. Remove this line in the same change that
-      # commits the baseline.
+      # `continue-on-error` because six of PERFORMANCE.md's cells are still
+      # placeholders — §2's tier-3/4 encode and §3's 128/1024 rows, which the
+      # `bounded` matrix does not produce. A baseline IS now committed and 180
+      # values are checked against it, so this is six cells from green rather
+      # than the whole document.
+      #
+      # An earlier version of this comment said to remove the line "in the same
+      # change that commits the baseline". That was not achievable as written:
+      # §7 and §8 carry Swift rows, Swift's binding needs an xcframework only
+      # `xcodebuild` can assemble, and this job runs on ubuntu-latest — so a
+      # Linux runner could never satisfy the gate. The gate now reports an
+      # unreachable target's rows as unavailable rather than failed, which is
+      # what makes green reachable here at all. `mise run benchmark:full` closes
+      # the remaining six.
+      #
+      # Until then a drifted document must not mask a rate-distortion
+      # regression: this step used to run first and take rd-gate down with it.
       - name: PERFORMANCE.md agrees with the committed perf runs
         continue-on-error: true
         run: node tools/comparison/dist/verify-benchmark.js

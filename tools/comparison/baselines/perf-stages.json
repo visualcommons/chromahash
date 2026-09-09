@@ -1,0 +1,110 @@
+{
+  "cells": {
+    "100x100-t1": {
+      "git": {
+        "dirty": false,
+        "rev": "e53e6cd"
+      },
+      "height": 100,
+      "iters": 40,
+      "ns": {
+        "alpha_average": 6937,
+        "composite": 10230,
+        "cos_tables": 7307,
+        "dct_forward": 1613661,
+        "eotf_lut": 16473,
+        "linearize": 16377,
+        "oklab_forward": 68543,
+        "quantize_and_pack": 1054606,
+        "selection": 15304,
+        "stage_sum": 1754835,
+        "whole_encode": 2809441
+      },
+      "recordedAt": "2026-09-07T02:52:49.026104+00:00",
+      "sharePct": {
+        "alpha_average": 0.24691744727865791,
+        "composite": 0.36412937662688055,
+        "cos_tables": 0.2600873269807054,
+        "dct_forward": 57.43708445915041,
+        "eotf_lut": 0.5863444008968333,
+        "linearize": 0.5829273510281938,
+        "oklab_forward": 2.43973801193903,
+        "quantize_and_pack": 37.53793014339863,
+        "selection": 0.5447346998922561
+      },
+      "tier": 1,
+      "width": 100
+    },
+    "512x512-t1": {
+      "git": {
+        "dirty": false,
+        "rev": "e53e6cd"
+      },
+      "height": 512,
+      "iters": 40,
+      "ns": {
+        "alpha_average": 166385,
+        "composite": 1970666,
+        "cos_tables": 35561,
+        "dct_forward": 37353129,
+        "eotf_lut": 14814,
+        "linearize": 2567394,
+        "oklab_forward": 3266264,
+        "quantize_and_pack": 1854627,
+        "selection": 17578,
+        "stage_sum": 45391795,
+        "whole_encode": 47246423
+      },
+      "recordedAt": "2026-09-07T02:52:51.072689+00:00",
+      "sharePct": {
+        "alpha_average": 0.352164226273807,
+        "composite": 4.171037456105407,
+        "cos_tables": 0.07526707365761848,
+        "dct_forward": 79.06022642179705,
+        "eotf_lut": 0.03135475462343467,
+        "linearize": 5.434049472909304,
+        "oklab_forward": 6.913251401063738,
+        "quantize_and_pack": 3.925433677804561,
+        "selection": 0.03720493295333702
+      },
+      "tier": 1,
+      "width": 512
+    },
+    "512x512-t4": {
+      "git": {
+        "dirty": false,
+        "rev": "e53e6cd"
+      },
+      "height": 512,
+      "iters": 20,
+      "ns": {
+        "alpha_average": 171355,
+        "composite": 2241208,
+        "cos_tables": 386194,
+        "dct_forward": 1777936925,
+        "eotf_lut": 15899,
+        "linearize": 3047685,
+        "oklab_forward": 3654968,
+        "quantize_and_pack": 45673350,
+        "selection": 2045144,
+        "stage_sum": 1789499382,
+        "whole_encode": 1835172732
+      },
+      "recordedAt": "2026-09-07T02:53:29.708892+00:00",
+      "sharePct": {
+        "alpha_average": 0.00933726820435342,
+        "composite": 0.12212517987652838,
+        "cos_tables": 0.02104401363783995,
+        "dct_forward": 96.88117603307981,
+        "eotf_lut": 0.00086634896665411,
+        "linearize": 0.1660707434704844,
+        "oklab_forward": 0.1991620699386024,
+        "quantize_and_pack": 2.4887766259595883,
+        "selection": 0.11144149890300353
+      },
+      "tier": 4,
+      "width": 512
+    }
+  },
+  "schema": "chromahash-perf-stages/1"
+}
