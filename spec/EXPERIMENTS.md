@@ -1674,7 +1674,9 @@ still the obvious next thing to build.
 > naming one value where the tune sets another. Both are properties of the config alone, so it needs no corpus, no
 > encoder and no sweep output, and runs in CI where the sweeps cannot. It found
 > fourteen. Two incumbents were pinned and their sweeps re-run byte-identical;
-> one arm was relabelled (§11.3's off-budget `C2@4`); the remaining eleven are
+> one arm was relabelled (the off-budget `C2@4` of `sweeps/alpha-tier1.json`,
+> discussed in §11.11 — §11.3's own tables read `C1@4` and are correct); the
+> remaining eleven are
 > the arms of the six configs that declare `unpinnedLabels` — `cfl`,
 > `prefix-shrink`, `retune-32b`, `combined-optimizer`, `low-budget-allocation`
 > and `selection-hv`, six of them `selection-hv`'s — so the decision is recorded
