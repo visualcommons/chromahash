@@ -40,11 +40,31 @@ cell cannot be published here.
 > the host is part of the result, so it is stated. An Apple M3 Pro laptop was
 > tried and **rejected**: the same cell across fresh processes spanned 34%, the
 > host drifted ~25% over a few hours, and two independent full sweeps sharing 99
-> cells disagreed by more than 10% on 22 of them. **The bar was applied again
-> here before anything was published**: two independent bounded sweeps at the
-> same commit share 100 cells and **not one disagrees by more than 10%** — the
-> widest is 5.5%, and the driver flags a single cell as noisy
+> cells disagreed by more than 10% on 22 of them. The same bar was applied to
+> this host before anything was published: two independent bounded sweeps at the
+> same commit shared 100 cells, none disagreed by more than 10%, the widest was
+> 5.5%, and the driver flagged a single cell as noisy
 > (`batch/Kotlin/threads=auto`, a JVM thread-pool figure).
+>
+> **That last check is not reproducible from this tree, and it is the weakest
+> evidence in the document.** Read it as a statement about the host at the time
+> of measurement, not as a result you can re-derive here. Precisely:
+>
+> | Claim | Reproducible from the tree? |
+> |---|---|
+> | Every table below equals a cell in `baselines/perf-report.json` and `baselines/perf-stages.json` | **Yes** — `mise run verify:benchmark`, cell by cell, exactly |
+> | The M3 Pro's 34% / ~25% / 22-of-99 figures | **No.** That host's runs were never committed, and the machine was rejected rather than published |
+> | This host's 100-shared-cells agreement | **No.** Only one of the two bounded sweeps is committed. There is no second artifact for `verify:benchmark`'s `crossRunSpread` check to read, so it compares nothing and reports nothing |
+>
+> The gate reads exactly two sweep files, `baselines/perf-report-full.json` then
+> `baselines/perf-report.json`, and one of them is a `--full` matrix rather than
+> a second bounded sweep. There is no slot a second bounded sweep could occupy,
+> so committing one would mean extending the gate, not just adding a file.
+> Until that happens the cross-run agreement above stands on the maintainer's
+> word and nothing else — which is exactly the standard §11 indicts `spec/README`
+> §14 for, kept here only because it is *labelled* rather than presented as a
+> checked result. **The 10%-spread bar remains the rule for publishing a new
+> host; what this tree can prove is that the numbers match one committed run.**
 >
 > **What is still missing, and the one command that closes it:**
 >
@@ -67,15 +87,34 @@ cell cannot be published here.
 >
 > To fill the rest in:
 >
->
 > ```bash
 > mise run benchmark          # -> tools/comparison/output/perf/perf.json
 > mise run benchmark:full     # -> tools/comparison/output/perf/perf-full.json
+>
+> # §1's three columns. Each is its own invocation and each writes the committed
+> # baseline directly, so there is no `cp` for these.
+> mise run benchmark:stages 100 100 1
+> mise run benchmark:stages 512 512 1
+> mise run benchmark:stages 512 512 4
+>
 > cp tools/comparison/output/perf/perf.json      tools/comparison/baselines/perf-report.json
 > cp tools/comparison/output/perf/perf-full.json tools/comparison/baselines/perf-report-full.json
 > mise run verify:benchmark -- --fix   # rewrites every TBD from the runs
 > mise run verify:benchmark            # must pass
 > ```
+>
+> **The order is load-bearing, and it is the reason `benchmark:stages` sits in
+> the middle.** Every recorder here stamps its output with `git.dirty`, and the
+> gate fails a run that carries it. `benchmark`/`benchmark:full` write to the
+> ignored `output/`, so they leave the tree clean — but they must therefore go
+> *first*, before anything else has dirtied it. `benchmark:stages` writes a
+> tracked file, and excludes only that one file from its own probe, so the three
+> invocations do not dirty each other but a copied-in `perf-report.json` would
+> dirty all three. Hence: sweeps, then stages, then the copies.
+>
+> This block previously omitted `benchmark:stages` altogether, so following the
+> documented procedure left §1's baseline untouched at whatever revision it was
+> last recorded at — the one table in the document with no way to notice.
 >
 > The two `cp` lines **rename** as they copy, and that is not cosmetic: the gate
 > reads `baselines/perf-report-full.json` then `baselines/perf-report.json` and
@@ -84,10 +123,10 @@ cell cannot be published here.
 > under their output names, leaves the gate reading nothing, and reports the
 > document as unmeasured with no hint as to why. `TESTING.md` had it right.
 >
-> Run it on a quiet machine, from a clean tree — the driver records
+> Run it on a quiet machine, from a clean tree — every recorder stamps
 > `git.dirty`, and the gate fails on a run that cannot be traced to a revision.
-> §1 is the exception: it comes from `mise run benchmark:stages`, which commits
-> no artifact, so its column must be filled by hand and is not gated.
+> That now includes §1: `benchmark:stages` commits `perf-stages.json`, and
+> `verify:benchmark` checks its provenance alongside the sweeps'.
 
 ---
 
@@ -101,6 +140,23 @@ anything.
 > `baselines/perf-stages.json` and `verify:benchmark` checks every cell here
 > against it. It had been the one table nothing checked, which was the worst
 > possible one to leave open: §10's whole ordering rests on it.
+>
+> **Provenance.** All three cells were measured at **`e53e6cd`**, which the
+> artifact records and the gate checks for uniformity across the three columns.
+> That is not the head of this branch, and it does not need to be:
+> `git diff e53e6cd..HEAD -- rust/` is empty, so the encoder these shares
+> describe is the encoder this revision ships. Every commit since is
+> documentation, the gate, or the task.
+>
+> The artifact also **predates the fix to the recorder's own dirty probe.** The
+> probe used to run before the write and without excluding the file it was about
+> to write, so of three invocations the first recorded `dirty: false` and the
+> next two recorded `dirty: true` — and the gate hard-fails those with "re-run
+> `benchmark:stages` from a clean tree", which no three-column table can comply
+> with. The recorder now probes after the write and excludes only its own
+> output. These cells were recorded before that and read `dirty: false`; the
+> next re-measurement will produce the same flags for a reason rather than by
+> hand.
 
 | stage | 100×100 t1 | 512×512 t1 | 512×512 t4 |
 |---|---:|---:|---:|
@@ -114,6 +170,18 @@ anything.
 | **`dct_forward`** | 57.4% | 79.1% | 96.9% |
 | `quantize_and_pack` | 37.5% | 3.9% | 2.5% |
 | total | 2.81 ms | 47.25 ms | 1835.17 ms |
+
+**`quantize_and_pack` is a residual, not a marked stage.** Every other row here
+is a `stage!` mark around a named span of `encode.rs`. This one is computed in
+`rust/examples/bench_stages.rs` as `whole_encode − stage_sum`, so it is
+everything the marks do not cover: the scale and AC code searches, the
+decode-aware DC search, the bit packing — and also every unmarked line between
+the marks, plus the instrumentation's own overhead. At 512×512 t1 that is
+47 246 423 − 45 391 795 ns. **The consequence is that this column sums to
+exactly 100% by construction**, and that the row is an *upper bound* on the work
+it names rather than a measurement of it. Sizing a lever inside it (§12.1 items
+1, 2 and 7) needs its own marks; the share only bounds what those levers could
+be worth.
 
 **The forward DCT is the encoder, above thumbnail size.** 57% of a 100×100
 encode, 79% at 512×512, and **97%** at 512×512 tier 4 — the share rises with both
