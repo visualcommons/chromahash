@@ -795,14 +795,31 @@ def validate_against_vectors():
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _rust_source() -> str:
-    with open(os.path.join(REPO, "rust/src/constants.rs"), encoding="utf-8") as f:
-        return f.read()
+def _read_source(rel: str):
+    """Text of `rel` under the repo root, or None if it is not there.
+
+    `spec/README.md` and `TESTING.md` both invite running this script on its
+    own, and `spec/` is the part of the tree a reimplementer is most likely to
+    copy out. Read directly, a missing `rust/src/constants.rs` raised
+    FileNotFoundError out of the middle of the run and killed the process
+    *before* the "Results: N passed, M failed" summary -- so a standalone user
+    lost every check that had already passed, and the one thing that went wrong
+    was reported as a traceback rather than as a failed check. Returning None
+    lets the caller record it as the failure it is and let the summary print.
+    """
+    try:
+        with open(os.path.join(REPO, rel), encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return None
 
 
-def _ts_source() -> str:
-    with open(os.path.join(REPO, "typescript/src/header.ts"), encoding="utf-8") as f:
-        return f.read()
+def _rust_source():
+    return _read_source("rust/src/constants.rs")
+
+
+def _ts_source():
+    return _read_source("typescript/src/header.ts")
 
 
 def _num(text: str, pattern: str):
@@ -901,6 +918,28 @@ def validate_cross_implementation_constants():
     print("\nCross-implementation constant parity (spec / Rust / TypeScript):")
     rust = _rust_source()
     ts = _ts_source()
+    # `SEL_Q` lives in dct.rs, not constants.rs — read it from there.
+    dct_src = _read_source("rust/src/dct.rs")
+
+    # Every source this function compares against lives outside `spec/`, so all
+    # three are absent whenever the script is run on its own (see
+    # `_read_source`). Checked together and up front: one failed check naming
+    # what is missing, and the parity assertions below skipped rather than
+    # attempted against None.
+    sources = (
+        ("rust/src/constants.rs", rust),
+        ("typescript/src/header.ts", ts),
+        ("rust/src/dct.rs", dct_src),
+    )
+    unreadable = [name for name, src in sources if src is None]
+    check(
+        not unreadable,
+        "implementation sources are readable"
+        + ("" if not unreadable
+           else f" — {len(unreadable)} missing: {', '.join(unreadable)}"
+                " (running outside the monorepo? the parity checks below need"
+                " the other languages' trees)"),
+    )
 
     # --- Scalars: (spec value, Rust pattern, TypeScript pattern) ---
     #
@@ -1029,45 +1068,42 @@ def validate_cross_implementation_constants():
          r"^(?:export )?const A_SCALE_BITS\s*=\s*(\d+)"),
     ]
 
-    # `SEL_Q` lives in dct.rs, not constants.rs — read it from there.
-    with open(os.path.join(REPO, "rust/src/dct.rs"), encoding="utf-8") as f:
-        dct_src = f.read()
-
     # A `^`-anchored Rust pattern reads a declaration line from the file that
     # declares it; the `Tunables` fields, which have no such line, read
     # `DEFAULT`'s body instead. The pattern says which, so there is no second
     # hand-written list here to fall out of step with the first.
-    tunables = _rust_tunables(rust)
+    if not unreadable:
+        tunables = _rust_tunables(rust)
 
-    for name, spec_value, rust_pat, ts_pat in scalars:
-        if not rust_pat.startswith("^"):
-            src = tunables
-        else:
-            src = dct_src if name == "SEL_Q" else rust
-        r = _num(src, rust_pat)
-        t = _num(ts, ts_pat)
-        check(
-            r is not None and t is not None
-            and float(spec_value) == r == t,
-            f"{name}: spec {spec_value} == Rust {r} == TypeScript {t}",
-        )
+        for name, spec_value, rust_pat, ts_pat in scalars:
+            if not rust_pat.startswith("^"):
+                src = tunables
+            else:
+                src = dct_src if name == "SEL_Q" else rust
+            r = _num(src, rust_pat)
+            t = _num(ts, ts_pat)
+            check(
+                r is not None and t is not None
+                and float(spec_value) == r == t,
+                f"{name}: spec {spec_value} == Rust {r} == TypeScript {t}",
+            )
 
-    # --- Layouts: the whole AC table, all three rows ---
-    for name, spec_layout in (
-        ("LAYOUT_B", LAYOUT_B),
-        ("LAYOUT_T0", LAYOUT_T0),
-        ("LAYOUT_TC", LAYOUT_TC),
-    ):
-        want = _spec_layout(spec_layout)
-        got_rust = _rust_layout(rust, name)
-        got_ts = _ts_layout(ts, name)
-        check(
-            got_rust is not None and got_ts is not None
-            and want == got_rust == got_ts,
-            f"{name}: spec == Rust == TypeScript"
-            + ("" if want == got_rust == got_ts
-               else f" — spec {want}, Rust {got_rust}, TypeScript {got_ts}"),
-        )
+        # --- Layouts: the whole AC table, all three rows ---
+        for name, spec_layout in (
+            ("LAYOUT_B", LAYOUT_B),
+            ("LAYOUT_T0", LAYOUT_T0),
+            ("LAYOUT_TC", LAYOUT_TC),
+        ):
+            want = _spec_layout(spec_layout)
+            got_rust = _rust_layout(rust, name)
+            got_ts = _ts_layout(ts, name)
+            check(
+                got_rust is not None and got_ts is not None
+                and want == got_rust == got_ts,
+                f"{name}: spec == Rust == TypeScript"
+                + ("" if want == got_rust == got_ts
+                   else f" — spec {want}, Rust {got_rust}, TypeScript {got_ts}"),
+            )
 
     # --- Completeness: every numeric constant is named above, or excused ---
     #
