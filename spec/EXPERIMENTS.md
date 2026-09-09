@@ -2783,6 +2783,23 @@ tier's natural raster, and therefore the largest grid all five arms can be asked
 about on equal terms. `sweeps/artifact-ladder-common-grid.json`, 31 tune
 photographs:
 
+**One thing the pin does not do, stated before the table rather than after it.**
+A strict reading of "the frequencies all five tiers can represent" would score
+invention *above* the pinned grid's Nyquist at exactly zero, because no arm can
+be asked about it. The pin does not deliver that. Both sides reach the analysis
+grid through `areaPlane`, which is a box decimation rather than an anti-aliased
+low-pass, so invented structure above the pin folds back into the grid and is
+charged — with a gain that depends on the arm's own raster, since a larger
+raster decimates by a larger factor. Measured directly on a synthetic pair
+(identical invented amplitude above a 32 px pin's Nyquist, decode raster
+varied), the score *falls* as the raster grows: the residue is largest on the
+compact arm and smallest on the archival one. That is the conservative direction
+for §13.2, whose finding is that invention *rises* with tier — the instrument
+understates the rise it reports. It is recorded rather than fixed: replacing the
+decimation with an anti-aliased low-pass would move every number in this section
+and is not a change to make at the end of a round.
+
+
 | tier | bytes | ΔE00 | Spur | Deficit | Spur / Deficit |
 |---|---|---|---|---|---|
 | code 0 (compact) | 21 | 12.147 | 3.98 | 27.05 | 0.15 |
@@ -2799,12 +2816,29 @@ equivalent knob, which is the asymmetry §12.4 documents.
 
 Three findings, on one instrument.
 
-1. **Invented structure has a minimum, and it is code 2.** Spurious falls
+1. **Invented structure has a floor, and it is codes 1–2.** Spurious falls
    3.98 → 3.53 → **3.49** and then rises, 4.21 at code 3 and 4.23 at code 4.
-   From its minimum to the top tier it grows **21%** while ΔE00 improves 30%.
-   That code 2 is also where §11.14 puts the format's strongest cross-format
-   position is not a coincidence worth asserting from two numbers, but it is
-   worth writing down.
+   The two lowest cells are not separable, and this does not claim they are: a
+   paired bootstrap over the same 31 photographs puts code 1 − code 2 at
+   **+0.039, 95% CI [−0.393, +0.446]**, straddling zero, and code 0 − code 2 at
+   +0.480 [−0.014, +1.004], barely straddling it. Calling code 2 *the minimum*
+   would be reading a 0.04-level gap this corpus cannot resolve — the mistake
+   §11.5 declines to make when it calls its leading five layouts a plateau
+   rather than crowning the top row.
+
+   The **rise off that floor is what survives**: code 3 − code 2 is +0.717
+   [**+0.334, +1.136**] and code 4 − code 2 is +0.735 [**+0.261, +1.177**], both
+   excluding zero. The top two are a plateau of their own — code 4 − code 3 is
+   +0.018 [−0.269, +0.276]. So the shape is two levels rather than five: a floor
+   at codes 1–2, and a step up to codes 3–4 that stands **21%** above it while
+   ΔE00 improves 30%. That codes 1–2 are also where §11.14 puts the format's
+   strongest cross-format position is not a coincidence worth asserting from two
+   numbers, but it is worth writing down.
+
+   (Intervals are the seeded paired bootstrap in `stats.ts` that every sweep's
+   ΔE00 column already uses, taken over the `perImageSpurious` series in
+   `sweeps/artifact-ladder-common-grid.json` — the same construction §7.12 and
+   §11.5 quote.)
 2. **At code 4 the format invents almost as much as it still lacks.**
    Spurious 4.23 against deficit 4.58 — a ratio of 0.92, against 0.14 at the
    default tier. Read plainly: on the frequencies every tier can represent, the
@@ -2875,20 +2909,25 @@ becoming more content-dependent as the budget grows, not less.
 
 Stated as measurements, not as a plan. Nothing here adopts anything.
 
-* **The upper tiers are the artifact problem, and code 2 is the floor.** Any
+* **The upper tiers are the artifact problem, and codes 1–2 are the floor.** Any
   change aimed at invented structure should be evaluated at codes 3–4, where
   §13.2 puts the exchange rate at ~1:1, and not at the default tier where it is
   1:7. §12.2–§12.3 measured the synthesis window at codes 1 and 2 — the two
   tiers where there is least to gain.
 * **The window's verdict was taken on the wrong tiers.** §12.3 found the
   lightest taper statistically free on ΔE00 at code 2 and failing SSIMULACRA2
-  alone. §13.2 says code 2 is where invented structure is at its *minimum*. The
-  interesting measurement — the same taper at codes 3 and 4 — has not been made.
+  alone. §13.2 says code 2 sits on the *floor* invented structure never goes
+  below — indistinguishable from code 1, and ~0.7 levels under codes 3–4 with a
+  paired interval that excludes zero. A taper judged there is judged where there
+  is least invented structure for it to remove. The interesting measurement —
+  the same taper at codes 3 and 4 — has not been made.
 * **Two defects, not one.** A change that suppresses low-order banding on smooth
   content and a change that stops the basis fighting real texture are different
   changes, and §13.3 says a single corpus mean will always report their sum.
 * **U19 is still the ceiling, and this round raises it again.** §12.5 said so of
   two metrics; there are now three, and §13.2's central claim — that a 1:1
-  invention-to-deficit ratio is *worse* than a 3:1 one at the same ΔE00 — is a
+  invention-to-deficit ratio is *worse* than a 1:7 one at the same ΔE00 — is a
   claim about human judgement that nothing in this repo has ever validated.
+  (1:1 and 1:7 are §13.1's 0.92 at code 4 and 0.14 at code 1 — the same two
+  figures the first bullet quotes, and the only ratios either table supports.)
   It is stated as an exchange rate rather than a verdict for that reason.
