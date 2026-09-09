@@ -13,8 +13,30 @@ type ImageInput struct {
 	Gamut Gamut
 	// Quality is the tier to encode this image at (0..=MaxTier, ordered by
 	// quality). Note that the zero value is CompactTier, not DefaultTier —
-	// set it explicitly to DefaultTier for the 32-byte hash Encode produces.
+	// set it explicitly to DefaultTier for the 32-byte hash Encode produces,
+	// or build the value with NewImageInput, which does that for you.
+	//
+	// This is the one place a chromahash binding's default differs across
+	// languages: everywhere else an omitted tier is DefaultTier, because every
+	// other language can express a default argument. Go cannot default a struct
+	// field, so the zero value has to mean *something*, and 0 is a valid tier.
+	// Changing that would be a breaking change to this package's API, so it is
+	// left alone and pinned by TestZeroValueQualityIsTheCompactTier.
 	Quality uint8
+}
+
+// NewImageInput builds an ImageInput at DefaultTier — the 32-byte tier Encode
+// produces, and the tier every other chromahash binding uses when the caller
+// omits one.
+//
+// It exists because ImageInput's zero value cannot: Go has no default field
+// values and 0 is a valid tier, so an ImageInput built with a struct literal
+// that omits Quality encodes at CompactTier. That is a documented property
+// rather than a bug, and it is still a trap — it is what made an early
+// BenchmarkBatchEncode compare 21-byte hashes against a 32-byte serial
+// baseline. Prefer this constructor unless you are choosing a tier deliberately.
+func NewImageInput(w, h int, rgba []byte, gamut Gamut) ImageInput {
+	return ImageInput{W: w, H: h, Rgba: rgba, Gamut: gamut, Quality: DefaultTier}
 }
 
 // batchJob is a unit of work handed to a worker goroutine: which item it is,
