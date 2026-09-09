@@ -1118,9 +1118,16 @@ def validate_cross_implementation_constants():
     # Nothing could have found that by reading, so it is found by counting
     # instead: constants.py is parsed, and a module-level numeric literal that
     # this function does not compare fails the run. The exception register is
-    # empty on purpose — every one of the 30 is checked — and an entry added to
-    # it should carry the reason a constant the spec fixes is not one the
-    # implementations must agree on.
+    # empty on purpose — every one of the 34 scalars is checked — and an entry
+    # added to it should carry the reason a constant the spec fixes is not one
+    # the implementations must agree on. Do not take the 34 in this sentence on
+    # trust: the check below prints `len(literals)` straight from the parse, and
+    # that count is the one to read.
+    #
+    # An entry here is a standing exception, so it lives under the same rule
+    # `tools/comparison/src/verify-sweep-labels.ts` applies to its
+    # `unpinnedLabels` opt-outs: one that excuses nothing is stale and fails,
+    # rather than sitting in the register forever.
     not_in_parity: dict[str, str] = {}
 
     with open(os.path.join(os.path.dirname(__file__), "constants.py"),
