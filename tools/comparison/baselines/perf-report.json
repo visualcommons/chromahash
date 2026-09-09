@@ -30,7 +30,8 @@
   "unavailable": [
     {
       "target": "Swift",
-      "reason": "spawnSync .build/release/ChromaHashCLI ENOENT"
+      "reason": "spawnSync .build/release/ChromaHashCLI ENOENT",
+      "kind": "absent"
     }
   ],
   "cells": [

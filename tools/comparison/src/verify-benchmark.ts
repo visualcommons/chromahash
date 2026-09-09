@@ -213,10 +213,42 @@ function parseDocNumber(raw: string): DocNumber | null {
  * `TBD`: these rows are not pending anybody's run. Asserting the shape is what
  * separates a deliberate marker from a typo, an emptied cell, or a sentence
  * that used to be a number.
+ *
+ * Two constraints, both because the first version of this was
+ * `^[A-Za-z][A-Za-z0-9 .+#-]* only$` against the de-emphasised text, which
+ * matches any English phrase ending in "only". Every bound column of every
+ * bound table runs through here, so an ordinary prose cell — "encoder only",
+ * "batch only" — became a hard failure with a message about committed runs
+ * that had nothing to do with it.
+ *
+ *  1. The emphasis is part of the marker. §0 and §7/§8 write `*macOS only*`,
+ *     and the failure message tells an author to write exactly that. A bare
+ *     phrase is prose.
+ *  2. The qualifier must name a platform this repo builds for, from the list
+ *     below. A marker says "no run on this host can fill this cell"; only a
+ *     host can make that true, and the vocabulary for hosts is closed.
  */
+const MARKER_PLATFORMS = [
+  "macOS",
+  "Linux",
+  "Windows",
+  "iOS",
+  "Android",
+  "arm64",
+  "aarch64",
+  "x86_64",
+  "wasm",
+] as const;
+
+const MARKER_RE = new RegExp(
+  `^\\*(?:\\*)?(${MARKER_PLATFORMS.join("|")}) only(?:\\*)?\\*$`,
+);
+
 function parseUnavailableMarker(raw: string): string | null {
-  const text = clean(raw).replace(/[*_`]/g, "").trim();
-  return /^[A-Za-z][A-Za-z0-9 .+#-]* only$/.test(text) ? text : null;
+  // The raw cell, not `clean(raw)` — `clean` strips the emphasis that
+  // constraint 1 depends on.
+  const m = MARKER_RE.exec(raw.trim());
+  return m?.[1] ? `${m[1]} only` : null;
 }
 
 const TIME_UNITS = new Set<Unit>(["us", "ms", "s"]);
@@ -246,7 +278,37 @@ interface RunDoc {
    * permanent case: its binding consumes a UniFFI xcframework only `xcodebuild`
    * can assemble, so the row is empty on every run made off macOS.
    */
-  unavailable?: { target: string; reason: string }[];
+  unavailable?: { target: string; reason: string; kind?: string }[];
+}
+
+/**
+ * Why a target was not measured — and whether that is a fact about the host or
+ * a fact about the target.
+ *
+ * `probeAvailability` used to answer only "did `bench-info` succeed", and the
+ * gate skipped every row of every target that answered no. A missing binary, a
+ * non-zero exit, a timeout and a crash were one outcome, so on macOS a genuine
+ * Swift *build regression* was indistinguishable from no `xcodebuild`, and the
+ * gate would have skipped the rows in both cases, reporting green.
+ *
+ *  - `absent`  — the binary is not there (spawn ENOENT). Nothing on this host
+ *                could have measured it. Rows are skipped.
+ *  - `broken`  — it is there and it failed: non-zero exit, timeout, crash.
+ *                That is a regression, not an unavailable platform, and it is
+ *                reported rather than skipped.
+ *  - missing   — a run recorded before this distinction existed. Not skipped:
+ *                the fail-safe direction is to report, since an old run cannot
+ *                say which of the two it saw.
+ */
+type Availability = "absent" | "broken" | "unclassified";
+
+interface Unavailable {
+  reason: string;
+  kind: Availability;
+}
+
+function classify(kind: string | undefined): Availability {
+  return kind === "absent" || kind === "broken" ? kind : "unclassified";
 }
 
 class Runs {
@@ -271,7 +333,7 @@ class Runs {
    * every CI runner this job uses — and so made `continue-on-error` permanent
    * while its comment claimed it was pending a re-measurement.
    */
-  readonly unavailable = new Map<string, string>();
+  readonly unavailable = new Map<string, Unavailable>();
 
   constructor(files: string[]) {
     for (const file of files) {
@@ -294,8 +356,17 @@ class Runs {
       this.loaded.push(doc);
       if (doc.git?.dirty) this.dirty.push(file);
       for (const u of doc.unavailable ?? []) {
-        if (!this.unavailable.has(u.target)) {
-          this.unavailable.set(u.target, u.reason);
+        const prior = this.unavailable.get(u.target);
+        // A `broken` probe outranks an `absent` one: if any run got far enough
+        // to see the target fail, "not built on this host" is not the story.
+        if (
+          !prior ||
+          (prior.kind === "absent" && classify(u.kind) !== "absent")
+        ) {
+          this.unavailable.set(u.target, {
+            reason: u.reason,
+            kind: classify(u.kind),
+          });
         }
       }
 
@@ -306,9 +377,6 @@ class Runs {
           continue;
         }
         seen.add(c.id);
-        // A target one run could not reach but another did is available: the
-        // union of what was measured wins over any single run's gap.
-        this.unavailable.delete(c.id.split("/")[1] ?? "");
         const us = (c.nsPerOp ?? c.medianNsPerOp) / 1000;
         const prior = this.byId.get(c.id);
         if (!prior) {
@@ -324,10 +392,34 @@ class Runs {
         }
       }
     }
+
+    // "The union of what was measured wins over any single run's gap" — as a
+    // second pass, over every cell of every loaded run.
+    //
+    // It used to run inline: a file's `unavailable` entries went in, then that
+    // file's cells came out again. The result depended on the order `BASELINES`
+    // lists the files. With `["perf-report-full.json", "perf-report.json"]`, a
+    // target the full sweep measured and the bounded one did not was inserted
+    // by the bounded run *after* the full run's cells had already been walked,
+    // so it stayed marked unavailable while committed cells held it — and the
+    // gate then skipped, or failed, rows it had the measurement for. That is
+    // the exact shape of taking the full sweep on macOS (Swift present) and the
+    // bounded one on Linux (Swift absent).
+    for (const id of this.byId.keys()) {
+      this.unavailable.delete(id.split("/")[1] ?? "");
+    }
   }
 
   has(id: string): boolean {
     return this.byId.has(id);
+  }
+
+  /** Whether any committed run holds a cell for this target, at any id. */
+  measuredTarget(target: string): boolean {
+    for (const id of this.byId.keys()) {
+      if ((id.split("/")[1] ?? "") === target) return true;
+    }
+    return false;
   }
 
   /** Median microseconds per op. Throws if the id is not in any committed run. */
@@ -440,18 +532,52 @@ interface StageCell {
   git: { rev: string; dirty: boolean };
 }
 
-function loadStages(): Record<string, StageCell> | null {
+/**
+ * The stages baseline, or the reason there is none.
+ *
+ * This returned a bare `null` for "no file" and for "wrong schema" alike, and
+ * §1's resolvers turned that into `null` per cell, which `checkTable` counts as
+ * `unbound` — a *pass*. Deleting `perf-stages.json` therefore produced a green
+ * run for the one table this gate exists for: thirty cells silently reclassified
+ * as deliberately unbound, and all thirteen `PROSE_CLAIMS` skipped along with
+ * them, since both blocks are guarded by `if (STAGES)`. `Runs` has never
+ * behaved that way — a missing perf report exits 1 with the command to
+ * regenerate it. §1 gets the same treatment.
+ */
+function loadStages(): {
+  cells: Record<string, StageCell> | null;
+  error: string | null;
+} {
   const full = path.join(BASELINE_DIR, STAGES_BASELINE);
-  if (!existsSync(full)) return null;
-  const doc = JSON.parse(readFileSync(full, "utf8")) as {
-    schema?: string;
-    cells?: Record<string, StageCell>;
-  };
-  if (doc.schema !== STAGES_SCHEMA) return null;
-  return doc.cells ?? null;
+  const where = `tools/comparison/baselines/${STAGES_BASELINE}`;
+  if (!existsSync(full)) {
+    return {
+      cells: null,
+      error: `${where} does not exist — record §1's three columns with \`mise run benchmark:stages 100 100 1\`, \`… 512 512 1\`, \`… 512 512 4\``,
+    };
+  }
+  let doc: { schema?: string; cells?: Record<string, StageCell> };
+  try {
+    doc = JSON.parse(readFileSync(full, "utf8")) as typeof doc;
+  } catch (e) {
+    return {
+      cells: null,
+      error: `${where} is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+  if (doc.schema !== STAGES_SCHEMA) {
+    return {
+      cells: null,
+      error: `${where}: schema ${doc.schema ?? "(none)"}, expected ${STAGES_SCHEMA} — re-record §1's three columns with \`mise run benchmark:stages\``,
+    };
+  }
+  if (!doc.cells || Object.keys(doc.cells).length === 0) {
+    return { cells: null, error: `${where} holds no cells` };
+  }
+  return { cells: doc.cells, error: null };
 }
 
-const STAGES = loadStages();
+const { cells: STAGES, error: STAGES_ERROR } = loadStages();
 
 /** §1's column headers name a fixture; map each to the recorded cell key. */
 const STAGE_COLUMNS: Record<string, string> = {
@@ -907,9 +1033,36 @@ function checkTable(
       // cell left at `!doc` first and never arrived, while a cell carrying a
       // number arrived and was waved through. Exactly inverted. The only case
       // the skip actually caught was the one it must never catch.
-      const rowTarget = bare(rowLabel);
+      // `R.unavailable` is keyed on the target name the driver records, which
+      // is the row label verbatim — "Rust (scalar)" included. Looking it up
+      // under `bare(rowLabel)` alone stripped the parenthetical, so a
+      // parenthesised target could never match its own record. Try the label as
+      // written first, then bare.
+      const rowLabelClean = clean(rowLabel);
+      const rowTarget = R.unavailable.has(rowLabelClean)
+        ? rowLabelClean
+        : bare(rowLabel);
+      const unavailable = R.unavailable.get(rowTarget);
       const marker = parseUnavailableMarker(raw);
-      if (R.unavailable.has(rowTarget)) {
+      const where = `§${binding.section} ${binding.title} (line ${sourceLine})`;
+      if (unavailable) {
+        // Only an *absent* target may be skipped. A target that was found and
+        // then failed its probe is a regression, and skipping its rows is how a
+        // broken Swift build passes for "no xcodebuild".
+        if (unavailable.kind !== "absent") {
+          failures.push({
+            where,
+            column,
+            row: rowLabel,
+            documented: raw === "" ? "(empty)" : raw,
+            measured: "—",
+            detail:
+              unavailable.kind === "broken"
+                ? `${rowTarget}'s probe was found and failed (${unavailable.reason.split("\n")[0]}) — that is a regression in the target, not an unavailable platform, so this row is not skipped`
+                : `${rowTarget} is recorded unavailable by a run made before absent/broken were distinguished, so it cannot be told apart from a build regression — regenerate the run with \`mise run benchmark\``,
+          });
+          continue;
+        }
         if (marker) {
           counters.unavailable++;
           continue;
@@ -917,21 +1070,37 @@ function checkTable(
         // No committed run holds a measurement for this target, so whatever is
         // in this cell is not backed by one — a number least of all.
         failures.push({
-          where: `§${binding.section} ${binding.title} (line ${sourceLine})`,
+          where,
           column,
           row: rowLabel,
           documented: raw === "" ? "(empty)" : raw,
           measured: "—",
-          detail: `no committed run measured ${rowTarget} (${R.unavailable.get(rowTarget) ?? "unavailable"}), so this cell cannot be verified — write it as a marker such as "*macOS only*"`,
+          detail: `no committed run measured ${rowTarget} (${unavailable.reason}), so this cell cannot be verified — write it as a marker such as "*macOS only*"`,
         });
         continue;
       }
       // And the converse. A marker on a target the committed runs *did* measure
       // is a row that has stopped describing the run behind it, which is the
       // same drift in the other direction and just as invisible.
+      //
+      // But only if a run measured it. The message asserts "a committed run
+      // measured T" and nothing checked that: a target no run ever *probed* —
+      // `--impls Rust,Go` leaves seven of them — is in neither `unavailable`
+      // nor `cells`, and the gate stated a falsehood about it. Ask `R`.
       if (marker) {
+        if (!R.measuredTarget(rowTarget)) {
+          failures.push({
+            where,
+            column,
+            row: rowLabel,
+            documented: raw,
+            measured: "—",
+            detail: `cell reads "${marker}", but no committed run measured ${rowTarget} and none recorded it as unavailable either — it was never probed, so nothing here is evidence either way (was the run made with \`--impls\`?)`,
+          });
+          continue;
+        }
         failures.push({
-          where: `§${binding.section} ${binding.title} (line ${sourceLine})`,
+          where,
           column,
           row: rowLabel,
           documented: raw,
@@ -1065,6 +1234,28 @@ const failures: Failure[] = [];
 const counters = { checked: 0, unbound: 0, placeholders: 0, unavailable: 0 };
 const edits: Edit[] = [];
 const missingTables: string[] = [];
+
+// §1's baseline is a hard requirement whenever §1 is in the binding set, and it
+// is the one table this gate was extended to cover. Without this, a missing or
+// schema-bumped `perf-stages.json` made every §1 resolver return null, which
+// `checkTable` counts as `unbound` and therefore as a pass — a green run for
+// the table, and all thirteen prose claims skipped with it. `Runs` exits 1 on
+// the same condition; so does this now.
+const stagesBound = BINDINGS.some(
+  (b) => b.section === "1" && (!values.section || values.section === b.section),
+);
+if (stagesBound && !STAGES) {
+  console.error(
+    [
+      `No committed stages run for PERFORMANCE.md §1: ${STAGES_ERROR ?? "unavailable"}`,
+      "",
+      "§1 orders §10's whole acceleration roadmap and is bound cell by cell to",
+      "this artifact, together with the figures §1, §10 and §12 derive from it.",
+      "Without it those checks do not become optional — they become unrun.",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
 
 for (const binding of BINDINGS) {
   if (values.section && binding.section !== values.section) continue;
@@ -1268,10 +1459,12 @@ const UNAVAILABLE_NOTE =
   '               a cell marked "<host> only" is skipped, not failed — a target no\n' +
   "               committed run reached cannot be asked to document a number. A cell\n" +
   "               holding one anyway IS failed: nothing measured it.";
-for (const [target, reason] of runs.unavailable) {
-  console.log(
-    `  UNAVAILABLE  ${target}: ${reason.split("\n")[0]}\n${UNAVAILABLE_NOTE}`,
-  );
+for (const [target, u] of runs.unavailable) {
+  const label = u.kind === "absent" ? "UNAVAILABLE" : `PROBE-${u.kind}`;
+  // Only an absent target is skipped, so only an absent target gets the note
+  // explaining why a marker is acceptable in its rows.
+  const note = u.kind === "absent" ? `\n${UNAVAILABLE_NOTE}` : "";
+  console.log(`  ${label}  ${target}: ${u.reason.split("\n")[0]}${note}`);
 }
 for (const m of missingTables)
   console.log(`  SKIP  ${m} — not found in the document`);
