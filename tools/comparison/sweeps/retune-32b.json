@@ -83,5 +83,8 @@
       "tune": "aniso=1.2 scale_fit=2 ac_nearest=1"
     }
   ],
-  "unpinnedLabels": "As `cfl` — see EXPERIMENTS.md 9.5's disclosed set."
+  "unpinnedLabels": {
+    "arms": 1,
+    "why": "As `cfl` — see EXPERIMENTS.md 9.5's disclosed set."
+  }
 }

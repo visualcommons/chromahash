@@ -1678,7 +1678,11 @@ still the obvious next thing to build.
 > the arms of the six configs that declare `unpinnedLabels` — `cfl`,
 > `prefix-shrink`, `retune-32b`, `combined-optimizer`, `low-budget-allocation`
 > and `selection-hv`, six of them `selection-hv`'s — so the decision is recorded
-> on the config rather than only here. **It also found a config this
+> on the config rather than only here. Each of those six opt-outs carries the
+> number of arms it excuses, and the gate fails if that number drops to zero or
+> stops matching: an exemption nobody re-earns is cover for whatever lands under
+> it next. That is the same rule `spec/validate.py`'s `not_in_parity` register
+> lives under. **It also found a config this
 > subsection missed entirely** — `v07-holdout-alpha`, whose incumbent inherited the
 > adopted alpha allocation and encoded to 40 bytes rather than 32, which made
 > §11.12's source table score the default against itself.

@@ -63,5 +63,8 @@
       "tune": "l1=28:4 c=15:3 aniso=1.2 sel_hv=0.15"
     }
   ],
-  "unpinnedLabels": "Retired in place by EXPERIMENTS.md 7.4: every `aniso = 0` cell in it is really `aniso = 1.2` and its `hv = 0` column really `hv = 0.15`, so twelve non-layout arms resolve to six distinct points. `selection-weights` is the corrected replacement and sets both parameters in all 29 arms. Not fixed here because fixing it means replacing it, and it already has been."
+  "unpinnedLabels": {
+    "arms": 6,
+    "why": "Retired in place by EXPERIMENTS.md 7.4: every `aniso = 0` cell in it is really `aniso = 1.2` and its `hv = 0` column really `hv = 0.15`, so twelve non-layout arms resolve to six distinct points. `selection-weights` is the corrected replacement and sets both parameters in all 29 arms. Not fixed here because fixing it means replacing it, and it already has been."
+  }
 }

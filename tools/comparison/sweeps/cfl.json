@@ -80,5 +80,8 @@
       "tune": "cfl_bits=5"
     }
   ],
-  "unpinnedLabels": "EXPERIMENTS.md 9.5: incumbent label names the pre-adoption layout while the arm inherits the adopted one. Every arm in this config shares that one base, so the deltas around it are valid and only the incumbent's *name* is inaccurate. Relabelling moves no number and would change the row keys verify-experiments.ts matches on."
+  "unpinnedLabels": {
+    "arms": 1,
+    "why": "EXPERIMENTS.md 9.5: incumbent label names the pre-adoption layout while the arm inherits the adopted one. Every arm in this config shares that one base, so the deltas around it are valid and only the incumbent's *name* is inaccurate. Relabelling moves no number and would change the row keys verify-experiments.ts matches on."
+  }
 }

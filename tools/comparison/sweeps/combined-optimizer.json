@@ -86,5 +86,8 @@
       "tune": "aniso=1.2 sel_hv=0.15 scale_fit=2 ac_nearest=1"
     }
   ],
-  "unpinnedLabels": "EXPERIMENTS.md 9.5, but not `cfl`'s case: the arm whose label misstates its layout here is a candidate, not the incumbent. `32B L26@5C9 stack` sets the four STACK knobs and no `l1`/`c`, so it inherits `LAYOUT_T0` and measures 28@4 C15@3 — the same configuration as `32B shipped` and `32B L28C15 stack`, which is why all three sit on ΔE00 11.4727 and its 0.00% is zero by construction rather than evidence that 26@5 C9 ties the incumbent. `108B t1 stack` reads the same way against `108B t1 base` at 9.6673, the four knobs it names having since become defaults. No other arm *names* a layout it does not set: the remaining arms that omit `l1`/`c` (`32B shipped`, `108B t1 base`, `108B t1 stack`, `411B t2 stack`) do not spell one out in their labels, so the layout deltas around the baseline stand; the labels are left as run so the config keeps matching the row keys in output/sweeps/combined-optimizer.json."
+  "unpinnedLabels": {
+    "arms": 1,
+    "why": "EXPERIMENTS.md 9.5, but not `cfl`'s case: the arm whose label misstates its layout here is a candidate, not the incumbent. `32B L26@5C9 stack` sets the four STACK knobs and no `l1`/`c`, so it inherits `LAYOUT_T0` and measures 28@4 C15@3 — the same configuration as `32B shipped` and `32B L28C15 stack`, which is why all three sit on ΔE00 11.4727 and its 0.00% is zero by construction rather than evidence that 26@5 C9 ties the incumbent. `108B t1 stack` reads the same way against `108B t1 base` at 9.6673, the four knobs it names having since become defaults. No other arm *names* a layout it does not set: the remaining arms that omit `l1`/`c` (`32B shipped`, `108B t1 base`, `108B t1 stack`, `411B t2 stack`) do not spell one out in their labels, so the layout deltas around the baseline stand; the labels are left as run so the config keeps matching the row keys in output/sweeps/combined-optimizer.json."
+  }
 }

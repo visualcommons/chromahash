@@ -34,18 +34,26 @@
  *     another. `alt A16@4` setting `alpha_ac_count=16` without
  *     `alpha_ac_bits=4` was one of these.
  *
- * A config may opt out with `unpinnedLabels`, which takes a reason rather than
- * a boolean: §9.5 leaves six configs unpinned on purpose, because relabelling
- * moves no number and would change the row keys `verify-experiments.ts` matches
- * on. An opt-out with a reason is a disclosure; one without is a silence.
+ * A config may opt out with `unpinnedLabels`, which takes a reason and a count
+ * rather than a boolean: §9.5 leaves six configs unpinned on purpose, because
+ * relabelling moves no number and would change the row keys
+ * `verify-experiments.ts` matches on. An opt-out with a reason is a disclosure;
+ * one without is a silence.
  *
- * **The summary separates the two populations rather than adding them.** An arm
- * in an exempt config is *named* -- its label states something checkable -- but
- * it is not *checked*, because the opt-out is consulted after the finding is
- * produced and discards it. Counted together, as they were, the gate reported
- * 584 arms "checked" when 103 of them sat in the six exempt configs and could
- * not fail whatever they said. Only the remaining 481 can, and that is the
- * number a passing run is a statement about.
+ * **The count is what keeps the disclosure from becoming permanent cover.** The
+ * opt-out is whole-config, so without one it also excuses every arm added to
+ * the config after it was written, and an opt-out whose arms were pinned years
+ * ago still reads as a live exemption. So it carries the number of arms it
+ * suppresses, and the gate fails if that number is zero (the opt-out excuses
+ * nothing and should be deleted) or no longer matches (it is excusing an arm
+ * nobody disclosed). That is the same policy `spec/validate.py` applies to its
+ * `not_in_parity` register, deliberately: one repository, one rule for a
+ * standing exception.
+ *
+ * The summary separates the two populations rather than adding them. An arm in
+ * an exempt config is *named* -- its label states something checkable -- but it
+ * is not *checked*, because every finding in its config is discarded. Counting
+ * it as checked is the gate over-reporting its own reach.
  *
  * Usage:
  *   node dist/verify-sweep-labels.js            # every config
@@ -340,8 +348,21 @@ const files = readdirSync(SWEEP_DIR)
   .filter((f) => f.endsWith(".json"))
   .sort();
 
+/** A config's `unpinnedLabels` declaration: the reason, and what it excuses. */
+interface OptOut {
+  /** Arms in this config whose findings the opt-out suppresses. */
+  arms: number;
+  /** Why they are left unpinned. */
+  why: string;
+}
+
 const findings: Finding[] = [];
-const disclosed: { config: string; why: string; arms: number }[] = [];
+const disclosed: {
+  config: string;
+  why: string;
+  suppressed: number;
+  declared: number;
+}[] = [];
 const unnamed: { config: string; label: string }[] = [];
 let arms = 0;
 let named = 0;
@@ -351,7 +372,7 @@ let exemptConfigs = 0;
 for (const file of files) {
   const raw = JSON.parse(readFileSync(path.join(SWEEP_DIR, file), "utf8")) as {
     variants?: { label: string; tune?: string }[];
-    unpinnedLabels?: string;
+    unpinnedLabels?: OptOut;
   };
   const optOut = raw.unpinnedLabels;
   let hits = 0;
@@ -392,11 +413,14 @@ for (const file of files) {
     }
   }
   if (optOut) {
-    // Named, but not checked: every finding in this config is discarded below,
-    // so its arms belong to the exempt figure and not to the enforceable one.
     exemptConfigs++;
     exemptNamed += namedHere;
-    if (hits > 0) disclosed.push({ config: file, why: optOut, arms: hits });
+    disclosed.push({
+      config: file,
+      why: optOut.why,
+      suppressed: hits,
+      declared: optOut.arms,
+    });
   }
 }
 
@@ -419,10 +443,18 @@ shape missing from namedConstants, and an unchecked arm until it is added.\n`,
 
 for (const d of disclosed) {
   console.log(
-    `  DISCLOSED  ${d.config}: ${d.arms} arm(s) name a constant they do not set\n` +
+    `  DISCLOSED  ${d.config}: ${d.suppressed} arm(s) name a constant they do not set\n` +
       `             ${d.why}`,
   );
 }
+
+// An opt-out that excuses nothing, or that no longer excuses what it says it
+// does. Same shape and same reasoning as `not_in_parity`'s staleness check in
+// `spec/validate.py`: a standing exception has to keep earning its keep, or it
+// quietly becomes cover for whatever lands under it next.
+const staleOptOuts = disclosed.filter(
+  (d) => d.declared === 0 || d.suppressed !== d.declared,
+);
 
 if (findings.length > 0) {
   console.error(
@@ -436,13 +468,36 @@ if (findings.length > 0) {
   }
   console.error(
     "A tune string is applied on top of Tunables::DEFAULT, so an omitted knob\n" +
-      "inherits whatever ships — which means an arm like this measures something\n" +
+      "inherits whatever ships \u2014 which means an arm like this measures something\n" +
       "other than what its label says, and its row in EXPERIMENTS.md is wrong in a\n" +
       "way no number can reveal. Pin the knob, or declare `unpinnedLabels` on the\n" +
-      "config with the reason (see EXPERIMENTS.md §9.5).",
+      "config with the reason and the number of arms it excuses (see\n" +
+      "EXPERIMENTS.md \u00a79.5).",
   );
-  process.exit(1);
 }
+
+if (staleOptOuts.length > 0) {
+  console.error(`\n${staleOptOuts.length} stale unpinnedLabels opt-out(s):\n`);
+  for (const d of staleOptOuts) {
+    const why =
+      d.suppressed === 0
+        ? "the opt-out excuses nothing and should be deleted"
+        : "the count no longer matches the arms it excuses";
+    console.error(
+      `  ${d.config}: declares ${d.declared} arm(s), suppresses ${d.suppressed} \u2014 ${why}`,
+    );
+  }
+  console.error(
+    "\n`unpinnedLabels` exempts the whole config, so it also covers every arm\n" +
+      "added to it afterwards. The declared count is what stops that being\n" +
+      "permanent: an opt-out that suppresses nothing has been fixed and should go,\n" +
+      "and one whose count moved is excusing an arm nobody disclosed. Re-pin the\n" +
+      "arm, or update the count and say in the reason what changed. This is the\n" +
+      "same rule `spec/validate.py` applies to its `not_in_parity` register.",
+  );
+}
+
+if (findings.length > 0 || staleOptOuts.length > 0) process.exit(1);
 
 const enforced = named - exemptNamed;
 console.log(
