@@ -6,10 +6,10 @@
  * choosing a constant — the pre-registered rule is about mean ΔE00 on a holdout
  * split — and it is the wrong unit for the question a design round starts from,
  * which is not "how much does the format invent" but "invent *on what*". A mean
- * spurious score of 6.23 at code 4 says the top tier asserts structure the
- * original does not have. It does not say whether that happens on the dense
- * facade or on the near-flat sky, and those two answers point at different
- * changes to the format.
+ * spurious score of 4.23 at code 4 on the pinned grid — 6.56 on that tier's own
+ * raster — says the top tier asserts structure the original does not have. It
+ * does not say whether that happens on the dense facade or on the near-flat
+ * sky, and those two answers point at different changes to the format.
  *
  * The covariates are already measured and already committed: `natural-images.ts`
  * records mean L*, mean chroma C* and Laplacian detail energy per image, taken
@@ -26,6 +26,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { CURATED_IMAGES } from "./natural-images.ts";
+import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const SWEEP_DIR = path.join(REPO_ROOT, "tools/comparison/output/sweeps");
@@ -111,29 +112,6 @@ const METRICS = {
 type MetricName = keyof typeof METRICS;
 type Axis = "detail" | "lightness" | "chroma";
 
-/**
- * Pearson correlation. Reported alongside the binned table rather than instead
- * of it: with 31 images a single r is easy to over-read, and the bin means say
- * whether a relationship is monotone or just present.
- */
-function pearson(xs: number[], ys: number[]): number {
-  const n = xs.length;
-  if (n < 3) return Number.NaN;
-  const mx = xs.reduce((a, b) => a + b, 0) / n;
-  const my = ys.reduce((a, b) => a + b, 0) / n;
-  let sxy = 0;
-  let sxx = 0;
-  let syy = 0;
-  for (let i = 0; i < n; i++) {
-    const dx = (xs[i] ?? 0) - mx;
-    const dy = (ys[i] ?? 0) - my;
-    sxy += dx * dy;
-    sxx += dx * dx;
-    syy += dy * dy;
-  }
-  return sxx === 0 || syy === 0 ? Number.NaN : sxy / Math.sqrt(sxx * syy);
-}
-
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
@@ -161,7 +139,20 @@ if (!["detail", "lightness", "chroma"].includes(axis)) {
   console.error(`unknown axis ${axis}; one of detail, lightness, chroma`);
   process.exit(2);
 }
+// `--bins` is the one argument that reaches arithmetic rather than a lookup, so
+// a bad value does not fail: `--bins 0` printed a header with no bins and
+// `--bins abc` printed "NaN bins", both over a table of dashes and both exiting
+// 0. Every other bad input in this file exits non-zero saying what was wrong,
+// and a silent empty table is the failure mode this whole tool exists to
+// prevent. The upper bound is the corpus: more bins than images cannot be
+// equal-count, and two of them would be empty.
 const binCount = Number(values.bins);
+if (!Number.isInteger(binCount) || binCount < 2) {
+  console.error(
+    `--bins must be an integer of at least 2; got ${JSON.stringify(values.bins)}`,
+  );
+  process.exit(2);
+}
 
 const file = path.join(SWEEP_DIR, `${sweepName}.json`);
 const sweep = JSON.parse(readFileSync(file, "utf8")) as { rows: SweepRow[] };
@@ -186,27 +177,47 @@ if (!firstRow) {
   console.error("sweep has no rows");
   process.exit(1);
 }
-// Every row is indexed positionally against the first row's image list — the
-// bins are built from `firstRow`, and `series[i]` below is read as "the same
-// image" in every other row. `sweep.ts` scores every arm over one input list so
-// that holds today, but nothing here required it, and a row that had been
-// filtered or reordered would produce a table of the right shape built from
-// mismatched pairs. That is the failure this tool exists to make visible, so it
-// is asserted rather than assumed.
+// See `alignmentError`: every row is read positionally against the first row's
+// image list, which sweep.ts guarantees today and nothing here requires.
+const misaligned = alignmentError(sweep.rows);
+if (misaligned !== null) {
+  console.error(misaligned);
+  process.exit(1);
+}
+
+// A row whose series is absent is "not measured", and skipping it printed a
+// complete, plausible, EMPTY table and exited 0 — so a reader who ran this over
+// a sweep written before `artifacts` existed read "no relationship on any arm"
+// where the truth is "nobody measured it". `sweep.ts` is deliberate about the
+// distinction on the way out (null, rather than an array of nulls, when a run
+// scored no artifacts) and this contradicted it on the way back in. Same shape
+// as `covariates()` above: name the sweep and the field, and exit non-zero.
+const MISSING_FIELD: Record<MetricName, string> = {
+  spurious: "perImageSpurious",
+  deficit: "perImageDeficit",
+  ringing: "perImageRinging",
+  ciede: "perImageCiede",
+};
+const measured: { row: SweepRow; series: (number | null)[] }[] = [];
+const unmeasured: SweepRow[] = [];
 for (const row of sweep.rows) {
-  if (row.imageNames.length !== firstRow.imageNames.length) {
-    console.error(
-      `arm "${row.label}" scored ${row.imageNames.length} images against "${firstRow.label}"'s ${firstRow.imageNames.length}; the per-image series cannot be compared positionally`,
-    );
-    process.exit(1);
-  }
-  const off = row.imageNames.findIndex((n, i) => n !== firstRow.imageNames[i]);
-  if (off !== -1) {
-    console.error(
-      `arm "${row.label}" has "${row.imageNames[off]}" at position ${off} where "${firstRow.label}" has "${firstRow.imageNames[off]}"; the per-image series are not aligned`,
-    );
-    process.exit(1);
-  }
+  const series = METRICS[metric](row);
+  if (series) measured.push({ row, series });
+  else unmeasured.push(row);
+}
+if (unmeasured.length > 0) {
+  console.error(
+    `\n${sweepName} carries no ${MISSING_FIELD[metric]} on ${unmeasured.length} of its ${sweep.rows.length} arm(s):\n`,
+  );
+  for (const r of unmeasured) console.error(`  ${r.label}`);
+  console.error(
+    "\nThat field is null when the run did not score the metric at all, which is not\n" +
+      "the same as scoring it as nothing — every sweep run before `artifacts` existed\n" +
+      'is in that state. Re-run the sweep with `"artifacts": true` in its config (and\n' +
+      "`artifactGridEdge` too, if its arms decode at different rasters), or choose a\n" +
+      "metric this sweep measured.",
+  );
+  process.exit(1);
 }
 
 const named = firstRow.imageNames
@@ -228,14 +239,13 @@ if (named.length < firstRow.imageNames.length) {
 }
 
 const sorted = [...named].sort((a, b) => a.c[axis] - b.c[axis]);
-const bins: (typeof sorted)[] = Array.from({ length: binCount }, () => []);
-for (const [rank, item] of sorted.entries()) {
-  const b = Math.min(
-    binCount - 1,
-    Math.floor((rank * binCount) / sorted.length),
+if (binCount > sorted.length) {
+  console.error(
+    `--bins ${binCount} over ${sorted.length} image(s) with covariates cannot be equal-count; at least one bin would be empty`,
   );
-  bins[b]?.push(item);
+  process.exit(2);
 }
+const bins = equalCountBins(sorted, binCount);
 
 const ranges = bins.map((b) => {
   const lo = b[0]?.c[axis];
@@ -251,10 +261,7 @@ const header = ["arm".padEnd(26), "bytes".padStart(6)]
   .join("");
 console.log(header);
 
-for (const row of sweep.rows) {
-  const series = METRICS[metric](row);
-  if (!series) continue;
-
+for (const { row, series } of measured) {
   const cells: string[] = [];
   for (const bin of bins) {
     const vs = bin
