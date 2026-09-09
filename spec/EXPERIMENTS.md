@@ -1669,9 +1669,9 @@ of them, because an arm labelled `32B shipped` names nothing to reconcile. It is
 still the obvious next thing to build.
 
 > **Built** — `mise run verify:sweep-labels`. Over 584 label-bearing arms in 49
-> configs it reports two things: a label naming a constant nothing in the arm's
-> `tune` string writes, and a label naming one value where the tune sets
-> another. Both are properties of the config alone, so it needs no corpus, no
+> configs — 481 of them enforceable, see below — it reports two things: a label
+> naming a constant nothing in the arm's `tune` string writes, and a label
+> naming one value where the tune sets another. Both are properties of the config alone, so it needs no corpus, no
 > encoder and no sweep output, and runs in CI where the sweeps cannot. It found
 > fourteen. Two incumbents were pinned and their sweeps re-run byte-identical;
 > one arm was relabelled (§11.3's off-budget `C2@4`); the remaining eleven are
@@ -1687,21 +1687,37 @@ still the obvious next thing to build.
 > adopted alpha allocation and encoded to 40 bytes rather than 32, which made
 > §11.12's source table score the default against itself.
 >
-> **584 is not 807, and 584 was 548.** The gate reads the arms whose labels it
-> can parse and *skips* the rest: 223 of the 807 arms in those 49 configs — 28%
-> — name no constant in any form it recognizes, and each of those is passed
-> over, not failed. 36 were recovered by adding one token shape, the tune syntax
-> written out (`deadzone_l=0.02`), which is where the 548 this note first
-> reported became 584; all 36 pass, and that they pass was not knowable while
-> they sat in the residue. So a clean run says "every label that states
-> something checkable states it truthfully", not "every arm is what it claims",
-> and two of the differences are above this line: the five configs of the
-> previous paragraph are green by that silence rather than by any decision, and
-> two of `v07-holdout-alpha`'s four mislabelled arms — `alpha_ac_fit alone` and
+> **481 is the number that can fail. 584 is only the number it reads.** Two
+> different populations sit between 481 and the 807 arms in those 49 configs,
+> and this note used to print one figure covering both — 584 — which named
+> neither of them.
+>
+> The first is the *unreadable* residue: 223 of the 807 — 28% — name no constant
+> in any form the gate recognizes, and each is passed over, not failed. 36 were
+> recovered by adding one token shape, the tune syntax written out
+> (`deadzone_l=0.02`), which is where the 548 this note first reported became
+> 584; all 36 pass, and that they pass was not knowable while they sat in the
+> residue. `--list-unnamed` prints what remains, which is what makes the skip
+> auditable rather than silent and is how the 36 were found.
+>
+> The second is the *exempt* set, and it is the one 584 hid. 103 of those 584
+> readable arms sit in the six configs that declare `unpinnedLabels` —
+> `prefix-shrink` 23, `low-budget-allocation` 23, `retune-32b` 17,
+> `selection-hv` 15, `combined-optimizer` 15, `cfl` 10. The opt-out is
+> whole-config, so every finding in those 103 is discarded whether the label is
+> accurate or not; the gate read them, and then counted them as *checked*.
+> **584 − 103 = 481 arms can actually fail this gate**, and the summary line
+> now prints the three figures separately rather than adding them.
+>
+> So a clean run says "every label that states something checkable, in a config
+> nobody exempted, states it truthfully" — not "every arm is what it claims".
+> Three of the differences are above this line: the five configs of the previous
+> paragraph are green by the readability silence rather than by any decision;
+> the six exempt configs are green by declaration; and two of
+> `v07-holdout-alpha`'s four mislabelled arms — `alpha_ac_fit alone` and
 > `compact 21B shipped shape` — name nothing readable and were found by reading
-> the config, not by running the gate. `--list-unnamed` prints the residue,
-> which is what makes the skip auditable rather than silent and is how the 36
-> were found. Read a passing run as a statement about 584 arms.
+> the config, not by running the gate. Read a passing run as a statement about
+> 481 arms.
 
 5. **A column nobody checks, inside a table that passes.** `verify:experiments`
    binds *columns*, not tables, and a table is reported green when the columns
