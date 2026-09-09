@@ -35,9 +35,17 @@
  *     `alpha_ac_bits=4` was one of these.
  *
  * A config may opt out with `unpinnedLabels`, which takes a reason rather than
- * a boolean: §9.5 leaves nine configs unpinned on purpose, because relabelling
+ * a boolean: §9.5 leaves six configs unpinned on purpose, because relabelling
  * moves no number and would change the row keys `verify-experiments.ts` matches
  * on. An opt-out with a reason is a disclosure; one without is a silence.
+ *
+ * **The summary separates the two populations rather than adding them.** An arm
+ * in an exempt config is *named* -- its label states something checkable -- but
+ * it is not *checked*, because the opt-out is consulted after the finding is
+ * produced and discards it. Counted together, as they were, the gate reported
+ * 584 arms "checked" when 103 of them sat in the six exempt configs and could
+ * not fail whatever they said. Only the remaining 481 can, and that is the
+ * number a passing run is a statement about.
  *
  * Usage:
  *   node dist/verify-sweep-labels.js            # every config
@@ -337,6 +345,8 @@ const disclosed: { config: string; why: string; arms: number }[] = [];
 const unnamed: { config: string; label: string }[] = [];
 let arms = 0;
 let named = 0;
+let exemptNamed = 0;
+let exemptConfigs = 0;
 
 for (const file of files) {
   const raw = JSON.parse(readFileSync(path.join(SWEEP_DIR, file), "utf8")) as {
@@ -345,6 +355,7 @@ for (const file of files) {
   };
   const optOut = raw.unpinnedLabels;
   let hits = 0;
+  let namedHere = 0;
 
   for (const v of raw.variants ?? []) {
     arms++;
@@ -359,6 +370,7 @@ for (const file of files) {
       continue;
     }
     named++;
+    namedHere++;
     if (values.list) {
       console.log(
         `  ${file}  ${JSON.stringify(v.label)}\n      names ${constants
@@ -379,8 +391,13 @@ for (const file of files) {
       });
     }
   }
-  if (optOut && hits > 0)
-    disclosed.push({ config: file, why: optOut, arms: hits });
+  if (optOut) {
+    // Named, but not checked: every finding in this config is discarded below,
+    // so its arms belong to the exempt figure and not to the enforceable one.
+    exemptConfigs++;
+    exemptNamed += namedHere;
+    if (hits > 0) disclosed.push({ config: file, why: optOut, arms: hits });
+  }
 }
 
 if (values.list) process.exit(0);
@@ -427,8 +444,18 @@ if (findings.length > 0) {
   process.exit(1);
 }
 
+const enforced = named - exemptNamed;
 console.log(
-  `Checked ${named} of ${arms} arms across ${files.length} sweep configs ` +
-    `(${unnamed.length} name no constant this file can read — --list-unnamed).`,
+  [
+    `Checked ${enforced} of ${arms} arms across ${files.length} sweep configs;`,
+    `${exemptNamed} named arms in ${exemptConfigs} configs are exempt via unpinnedLabels;`,
+    `${unnamed.length} name no constant this file can read (--list-unnamed).`,
+  ].join(" "),
 );
-console.log("\nEvery arm sets the constants its label names.");
+console.log(
+  `\nEvery one of the ${enforced} enforceable arms sets the constants its label names.`,
+);
+console.log(
+  `The ${exemptNamed} exempt arms are not that claim: their config's opt-out discards`,
+);
+console.log(`every finding in it, so only the ${enforced} can fail this gate.`);
