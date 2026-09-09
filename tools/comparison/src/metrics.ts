@@ -70,9 +70,9 @@ export interface ScoringConfig {
    */
   alphaFidelity?: boolean;
   /**
-   * Score the locally-computed artifact metrics -- ringing (`metrics/local.ts`)
-   * and spurious detail (`metrics/spurious.ts`). Defaults to **off**, and the
-   * report opts in.
+   * Score the locally-computed artifact metrics -- ringing (`metrics/local.ts`),
+   * spurious detail and spectral deficit (`metrics/spurious.ts`). Defaults to
+   * **off**, and the report opts in.
    *
    * Optional-and-off rather than optional-and-on because the other entry points
    * -- `rd-gate.ts`, `rd-budget.ts`, `entropy-budget.ts`, and `sweep.ts` unless

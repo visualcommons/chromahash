@@ -125,8 +125,8 @@ interface SweepConfig {
   /** Also score the alpha plane directly, reported as `meanAlphaMae`. */
   alphaFidelity?: boolean;
   /**
-   * Also score the locally-computed artifact metrics (ringing and spurious
-   * detail), adding them as columns of the decision table.
+   * Also score the locally-computed artifact metrics (ringing, spurious detail
+   * and spectral deficit), adding them as columns of the decision table.
    *
    * Opt-in per config, not on by default, and the reason is the one commit
    * c23d929 acted on: they cost real CPU per pair and most sweeps do not read

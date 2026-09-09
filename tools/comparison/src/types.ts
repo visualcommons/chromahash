@@ -431,9 +431,10 @@ export interface ScoringMetaJson {
   /** Container width the layout reflow figure is quoted for, in CSS px. */
   reflowContainerPx: number;
   /**
-   * Whether the locally-computed artifact metrics (ringing and spurious detail)
-   * were scored. One flag, because both are computed at the same point on the
-   * same composited pair, and neither is meaningful on the blurred set.
+   * Whether the locally-computed artifact metrics (ringing, spurious detail and
+   * spectral deficit) were scored. One flag, because all three are computed at
+   * the same point on the same composited pair, and none is meaningful on the
+   * blurred set.
    */
   artifacts: boolean;
 }
