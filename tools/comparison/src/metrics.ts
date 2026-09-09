@@ -110,6 +110,18 @@ let scoringConfig: ScoringConfig = {
 };
 
 export function setScoringConfig(config: ScoringConfig): void {
+  // A non-positive or fractional cap is not a smaller comparison, it is no
+  // comparison: `analysisGrid` clamps to a 1x1 grid, `computeSpurious` declines
+  // it, and every arm then reports N/A for both spectral scores -- which is
+  // indistinguishable, in the printed table, from a run that simply never
+  // enabled `artifacts`. The one input on which the §13 ladder's comparability
+  // rests must not fail by looking like it was switched off.
+  const edge = config.artifactGridEdge;
+  if (edge !== undefined && (!Number.isInteger(edge) || edge < 2)) {
+    throw new Error(
+      `artifactGridEdge must be an integer of at least 2 px; got ${edge}. Below that the analysis grid collapses and every spectral score is declined, which reads as "not measured" rather than as an error.`,
+    );
+  }
   scoringConfig = config;
 }
 
