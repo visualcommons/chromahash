@@ -30,7 +30,7 @@
   "unavailable": [
     {
       "target": "Swift",
-      "reason": "spawnSync /var/mnt/scratch/golem/dev/visualcommons/chromahash.worktrees/chromahash-docs-experiments-wikimedia-rebaseline/.build/release/ChromaHashCLI ENOENT"
+      "reason": "spawnSync .build/release/ChromaHashCLI ENOENT"
     }
   ],
   "cells": [
