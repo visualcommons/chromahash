@@ -3,7 +3,7 @@
   "corpus": "alpha",
   "backdrops": "white-black-grey",
   "alphaFidelity": true,
-  "description": "\u00a711.11 \u2014 does the tier-0 alpha finding hold at tier 1? It has to be asked, not assumed: tiers 1\u20133 scale one base row by 4^tier, so leaving that row alone while tier 0 gains alpha coefficients would give tier 1 FEWER alpha coefficients than tier 0 \u2014 a quality tier worse than the tier below it in the thing that matters most for cut-outs. The tier-1 base budget is the same 192 bits as tier 0's alpha budget, so these are the same allocations evaluated at 4\u00d7 resolution.",
+  "description": "§11.11 — does the tier-0 alpha finding hold at tier 1? It has to be asked, not assumed: tiers 1–3 scale one base row by 4^tier, so leaving that row alone while tier 0 gains alpha coefficients would give tier 1 FEWER alpha coefficients than tier 0 — a quality tier worse than the tier below it in the thing that matters most for cut-outs. The tier-1 base budget is the same 192 bits as tier 0's alpha budget, so these are the same allocations evaluated at 4× resolution.",
   "variants": [
     {
       "label": "SHIPPED A5@4 L20@5 C9@4",
@@ -21,7 +21,7 @@
       "tune": "la1=13:4 ca=3:3 alpha_ac_count=40 alpha_ac_bits=3"
     },
     {
-      "label": "A20@4 L20@5 C1@4",
+      "label": "A20@4 L20@5 C2@4",
       "tier": 2,
       "tune": "la1=20:5 ca=2:4 alpha_ac_count=20 alpha_ac_bits=4"
     },

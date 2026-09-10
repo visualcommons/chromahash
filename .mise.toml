@@ -674,6 +674,12 @@ run = "node tools/comparison/dist/determinism-check.js"
 # notices. Needs the sweep outputs on disk (they are gitignored), so it reports
 # what it could not check rather than failing on a missing file.
 #   --list-unbound   tables with no binding, and why
+#   --list-unbound-columns
+#                    per bound table, which of its columns are checked and which
+#                    are not. A binding is a per-COLUMN map, so a table is green
+#                    on what it binds and silent about the rest; four stale
+#                    columns survived behind passing tables that way (§9.5).
+#                    The normal run prints a PARTIAL line for each.
 #   --section 11.5   just one section
 #   --fix            rewrite disagreeing cells from the measured values
 #   --strict         treat a SKIP as a failure. A missing sweep output is
@@ -685,6 +691,49 @@ run = "node tools/comparison/dist/determinism-check.js"
 description = "Check every table in spec/EXPERIMENTS.md against the sweep output"
 depends = ["build:compare"]
 run = "node tools/comparison/dist/verify-experiments.js"
+
+# Regenerate fixtures/natural/LICENSES.md from the pin table in
+# src/natural-images.ts, so the attribution 39 Wikimedia Commons images require
+# cannot drift from the table that names them. `--check` fails when the two
+# disagree and is what ci-comparison.yml runs. Three source files and the
+# generated file itself have referenced this task by name since it was written;
+# it did not exist until now, so the generator was reachable only as a bare
+# `node dist/corpus-licenses.js` and nothing ran `--check` anywhere.
+#   --check   fail if LICENSES.md is stale rather than rewriting it
+[tasks."corpus:licenses"]
+description = "Regenerate the curated corpus attribution file from the pin table"
+depends = ["build:compare"]
+run = "node tools/comparison/dist/corpus-licenses.js"
+
+# Assert every sweep arm sets the constants its own label names. A tune string
+# is applied on top of Tunables::DEFAULT, so an omitted knob inherits whatever
+# ships -- which meant that once §10 adopted the §8 recipe, every arm whose
+# label named a pre-adoption constant was measuring the adopted one. Four arms
+# of holdout-candidates returned one bit-identical number that way, and
+# v07-holdout-alpha's incumbent encoded to 40 bytes rather than the 32 its label
+# claimed. This is a property of the config alone: no corpus, no encoder, no
+# sweep output, so it runs in CI. Configs left unpinned on purpose declare
+# `unpinnedLabels` with the reason (EXPERIMENTS.md §9.5).
+#   --list   what each label is read to name
+[tasks."verify:sweep-labels"]
+description = "Check every sweep arm sets the constants its label names"
+depends = ["build:compare"]
+run = "node tools/comparison/dist/verify-sweep-labels.js"
+
+# Check the figures the rest of the repo quotes FROM spec/EXPERIMENTS.md.
+# verify:experiments closes the loop between the sweeps and that document; this
+# closes the one after it, for README.md, spec/README.md, spec/RATIONALE.md and
+# rust/src/constants.rs, which restate its numbers by hand and had never been
+# checked. The 2026-09 re-baseline left six of them wrong, two citing a section
+# that had never held the figure. Deliberately checks against the *document*,
+# not the sweeps: that chain is already gated, so this needs no sweep output on
+# disk and can therefore run in CI on every push, which verify:experiments
+# cannot.
+#   --list   print the register and exit
+[tasks."verify:claims"]
+description = "Check the figures other files quote from spec/EXPERIMENTS.md"
+depends = ["build:compare"]
+run = "node tools/comparison/dist/verify-claims.js"
 
 # Check every table in spec/PERFORMANCE.md against the committed perf runs in
 # tools/comparison/baselines/. The document is transcribed by hand, so a re-run

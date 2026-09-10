@@ -24,6 +24,18 @@ MU_L = 5         # Luminance AC
 MU_C = 8         # Chroma a/b AC
 MU_ALPHA = 5     # Alpha AC
 
+# Decode-side synthesis window (EXPERIMENTS.md §12.2): w = w_min +
+# (1-w_min)*hann(rho)^w_exp,
+# applied to the reconstructed AC plane. w_min = 1.0 disables it, which is what
+# v1 ships -- EXPERIMENTS.md §12.2 measured the window's invented structure as
+# entirely luma and withdrew it. They are carried here, at their disabling
+# values, because both decoders declare them and use them in the decode path:
+# a drift would change output, and until now no parity check could see them.
+W_MIN_L = 1.0    # Luma window floor; 1.0 = window off
+W_EXP_L = 1      # Luma window exponent
+W_MIN_C = 1.0    # Chroma window floor; 1.0 = window off
+W_EXP_C = 1      # Chroma window exponent
+
 # =========================================================================
 # Quantization Range Maximums (§7.1, §7.2, §12.1)
 # =========================================================================
@@ -157,8 +169,9 @@ LAYOUT_B = AcLayout(
 
 # Layout T0: the v1 DEFAULT-TIER layout (the shipped default at code 1). At a 32-byte
 # budget the AC payload is 202 bits, and spending it on 28 luma coefficients at
-# 4 bits plus 15 chroma at 3 beats LAYOUT_B's 26@5 / 9@4 split by 3.5% mean
-# ΔE00 on the never-tuned holdout split (spec/EXPERIMENTS.md §8.3):
+# 4 bits plus 15 chroma at 3 beats LAYOUT_B's 26@5 / 9@4 split by 2.09% mean
+# ΔE00 on the never-tuned holdout split (spec/EXPERIMENTS.md §4.5; the 3.5% this
+# comment used to quote was the whole v0.7 recipe, not the layout alone):
 #   no-alpha = 54 prefix + 28·4 L + 2·15·3 chroma                 = 256 bits
 #   alpha    = 54 + 9 + 22·4 L + 2·3·3 chroma + 28·3 alpha        = 253 bits
 # The alpha row is the §11.3 allocation. The alpha channel had five AC

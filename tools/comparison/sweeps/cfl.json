@@ -3,18 +3,54 @@
   "description": "U14 materialized: chroma-from-luma with a signalled per-channel gain. Each chroma AC coefficient becomes a residual against alpha times the luma coefficient at the same selection index, so the chroma scale field carries the residual scale instead of the raw one. The gains cost 2*cfl_bits prefix bits, which at tier 0 is two luma coefficients - the 'free' rows spend those bits anyway (larger hash) to separate 'does CfL predict anything' from 'does CfL pay for its signalling'.",
   "photoOnly": true,
   "variants": [
-    { "label": "32B shipped L26@5C9@4" },
-    { "label": "32B free cfl5 (34 B)", "tune": "cfl_bits=5" },
-    { "label": "32B free cfl6 (34 B)", "tune": "cfl_bits=6" },
-    { "label": "32B paid cfl4 L24C9", "tune": "cfl_bits=4 l1=24:5 c=9:4" },
-    { "label": "32B paid cfl5 L24C9", "tune": "cfl_bits=5 l1=24:5 c=9:4" },
-    { "label": "32B paid cfl6 L22C10", "tune": "cfl_bits=6 l1=22:5 c=10:4" },
-    { "label": "32B ctrl no-cfl L24C9", "tune": "l1=24:5 c=9:4" },
-    { "label": "32B 4b base L28@4C15@3", "tune": "l1=28:4 c=15:3" },
-    { "label": "32B 4b paid cfl5 L28C13", "tune": "cfl_bits=5 l1=28:4 c=13:3" },
-    { "label": "32B 4b ctrl no-cfl L28C13", "tune": "l1=28:4 c=13:3" },
-    { "label": "108B t1 shipped", "tier": 2 },
-    { "label": "108B t1 free cfl5", "tier": 2, "tune": "cfl_bits=5" },
+    {
+      "label": "32B shipped L26@5C9@4"
+    },
+    {
+      "label": "32B free cfl5 (34 B)",
+      "tune": "cfl_bits=5"
+    },
+    {
+      "label": "32B free cfl6 (34 B)",
+      "tune": "cfl_bits=6"
+    },
+    {
+      "label": "32B paid cfl4 L24C9",
+      "tune": "cfl_bits=4 l1=24:5 c=9:4"
+    },
+    {
+      "label": "32B paid cfl5 L24C9",
+      "tune": "cfl_bits=5 l1=24:5 c=9:4"
+    },
+    {
+      "label": "32B paid cfl6 L22C10",
+      "tune": "cfl_bits=6 l1=22:5 c=10:4"
+    },
+    {
+      "label": "32B ctrl no-cfl L24C9",
+      "tune": "l1=24:5 c=9:4"
+    },
+    {
+      "label": "32B 4b base L28@4C15@3",
+      "tune": "l1=28:4 c=15:3"
+    },
+    {
+      "label": "32B 4b paid cfl5 L28C13",
+      "tune": "cfl_bits=5 l1=28:4 c=13:3"
+    },
+    {
+      "label": "32B 4b ctrl no-cfl L28C13",
+      "tune": "l1=28:4 c=13:3"
+    },
+    {
+      "label": "108B t1 shipped",
+      "tier": 2
+    },
+    {
+      "label": "108B t1 free cfl5",
+      "tier": 2,
+      "tune": "cfl_bits=5"
+    },
     {
       "label": "108B t1 paid cfl5 L25C9",
       "tier": 2,
@@ -25,9 +61,27 @@
       "tier": 2,
       "tune": "l1=25:5 c=9:4"
     },
-    { "label": "411B t2 shipped", "tier": 3 },
-    { "label": "411B t2 free cfl5", "tier": 3, "tune": "cfl_bits=5" },
-    { "label": "1623B t3 shipped", "tier": 4 },
-    { "label": "1623B t3 free cfl5", "tier": 4, "tune": "cfl_bits=5" }
-  ]
+    {
+      "label": "411B t2 shipped",
+      "tier": 3
+    },
+    {
+      "label": "411B t2 free cfl5",
+      "tier": 3,
+      "tune": "cfl_bits=5"
+    },
+    {
+      "label": "1623B t3 shipped",
+      "tier": 4
+    },
+    {
+      "label": "1623B t3 free cfl5",
+      "tier": 4,
+      "tune": "cfl_bits=5"
+    }
+  ],
+  "unpinnedLabels": {
+    "arms": 1,
+    "why": "EXPERIMENTS.md 9.5: incumbent label names the pre-adoption layout while the arm inherits the adopted one. Every arm in this config shares that one base, so the deltas around it are valid and only the incumbent's *name* is inaccurate. Relabelling moves no number and would change the row keys verify-experiments.ts matches on."
+  }
 }

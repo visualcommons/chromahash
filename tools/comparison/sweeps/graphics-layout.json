@@ -1,10 +1,11 @@
 {
   "name": "graphics-layout",
   "corpus": "graphic",
-  "description": "SS11.4 - does the tier-0 layout chosen on photographs hold on non-photographic content? This is the same 32-byte allocation grid that chose it (SS4.2), re-run on screenshots, charts, diagrams and text graphics, with the adopted default as the incumbent. No constant in the format has ever been chosen against this content, so the question is whether the photo-derived optimum is also the graphics optimum or merely tolerable there. Run with forceOpaque: two images in this corpus carry an alpha channel and would otherwise encode in alpha mode, where none of the arms' opaque-layout overrides apply \u2014 they would contribute an identical constant to every arm, diluting every delta and biasing the test toward 'no difference'.",
+  "description": "SS11.4 - does the tier-0 layout chosen on photographs hold on non-photographic content? This is the same 32-byte allocation grid that chose it (SS4.2), re-run on screenshots, charts, diagrams and text graphics, with the adopted default as the incumbent. No constant in the format has ever been chosen against this content, so the question is whether the photo-derived optimum is also the graphics optimum or merely tolerable there. Run with forceOpaque: two images in this corpus carry an alpha channel and would otherwise encode in alpha mode, where none of the arms' opaque-layout overrides apply — they would contribute an identical constant to every arm, diluting every delta and biasing the test toward 'no difference'. The incumbent pins the layout it names. Every other arm here sets `l1`/`c` explicitly and the config runs at the default tier only, so pinning is consistent with its siblings and inert on the upper layout.",
   "variants": [
     {
-      "label": "DEFAULT L28@4 C15@3 (photo winner)"
+      "label": "DEFAULT L28@4 C15@3 (photo winner)",
+      "tune": "l1=28:4 c=15:3"
     },
     {
       "label": "pre-adoption L26@5 C9@4",

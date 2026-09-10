@@ -40,8 +40,10 @@ The generated `io.chromahash.ffi` API mirrors the pure-Kotlin `chromahash` API:
 
 Two deliberate FFI-boundary differences from the doc's original sketch:
 
-- **`fromBytes` is fallible** — it throws `ChromaHashException.InvalidLength` if the input is not
-  exactly 32 bytes (a panic across FFI is unsafe). Catch it, or validate length first.
+- **`fromBytes` is fallible** — it throws `ChromaHashException.InvalidLength` if the input's
+  length is not the one its own header declares (a panic across FFI is unsafe). That is 32 bytes
+  at the default tier, 21 at the compact one and 108/411/1623 above it, less if the alpha flag is
+  set; §3.5 gives the formula. Catch it, or validate length first.
 - **Record ints are signed** (`DecodeResult.width/height: Int`, `RgbaColor.r/g/b/a: Int`) for
   drop-in parity with the pure-Kotlin API and with `Bitmap`/ARGB call sites. Size *parameters*
   (`encode`'s `w`/`h`, `decodeCapped`'s `maxW`/`maxH`) are `UInt`.
@@ -97,9 +99,9 @@ import android.graphics.Bitmap
 import io.chromahash.ffi.ChromaHash
 import java.nio.ByteBuffer
 
-/** Decode a 32-byte ChromaHash into a Bitmap placeholder. */
+/** Decode a ChromaHash into a Bitmap placeholder. */
 fun decodeToBitmap(hashBytes: ByteArray): Bitmap {
-    val hash = ChromaHash.fromBytes(hashBytes)        // throws on non-32-byte input
+    val hash = ChromaHash.fromBytes(hashBytes)        // throws unless the length matches the header
     val result = hash.decode()
     val bitmap = Bitmap.createBitmap(result.width, result.height, Bitmap.Config.ARGB_8888)
     bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(result.rgba))

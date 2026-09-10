@@ -164,8 +164,10 @@ pub const LAYOUT_B: AcLayout = AcLayout {
 /// Layout T0: the **v1 default-tier layout** (the shipped default at code 1). At a
 /// 32-byte budget the AC payload is 202 bits, and spending it on 28 luma
 /// coefficients at 4 bits plus 15 chroma at 3 beats the 26@5 / 9@4 split of
-/// [`LAYOUT_B`] by 3.5% mean ΔE00 on the never-tuned holdout split, with
-/// SSIMULACRA2, Butteraugli and DSSIM all improving (spec/EXPERIMENTS.md §8.3).
+/// [`LAYOUT_B`] by 2.09% mean ΔE00 on the never-tuned holdout split, with
+/// SSIMULACRA2, Butteraugli and DSSIM all improving (spec/EXPERIMENTS.md §4.5;
+/// the 3.5% this comment used to quote was the whole v0.7 recipe, not the
+/// layout alone, and §8.3 is where that recipe is measured).
 /// Sized to the same anchor: no-alpha = 54 prefix + 28·4 L + 2·15·3 chroma =
 /// 256 bits.
 ///
@@ -582,9 +584,11 @@ pub struct Tunables {
 }
 
 impl Tunables {
-    /// The v1 format constants, locked by the 2026-08 corpus sweep
-    /// (tools/comparison, 39 curated photos + Kodak24 over a tune/holdout
-    /// split; spec/EXPERIMENTS.md).
+    /// The v1 format constants, locked by the 2026-08 corpus sweep and
+    /// re-verified on the 2026-09 Wikimedia re-source (tools/comparison,
+    /// 39 curated photographs from Wikimedia Commons + Kodak24 over a
+    /// tune/holdout split; spec/EXPERIMENTS.md §9.5). Nothing here moved
+    /// under the re-source; the figures below did.
     ///
     /// Carried over from v0.6: chroma AC scale range 0.125 (v0.5: 0.5) is the
     /// single largest quality win (the corpus maximum chroma scale is 0.113 —
@@ -593,12 +597,16 @@ impl Tunables {
     /// chroma scale near zero; out-of-gamut chroma is clipped per-channel at
     /// decode (relative-colorimetric, §12.6); the synthesis window is DISABLED
     /// (w_min=1.0) — with fine chroma scales it costs more detail than the
-    /// banding it suppresses, and v0.5's visible striping turned out to be
-    /// chroma quantization noise, not luma ringing.
+    /// banding it suppresses. (v0.5's visible striping was attributed to chroma
+    /// quantization noise rather than luma ringing. That was about v0.5's
+    /// constants: re-measured at v0.7's with an artifact metric that can see it,
+    /// the structure the format invents is entirely luma, and a chroma-only
+    /// taper is inert on every column — EXPERIMENTS.md §12.2. The window stays
+    /// off on the trade it makes, not on which channel it acts on.)
     ///
     /// New in v1, and validated together on the never-tuned holdout split at
-    /// −3.50% mean ΔE00 with SSIMULACRA2, Butteraugli and DSSIM all improving
-    /// (EXPERIMENTS.md §8):
+    /// −3.72% mean ΔE00 with SSIMULACRA2, Butteraugli and DSSIM all improving
+    /// (EXPERIMENTS.md §7.12, §8):
     ///
     /// * [`LAYOUT_T0`] at the default tier — more, coarser coefficients where the
     ///   budget is tightest, while codes 2..=4 keep [`LAYOUT_B`] scaled by `4^level`.
@@ -608,8 +616,9 @@ impl Tunables {
     ///   decisions that cost no bits and leave the decoder untouched.
     ///
     /// Deliberately *not* default: the pixel-domain refinement of §8.2. It is
-    /// worth a further −0.6 pp at the default tier and costs ~54× encode time, so it
-    /// belongs behind an encoder quality setting, not here.
+    /// worth a further −0.3 pp at the default tier (§7.12: −3.72% → −4.01%) and
+    /// costs ~54× encode time, so it belongs behind an encoder quality setting,
+    /// not here.
     pub const DEFAULT: Tunables = Tunables {
         layout: LAYOUT_T0,
         layout_upper: LAYOUT_B,

@@ -42,7 +42,7 @@ mapping, OKLAB bounds, µ-law round-trips, the tier tables and byte lengths, and
 the aspect encoding. It also replays `unit-aspect.json` (45 cases) and
 `unit-selection.json` (488 cases) against its own implementation, which is the
 one place the golden vectors are checked by something that did not produce them.
-174 assertions; exit code 0 = pass.
+213 assertions; exit code 0 = pass.
 
 ### Step 2: Check the manifest versions agree
 
@@ -118,6 +118,9 @@ Then the slower gates, which are not part of a routine change:
 mise run test:simd:diff     # every SIMD backend this host can execute
 mise run rd:gate            # encoder quality regression gate
 mise run verify:experiments # every number in spec/EXPERIMENTS.md vs the sweep output
+mise run verify:claims      # every figure the OTHER docs quote from EXPERIMENTS.md
+mise run verify:sweep-labels # every enforceable sweep arm sets the constants its label names
+mise run corpus:licenses -- --check   # corpus attribution vs the pin table
 mise run verify:benchmark   # every number in spec/PERFORMANCE.md vs the committed runs
 mise run mutants:rust       # full mutation sweep of the core (slow)
 mise run benchmark          # the perf sweep behind spec/PERFORMANCE.md
@@ -129,6 +132,45 @@ mise run benchmark:stages   # where encode time goes, stage by stage
 committed runs under `tools/comparison/baselines/` — so it is cheap and runs in
 `ci-comparison.yml` on every change to either. `verify:experiments` is its
 sibling for `EXPERIMENTS.md`.
+
+**Four gates, and only one of them needs the sweeps.** `verify:experiments` does
+— they are gitignored and take hours, so it can only ever run locally, and its
+bindings are exercised nowhere else. The other three read source files and run
+in CI:
+
+| Gate | What it asserts | Reads |
+| --- | --- | --- |
+| `verify:experiments` | every table in `EXPERIMENTS.md` matches the run that produced it | the sweep output |
+| `verify:claims` | every figure `README.md`, `spec/README.md`, `spec/RATIONALE.md`, `rust/src/constants.rs` and `spec/constants.py` quote from `EXPERIMENTS.md` matches the cell it cites, and no figure in them is unregistered | five files |
+| `verify:sweep-labels` | every *enforceable* sweep arm sets the constants its own label names — 481 of the 807 arms in 49 configs (see the caveat below) | the sweep configs |
+| `validate:spec` | `spec/constants.py`, `rust/src/constants.rs` and `typescript/src/header.ts` agree on every shared constant | three sources |
+
+They chain: the sweeps gate `EXPERIMENTS.md`, and `EXPERIMENTS.md` gates
+everything that quotes it. That is why `verify:claims` checks against the
+*document* rather than re-deriving from the sweeps — the same traceability, and
+it can run where the sweeps cannot.
+
+> **A green `verify:claims` means every *registered* claim traces to a cell**,
+> not that every number in the repo is true. `--list` prints the register.
+> Adding a figure to one of those files should mean adding a line to it.
+
+> **A green `verify:sweep-labels` is a statement about 481 arms, not 807.** The
+> 49 sweep configs hold 807 arms. 223 of them name no constant the gate can
+> read, and are skipped rather than failed (`--list-unnamed` prints them); a
+> further 103 sit in the six configs that declare `unpinnedLabels`, whose
+> whole-config opt-out discards every finding in them. That leaves **481 arms
+> that can actually fail**, and the summary line prints the three figures
+> separately rather than adding them. Each opt-out carries the number of arms it
+> excuses and fails the gate when that number drops to zero or stops matching,
+> so an exemption cannot quietly outlive its reason — the same rule
+> `spec/validate.py` applies to `not_in_parity`. See `EXPERIMENTS.md` §9.5.
+
+> **`verify:experiments` binds columns, not tables.** A bound table is checked on
+> the columns its binding names and silent about the rest; four columns sat stale
+> behind passing tables that way (`EXPERIMENTS.md` §9.5). The run now prints a
+> `PARTIAL` line per bound table with an unchecked column, and
+> `--list-unbound-columns` gives the breakdown. Every unchecked column is either
+> bound or listed in `UNBOUND_COLUMN_NOTES` with the reason.
 
 > **`verify:benchmark` currently fails, and its CI job is red on `master`.**
 > `spec/PERFORMANCE.md` carries `TBD` placeholders throughout and no perf run is

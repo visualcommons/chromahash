@@ -1,10 +1,11 @@
 {
   "name": "selection-weights",
   "corpus": "photo",
-  "description": "SS11.10 - the selection weights, re-derived. Supersedes aniso-selection/aniso-extended, whose incumbent was labelled 'default (isotropic)' and stopped being isotropic the moment aniso=1.2 and sel_hv=0.15 were adopted: every delta in those tables was measured against the new default while claiming to be measured against the old one. This is the full 2-D (aniso, sel_hv) grid with the adopted pair as incumbent and an explicit isotropic arm, so both readings are available and neither is implied.",
+  "description": "SS11.10 - the selection weights, re-derived. Supersedes aniso-selection/aniso-extended, whose incumbent was labelled 'default (isotropic)' and stopped being isotropic the moment aniso=1.2 and sel_hv=0.15 were adopted: every delta in those tables was measured against the new default while claiming to be measured against the old one. This is the full 2-D (aniso, sel_hv) grid with the adopted pair as incumbent and an explicit isotropic arm, so both readings are available and neither is implied. The incumbent pins the two weights it names rather than inheriting them: they happen to be the adopted defaults today, which is exactly the condition under which an unpinned label stops meaning anything the day a default moves (EXPERIMENTS.md 9.5).",
   "variants": [
     {
-      "label": "DEFAULT aniso=1.2 hv=0.15"
+      "label": "DEFAULT aniso=1.2 hv=0.15",
+      "tune": "aniso=1.2 sel_hv=0.15"
     },
     {
       "label": "isotropic (aniso=0 hv=0)",

@@ -231,8 +231,8 @@ degrades and fails guards past 1.6. Extending it to the two-parameter family
 
 **Shipped in v1** (§6.2). On its own the weight is under the 3% retune
 threshold; it entered the spec as part of the default-tier recipe of
-`EXPERIMENTS.md` §8, which clears it as a whole (−3.50% holdout, all guards
-improving) and is worth −0.34 pp of that. The f64 ordering the sweep used is
+`EXPERIMENTS.md` §8, which clears it as a whole (−3.72% holdout, all guards
+improving) and is worth −0.36 pp of that. The f64 ordering the sweep used is
 *not* what shipped: the spec orders on an exact Q12 integer key, so the order
 is bit-exact across languages, and computing it once per candidate instead of
 inside the comparator made decode ~8% **faster** than the unweighted v0.6 sort
@@ -341,8 +341,10 @@ and above*.
 At the default tier it is the wrong answer. The count-vs-precision optimum moves with the
 budget, and a 32-byte hash has 202 AC bits to spend: sweeping the whole
 equal-byte grid (`EXPERIMENTS.md` §4.2) puts the optimum at 28 luma
-coefficients at 4 bits plus 15 chroma at 3, worth −3.5% mean ΔE00 on the
-never-tuned holdout with every guard improving. So v1 carries a **three-row
+coefficients at 4 bits plus 15 chroma at 3, worth −2.09% mean ΔE00 on the
+never-tuned holdout with every guard improving (§4.5 — §4.2 above is the tune
+split, and the −3.5% this sentence used to quote was the whole v0.7 recipe
+rather than the layout alone). So v1 carries a **three-row
 layout table** rather than one base scaled by `4^level` (§3.2).
 
 The optimum is broad — L30/C13 and L32/C12 are within noise of L28/C15 — which

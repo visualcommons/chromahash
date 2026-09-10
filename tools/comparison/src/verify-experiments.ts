@@ -14,12 +14,39 @@
  * what its columns mean — is written by hand here. Claimed values are
  * recomputed from `perImageCiede` rather than read back from the summary
  * fields, and paired CIs go through the same seeded `bootstrapCI` the report
- * uses, so a reproduction is exact rather than approximate.
+ * uses, so a reproduction is exact rather than approximate. `guardsOk` was the
+ * one bound column that broke that rule — it was read back, so the gate
+ * checked the transcription and not the guard — and is now recomputed from the
+ * metrics beside it at the tolerances the run recorded.
+ *
+ * A binding is a per-*column* map, which means a bound table is green on the
+ * columns it names and says nothing about the rest. §9.5 records what that
+ * cost -- §10.3's Δ%, §7.11's "vs native tier 0", §7.10's "vs its own control"
+ * and §7.5's guards were all unbound and all stale, §7.10's with every sign
+ * inverted -- so the run now reports column coverage per table and
+ * `--list-unbound-columns` breaks it down. An unchecked column is either bound
+ * or listed in `UNBOUND_COLUMN_NOTES` with the reason; it is never silent, and
+ * the run fails if it is — a sentence a register audit enforces rather than a
+ * convention the next binding can quietly break.
+ *
+ * The same blindness runs one level further down, *inside* a bound column. A
+ * cell whose text `parseCell` cannot read was skipped without a word, so §11.10
+ * table 1's `graphics ΔE00` — six cells all written "10.855 (−2.78%)" — checked
+ * nothing at all while counting as one of this run's covered columns. Unparsed
+ * cells are now counted, rolled up per column with the denominator that shows
+ * when a column checked *none* of its cells, and named in full by
+ * `--list-unparsed`. They are reported rather than fatal, on the user's call
+ * and because several are unparseable on purpose: §7.8's "+5.0 pp" is quoted
+ * against a different baseline than the column's metric, and that binding's own
+ * `note` says so. What the count buys is that the next shape nobody anticipated
+ * is loud rather than silent.
  *
  * Usage:
  *   node dist/verify-experiments.js              # every bound table
  *   node dist/verify-experiments.js --section 11.5
  *   node dist/verify-experiments.js --list-unbound
+ *   node dist/verify-experiments.js --list-unbound-columns
+ *   node dist/verify-experiments.js --list-unparsed # name the unreadable cells
  *   node dist/verify-experiments.js --strict        # a SKIP is a failure
  *
  * Exit status is non-zero on any disagreement, so `mise run verify:experiments`
@@ -29,76 +56,18 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import {
+  type DocTable,
+  cells,
+  decimals,
+  parseCell,
+  parseTables,
+} from "./doc-tables.ts";
 import { bootstrapCI } from "./stats.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const DOC = path.join(REPO_ROOT, "spec/EXPERIMENTS.md");
 const SWEEP_DIR = path.join(REPO_ROOT, "tools/comparison/output/sweeps");
-
-// ─── The document, as tables ────────────────────────────────────────────────
-
-interface DocTable {
-  /** Section heading the table sits under, e.g. "11.5" or "1". */
-  section: string;
-  /** Index of this table within its section, 0-based. */
-  index: number;
-  /** Line of the header row in EXPERIMENTS.md, for error messages. */
-  line: number;
-  header: string[];
-  rows: string[][];
-}
-
-/** Split a markdown table row into trimmed cells, dropping the outer pipes. */
-function cells(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((c) => c.trim());
-}
-
-const isSeparator = (line: string): boolean =>
-  /^\s*\|[\s:|-]+\|\s*$/.test(line) && line.includes("-");
-
-function parseTables(markdown: string): DocTable[] {
-  const lines = markdown.split("\n");
-  const tables: DocTable[] = [];
-  let section = "0";
-  let indexInSection = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-
-    const heading = /^#{2,3}\s+([0-9]+(?:\.[0-9]+)?)[.\s]/.exec(line);
-    if (heading?.[1]) {
-      section = heading[1];
-      indexInSection = 0;
-      continue;
-    }
-
-    if (!line.trimStart().startsWith("|")) continue;
-    if (!isSeparator(lines[i + 1] ?? "")) continue;
-
-    const header = cells(line);
-    const rows: string[][] = [];
-    let j = i + 2;
-    for (; j < lines.length; j++) {
-      const body = lines[j] ?? "";
-      if (!body.trimStart().startsWith("|")) break;
-      rows.push(cells(body));
-    }
-    tables.push({
-      section,
-      index: indexInSection++,
-      line: i + 1,
-      header,
-      rows,
-    });
-    i = j - 1;
-  }
-  return tables;
-}
 
 // ─── Sweep results ──────────────────────────────────────────────────────────
 
@@ -124,6 +93,9 @@ interface SweepFile {
   split: string;
   images: number;
   rows: SweepRow[];
+  /** The tolerances the run itself applied, written into its own output. */
+  guardTolerances?: { ssimulacra2Drop: number; relativeRise: number };
+  artifactGuardRise?: number | null;
 }
 
 /** A row as `rd-budget` writes it — one format at one byte budget. */
@@ -159,6 +131,95 @@ function fromRdRow(r: RdRow): SweepRow {
   };
 }
 
+/**
+ * `sweep.ts`'s zero-base allowance, in metric levels. Duplicated rather than
+ * imported because that module runs the encoder at import time; a drift
+ * between the two is caught by the recomputation below disagreeing with every
+ * stored `guardsOk` at once, which is the loudest failure this file has.
+ */
+const ARTIFACT_ZERO_BASE_ALLOWANCE = 1.0;
+
+/** `sweep.ts`'s `roseNoMoreThan`, on the same terms. */
+function roseNoMoreThan(
+  value: number | null,
+  base: number | null,
+  rise: number,
+): boolean {
+  if (value === null || base === null) return true;
+  if (base === 0) return value <= ARTIFACT_ZERO_BASE_ALLOWANCE;
+  return value <= base * (1 + rise);
+}
+
+/**
+ * Where a stored `guardsOk` disagrees with the metrics stored beside it.
+ *
+ * This file's premise, stated at the top, is that a claimed value is
+ * recomputed rather than read back from a summary field -- and `guardsOk` was
+ * the one bound column read back. A document cell reading `ok` was therefore
+ * checked against the sweep's own boolean, so the gate confirmed the
+ * transcription and said nothing about the guard: a hand-edited output, a
+ * tolerance changed after a run, or a bug in `applyGuards` would all pass, and
+ * §12.2 and §12.3 turn their verdicts on that column.
+ *
+ * It is recomputed here from the row's own metrics, against the incumbent, at
+ * the tolerances the run recorded in its own header. A disagreement is
+ * reported rather than quietly corrected: the output contradicting itself is a
+ * finding about the sweep, not about the document, and the two have different
+ * fixes.
+ */
+const guardDrift: string[] = [];
+
+/**
+ * Recompute every row's `guardsOk` from the metrics stored beside it.
+ *
+ * Mirrors `applyGuards` in `sweep.ts`, reading the tolerances out of the
+ * output's own `guardTolerances` and `artifactGuardRise` rather than
+ * re-declaring them, so a run taken under different tolerances is still judged
+ * by the ones it actually used. An output written before those fields existed
+ * carries no tolerances; its rows are left as they are and reported, because
+ * inventing a tolerance for them would be the read-back this exists to remove.
+ */
+function recomputeGuards(file: SweepFile): void {
+  const tol = file.guardTolerances;
+  const base = file.rows[0];
+  if (!base) return;
+  if (!tol) {
+    if (file.rows.some((r) => r.guardsOk !== null)) {
+      guardDrift.push(
+        `${file.name}: rows carry guardsOk but the output records no guardTolerances, so the column cannot be recomputed — re-run the sweep`,
+      );
+    }
+    return;
+  }
+  const artifactRise = file.artifactGuardRise ?? undefined;
+  for (const row of file.rows.slice(1)) {
+    const ssim2Ok =
+      row.meanSsimulacra2 === null ||
+      base.meanSsimulacra2 === null ||
+      row.meanSsimulacra2 >= base.meanSsimulacra2 - tol.ssimulacra2Drop;
+    const butterOk =
+      row.meanButteraugli === null ||
+      base.meanButteraugli === null ||
+      row.meanButteraugli <= base.meanButteraugli * (1 + tol.relativeRise);
+    const dssimOk =
+      row.meanDssim === null ||
+      base.meanDssim === null ||
+      row.meanDssim <= base.meanDssim * (1 + tol.relativeRise);
+    const artifactOk =
+      artifactRise === undefined ||
+      (roseNoMoreThan(row.meanRinging, base.meanRinging, artifactRise) &&
+        roseNoMoreThan(row.meanSpurious, base.meanSpurious, artifactRise));
+    const computed = ssim2Ok && butterOk && dssimOk && artifactOk;
+    if (row.guardsOk !== null && row.guardsOk !== computed) {
+      guardDrift.push(
+        `${file.name} "${row.label}": output stores guardsOk=${row.guardsOk}, ` +
+          `its own metrics give ${computed}`,
+      );
+    }
+    row.guardsOk = computed;
+  }
+}
+
 const sweepCache = new Map<string, SweepFile | null>();
 
 function loadSweep(name: string): SweepFile | null {
@@ -180,6 +241,7 @@ function loadSweep(name: string): SweepFile | null {
   } catch {
     parsed = null;
   }
+  if (parsed) recomputeGuards(parsed);
   sweepCache.set(name, parsed);
   return parsed;
 }
@@ -222,6 +284,7 @@ export type Metric =
   | "meanSpurious"
   | "ciedeDeltaPct"
   | "bytes"
+  | "guardsOk"
   | "ci"
   | "winN";
 
@@ -255,6 +318,17 @@ interface RowBinding extends CommonBinding {
    * shipped shape while its CI is against the leader, in one table.
    */
   baselines?: Partial<Record<string, string>>;
+  /**
+   * Per-*row* override, keyed by doc label. A table that stacks several
+   * experiments each measured against its own control needs one base per row,
+   * not one per table: §10.3 puts two tiers in one table and reports each
+   * DEFAULT row against the pre-adoption row of *its* tier, and §7.11 reports
+   * every truncation against a native tier-0 encode rather than against the
+   * first row. Both columns were unbound and both were stale (§9.5) --
+   * §7.10's with every sign inverted -- precisely because there was no way to
+   * say this. Column overrides win where both apply.
+   */
+  rowBaselines?: Partial<Record<string, string>>;
 }
 
 /**
@@ -316,28 +390,6 @@ type Binding = RowBinding | ColumnBinding | RatioBinding;
 
 // ─── Checking ───────────────────────────────────────────────────────────────
 
-/** Parse a doc cell like "**10.100**", "−0.81%", "8.57 @32 px", "—". */
-function parseCell(raw: string): number | null {
-  const cleaned = raw
-    .replace(/[*`]/g, "")
-    .replace(/[−–—]/g, "-")
-    .replace(/%/g, "")
-    .replace(/@.*$/, "")
-    .replace(/\s*B$/i, "")
-    .trim();
-  if (cleaned === "" || cleaned === "-" || cleaned.toLowerCase() === "n/a") {
-    return null;
-  }
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
-}
-
-/** Decimals shown, so the tolerance matches the precision the doc claims. */
-function decimals(raw: string): number {
-  const m = /\.(\d+)/.exec(raw.replace(/[*`]/g, ""));
-  return m?.[1]?.length ?? 0;
-}
-
 interface Failure {
   section: string;
   row: string;
@@ -348,6 +400,36 @@ interface Failure {
   fix?:
     | { line: number; rowIndex: number; colIndex: number; cell: string }
     | undefined;
+}
+
+/**
+ * A cell inside a *bound* column that `parseCell` could not read, and so was
+ * compared against nothing. Recorded rather than dropped: the count is the only
+ * thing standing between "this column is bound" and "this column checks cells".
+ */
+interface UnparsedCell {
+  section: string;
+  /** Index of the table within its section, since a section has several. */
+  table: number;
+  column: string;
+  row: string;
+  /** The cell exactly as the document writes it, so the shape is diagnosable. */
+  raw: string;
+}
+
+/** What a run accumulates about the cells it looked at, checked or not. */
+interface Stats {
+  /** Cells whose claimed value was actually compared against a measurement. */
+  cells: number;
+  /** Cells in a bound column that no parser could read. Never compared. */
+  unparsed: UnparsedCell[];
+  /**
+   * Cells reached per bound column — parsed or not — keyed
+   * `section#table#column`. This is the denominator: without it "6 unparsed"
+   * cannot be told apart from "6 unparsed out of 40", and it is the difference
+   * between a column with a gap and a column that checked nothing.
+   */
+  reached: Map<string, number>;
 }
 
 /** Recompute one metric from the raw per-image data wherever possible. */
@@ -392,6 +474,13 @@ function measure(
       if (d.length === 0) return null;
       return `${d.filter((x) => x > 0).length}/${d.length}`;
     }
+    // The guard verdict the sweep computed, as the document spells it. This is
+    // a claim the document makes and had been getting wrong: §9.5 records §7.5
+    // printing `ok` for two arms that fail their guards, invisible because the
+    // column was unbound. `guardsOk` is null on the incumbent, which `compare`
+    // already treats as "asserts nothing".
+    case "guardsOk":
+      return row.guardsOk === null ? null : row.guardsOk ? "ok" : "FAIL";
     default:
       return row[metric];
   }
@@ -402,6 +491,7 @@ const signed = (n: number): string => `${n >= 0 ? "+" : ""}${n.toFixed(3)}`;
 function compare(
   ctx: {
     section: string;
+    table: number;
     row: string;
     column: string;
     fix?: { line: number; rowIndex: number; colIndex: number };
@@ -409,12 +499,22 @@ function compare(
   raw: string,
   measured: number | string,
   failures: Failure[],
-  stats: { cells: number },
+  stats: Stats,
 ): void {
   const blank = raw.replace(/[*`\s]/g, "");
   // The incumbent and the reference row assert nothing: no delta, no interval,
   // no win count.
   if (["", "—", "-", "(base)", "(leader)", "(control)"].includes(blank)) return;
+
+  // Every cell past that point is one this run undertook to check, so it counts
+  // toward its column's total whether or not the check comes off.
+  const key = `${ctx.section}#${ctx.table}#${ctx.column}`;
+  stats.reached.set(key, (stats.reached.get(key) ?? 0) + 1);
+
+  // `ctx` carries the table index for the unparsed listing; a `Failure` is
+  // addressed by section, row and column, so the two are spread separately
+  // rather than letting the extra field ride along into the failure record.
+  const where = { section: ctx.section, row: ctx.row, column: ctx.column };
 
   if (typeof measured === "string") {
     stats.cells++;
@@ -427,7 +527,7 @@ function compare(
       const hi = Number(straddlesZero[2]);
       if (!(lo <= 0 && hi >= 0)) {
         failures.push({
-          ...ctx,
+          ...where,
           claimed,
           measured: `${measured} — excludes zero`,
           fix: ctx.fix && { ...ctx.fix, cell: rewriteCell(raw, measured) },
@@ -437,7 +537,7 @@ function compare(
     }
     if (normalize(claimed) !== normalize(measured)) {
       failures.push({
-        ...ctx,
+        ...where,
         claimed,
         measured,
         fix: ctx.fix && { ...ctx.fix, cell: rewriteCell(raw, measured) },
@@ -446,13 +546,27 @@ function compare(
     return;
   }
   const claimed = parseCell(raw);
-  if (claimed === null) return;
+  if (claimed === null) {
+    // Recorded, not skipped. Returning here without a word is what let §11.10's
+    // one bound column check six cells' worth of nothing behind a green run,
+    // and what would let the next unreadable shape do it again. The run still
+    // continues — an unparseable cell is a hole in the evidence, not a
+    // disagreement with it, and some of them are deliberate (see the header).
+    stats.unparsed.push({
+      section: ctx.section,
+      table: ctx.table,
+      column: ctx.column,
+      row: ctx.row,
+      raw: raw.trim(),
+    });
+    return;
+  }
   stats.cells++;
   const tol = 0.5 * 10 ** -decimals(raw) + 1e-9;
   if (Math.abs(claimed - measured) > tol) {
     const rounded = measured.toFixed(decimals(raw));
     failures.push({
-      ...ctx,
+      ...where,
       claimed: raw.trim(),
       measured: `${rounded}  (exact ${measured.toFixed(decimals(raw) + 3)})`,
       fix: ctx.fix && { ...ctx.fix, cell: rewriteCell(raw, rounded) },
@@ -500,7 +614,7 @@ function checkRowTable(
   b: RowBinding,
   table: DocTable,
   failures: Failure[],
-  stats: { cells: number },
+  stats: Stats,
 ): string | null {
   const sweep = loadSweep(b.sweep);
   if (!sweep) return `no output/sweeps/${b.sweep}.json — run the sweep`;
@@ -527,16 +641,17 @@ function checkRowTable(
     for (const [i, header] of table.header.entries()) {
       const metric = b.columns[header];
       if (!metric) continue;
-      const columnBase = b.baselines?.[header];
+      const overrideBase = b.baselines?.[header] ?? b.rowBaselines?.[docLabel];
       const measured = measure(
         metric,
         sweepRow,
-        columnBase ? findRow(sweep, columnBase) : baseline,
+        overrideBase ? findRow(sweep, overrideBase) : baseline,
       );
       if (measured === null) continue;
       compare(
         {
           section: b.section,
+          table: table.index,
           row: docLabel,
           column: header,
           fix: {
@@ -563,7 +678,7 @@ function checkRatioTable(
   b: RatioBinding,
   table: DocTable,
   failures: Failure[],
-  stats: { cells: number },
+  stats: Stats,
 ): string | null {
   const col = (name: string): number => {
     const i = table.header.findIndex((h) => h.trim() === name);
@@ -603,6 +718,7 @@ function checkRatioTable(
 
     const ctx = (column: string, colIndex: number) => ({
       section: b.section,
+      table: table.index,
       row: label,
       column,
       fix: { line: table.line, rowIndex, colIndex },
@@ -638,7 +754,7 @@ function checkColumnTable(
   b: ColumnBinding,
   table: DocTable,
   failures: Failure[],
-  stats: { cells: number },
+  stats: Stats,
 ): string | null {
   // Column index → measured value, per series, so derived rows can be checked
   // against what the rows above them actually measured.
@@ -714,6 +830,7 @@ function checkColumnTable(
       compare(
         {
           section: b.section,
+          table: table.index,
           row: series.docRow,
           column: colLabel,
           fix: {
@@ -767,6 +884,25 @@ const byFormatAndBytes: Resolver = (rows, docCells) => {
         Math.abs((a.bytes ?? 0) - bytes) - Math.abs((b.bytes ?? 0) - bytes),
     )
     .find((r) => Math.abs((r.bytes ?? 0) - bytes) < 1);
+};
+
+/**
+ * §11.12's alpha rows, shared by its two bindings: the `tune` and `holdout`
+ * columns are the same candidates measured by two runs of one config.
+ */
+const ALPHA_HOLDOUT_ROW_BASELINES: Record<string, string> = {
+  // A 21-byte candidate against the 32-byte incumbent measures the byte count,
+  // not the allocation. The document's tune column already did this and did not
+  // say so; its holdout column did not, so one row reported two columns against
+  // two baselines. Pinned here so they cannot part again.
+  "compact alpha A16@3 L12@4 C1@3": "compact 21B shipped shape",
+};
+
+const ALPHA_HOLDOUT_ALIASES: Record<string, string> = {
+  "**A28@3 L22@4 C3@3**": "ADOPTED A28@3 L22@4 C3@3",
+  "`alpha_ac_fit`": "alpha_ac_fit alone",
+  "A28@3 + `alpha_ac_fit`": "+ alpha_ac_fit",
+  "compact alpha A16@3 L12@4 C1@3": "compact 21B ADOPTED A16@3 L12@4 C1@3",
 };
 
 const BINDINGS: Binding[] = [
@@ -898,6 +1034,7 @@ const BINDINGS: Binding[] = [
       SSIM2: "meanSsimulacra2",
       Butter: "meanButteraugli",
       DSSIM: "meanDssim",
+      Guards: "guardsOk",
     },
     aliases: {
       shipped: "32B SHIPPED",
@@ -951,7 +1088,7 @@ const BINDINGS: Binding[] = [
     section: "7.5",
     table: 0,
     sweep: "prefix-shrink",
-    columns: { "ΔE00 Δ%": "ciedeDeltaPct" },
+    columns: { "ΔE00 Δ%": "ciedeDeltaPct", guards: "guardsOk" },
     aliases: {
       "aspect 8 → 5 b": "cost aspect 5b (-3)",
       "aspect 8 → 4 b": "cost aspect 4b (-4)",
@@ -1004,7 +1141,11 @@ const BINDINGS: Binding[] = [
     section: "7.11",
     table: 0,
     sweep: "embedded-tiers",
-    columns: { ΔE00: "meanCiede", SSIM2: "meanSsimulacra2" },
+    columns: {
+      ΔE00: "meanCiede",
+      "vs native tier 0 (11.473)": "ciedeDeltaPct",
+      SSIM2: "meanSsimulacra2",
+    },
     aliases: {
       "first 32 B, interleaved": "t1 interleaved, trunc 32 B",
       "first 32 B, channel-sequential": "t1 seq, trunc 32 B",
@@ -1025,6 +1166,7 @@ const BINDINGS: Binding[] = [
       SSIM2: "meanSsimulacra2",
       Butter: "meanButteraugli",
       DSSIM: "meanDssim",
+      Guards: "guardsOk",
     },
     aliases: {
       shipped: "32B shipped",
@@ -1069,6 +1211,7 @@ const BINDINGS: Binding[] = [
     sweep: "adopted-defaults-holdout",
     columns: {
       ΔE00: "meanCiede",
+      "Δ%": "ciedeDeltaPct",
       SSIM2: "meanSsimulacra2",
       Butter: "meanButteraugli",
       DSSIM: "meanDssim",
@@ -1078,6 +1221,13 @@ const BINDINGS: Binding[] = [
       "holdout, tier 0, **DEFAULT**": "t0 DEFAULT (post-adoption)",
       "holdout, tier 1, pre-adoption": "t1 pre-adoption constants",
       "holdout, tier 1, **DEFAULT**": "t1 DEFAULT (post-adoption)",
+    },
+    // Each tier's Δ% is against the pre-adoption row of its own tier, which is
+    // why one table-wide baseline could not express it and the column went
+    // unbound.
+    rowBaselines: {
+      "holdout, tier 0, **DEFAULT**": "t0 pre-adoption constants",
+      "holdout, tier 1, **DEFAULT**": "t1 pre-adoption constants",
     },
     skipRows: ["tune, tier 0, pre-adoption", "tune, tier 0, **DEFAULT**"],
     note: "§10.3 mixes splits in one table, so its tune rows are bound separately below. Its Δ% column is measured against the pre-adoption row rather than the sweep incumbent, so it is checked by hand in the section text.",
@@ -1089,6 +1239,7 @@ const BINDINGS: Binding[] = [
     sweep: "adopted-defaults",
     columns: {
       ΔE00: "meanCiede",
+      "Δ%": "ciedeDeltaPct",
       SSIM2: "meanSsimulacra2",
       Butter: "meanButteraugli",
       DSSIM: "meanDssim",
@@ -1096,6 +1247,9 @@ const BINDINGS: Binding[] = [
     aliases: {
       "tune, tier 0, pre-adoption": "t0 pre-adoption constants",
       "tune, tier 0, **DEFAULT**": "t0 DEFAULT (post-adoption)",
+    },
+    rowBaselines: {
+      "tune, tier 0, **DEFAULT**": "t0 pre-adoption constants",
     },
     skipRows: [
       "holdout, tier 0, pre-adoption",
@@ -1115,6 +1269,7 @@ const BINDINGS: Binding[] = [
       ΔE00: "meanCiede",
       "Δ%": "ciedeDeltaPct",
       αMAE: "meanAlphaMae",
+      guards: "guardsOk",
     },
     aliases: {
       "**shipped** alpha DC 5 b, scale 4 b, AC 5 @ 4 b":
@@ -1353,11 +1508,43 @@ const BINDINGS: Binding[] = [
     labelColumn: 1,
     resolve: byFormatAndBytes,
     columns: {
+      // §9.5: this column carried a stale x-axis while its four metric columns
+      // were re-transcribed, because a binding checks columns and nobody had
+      // bound this one. It is the table's independent variable.
+      Bytes: "bytes",
       "ΔE00 ↓": "meanCiede",
       "SSIM2 ↑": "meanSsimulacra2",
       "Butter ↓": "meanButteraugli",
       "DSSIM ↓": "meanDssim",
     },
+  },
+
+  // §11.12's alpha table — bound after the 2026-09 audit found its source
+  // sweep no longer reproduced it. `v07-holdout-alpha`'s incumbent, labelled
+  // `SHIPPED A5@4`, set no alpha AC knobs and so inherited the ADOPTED A28@3:
+  // it encoded to 40 bytes rather than 32 and reported the adopted allocation's
+  // own alpha MAE, i.e. the sweep was scoring the adopted layout against
+  // itself. The document's figures were right -- they predate the drift -- and
+  // reproduce to the digit once the arms are pinned. Nothing noticed for the
+  // usual reason: the table was unbound.
+  {
+    kind: "rows",
+    section: "11.12",
+    table: 1,
+    sweep: "v07-holdout-alpha",
+    columns: { tune: "ciedeDeltaPct" },
+    aliases: ALPHA_HOLDOUT_ALIASES,
+    skipRows: ["A28@3 + `alpha_ac_fit`"],
+    rowBaselines: ALPHA_HOLDOUT_ROW_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "11.12",
+    table: 1,
+    sweep: "v07-holdout-alpha-holdout",
+    columns: { holdout: "ciedeDeltaPct" },
+    aliases: ALPHA_HOLDOUT_ALIASES,
+    rowBaselines: ALPHA_HOLDOUT_ROW_BASELINES,
   },
 
   // §12 — the synthesis window, with the artifact columns that decide it. These
@@ -1376,6 +1563,7 @@ const BINDINGS: Binding[] = [
       Ring: "meanRinging",
       Spur: "meanSpurious",
       "paired 95% CI": "ci",
+      guards: "guardsOk",
     },
   },
   {
@@ -1391,9 +1579,116 @@ const BINDINGS: Binding[] = [
       Ring: "meanRinging",
       Spur: "meanSpurious",
       "paired 95% CI": "ci",
+      guards: "guardsOk",
     },
   },
 ];
+
+/**
+ * Which of a bound table's columns the binding actually checks.
+ *
+ * A binding is a per-column map, so a table is reported green when the columns
+ * it names agree and says nothing whatever about the rest. §9.5 is the record
+ * of what that cost: §10.3's Δ%, §7.11's "vs native tier 0", §7.10's "vs its
+ * own control" and §7.5's `guards` were all unbound and all stale, §7.10's with
+ * every sign inverted and §7.5's reporting `ok` for two arms that fail. Nothing
+ * in the output distinguished those tables from fully-checked ones. This is
+ * what makes the difference visible — "a SKIP is not a pass", one level down,
+ * and worse, because a SKIP is at least printed.
+ *
+ * For a transposed (`columns`) binding the doc's columns are sweep variants and
+ * its *rows* are the series, so there the uncovered axis is rows; `axis` says
+ * which is being reported so the output cannot be misread.
+ */
+interface Coverage {
+  section: string;
+  table: number;
+  axis: "columns" | "rows";
+  covered: string[];
+  uncovered: string[];
+}
+
+function coverageOf(b: Binding, table: DocTable): Coverage {
+  const base = { section: b.section, table: b.table ?? 0 };
+
+  if (b.kind === "rows") {
+    const labelCol = b.labelColumn ?? 0;
+    const covered: string[] = [];
+    const uncovered: string[] = [];
+    for (const [i, header] of table.header.entries()) {
+      if (i === labelCol) continue;
+      (b.columns[header] ? covered : uncovered).push(header);
+    }
+    return { ...base, axis: "columns", covered, uncovered };
+  }
+
+  if (b.kind === "row-ratio") {
+    const named = new Set([b.delta, b.cand, b.base]);
+    const covered: string[] = [];
+    const uncovered: string[] = [];
+    for (const [i, header] of table.header.entries()) {
+      if (i === 0) continue;
+      (named.has(header.trim()) ? covered : uncovered).push(header);
+    }
+    return { ...base, axis: "columns", covered, uncovered };
+  }
+
+  const named = new Set(b.series.map((x) => x.docRow));
+  const covered: string[] = [];
+  const uncovered: string[] = [];
+  for (const row of table.rows) {
+    const label = (row[0] ?? "").trim();
+    (named.has(label) ? covered : uncovered).push(label);
+  }
+  return { ...base, axis: "rows", covered, uncovered };
+}
+
+/**
+ * Two bindings can share one table -- §10.3 splits by corpus split and §11.12
+ * by which sweep each column came from -- so coverage is the union across
+ * them. Reporting per binding would show each as partial while together they
+ * cover the table, which is the opposite of the point.
+ */
+function mergeCoverage(list: Coverage[]): Map<string, Coverage> {
+  const merged = new Map<string, Coverage>();
+  for (const c of list) {
+    const key = `${c.section}#${c.table}`;
+    const prev = merged.get(key);
+    if (!prev) {
+      merged.set(key, {
+        ...c,
+        covered: [...c.covered],
+        uncovered: [...c.uncovered],
+      });
+      continue;
+    }
+    const covered = new Set([...prev.covered, ...c.covered]);
+    prev.covered = [...covered];
+    prev.uncovered = [...new Set([...prev.uncovered, ...c.uncovered])].filter(
+      (x) => !covered.has(x),
+    );
+  }
+  return merged;
+}
+
+/**
+ * A column left unbound on purpose, and why. Same contract as
+ * `UNBOUND_NOTES` one level up: absent means "not bound yet", present means
+ * "deliberately not bound, and here is the reason".
+ */
+const UNBOUND_COLUMN_NOTES: Record<string, string> = {
+  "4.5#1":
+    "the `pre-adoption shipped` rows are round 2's baseline, which no current build reproduces; the two Δ rows derive from them",
+  "7.12#1": "as §4.5 table 1, same rows and same reason",
+  "7.5#0":
+    "`bits saved` is a property of the header layout each arm sets, not a measurement the sweep makes",
+  "7.10#0":
+    "every row names a *different* control, and two state it in prose inside the cell (\u201c-0.04% vs the same layout without CfL\u201d). rowBaselines could address the first half; the prose cells would still need the sentence parsed, and a binding that silently checked five rows of seven would recreate the problem this listing exists to expose",
+  "11.10#1":
+    "ranks, derived by ordering two other sweeps' results rather than read from either",
+  "11.12#1":
+    "`verdict` is the section's conclusion in words, not a measurement",
+};
 
 // ─── Entry point ────────────────────────────────────────────────────────────
 
@@ -1401,6 +1696,14 @@ const { values } = parseArgs({
   options: {
     section: { type: "string" },
     "list-unbound": { type: "boolean", default: false },
+    "list-unbound-columns": { type: "boolean", default: false },
+    // Unlike its two siblings above, this one cannot answer before the run and
+    // exit: which cells are unreadable is only known once every bound table has
+    // been walked. So it is not a listing *mode* but a detail level — the run
+    // proceeds and reports exactly as it always does, and each unparsed cell is
+    // named under its column instead of only counted. The rollup and the count
+    // print either way, because a number nobody has to ask for is the point.
+    "list-unparsed": { type: "boolean", default: false },
     fix: { type: "boolean", default: false },
     strict: { type: "boolean", default: false },
   },
@@ -1447,8 +1750,7 @@ const UNBOUND_NOTES: Record<string, string> = {
   "11.3#2":
     "an alpha subgroup breakdown computed from alpha-ceiling's perImageCiede",
   "11.12#0":
-    "verdict prose: tune and holdout deltas quoted side by side from two sweeps",
-  "11.12#1": "verdict prose, as §11.12 table 0",
+    "verdict prose: tune and holdout deltas quoted side by side from two sweeps, and bound in §11.5 and §7.12 respectively",
 };
 
 if (values["list-unbound"]) {
@@ -1463,9 +1765,39 @@ if (values["list-unbound"]) {
   process.exit(0);
 }
 
+if (values["list-unbound-columns"]) {
+  console.log(
+    "Columns within BOUND tables, and whether each is checked.\n" +
+      "A bound table is green on the columns it binds and silent about the\n" +
+      "rest; this is that distinction, per table.\n",
+  );
+  for (const binding of BINDINGS) {
+    const table = tables.find(
+      (t) => t.section === binding.section && t.index === (binding.table ?? 0),
+    );
+    if (!table) continue;
+    const c = coverageOf(binding, table);
+    const what = c.axis === "columns" ? "columns" : "rows";
+    console.log(
+      `  §${c.section} table ${c.table} (line ${table.line}) — ` +
+        `${c.covered.length}/${c.covered.length + c.uncovered.length} ${what}`,
+    );
+    if (c.covered.length) {
+      console.log(`      checked:   ${c.covered.join(", ")}`);
+    }
+    if (c.uncovered.length) {
+      const why = UNBOUND_COLUMN_NOTES[`${c.section}#${c.table}`];
+      console.log(`      UNCHECKED: ${c.uncovered.join(", ")}`);
+      if (why) console.log(`      ${why}`);
+    }
+  }
+  process.exit(0);
+}
+
 const failures: Failure[] = [];
-const stats = { cells: 0 };
+const stats: Stats = { cells: 0, unparsed: [], reached: new Map() };
 const skipped: string[] = [];
+const coverage: Coverage[] = [];
 let checked = 0;
 
 for (const binding of BINDINGS) {
@@ -1487,14 +1819,175 @@ for (const binding of BINDINGS) {
     skipped.push(`§${binding.section} table ${binding.table ?? 0}: ${problem}`);
     continue;
   }
+  coverage.push(coverageOf(binding, table));
   checked++;
 }
 
+const merged = mergeCoverage(coverage);
+const partial = [...merged.values()].filter((c) => c.uncovered.length > 0);
+const totalAxes = [...merged.values()].reduce(
+  (n, c) => n + c.covered.length + c.uncovered.length,
+  0,
+);
+const coveredAxes = [...merged.values()].reduce(
+  (n, c) => n + c.covered.length,
+  0,
+);
+
+// `stats.cells` counts comparisons made, not cells seen, so an unparseable
+// cell was never in it — but nothing said so, and a reader took the covered
+// column count to mean those columns had been checked cell by cell. The two
+// numbers are reconciled in one sentence rather than left to be inferred.
+const unparsedNote =
+  stats.unparsed.length > 0
+    ? `, and read past ${stats.unparsed.length} cell(s) no parser could interpret, which are therefore unchecked.`
+    : ".";
 console.log(
-  `Checked ${stats.cells} cells across ${checked} tables ` +
-    `(${BINDINGS.length} bound of ${tables.length} in the document).`,
+  `Checked ${stats.cells} cells across ${checked} tables (${BINDINGS.length} bound of ${tables.length} in the document; ${coveredAxes} of ${totalAxes} value columns within them)${unparsedNote}`,
 );
 for (const s of skipped) console.log(`  SKIP  ${s}`);
+
+// A bound table with an unbound column is green on the columns it checks and
+// silent about the rest, which is how four stale columns survived behind
+// passing tables until §9.5 went looking. Print it rather than imply it.
+for (const c of partial) {
+  const what = c.axis === "columns" ? "columns" : "rows";
+  const named = c.uncovered.map((x) => JSON.stringify(x)).join(", ");
+  const why = UNBOUND_COLUMN_NOTES[`${c.section}#${c.table}`];
+  console.log(
+    `  PARTIAL  §${c.section} table ${c.table}: ` +
+      `${c.covered.length} of ${c.covered.length + c.uncovered.length} ${what} bound; ` +
+      `unchecked ${named}${why ? ` — ${why}` : ""}`,
+  );
+}
+
+// ─── Unparsed cells ─────────────────────────────────────────────────────────
+//
+// A bound column is worth only the cells inside it a parser can read. `compare`
+// used to return on `parseCell(raw) === null` in silence, which is how §11.10
+// table 1's `graphics ΔE00` — its only bound column — reported as covered for
+// six cells not one of which was ever compared, behind a green run. Printing
+// the tally with its denominator is what turns "bound" into "checked N of M".
+//
+// Grouped per column rather than listed per cell by default, because the shape
+// of the problem is a column: one odd cell in a column of forty is a
+// transcription with prose in it, and six of six is a binding that checks
+// nothing.
+const unparsedByColumn = new Map<string, UnparsedCell[]>();
+for (const u of stats.unparsed) {
+  const key = `${u.section}#${u.table}#${u.column}`;
+  const seen = unparsedByColumn.get(key);
+  if (seen) seen.push(u);
+  else unparsedByColumn.set(key, [u]);
+}
+for (const [key, group] of unparsedByColumn) {
+  const first = group[0];
+  if (!first) continue;
+  // A column absent from `reached` is impossible — every entry here passed
+  // through the same increment — but the fallback keeps the arithmetic honest
+  // rather than printing "of undefined" if that ever stops being true.
+  const seen = stats.reached.get(key) ?? group.length;
+  const nothing =
+    group.length >= seen
+      ? " — every cell of this bound column, so it checks nothing"
+      : "";
+  console.log(
+    `  UNPARSED  §${first.section} table ${first.table} [${first.column}]: ` +
+      `${group.length} of ${seen} cell(s) unreadable${nothing}`,
+  );
+  if (values["list-unparsed"]) {
+    for (const u of group) console.log(`      ${u.row}: ${u.raw}`);
+  }
+}
+if (stats.unparsed.length > 0 && !values["list-unparsed"]) {
+  console.log(
+    "  Run with --list-unparsed to see the cells themselves. An unreadable " +
+      "cell is\n  unchecked, not wrong: widen the parser, bind the column " +
+      "elsewhere, or leave it\n  — but knowingly.",
+  );
+}
+
+// ─── Register audit ─────────────────────────────────────────────────────────
+//
+// The invariant at the top of this file -- "an unchecked column is either
+// bound or listed in `UNBOUND_COLUMN_NOTES` with the reason; it is never
+// silent" -- was documentation only. An undeclared PARTIAL printed the same
+// line with the reason simply missing, and the run still exited 0, which is
+// exactly the silence that sentence promises does not happen. A PARTIAL with
+// no note is now a failure, which is the sentence made enforceable.
+//
+// Staleness is checked in the same pass, because a note is an audit trail only
+// while it is attached to something. §11.12 is the case that motivated it: the
+// same two keys sat in *both* registers, so table 0's column note and table
+// 1's table note were each unreachable, and a wrong reason in either could
+// never have been found by reading the output. The registers are keyed alike
+// and mean different things, and nothing had ever told them apart.
+//
+// The audit reads every binding whose table exists, not only the ones that
+// checked, so a machine missing half the sweeps reaches the same verdict about
+// the registers as CI does. `--section` narrows the run to one section and so
+// cannot see the whole register; it is skipped there rather than reported
+// wrongly.
+const registerProblems: string[] = [];
+if (!values.section) {
+  const auditCoverage: Coverage[] = [];
+  for (const binding of BINDINGS) {
+    const table = tables.find(
+      (t) => t.section === binding.section && t.index === (binding.table ?? 0),
+    );
+    if (table) auditCoverage.push(coverageOf(binding, table));
+  }
+  const audited = mergeCoverage(auditCoverage);
+  const needsNote = new Set(
+    [...audited.values()]
+      .filter((c) => c.uncovered.length > 0)
+      .map((c) => `${c.section}#${c.table}`),
+  );
+
+  for (const key of needsNote) {
+    if (UNBOUND_COLUMN_NOTES[key] !== undefined) continue;
+    const c = audited.get(key);
+    const what = c?.axis === "columns" ? "column(s)" : "row(s)";
+    const named = (c?.uncovered ?? []).map((x) => JSON.stringify(x)).join(", ");
+    registerProblems.push(
+      `§${key.replace("#", " table ")}: ${c?.uncovered.length} unchecked ${what} (${named}) with no UNBOUND_COLUMN_NOTES entry`,
+    );
+  }
+  for (const key of Object.keys(UNBOUND_COLUMN_NOTES)) {
+    if (needsNote.has(key)) continue;
+    const why = bound.has(key)
+      ? "that table's columns are all bound"
+      : "that table has no binding, so it belongs in UNBOUND_NOTES";
+    registerProblems.push(
+      `UNBOUND_COLUMN_NOTES["${key}"] explains nothing: ${why}`,
+    );
+  }
+  for (const key of Object.keys(UNBOUND_NOTES)) {
+    if (!bound.has(key)) continue;
+    registerProblems.push(
+      `UNBOUND_NOTES["${key}"] explains nothing: that table is bound, so an unchecked column of it belongs in UNBOUND_COLUMN_NOTES`,
+    );
+  }
+}
+
+const reportGuardDrift = () => {
+  console.error(
+    `\n${guardDrift.length} sweep output(s) disagree with their own metrics on
+\`guardsOk\`. The document is checked against the recomputed value, so a green
+run below does not make these agree — re-run the sweep, or find what edited
+its output:\n`,
+  );
+  for (const g of guardDrift) console.error(`  ${g}`);
+};
+
+const reportRegister = () => {
+  console.error(
+    `\n${registerProblems.length} register problem(s) — an unchecked column is
+either bound or listed with its reason, and a reason is listed only against
+something it explains:\n`,
+  );
+  for (const r of registerProblems) console.error(`  ${r}`);
+};
 
 // A missing sweep output is reported rather than fatal, so the tool stays
 // useful on a machine that has run only part of section 6. That also means a
@@ -1543,12 +2036,16 @@ Re-run without --fix to confirm, and read the diff: a corrected number can
 invalidate the sentence beneath its table.`,
     );
   }
+  if (guardDrift.length > 0) reportGuardDrift();
+  if (registerProblems.length > 0) reportRegister();
   if (strictFailed) reportStrict();
   process.exit(1);
 }
 
-if (strictFailed) {
-  reportStrict();
+if (guardDrift.length > 0 || registerProblems.length > 0 || strictFailed) {
+  if (guardDrift.length > 0) reportGuardDrift();
+  if (registerProblems.length > 0) reportRegister();
+  if (strictFailed) reportStrict();
   process.exit(1);
 }
 console.log("\nEvery bound table agrees with its sweep output.");

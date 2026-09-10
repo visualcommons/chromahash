@@ -89,6 +89,33 @@ interface SweepVariant {
 interface SweepConfig {
   name: string;
   description?: string;
+  /**
+   * Opt this config out of `verify:sweep-labels`, with the reason and the
+   * number of arms the opt-out excuses.
+   *
+   * That gate asserts every arm sets the constants its own label names, because
+   * a `tune` string is applied on top of `Tunables::DEFAULT` and an omitted
+   * knob inherits whatever ships -- so once §10 adopted the §8 recipe, an arm
+   * labelled with a pre-adoption constant was measuring the adopted one.
+   * `EXPERIMENTS.md` §9.5 leaves several configs unpinned on purpose:
+   * relabelling them moves no number and would change the row keys
+   * `verify-experiments.ts` matches on. This is where that decision is
+   * recorded. It takes a reason rather than a boolean, because an opt-out with
+   * a reason is a disclosure and one without is a silence.
+   *
+   * `arms` is what stops the disclosure being permanent. The exemption is
+   * whole-config, so it also covers arms added later; the gate therefore fails
+   * if the opt-out suppresses nothing (its arms were pinned since, and it
+   * should be deleted) or suppresses a different number than it declares (it
+   * is excusing an arm nobody disclosed). Same policy as `not_in_parity` in
+   * `spec/validate.py`.
+   */
+  unpinnedLabels?: {
+    /** Arms in this config whose findings the opt-out suppresses. */
+    arms: number;
+    /** Why they are left unpinned. */
+    why: string;
+  };
   /** First variant is the incumbent the guards compare against. */
   variants: SweepVariant[];
   /**

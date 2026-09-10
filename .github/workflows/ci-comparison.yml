@@ -16,8 +16,24 @@ on:
       # EXPERIMENTS.md's tables are transcribed from sweep output by hand. CI
       # cannot check them -- the sweeps are gitignored and take hours -- but an
       # edit here must at least rebuild the tool that can, so a binding cannot
-      # be broken by a rename without the build noticing.
+      # be broken by a rename without the build noticing. It is also the source
+      # verify:claims checks the files below against, and that gate needs no
+      # sweep output, so it does run here.
       - "spec/EXPERIMENTS.md"
+      # The files that quote EXPERIMENTS.md figures by hand: README.md,
+      # spec/README.md, spec/RATIONALE.md, spec/constants.py and
+      # rust/src/constants.rs. verify:claims checks each registered figure
+      # against the cell it cites, so an edit to any of them must run it.
+      # rust/** is already listed above.
+      #
+      # spec/constants.py is here for the same reason and was missed when this
+      # list was written: it restates LAYOUT_T0's holdout and alpha figures in
+      # a comment, and validate:spec compares the constants those tables
+      # declare, never the prose around them.
+      - "README.md"
+      - "spec/README.md"
+      - "spec/RATIONALE.md"
+      - "spec/constants.py"
       - ".github/workflows/ci-comparison.yml"
   pull_request:
     paths:
@@ -33,8 +49,24 @@ on:
       # EXPERIMENTS.md's tables are transcribed from sweep output by hand. CI
       # cannot check them -- the sweeps are gitignored and take hours -- but an
       # edit here must at least rebuild the tool that can, so a binding cannot
-      # be broken by a rename without the build noticing.
+      # be broken by a rename without the build noticing. It is also the source
+      # verify:claims checks the files below against, and that gate needs no
+      # sweep output, so it does run here.
       - "spec/EXPERIMENTS.md"
+      # The files that quote EXPERIMENTS.md figures by hand: README.md,
+      # spec/README.md, spec/RATIONALE.md, spec/constants.py and
+      # rust/src/constants.rs. verify:claims checks each registered figure
+      # against the cell it cites, so an edit to any of them must run it.
+      # rust/** is already listed above.
+      #
+      # spec/constants.py is here for the same reason and was missed when this
+      # list was written: it restates LAYOUT_T0's holdout and alpha figures in
+      # a comment, and validate:spec compares the constants those tables
+      # declare, never the prose around them.
+      - "README.md"
+      - "spec/README.md"
+      - "spec/RATIONALE.md"
+      - "spec/constants.py"
       - ".github/workflows/ci-comparison.yml"
 
 jobs:
@@ -106,6 +138,31 @@ jobs:
       # the real lineup produces.
       - name: The locally-computed metrics hold their defining properties
         run: node tools/comparison/dist/metric-selftest.js
+
+      # The figures README.md, spec/README.md, spec/RATIONALE.md and
+      # rust/src/constants.rs quote from spec/EXPERIMENTS.md, each checked
+      # against the cell it cites. Reads four files and one markdown document:
+      # no sweep output, no iqa-cli, no corpus, no network. That is why this one
+      # can run in CI and verify:experiments cannot -- and it is the gate that
+      # would have caught the six figures the 2026-09 re-baseline stranded.
+      - name: The repo's quoted figures agree with EXPERIMENTS.md
+        run: node tools/comparison/dist/verify-claims.js
+
+      # Every sweep arm sets the constants its own label names. Reads the sweep
+      # JSON only -- no corpus, no encoder, no sweep output -- so it runs here
+      # even though the sweeps themselves cannot. This is the gate for the
+      # defect class EXPERIMENTS.md §9.5 documents: an omitted knob inherits
+      # Tunables::DEFAULT, so an arm labelled with a pre-adoption constant
+      # silently measures the adopted one.
+      - name: Every sweep arm sets the constants its label names
+        run: node tools/comparison/dist/verify-sweep-labels.js
+
+      # The corpus attribution file against the pin table that generates it.
+      # 39 Wikimedia Commons images under free licences require per-image
+      # attribution, and the generated file is the only place it is recorded.
+      # Reads two files: no corpus download, no network.
+      - name: The corpus attribution file is current
+        run: node tools/comparison/dist/corpus-licenses.js --check
 
       # Reads spec/PERFORMANCE.md and the committed runs under baselines/ only —
       # no harness, no toolchain.

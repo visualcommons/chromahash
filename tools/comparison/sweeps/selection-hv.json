@@ -3,19 +3,57 @@
   "description": "U7 materialized: the corpus-trained selection order, as a 2-parameter family. The shipped order sorts by isotropic frequency; aniso adds the CSF oblique-effect penalty on diagonals; sel_hv adds a horizontal/vertical asymmetry (positive pushes horizontal frequencies down the order). coeff-stats put the headroom of a fully trained fixed order at +2.2 energy points over the l2-ball, so this asks how much of that a smooth 2-parameter family captures.",
   "photoOnly": true,
   "variants": [
-    { "label": "aniso=0 hv=0 (shipped)" },
-    { "label": "aniso=1.2 hv=0", "tune": "aniso=1.2" },
-    { "label": "aniso=0 hv=+0.15", "tune": "sel_hv=0.15" },
-    { "label": "aniso=0 hv=-0.15", "tune": "sel_hv=-0.15" },
-    { "label": "aniso=0 hv=+0.30", "tune": "sel_hv=0.3" },
-    { "label": "aniso=0 hv=-0.30", "tune": "sel_hv=-0.3" },
-    { "label": "aniso=1.2 hv=+0.15", "tune": "aniso=1.2 sel_hv=0.15" },
-    { "label": "aniso=1.2 hv=-0.15", "tune": "aniso=1.2 sel_hv=-0.15" },
-    { "label": "aniso=1.2 hv=+0.30", "tune": "aniso=1.2 sel_hv=0.3" },
-    { "label": "aniso=1.2 hv=-0.30", "tune": "aniso=1.2 sel_hv=-0.3" },
-    { "label": "aniso=1.6 hv=-0.15", "tune": "aniso=1.6 sel_hv=-0.15" },
-    { "label": "aniso=0.8 hv=-0.15", "tune": "aniso=0.8 sel_hv=-0.15" },
-    { "label": "L28@4C15@3 aniso1.2", "tune": "l1=28:4 c=15:3 aniso=1.2" },
+    {
+      "label": "aniso=0 hv=0 (shipped)"
+    },
+    {
+      "label": "aniso=1.2 hv=0",
+      "tune": "aniso=1.2"
+    },
+    {
+      "label": "aniso=0 hv=+0.15",
+      "tune": "sel_hv=0.15"
+    },
+    {
+      "label": "aniso=0 hv=-0.15",
+      "tune": "sel_hv=-0.15"
+    },
+    {
+      "label": "aniso=0 hv=+0.30",
+      "tune": "sel_hv=0.3"
+    },
+    {
+      "label": "aniso=0 hv=-0.30",
+      "tune": "sel_hv=-0.3"
+    },
+    {
+      "label": "aniso=1.2 hv=+0.15",
+      "tune": "aniso=1.2 sel_hv=0.15"
+    },
+    {
+      "label": "aniso=1.2 hv=-0.15",
+      "tune": "aniso=1.2 sel_hv=-0.15"
+    },
+    {
+      "label": "aniso=1.2 hv=+0.30",
+      "tune": "aniso=1.2 sel_hv=0.3"
+    },
+    {
+      "label": "aniso=1.2 hv=-0.30",
+      "tune": "aniso=1.2 sel_hv=-0.3"
+    },
+    {
+      "label": "aniso=1.6 hv=-0.15",
+      "tune": "aniso=1.6 sel_hv=-0.15"
+    },
+    {
+      "label": "aniso=0.8 hv=-0.15",
+      "tune": "aniso=0.8 sel_hv=-0.15"
+    },
+    {
+      "label": "L28@4C15@3 aniso1.2",
+      "tune": "l1=28:4 c=15:3 aniso=1.2"
+    },
     {
       "label": "L28@4C15@3 aniso1.2 hv-.15",
       "tune": "l1=28:4 c=15:3 aniso=1.2 sel_hv=-0.15"
@@ -24,5 +62,9 @@
       "label": "L28@4C15@3 aniso1.2 hv+.15",
       "tune": "l1=28:4 c=15:3 aniso=1.2 sel_hv=0.15"
     }
-  ]
+  ],
+  "unpinnedLabels": {
+    "arms": 6,
+    "why": "Retired in place by EXPERIMENTS.md 7.4: every `aniso = 0` cell in it is really `aniso = 1.2` and its `hv = 0` column really `hv = 0.15`, so twelve non-layout arms resolve to six distinct points. `selection-weights` is the corrected replacement and sets both parameters in all 29 arms. Not fixed here because fixing it means replacing it, and it already has been."
+  }
 }
