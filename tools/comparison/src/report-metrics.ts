@@ -131,6 +131,17 @@ export const METRIC_DOCS = {
     hrefLabel: "Wikipedia: Ringing artifacts",
     source: "harness",
   },
+  deficit: {
+    label: "Missing detail",
+    name: "Structure the original has that the placeholder does not",
+    direction: "lower",
+    why: "Invented detail deliberately charges nothing for detail that is simply *absent* — a placeholder is a blur by design, and losing detail is what the colour and structure columns above already price. That leaves one question unasked, and this is it: of the original's structure, how much did the placeholder drop? Read the two together rather than either alone. A placeholder that scores low on both is close to the ideal blurred copy; one that scores low here and high on Invented detail has replaced the original's structure with structure of its own, which is the failure a reader describes as 'it looks like a different picture'.",
+    scale:
+      "0 to ~30 in 8-bit colour levels, on the same grid and in the same units as Invented detail, so the two are directly comparable. The ideal blurred copy scores exactly 0 on both. Every placeholder is *expected* to score here — it is the price of the format, not a defect — so read it as a ratio against Invented detail rather than minimizing it.",
+    href: "https://en.wikipedia.org/wiki/Low-pass_filter",
+    hrefLabel: "Wikipedia: Low-pass filter",
+    source: "harness",
+  },
   blurRecovery: {
     label: "Blur recovery",
     name: "Colour error removed by a blur-up",

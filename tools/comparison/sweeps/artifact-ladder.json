@@ -1,0 +1,28 @@
+{
+  "name": "artifact-ladder",
+  "description": "Every shipped tier, scored with both artifact metrics and their fidelity counterparts, on real photographs. EXPERIMENTS.md 12 introduced spurious detail and measured it at codes 1 and 2 only, against one knob; nothing has ever run it along the tier ladder, so the format's most-repeated informal criticism -- that the upper tiers look textured rather than merely soft -- has never had a number attached to it in either direction. This is that number. Bytes vary by arm, so there is deliberately no expectBytes: this is not a layout comparison at a fixed budget but a reading of what the shipped ladder does, one row per tier code as a caller would actually request it. Every arm is Tunables::DEFAULT and pins nothing, because there is nothing to pin -- no arm names a constant, and the only variable is `tier`. Read the columns in pairs: dE00/SSIM2/DSSIM say how wrong the picture is, Ring/Spur say how much of that wrongness is invented structure, and Deficit says how much is structure simply missing. A placeholder is supposed to have deficit; it is not supposed to have spurious. NOTE that Ring and Spur/Deficit here are each measured on the arm's OWN raster, so they are read down a row and not across it: a tier-4 decode is judged on frequencies a tier-0 decode does not have. `artifact-ladder-common-grid` is the same ladder with the spectral grid pinned so the cross-tier reading is legitimate; this one is what a viewer of each tier's own render actually receives.",
+  "photoOnly": true,
+  "artifacts": true,
+  "variants": [
+    {
+      "label": "code 0 (compact, 21 B)",
+      "tier": 0
+    },
+    {
+      "label": "code 1 (default, 32 B)",
+      "tier": 1
+    },
+    {
+      "label": "code 2 (108 B)",
+      "tier": 2
+    },
+    {
+      "label": "code 3 (411 B)",
+      "tier": 3
+    },
+    {
+      "label": "code 4 (1623 B)",
+      "tier": 4
+    }
+  ]
+}

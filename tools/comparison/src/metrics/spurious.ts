@@ -1,8 +1,9 @@
 /**
- * **Spurious detail** — structure the placeholder asserts that the original does
- * not have. The second metric this harness computes itself; see `local.ts` for
- * the first (ringing) and for why the seven iqa-cli metrics stay in their own
- * module.
+ * **Spurious detail**, and its mirror **spectral deficit** — structure the
+ * placeholder asserts that the original does not have, and structure the
+ * original has that the placeholder drops. The second and third metrics this
+ * harness computes itself; see `local.ts` for the first (ringing) and for why
+ * the seven iqa-cli metrics stay in their own module.
  *
  * ## Why ringing is not enough
  *
@@ -43,6 +44,24 @@
  *    reference the excess clamps to zero. That is not an oversight: a placeholder
  *    is a low-pass by design, and losing detail is what ΔE00, SSIMULACRA2 and
  *    DSSIM already charge for. This metric answers the other question.
+ *
+ *    That clamp is also a measurement nobody was taking, so it is now reported
+ *    as its own score. **Spectral deficit** is the same comparison with the sign
+ *    flipped — `max(0, |I| - |D|)`, energy the reference has that the decode
+ *    lacks — and the pair is what separates *smooth but wrong* from *sharp with
+ *    artifacts*. Nothing in the harness could tell those apart: ΔE00,
+ *    SSIMULACRA2, Butteraugli and DSSIM are aggregate fidelity scores that
+ *    charge for both at once, which is exactly why §12.3's verdict on the
+ *    synthesis window came down to a single SSIMULACRA2 number and could not say
+ *    what that number was reacting to. Deficit costs one subtraction per
+ *    frequency on spectra this function already has, so it is computed in the
+ *    same pass rather than in a module that would pay for both transforms
+ *    again.
+ *
+ *    It is **not** a fidelity score either, for the same reason spurious is not:
+ *    it is magnitude-only. A placeholder is *supposed* to have a deficit — the
+ *    ideal low-pass has the largest one available at its raster — so it is read
+ *    as a trade against spurious, never minimized on its own.
  * 2. **It is magnitude-only, so it is blind to phase.** A decode whose spectrum
  *    has the right magnitudes in the wrong places scores zero here and badly
  *    everywhere else. That is the correct division of labour — putting energy
@@ -120,12 +139,19 @@ export const SPURIOUS_DEAD_ZONE = 1.0;
  */
 export const SPURIOUS_DIAGONAL_BAND = 1 / 3;
 
-/** Spurious-detail scores for one decode, in 8-bit sRGB levels. */
+/** Spurious-detail and spectral-deficit scores, in 8-bit sRGB levels. */
 export interface SpuriousScores {
   spurious: number;
   spuriousVertical: number;
   spuriousHorizontal: number;
   spuriousDiagonal: number;
+  /**
+   * Spectral deficit: RMS energy the reference has that the decode does not.
+   * The mirror of {@link spurious}, from the same two spectra. Higher means
+   * more of the original's structure is missing — which a placeholder is
+   * expected to have, so it is read against `spurious` rather than alone.
+   */
+  deficit: number;
   spuriousGridEdge: number;
 }
 
@@ -155,6 +181,30 @@ function areaChannel(
   dh: number,
   channel: number,
 ): Float32Array {
+  const out = new Float32Array(sw * sh);
+  for (let i = 0; i < sw * sh; i++) out[i] = rgba[i * 4 + channel] ?? 0;
+  return areaPlane(out, sw, sh, dw, dh);
+}
+
+/**
+ * The same area average over a plane that has already been sampled.
+ *
+ * Split out of {@link areaChannel} so the reference can be taken down to the
+ * analysis grid by the same *route* the decode takes, which is what makes the
+ * two comparable when the grid is pinned below the decode's own raster. The
+ * rounding is the modelling choice: a decode is an 8-bit raster, so the ideal
+ * it is judged against is what an 8-bit raster of the ideal low-pass would
+ * hold, not the unquantized average. That is why an ideal low-pass scores
+ * exactly zero rather than approximately zero.
+ */
+function areaPlane(
+  src: Float32Array,
+  sw: number,
+  sh: number,
+  dw: number,
+  dh: number,
+): Float32Array {
+  if (dw === sw && dh === sh) return src;
   const out = new Float32Array(dw * dh);
   for (let y = 0; y < dh; y++) {
     const y0 = Math.floor((y * sh) / dh);
@@ -167,7 +217,7 @@ function areaChannel(
       for (let sy = y0; sy < y1; sy++) {
         const row = sy * sw;
         for (let sx = x0; sx < x1; sx++) {
-          acc += rgba[(row + sx) * 4 + channel] ?? 0;
+          acc += src[row + sx] ?? 0;
           n++;
         }
       }
@@ -254,10 +304,11 @@ function analysisGrid(
   decH: number,
   refW: number,
   refH: number,
+  maxEdge: number = SPURIOUS_MAX_EDGE,
 ): { w: number; h: number } {
   const k = Math.min(
     1,
-    SPURIOUS_MAX_EDGE / Math.max(decW, decH),
+    maxEdge / Math.max(decW, decH),
     refW / decW,
     refH / decH,
   );
@@ -281,6 +332,8 @@ function idealSpectrum(
   refRgba: Uint8Array,
   refW: number,
   refH: number,
+  decW: number,
+  decH: number,
   w: number,
   h: number,
   channel: number,
@@ -292,11 +345,36 @@ function idealSpectrum(
   }
   // refW/refH are in the key even though they are a function of the buffer's
   // identity today: nothing enforces that, and a caller scoring one reference at
-  // two sizes would otherwise get a stale spectrum with no error.
-  const key = `${channel}:${refW}x${refH}:${w}x${h}`;
+  // two sizes would otherwise get a stale spectrum with no error. decW/decH
+  // join them because the route below depends on the decode's raster, so two
+  // decodes pinned to one grid from different rasters need different entries.
+  const key = `${channel}:${refW}x${refH}:${decW}x${decH}:${w}x${h}`;
   const hit = perBuffer.get(key);
   if (hit) return hit;
-  const built = dct2(areaChannel(refRgba, refW, refH, w, h, channel), w, h);
+  // The decode reaches the grid in two steps whenever the grid is pinned below
+  // its raster: it is already an 8-bit raster at decW x decH, and `areaPlane`
+  // averages it down and rounds again. Taking the reference there in one step
+  // would compare a singly-quantized ideal against a doubly-quantized decode,
+  // and the difference is not noise -- it is a floor that grows with the pin
+  // ratio, so it lands hardest on exactly the high-tier arms the pin exists to
+  // make comparable. A provably-ideal low-pass scored 0.008 at 32->16, 0.020 at
+  // 64->32 and 0.032 at 128->64 against a null hypothesis of exactly zero.
+  //
+  // So the ideal takes the decode's route: reference to the decode's raster,
+  // then down to the grid. When the grid *is* the decode's raster the second
+  // step is the identity and this is bit-for-bit what it always was, which is
+  // why no unpinned number moves.
+  const viaDecode = decW <= refW && decH <= refH && (w !== decW || h !== decH);
+  const plane = viaDecode
+    ? areaPlane(
+        areaChannel(refRgba, refW, refH, decW, decH, channel),
+        decW,
+        decH,
+        w,
+        h,
+      )
+    : areaChannel(refRgba, refW, refH, w, h, channel);
+  const built = dct2(plane, w, h);
   perBuffer.set(key, built);
   return built;
 }
@@ -319,15 +397,29 @@ export function computeSpurious(
   refH: number,
   decW: number,
   decH: number,
+  /**
+   * Override the grid cap, so several decodes at *different* rasters can be
+   * scored on one frequency plane.
+   *
+   * Both scores carry their grid with them: a tier-4 decode is judged on
+   * frequencies a tier-0 decode does not have, so reading the two side by side
+   * compares instruments as much as formats. §12.4 records a whole conclusion
+   * withdrawn for exactly that mistake, with ringing rather than this. Pinning
+   * the cap to the smallest raster in a comparison asks every arm the same
+   * question — how much structure does it invent among the frequencies they can
+   * all represent — which is the reading that survives being quoted.
+   */
+  maxEdge?: number,
 ): SpuriousScores | null {
   if (refW <= 0 || refH <= 0 || decW <= 0 || decH <= 0) return null;
-  const { w, h } = analysisGrid(decW, decH, refW, refH);
+  const { w, h } = analysisGrid(decW, decH, refW, refH, maxEdge);
   if (w * h < 2) return null;
 
   let sumSq = 0;
   let sumSqV = 0;
   let sumSqH = 0;
   let sumSqD = 0;
+  let sumSqDeficit = 0;
 
   // A quarter turn is split into three equal angular bands; `diagLo`/`diagHi`
   // are the boundaries in units of the quarter turn.
@@ -336,7 +428,7 @@ export function computeSpurious(
 
   for (let c = 0; c < 3; c++) {
     const dec = dct2(areaChannel(decRgba, decW, decH, w, h, c), w, h);
-    const ideal = idealSpectrum(refRgba, refW, refH, w, h, c);
+    const ideal = idealSpectrum(refRgba, refW, refH, decW, decH, w, h, c);
     for (let l = 0; l < h; l++) {
       for (let k = 0; k < w; k++) {
         // DC carries the average colour, not structure. A level error there is
@@ -344,8 +436,18 @@ export function computeSpurious(
         // make a uniformly-too-bright decode read as invented texture.
         if (k === 0 && l === 0) continue;
         const i = l * w + k;
-        const excess =
-          Math.abs(dec[i] ?? 0) - Math.abs(ideal[i] ?? 0) - SPURIOUS_DEAD_ZONE;
+        const magDec = Math.abs(dec[i] ?? 0);
+        const magIdeal = Math.abs(ideal[i] ?? 0);
+
+        // The mirror term, taken here because both spectra are in hand: energy
+        // the reference carries that the decode does not. Same dead zone, same
+        // units, same exclusion of DC — so the two scores are read against each
+        // other without a conversion, and an ideal low-pass scores exactly zero
+        // on both.
+        const missing = magIdeal - magDec - SPURIOUS_DEAD_ZONE;
+        if (missing > 0) sumSqDeficit += missing * missing;
+
+        const excess = magDec - magIdeal - SPURIOUS_DEAD_ZONE;
         if (excess <= 0) continue;
         const e2 = excess * excess;
         sumSq += e2;
@@ -375,6 +477,7 @@ export function computeSpurious(
     spuriousVertical: rms(sumSqV),
     spuriousHorizontal: rms(sumSqH),
     spuriousDiagonal: rms(sumSqD),
+    deficit: rms(sumSqDeficit),
     spuriousGridEdge: Math.max(w, h),
   };
 }
@@ -386,11 +489,13 @@ export const NULL_SPURIOUS: Pick<
   | "spuriousVertical"
   | "spuriousHorizontal"
   | "spuriousDiagonal"
+  | "deficit"
   | "spuriousGridEdge"
 > = {
   spurious: null,
   spuriousVertical: null,
   spuriousHorizontal: null,
   spuriousDiagonal: null,
+  deficit: null,
   spuriousGridEdge: null,
 };

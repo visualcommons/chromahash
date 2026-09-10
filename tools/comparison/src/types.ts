@@ -118,6 +118,23 @@ export interface LocalMetrics {
   /** Oblique part; the three partition the plane and recombine in quadrature. */
   spuriousDiagonal: number | null;
   /**
+   * Spectral deficit: RMS energy the *reference* has that the decode does not,
+   * in 8-bit sRGB levels — {@link spurious} with the sign flipped, from the same
+   * two spectra.
+   *
+   * The pair is what separates *smooth but wrong* from *sharp with artifacts*.
+   * Every other metric here is an aggregate fidelity score that charges for both
+   * at once, so a placeholder that loses detail and one that invents it are
+   * indistinguishable to them — which is why §12.3's verdict on the synthesis
+   * window reduced to one SSIMULACRA2 number that could not say what it was
+   * reacting to.
+   *
+   * A placeholder is *supposed* to have a deficit: the ideal low-pass has the
+   * largest one available at its raster. Read it against {@link spurious} as an
+   * exchange rate, never minimize it on its own.
+   */
+  deficit: number | null;
+  /**
    * Longest edge of the analysis grid, in samples. Reported for the same reason
    * as {@link ringWindowRadius}: it is derived per format per image, so two
    * scores are directly comparable only at equal grids.
@@ -138,6 +155,7 @@ export const NULL_LOCAL_METRICS: LocalMetrics = {
   spuriousVertical: null,
   spuriousHorizontal: null,
   spuriousDiagonal: null,
+  deficit: null,
   spuriousGridEdge: null,
 };
 
@@ -294,6 +312,7 @@ export interface FormatStat {
   avgRinging: number | null;
   /** Mean invented detail in 8-bit levels, averaged across the set. */
   avgSpurious: number | null;
+  avgDeficit: number | null;
   /**
    * The scale both artifact metrics were measured at: the ringing envelope
    * radius and the spurious analysis grid, in reference pixels and samples.
@@ -412,9 +431,10 @@ export interface ScoringMetaJson {
   /** Container width the layout reflow figure is quoted for, in CSS px. */
   reflowContainerPx: number;
   /**
-   * Whether the locally-computed artifact metrics (ringing and spurious detail)
-   * were scored. One flag, because both are computed at the same point on the
-   * same composited pair, and neither is meaningful on the blurred set.
+   * Whether the locally-computed artifact metrics (ringing, spurious detail and
+   * spectral deficit) were scored. One flag, because all three are computed at
+   * the same point on the same composited pair, and none is meaningful on the
+   * blurred set.
    */
   artifacts: boolean;
 }

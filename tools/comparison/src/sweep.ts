@@ -138,8 +138,8 @@ interface SweepConfig {
   /** Also score the alpha plane directly, reported as `meanAlphaMae`. */
   alphaFidelity?: boolean;
   /**
-   * Also score the locally-computed artifact metrics (ringing and spurious
-   * detail), adding them as columns of the decision table.
+   * Also score the locally-computed artifact metrics (ringing, spurious detail
+   * and spectral deficit), adding them as columns of the decision table.
    *
    * Opt-in per config, not on by default, and the reason is the one commit
    * c23d929 acted on: they cost real CPU per pair and most sweeps do not read
@@ -156,6 +156,20 @@ interface SweepConfig {
    * gated, which is the right default for a first look at a new knob.
    */
   artifactGuardRise?: number;
+  /**
+   * Cap the spurious/deficit analysis grid to this longest edge, for every arm.
+   *
+   * Wanted only when the arms decode at *different* rasters — a tier ladder is
+   * the case. Both spectral scores live on the decode's own grid, so a tier-4
+   * row and a tier-0 row otherwise answer different questions and their
+   * difference is partly the instrument; §12.4 records a conclusion withdrawn
+   * for exactly that, with ringing. Set it to the smallest raster in the sweep.
+   *
+   * It does **not** make ringing comparable — that metric derives its envelope
+   * radius from the upscale factor and has no equivalent knob — so a ladder
+   * that sets this still reads ringing per row, never across.
+   */
+  artifactGridEdge?: number;
   /**
    * Byte length every arm must encode to. A sweep comparing layouts is only
    * meaningful at a fixed budget, and a config that overrides part of a layout
@@ -203,6 +217,38 @@ interface SweepRow {
   meanSpuriousVertical: number | null;
   meanSpuriousHorizontal: number | null;
   meanSpuriousDiagonal: number | null;
+  /**
+   * Mean spectral deficit — energy the reference has that the decode drops. The
+   * mirror of `meanSpurious`, and the reason both are reported: a placeholder
+   * that loses detail and one that invents it are indistinguishable to every
+   * aggregate fidelity metric here, so the pair is the only thing that says
+   * which trade an arm is making.
+   */
+  meanDeficit: number | null;
+  /**
+   * Per-image artifact scores, aligned with `imageNames` exactly as
+   * `perImageCiede` is, or null when the arm scored no artifacts.
+   *
+   * The means alone cannot answer which *content* an artifact appears on, and
+   * that is the question a design round needs: a mean over 31 photographs says
+   * the format invents structure, not that it invents it on the textured ones.
+   * `stratify.ts` joins these to the covariates `natural-images.ts` records per
+   * image (Laplacian detail energy, mean L*, mean C*).
+   */
+  perImageSpurious: (number | null)[] | null;
+  perImageDeficit: (number | null)[] | null;
+  perImageRinging: (number | null)[] | null;
+  /**
+   * The analysis grid each image's spectral scores were actually computed on,
+   * as a longest edge in px, aligned with `imageNames`.
+   *
+   * `artifactGridEdge` is a **cap, not a pin**: an arm whose decode raster is
+   * already below it keeps its own smaller grid. So a ladder pinned above some
+   * arm's raster is not the comparison its config claims to be -- it is §12.4's
+   * mistake again, under a footnote saying the opposite. Nothing recorded what
+   * each arm landed on, so nothing could tell. This does.
+   */
+  perImageSpuriousGrid: (number | null)[] | null;
   /** ΔE00 change vs the incumbent, in percent (negative = better). */
   ciedeDeltaPct: number | null;
   /** All guard metrics within tolerance of the incumbent. */
@@ -412,6 +458,8 @@ async function scoreVariant(
   const spuriousV: (number | null)[] = [];
   const spuriousH: (number | null)[] = [];
   const spuriousD: (number | null)[] = [];
+  const deficits: (number | null)[] = [];
+  const grids: (number | null)[] = [];
   let bytesSum = 0;
 
   for (const input of inputs) {
@@ -467,6 +515,8 @@ async function scoreVariant(
     spuriousV.push(local.spuriousVertical);
     spuriousH.push(local.spuriousHorizontal);
     spuriousD.push(local.spuriousDiagonal);
+    deficits.push(local.deficit);
+    grids.push(local.spuriousGridEdge);
   }
 
   return {
@@ -491,6 +541,13 @@ async function scoreVariant(
     meanSpuriousVertical: mean(spuriousV),
     meanSpuriousHorizontal: mean(spuriousH),
     meanSpuriousDiagonal: mean(spuriousD),
+    meanDeficit: mean(deficits),
+    // Null rather than an array of nulls when the run scored no artifacts, so a
+    // consumer cannot mistake "not measured" for "measured as nothing".
+    perImageSpurious: spuriouses.some((v) => v !== null) ? spuriouses : null,
+    perImageDeficit: deficits.some((v) => v !== null) ? deficits : null,
+    perImageRinging: ringings.some((v) => v !== null) ? ringings : null,
+    perImageSpuriousGrid: grids.some((v) => v !== null) ? grids : null,
     ciedeDeltaPct: null,
     guardsOk: null,
     pairedCi: null,
@@ -523,6 +580,38 @@ function roseNoMoreThan(
   if (value === null || base === null) return true;
   if (base === 0) return value <= ARTIFACT_ZERO_BASE_ALLOWANCE;
   return value <= base * (1 + rise);
+}
+
+/**
+ * Which images the arms did **not** all land on the same analysis grid for, or
+ * null when they did.
+ *
+ * `artifactGridEdge` caps the grid; it does not pin it. An arm whose decode
+ * raster is already below the cap keeps its own smaller grid, and the printed
+ * footnote still says the spectral columns "ARE comparable down this table".
+ * That footnote would then be making exactly the claim EXPERIMENTS.md §12.4
+ * records being withdrawn -- a difference between two instruments read as a
+ * difference between two formats. Compared per image rather than per arm
+ * because the corpus's aspect ratios differ, so the grid an image lands on is a
+ * property of the pair, not of the arm.
+ */
+function gridDisagreements(
+  rows: readonly SweepRow[],
+): { image: string; edges: string }[] | null {
+  const base = rows[0];
+  if (!base?.perImageSpuriousGrid) return null;
+  const out: { image: string; edges: string }[] = [];
+  for (const [i, name] of base.imageNames.entries()) {
+    const edges = rows.map((r) => r.perImageSpuriousGrid?.[i] ?? null);
+    const seen = new Set(edges.filter((e): e is number => e !== null));
+    if (seen.size > 1) {
+      out.push({
+        image: name,
+        edges: rows.map((r, j) => `${r.label}=${edges[j] ?? "N/A"}`).join(", "),
+      });
+    }
+  }
+  return out.length > 0 ? out : null;
 }
 
 /** Fill ciedeDeltaPct/guardsOk/paired stats on every row from the incumbent. */
@@ -584,6 +673,12 @@ async function main(): Promise<void> {
     backdrops: BACKDROP_SETS[config.backdrops ?? "white"],
     alphaFidelity: config.alphaFidelity ?? false,
     artifacts: config.artifacts ?? false,
+    // Spread rather than assigned: `exactOptionalPropertyTypes` distinguishes
+    // "absent" from "present and undefined", and the metric's own default
+    // applies only to the former.
+    ...(config.artifactGridEdge !== undefined
+      ? { artifactGridEdge: config.artifactGridEdge }
+      : {}),
   });
   if (!config.variants?.length) {
     throw new Error(`config ${config.name} declares no variants`);
@@ -593,6 +688,25 @@ async function main(): Promise<void> {
   if (config.artifactGuardRise !== undefined && !config.artifacts) {
     throw new Error(
       `config ${config.name} sets artifactGuardRise but not artifacts, so the guard would pass unconditionally on unscored metrics`,
+    );
+  }
+  // Same failure shape as the guard above: without `artifacts` the grid cap
+  // applies to a computation that never runs, so the config would read as
+  // making its arms comparable while doing nothing at all.
+  if (config.artifactGridEdge !== undefined && !config.artifacts) {
+    throw new Error(
+      `config ${config.name} sets artifactGridEdge but not artifacts, so the cap would apply to a metric that is never computed`,
+    );
+  }
+  // And the value itself. `setScoringConfig` refuses the same range -- this
+  // repeats it only to name the config, which is what a sweep author is looking
+  // at. A cap below 2 px collapses the analysis grid, `computeSpurious`
+  // declines it, and the table then reads N/A on every arm: the exact
+  // appearance of a sweep that never asked for artifacts at all.
+  const gridEdge = config.artifactGridEdge;
+  if (gridEdge !== undefined && (!Number.isInteger(gridEdge) || gridEdge < 2)) {
+    throw new Error(
+      `config ${config.name} sets artifactGridEdge ${gridEdge}; it must be an integer of at least 2 px, or every arm's spectral scores are declined and the table reads as unmeasured`,
     );
   }
 
@@ -657,7 +771,7 @@ async function main(): Promise<void> {
   const outPath = path.join(outDir, `${config.name}${suffix}.json`);
   await fs.writeFile(
     outPath,
-    `${JSON.stringify({ name: config.name, description: config.description ?? null, split, images: inputs.length, guardTolerances: { ssimulacra2Drop: GUARD_SSIM2_DROP, relativeRise: GUARD_REL_RISE }, corpus, backdrops: config.backdrops ?? "white", alphaFidelity: config.alphaFidelity ?? false, artifacts: config.artifacts ?? false, artifactGuardRise: config.artifactGuardRise ?? null, forceOpaque: config.forceOpaque ?? false, expectBytes: config.expectBytes ?? null, rows }, null, 2)}\n`,
+    `${JSON.stringify({ name: config.name, description: config.description ?? null, split, images: inputs.length, guardTolerances: { ssimulacra2Drop: GUARD_SSIM2_DROP, relativeRise: GUARD_REL_RISE }, corpus, backdrops: config.backdrops ?? "white", alphaFidelity: config.alphaFidelity ?? false, artifacts: config.artifacts ?? false, artifactGuardRise: config.artifactGuardRise ?? null, artifactGridEdge: config.artifactGridEdge ?? null, forceOpaque: config.forceOpaque ?? false, expectBytes: config.expectBytes ?? null, rows }, null, 2)}\n`,
   );
 
   console.log(`\nDecision table (${split} split) → ${outPath}`);
@@ -669,8 +783,16 @@ async function main(): Promise<void> {
   const showArtifacts = rows.some(
     (r) => r.meanRinging !== null || r.meanSpurious !== null,
   );
+  // A pinned grid makes Spur and Deficit comparable down the table and leaves
+  // Ring exactly as incomparable as it was: ringing takes its envelope radius
+  // from each arm's own upscale factor and has no equivalent knob. The
+  // config's prose says so and the document says so, and neither is in front of
+  // whoever is reading this table — which is how EXPERIMENTS.md §12.4's
+  // withdrawn claim got made in the first place. So the column says it itself.
+  const pinned = config.artifactGridEdge;
+  const ringLabel = showArtifacts && pinned !== undefined ? "Ring*" : "Ring";
   console.log(
-    `  ${"Variant".padEnd(28)} ${"Bytes".padStart(6)} ${"ΔE00".padStart(8)} ${"Δ%".padStart(7)} ${"Med".padStart(8)} ${"SSIM2".padStart(8)} ${"Butter".padStart(8)} ${"DSSIM".padStart(8)}${showAlpha ? ` ${"αMAE".padStart(8)}` : ""}${showArtifacts ? ` ${"Ring".padStart(7)} ${"Spur".padStart(7)} ${"Sp:V/H/D".padStart(20)}` : ""} ${"paired 95% CI".padStart(18)} ${"win/n".padStart(7)} Guards`,
+    `  ${"Variant".padEnd(28)} ${"Bytes".padStart(6)} ${"ΔE00".padStart(8)} ${"Δ%".padStart(7)} ${"Med".padStart(8)} ${"SSIM2".padStart(8)} ${"Butter".padStart(8)} ${"DSSIM".padStart(8)}${showAlpha ? ` ${"αMAE".padStart(8)}` : ""}${showArtifacts ? ` ${ringLabel.padStart(7)} ${"Spur".padStart(7)} ${"Deficit".padStart(8)} ${"Sp:V/H/D".padStart(20)}` : ""} ${"paired 95% CI".padStart(18)} ${"win/n".padStart(7)} Guards`,
   );
   const cell = (v: number | null, d: number, w: number) =>
     (v !== null ? v.toFixed(d) : "N/A").padStart(w);
@@ -685,7 +807,7 @@ async function main(): Promise<void> {
       .map((v) => (v !== null ? v.toFixed(2) : "N/A"))
       .join("/");
     const artifacts = showArtifacts
-      ? ` ${cell(r.meanRinging, 2, 7)} ${cell(r.meanSpurious, 2, 7)} ${vhd.padStart(20)}`
+      ? ` ${cell(r.meanRinging, 2, 7)} ${cell(r.meanSpurious, 2, 7)} ${cell(r.meanDeficit, 2, 8)} ${vhd.padStart(20)}`
       : "";
     const signed = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(3)}`;
     const ci = r.pairedCi
@@ -695,6 +817,34 @@ async function main(): Promise<void> {
     console.log(
       `  ${r.label.padEnd(28)} ${r.bytes.toFixed(0).padStart(6)} ${cell(r.meanCiede, 3, 8)} ${cell(r.ciedeDeltaPct, 2, 7)} ${cell(r.medianCiede, 3, 8)} ${cell(r.meanSsimulacra2, 1, 8)} ${cell(r.meanButteraugli, 2, 8)} ${cell(r.meanDssim, 4, 8)}${alpha}${artifacts} ${ci.padStart(18)} ${winN.padStart(7)} ${guards}`,
     );
+  }
+  if (showArtifacts && pinned !== undefined) {
+    const disagreed = gridDisagreements(rows);
+    if (disagreed === null) {
+      console.log(
+        `\n  * Spur and Deficit are pinned to a ${pinned} px analysis grid, and every
+    arm landed on it, so they ARE comparable down this table. Ring is NOT: it
+    derives its envelope radius from each arm's own upscale factor and has no
+    equivalent knob. Reading it down the column compares instruments
+    (EXPERIMENTS.md §12.4).`,
+      );
+    } else {
+      // Loud, and above the reader rather than in a file they would have to go
+      // looking for: the table they are looking at is the one that is wrong.
+      console.log(
+        `\n  !! Spur and Deficit are NOT comparable down this table. artifactGridEdge
+     is a CAP, not a pin -- ${pinned} px was above some arm's own decode raster, so
+     that arm kept a smaller grid and is answering a different question. This
+     is EXPERIMENTS.md §12.4's mistake, and any reading down these columns is
+     partly a difference of instruments. Lower artifactGridEdge to the smallest
+     raster in the sweep, or drop the arm.
+
+     ${disagreed.length} image(s) disagree; the first few:`,
+      );
+      for (const d of disagreed.slice(0, 5)) {
+        console.log(`       ${d.image}: ${d.edges}`);
+      }
+    }
   }
 }
 

@@ -1,7 +1,9 @@
 /**
  * Self-checks for the metrics this harness computes itself: ringing
- * (`metrics/local.ts`), spurious detail (`metrics/spurious.ts`) and aspect
- * fidelity (`aspect.ts`). Run with `mise run selftest:metrics`.
+ * (`metrics/local.ts`), spurious detail and spectral deficit
+ * (`metrics/spurious.ts`), aspect fidelity (`aspect.ts`), and the joins
+ * `stratify.ts` reads them through (`stratify-core.ts`). Run with
+ * `mise run selftest:metrics`.
  *
  * This tool has no test framework — see `TESTING.md` — so the properties the
  * local metrics are *designed around* are asserted here instead, as a script
@@ -18,11 +20,26 @@
  * The aspect block is new: the docstring here and the `selftest:metrics` task
  * description had both claimed `aspect.ts` coverage since it was written, and
  * neither had any.
+ *
+ * The stratify block is here because §13.3 is the one table in EXPERIMENTS.md
+ * that no sweep binds -- `verify:experiments` registers it in `UNBOUND_NOTES`
+ * -- so no gate reached it from either end, and the correlation, the binning
+ * and the alignment assert its numbers rest on had no coverage of any kind.
+ * They are checked against fixtures whose answers are known by hand rather than
+ * against the corpus, so they hold with no sweep output on disk.
+ *
+ * The grid-pin block is here for the same reason and paid for itself the same
+ * way. Every cross-tier artifact figure in EXPERIMENTS.md §13 is read off a
+ * pinned grid, and no call in this file had ever passed the pin — so the first
+ * assertion that an ideal low-pass still scores exactly zero *through* a pin
+ * failed immediately, on a bias that grew with the pin ratio and so ran along
+ * the tier axis those figures are read down.
  */
 
 import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
+import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
 
 let failures = 0;
 
@@ -380,13 +397,20 @@ function addWave(
   return out;
 }
 
-// S1. Identity: a decode that is the reference has no energy the reference lacks.
+// S1. Identity: a decode that is the reference has no energy the reference
+//     lacks -- and, the other way round, none the reference has that it lacks.
+//     Both halves, for the reason S2/S3b/S3c/P1 assert both: `deficit` shares a
+//     loop and a dead zone with `spurious` but faces the other way, so a defect
+//     confined to its side of the subtraction is invisible to a spurious-only
+//     assertion. The identity pair is also the one case that needs no rounding
+//     argument at all -- both spectra come from the same buffer, so both scores
+//     must be exactly zero.
 {
   const s = computeSpurious(reference, reference, REF_W, REF_H, REF_W, REF_H);
   check(
-    "identity scores 0",
-    s !== null && s.spurious === 0,
-    `spurious=${s?.spurious}`,
+    "identity scores 0 spurious AND 0 deficit",
+    s !== null && s.spurious === 0 && s.deficit === 0,
+    `spurious=${s?.spurious} deficit=${s?.deficit}`,
   );
 }
 
@@ -428,15 +452,22 @@ function addWave(
         dw,
         dh,
       );
-      if (s === null || s.spurious > 0) {
+      // Both scores, together: they are the same comparison with the sign
+      // flipped, so the ideal low-pass has to be exactly zero on each. Deficit
+      // is the one that could plausibly leak — its clamp faces the other way,
+      // so a rounding asymmetry between the two sides would show up here and
+      // nowhere in `spurious`.
+      if (s === null || s.spurious > 0 || s.deficit > 0) {
         failures.push(
-          `${label} ${dw}x${dh}=${s?.spurious.toFixed(4) ?? "null"}`,
+          `${label} ${dw}x${dh}=` +
+            `spur ${s?.spurious.toFixed(4) ?? "null"} / ` +
+            `def ${s?.deficit.toFixed(4) ?? "null"}`,
         );
       }
     }
   }
   check(
-    "the ideal low-pass decode scores 0 at every decode size",
+    "the ideal low-pass decode scores 0 spurious AND 0 deficit at every size",
     failures.length === 0,
     failures.length === 0
       ? "8 sizes x 3 content shapes, 4px to 512px against a 512px reference"
@@ -467,6 +498,50 @@ check(
   "invented structure registers",
   vertical !== null && vertical.spurious > 1,
   `spurious=${vertical?.spurious.toFixed(3)}`,
+);
+
+// S3b. Deficit is the mirror, and has to behave like one: a decode that is
+// *flatter* than the ideal low-pass has dropped structure the reference has, so
+// deficit must rise while spurious stays at zero. Without this, `deficit` could
+// be wired to the wrong side of the subtraction and every table would still
+// look plausible — the two scores move together often enough that only a case
+// built to separate them can tell.
+{
+  const flattened = new Uint8Array(sDec);
+  for (let i = 0; i < SW * SH; i++) {
+    for (let c = 0; c < 3; c++) {
+      const v = flattened[i * 4 + c] ?? 0;
+      flattened[i * 4 + c] = Math.round(128 + (v - 128) * 0.4);
+    }
+  }
+  const s = computeSpurious(sRef, flattened, REF_W, REF_H, SW, SH);
+  // `spurious` is asserted negligible rather than exactly zero, on the same
+  // grounds as S8 below: the exact zero belongs to the ideal-low-pass case,
+  // where both sides are the same array. Here the contracted decode carries its
+  // own 8-bit rounding, and across ~9000 coefficients the largest residue
+  // occasionally grazes the one-level dead zone. Measured at 0.006 against a
+  // deficit of 14.5 — three orders of magnitude apart, which is the claim.
+  check(
+    "a decode flatter than the ideal low-pass scores deficit, not spurious",
+    s !== null && s.deficit > 1 && s.spurious < 0.05,
+    `deficit=${s?.deficit.toFixed(3)} spurious=${s?.spurious.toFixed(4)}`,
+  );
+}
+
+// S3c. And the converse, on the same pair: adding energy the reference does not
+// have must move `spurious` without moving `deficit` down past zero. Asserting
+// both directions is what makes the pair a pair rather than two numbers that
+// happen to be printed together.
+// `deficit >= 0` was the original second conjunct here and asserted nothing:
+// it is a sum of squares, so it holds for every input this function can be
+// given, including one where deficit and spurious had been wired to the same
+// side of the subtraction. The bound is absolute rather than relative for the
+// same reason — this case measures deficit at exactly 0.000 against a spurious
+// of 17.08, so a ratio test would divide by zero into another tautology.
+check(
+  "invented structure does not register as deficit",
+  vertical !== null && vertical.spurious > 1 && vertical.deficit < 0.05,
+  `spurious=${vertical?.spurious.toFixed(3)} deficit=${vertical?.deficit.toFixed(3)}`,
 );
 
 // S4/S5. Orientation. A pattern varying along x is *vertical* stripes; one
@@ -693,6 +768,220 @@ check(
     `reflow=${tooShort?.reflowPx.toFixed(1)}px for a 1000px container`,
   );
 }
+
+console.log("\nspurious — the pinned analysis grid\n");
+
+// The grid pin is what every cross-tier artifact number in EXPERIMENTS.md §13
+// rests on, and until these checks existed not one of the ten computeSpurious
+// calls above passed a seventh argument: the parameter the conclusions depend
+// on was the one parameter with no coverage at all.
+//
+// P1 is the null hypothesis one level down, and it is the one that mattered. An
+// ideal low-pass must score exactly zero — unpinned, that is asserted above at
+// 8 sizes; pinned, it was scoring 0.008 at 32->16, 0.020 at 64->32 and 0.032 at
+// 128->64, a floor that grew with the pin ratio and therefore landed hardest on
+// exactly the high tiers the pin exists to make comparable. The cause was in
+// `idealSpectrum`: the decode reached a pinned grid through two roundings and
+// the ideal through one.
+{
+  const failures: string[] = [];
+  for (const [dw, dh] of [
+    [32, 24],
+    [64, 48],
+    [128, 96],
+    [16, 12],
+  ] as const) {
+    const dec = boxDownscale(sRef, REF_W, REF_H, dw, dh);
+    for (const pin of [8, 16, 32, 64, 128]) {
+      const s = computeSpurious(sRef, dec, REF_W, REF_H, dw, dh, pin);
+      if (s === null || s.spurious > 0 || s.deficit > 0) {
+        failures.push(
+          `${dw}x${dh}@${pin}=spur ${s?.spurious.toFixed(4) ?? "null"} / def ${s?.deficit.toFixed(4) ?? "null"}`,
+        );
+      }
+    }
+  }
+  check(
+    "P1 the ideal low-pass scores 0 spurious AND 0 deficit at every pin",
+    failures.length === 0,
+    failures.length === 0
+      ? "4 decode rasters x 5 pins, all exactly zero"
+      : `false positives: ${failures.join(", ")}`,
+  );
+}
+
+// P2. A pin at or above the decode's long edge cannot bind, so it must return
+//     the unpinned score bit for bit rather than merely something close.
+{
+  const dec = addWave(sDec, SW, SH, 12, 0, 24);
+  const bare = computeSpurious(sRef, dec, REF_W, REF_H, SW, SH);
+  const wide = [SW, SW * 2, 512].map((pin) =>
+    computeSpurious(sRef, dec, REF_W, REF_H, SW, SH, pin),
+  );
+  check(
+    "P2 a pin at or above the decode's long edge is the unpinned score",
+    bare !== null &&
+      wide.every(
+        (s) =>
+          s !== null &&
+          s.spurious === bare.spurious &&
+          s.deficit === bare.deficit,
+      ),
+    `unpinned=${bare?.spurious.toFixed(6)} pinned=${wide.map((s) => s?.spurious.toFixed(6)).join(", ")}`,
+  );
+}
+
+// P3. And a pin below it must actually bind. Without this, a pin silently
+//     ignored — a dropped argument, a renamed field in the sweep config — would
+//     leave every arm scored on its own raster while the table said otherwise,
+//     which is precisely the §12.4 mistake the pin was added to prevent.
+{
+  const dec = addWave(sDec, SW, SH, 12, 0, 24);
+  const bare = computeSpurious(sRef, dec, REF_W, REF_H, SW, SH);
+  const pinned = computeSpurious(sRef, dec, REF_W, REF_H, SW, SH, 16);
+  check(
+    "P3 a pin below the decode's long edge changes the score",
+    bare !== null && pinned !== null && pinned.spurious !== bare.spurious,
+    `unpinned=${bare?.spurious.toFixed(4)} pinned@16=${pinned?.spurious.toFixed(4)}`,
+  );
+}
+
+console.log("\nstratify — the joins §13.3 is read through\n");
+
+// §13.3 is the one table in EXPERIMENTS.md that no sweep binds, so nothing
+// downstream of these three functions would notice them being wrong: a
+// mis-signed correlation, a bin that quietly held four images, or a positional
+// join across two arms that were scored over different lists all print a table
+// of exactly the right shape. Fixtures with answers known by hand, so the block
+// runs with no sweep output and no corpus.
+
+// T1. Pearson against a case whose answer is arithmetic, not a coincidence: a
+//     series that is an exact affine function of the axis correlates ±1 to
+//     floating point, in both directions. Getting the sign backwards is the
+//     perennial error and it is what §13.3's whole reading turns on.
+{
+  const xs = [1, 2, 3, 4, 5, 6, 7];
+  const up = xs.map((x) => 3 * x + 11);
+  const down = xs.map((x) => -0.5 * x + 4);
+  check(
+    "an exact affine relation correlates +1 and its mirror -1",
+    Math.abs(pearson(xs, up) - 1) < 1e-12 &&
+      Math.abs(pearson(xs, down) + 1) < 1e-12,
+    `up=${pearson(xs, up).toFixed(12)} down=${pearson(xs, down).toFixed(12)}`,
+  );
+}
+
+// T2. And against a hand-computable value, so the check is not satisfied by a
+//     function that only ever returns ±1. For xs = [1,2,3,4] and
+//     ys = [1,3,2,4]: both are centred at 2.5, so the deviations are
+//     [-1.5,-0.5,+0.5,+1.5] and [-1.5,+0.5,-0.5,+1.5], giving Sxy = 4 and
+//     Sxx = Syy = 5, so r = 4/5 exactly.
+{
+  const r = pearson([1, 2, 3, 4], [1, 3, 2, 4]);
+  check(
+    "a partial relation scores its exact coefficient",
+    Math.abs(r - 0.8) < 1e-12,
+    `r=${r.toFixed(12)} (expected 0.8)`,
+  );
+}
+
+// T3. The cases where a coefficient means nothing must return NaN rather than a
+//     number: fewer than three pairs, a constant on either side, or two series
+//     of different lengths. The table renders NaN as "—"; a 0 or a 1 here would
+//     be printed as a finding.
+{
+  const flat = pearson([1, 2, 3, 4], [7, 7, 7, 7]);
+  const short = pearson([1, 2], [3, 4]);
+  const ragged = pearson([1, 2, 3, 4], [1, 2, 3]);
+  check(
+    "an undefined correlation is NaN, not a number",
+    Number.isNaN(flat) && Number.isNaN(short) && Number.isNaN(ragged),
+    `constant=${flat} n=2 ${short} ragged=${ragged}`,
+  );
+}
+
+// T4. Equal-count terciles over 31 — the tune corpus's size, and the split
+//     §13.3 prints. Every image lands in exactly one bin, the bins are within
+//     one of each other, and they are contiguous in rank: a bin whose
+//     membership was not an interval of the sorted order would make the
+//     "smooth / mid / textured" column headings a lie while the means still
+//     looked plausible.
+{
+  const ranks = Array.from({ length: 31 }, (_, i) => i);
+  const bins = equalCountBins(ranks, 3);
+  const sizes = bins.map((b) => b.length);
+  const flat = bins.flat();
+  const contiguous = bins.every((b) =>
+    b.every((v, i) => i === 0 || v === (b[i - 1] ?? -1) + 1),
+  );
+  check(
+    "31 images split into 3 contiguous, equal-count bins covering every image",
+    flat.length === 31 &&
+      new Set(flat).size === 31 &&
+      Math.max(...sizes) - Math.min(...sizes) <= 1 &&
+      contiguous &&
+      (bins[0]?.[0] ?? -1) === 0 &&
+      (bins[2]?.[bins[2].length - 1] ?? -1) === 30,
+    `sizes=${sizes.join("/")}`,
+  );
+}
+
+// T5. The degenerate bin counts the tool now rejects at the boundary, asserted
+//     on the function rather than the CLI: one bin is the ungrouped mean and
+//     more bins than images cannot be equal-count. Neither may lose or
+//     duplicate an image on the way.
+{
+  const ranks = Array.from({ length: 5 }, (_, i) => i);
+  const one = equalCountBins(ranks, 1);
+  const many = equalCountBins(ranks, 8);
+  check(
+    "binning neither drops nor duplicates an image at the degenerate counts",
+    one.length === 1 &&
+      one[0]?.length === 5 &&
+      many.length === 8 &&
+      many.flat().length === 5 &&
+      new Set(many.flat()).size === 5,
+    `1 bin=${one[0]?.length} 8 bins=[${many.map((b) => b.length).join(",")}]`,
+  );
+}
+
+// T6. The positional join. Every arm's per-image series is read as parallel to
+//     the first arm's image list; sweep.ts scores every arm over one input list
+//     so that holds today, but nothing requires it, and a filtered or reordered
+//     row would build a table of the right shape out of mismatched pairs.
+{
+  const aligned = [
+    { label: "a", imageNames: ["p", "q", "r"] },
+    { label: "b", imageNames: ["p", "q", "r"] },
+  ];
+  const shortArm = [
+    { label: "a", imageNames: ["p", "q", "r"] },
+    { label: "b", imageNames: ["p", "q"] },
+  ];
+  const reordered = [
+    { label: "a", imageNames: ["p", "q", "r"] },
+    { label: "b", imageNames: ["p", "r", "q"] },
+  ];
+  const shortMsg = alignmentError(shortArm) ?? "";
+  const reorderMsg = alignmentError(reordered) ?? "";
+  check(
+    "aligned arms pass, and a short or reordered arm is refused by name",
+    alignmentError(aligned) === null &&
+      shortMsg.includes('"b"') &&
+      shortMsg.includes("2 images") &&
+      reorderMsg.includes('"r"') &&
+      reorderMsg.includes("position 1"),
+    `short=${JSON.stringify(shortMsg.slice(0, 48))} reorder=${JSON.stringify(reorderMsg.slice(0, 48))}`,
+  );
+}
+
+// T7. An empty sweep is refused rather than treated as aligned — the vacuous
+//     truth is exactly the answer that produces an empty table and exit 0.
+check(
+  "a sweep with no rows is refused",
+  alignmentError([]) !== null,
+  `${alignmentError([])}`,
+);
 
 console.log(
   failures === 0

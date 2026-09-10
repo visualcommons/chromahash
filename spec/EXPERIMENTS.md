@@ -646,6 +646,19 @@ mise run selftest:metrics                           # §12.1, §12.5
 # per-format `local` block.
 node tools/comparison/dist/main.js --skip-harnesses --images 'fixtures/natural/chroma-black-and-white.jpg'
 
+# Round 5 — the ladder, and the corpus read by content (§13)
+mise run sweep artifact-ladder                      # §13.1 table 0
+mise run sweep artifact-ladder-common-grid          # §13.1 table 1, §13.2
+
+# §13.3's table comes from `stratify`, not a sweep, so verify:experiments does
+# not bind it. It reads the per-image scores the sweep above already wrote.
+mise run stratify artifact-ladder-common-grid --metric spurious --by detail
+mise run stratify artifact-ladder-common-grid --metric deficit  --by detail
+mise run stratify artifact-ladder-common-grid --metric ringing  --by detail
+mise run stratify artifact-ladder-common-grid --metric ciede    --by detail
+mise run stratify artifact-ladder-common-grid --metric spurious --by chroma
+mise run stratify artifact-ladder-common-grid --metric spurious --by lightness
+
 # Check the tables in this file against the results above
 mise run verify:experiments
 mise run verify:experiments --list-unbound
@@ -2794,3 +2807,212 @@ format's own render does not look different enough for any metric to tell.
   computed metrics arguably does that; §12.3 is what it looks like when it
   happens — a decision that now turns on whether SSIMULACRA2 is right about
   placeholders, which nothing here can say.
+
+## 13. Round 5: where the format fails, on real photographs (2026-09)
+
+Every table above chooses a constant, and the unit that decides a constant is a
+mean over a corpus. This round asks a different question — not *how much* is the
+reconstruction wrong, but *what kind* of wrong, at which tier, on which content
+— because that is the question a wire change starts from and no aggregate can
+answer it. Three things were missing and are added here.
+
+**A third locally-computed metric.** `spurious` measures energy the decode has
+that the reference does not, and clamps the other direction to zero by design.
+That clamp was a measurement nobody was taking. **Spectral deficit** is the same
+comparison with the sign flipped — `max(0, |I| − |D|)`, structure the original
+has that the placeholder drops — computed in the same pass from the same two
+spectra. The pair is the only thing here that separates *smooth but wrong* from
+*sharp with artifacts*: ΔE00, SSIMULACRA2, Butteraugli and DSSIM are aggregate
+fidelity scores that charge for both at once, which is exactly why §12.3's
+verdict came down to one SSIMULACRA2 number that could not say what it was
+reacting to. It holds the same discipline as its siblings — an ideal low-pass
+scores **exactly zero** on both, asserted in `selftest:metrics` over 8 decode
+sizes × 3 content shapes, and over four decode rasters at every pin, which is
+the case that caught the grid-pin defect §13.3 records — and it is not a fidelity score either: a placeholder
+is *supposed* to have a deficit, so it is read against `spurious` as an exchange
+rate, never minimized.
+
+**The ladder.** §12 measured artifacts at codes 1 and 2, against one knob. No
+run has ever taken them along the tier ladder, so the format's most-repeated
+informal criticism — that the upper tiers look *textured* rather than merely
+soft — had never had a number attached in either direction.
+
+**The corpus's own covariates, read back.** `natural-images.ts` records mean L*,
+mean chroma C* and Laplacian detail energy for all 39 photographs, measured on
+the same 512 px reference the harness scores against, because §9.1's audit
+needed them to choose the set. Nothing had read them since. `mise run stratify`
+does.
+
+### 13.1 The instrument has to be held still first
+
+`sweeps/artifact-ladder.json` scores each tier on its **own** raster, which is
+what a viewer of that tier receives:
+
+| tier | bytes | ΔE00 | SSIM2 | DSSIM | Ring | Spur | Deficit |
+|---|---|---|---|---|---|---|---|
+| code 0 (compact) | 21 | 12.147 | −371.1 | 0.2664 | 1.34 | 3.98 | 27.05 |
+| code 1 (default) | 32 | 11.473 | −341.7 | 0.2638 | 1.02 | 3.53 | 24.79 |
+| code 2 | 108 | 9.667 | −212.9 | 0.2559 | 1.32 | 3.65 | 23.23 |
+| code 3 | 411 | 7.828 | −89.5 | 0.2451 | 1.48 | 4.47 | 19.33 |
+| code 4 | 1623 | 6.726 | −63.8 | 0.2342 | 2.30 | 6.56 | 13.24 |
+
+**Do not read the artifact columns down this table.** Both spectral scores are
+defined on the decode's own grid, so a tier-4 row is judged on frequencies a
+tier-0 row does not have, and part of any difference between them is the
+instrument rather than the format. §12.4 is the record of that exact mistake
+being made and caught, with ringing: a withdrawn claim that a native render
+"overshoots 2.7× more", produced by two envelope radii and not by two pictures.
+
+So the ladder is run again with the spectral grid pinned to 32 px — the compact
+tier's natural raster, and therefore the largest grid all five arms can be asked
+about on equal terms. `sweeps/artifact-ladder-common-grid.json`, 31 tune
+photographs:
+
+**One thing the pin does not do, stated before the table rather than after it.**
+A strict reading of "the frequencies all five tiers can represent" would score
+invention *above* the pinned grid's Nyquist at exactly zero, because no arm can
+be asked about it. The pin does not deliver that. Both sides reach the analysis
+grid through `areaPlane`, which is a box decimation rather than an anti-aliased
+low-pass, so invented structure above the pin folds back into the grid and is
+charged — with a gain that depends on the arm's own raster, since a larger
+raster decimates by a larger factor. Measured directly on a synthetic pair
+(identical invented amplitude above a 32 px pin's Nyquist, decode raster
+varied), the score *falls* as the raster grows: the residue is largest on the
+compact arm and smallest on the archival one. That is the conservative direction
+for §13.2, whose finding is that invention *rises* with tier — the instrument
+understates the rise it reports. It is recorded rather than fixed: replacing the
+decimation with an anti-aliased low-pass would move every number in this section
+and is not a change to make at the end of a round.
+
+
+| tier | bytes | ΔE00 | Spur | Deficit | Spur / Deficit |
+|---|---|---|---|---|---|
+| code 0 (compact) | 21 | 12.147 | 3.98 | 27.05 | 0.15 |
+| code 1 (default) | 32 | 11.473 | 3.53 | 24.79 | 0.14 |
+| **code 2** | 108 | 9.667 | **3.49** | 17.01 | 0.21 |
+| code 3 | 411 | 7.828 | 4.21 | 8.44 | 0.50 |
+| code 4 | 1623 | 6.726 | 4.23 | 4.58 | **0.92** |
+
+Ringing is deliberately still reported per row and still not comparable across
+them: it derives its envelope radius from the upscale factor and has no
+equivalent knob, which is the asymmetry §12.4 documents.
+
+### 13.2 The upper tiers buy fidelity by inventing
+
+Three findings, on one instrument.
+
+1. **Invented structure has a floor, and it is codes 1–2.** Spurious falls
+   3.98 → 3.53 → **3.49** and then rises, 4.21 at code 3 and 4.23 at code 4.
+   The two lowest cells are not separable, and this does not claim they are: a
+   paired bootstrap over the same 31 photographs puts code 1 − code 2 at
+   **+0.039, 95% CI [−0.393, +0.446]**, straddling zero, and code 0 − code 2 at
+   +0.480 [−0.014, +1.004], barely straddling it. Calling code 2 *the minimum*
+   would be reading a 0.04-level gap this corpus cannot resolve — the mistake
+   §11.5 declines to make when it calls its leading five layouts a plateau
+   rather than crowning the top row.
+
+   The **rise off that floor is what survives**: code 3 − code 2 is +0.717
+   [**+0.334, +1.136**] and code 4 − code 2 is +0.735 [**+0.261, +1.177**], both
+   excluding zero. The top two are a plateau of their own — code 4 − code 3 is
+   +0.018 [−0.269, +0.276]. So the shape is two levels rather than five: a floor
+   at codes 1–2, and a step up to codes 3–4 that stands **21%** above it while
+   ΔE00 improves 30%. That codes 1–2 are also where §11.14 puts the format's
+   strongest cross-format position is not a coincidence worth asserting from two
+   numbers, but it is worth writing down.
+
+   (Intervals are the seeded paired bootstrap in `stats.ts` that every sweep's
+   ΔE00 column already uses, taken over the `perImageSpurious` series in
+   `sweeps/artifact-ladder-common-grid.json` — the same construction §7.12 and
+   §11.5 quote.)
+2. **At code 4 the format invents almost as much as it still lacks.**
+   Spurious 4.23 against deficit 4.58 — a ratio of 0.92, against 0.14 at the
+   default tier. Read plainly: on the frequencies every tier can represent, the
+   archival tier's remaining error is roughly half missing structure and half
+   fabricated structure. Every fidelity metric improves monotonically across that same
+   range, and none of them can say this, because each charges for both halves at
+   once.
+3. **Deficit falls monotonically and fidelity tracks it, not spurious.**
+   27.05 → 4.58, an 83% reduction, alongside ΔE00 −45% and SSIMULACRA2
+   −371 → −64. The tiers do work. What the pair adds is the price: **the last
+   two tiers spend 73% of the remaining deficit and buy 21% more invention.**
+
+This is the number behind the informal criticism, and it does not refute it.
+
+### 13.3 The content the artifact prefers stops being predictable
+
+`mise run stratify artifact-ladder-common-grid --metric spurious --by detail`.
+Equal-count terciles of the tune corpus by Laplacian detail energy, bins held
+fixed across arms; `r` is Pearson over all 31.
+
+| tier | smooth (6.8–14.1) | mid (14.8–24.6) | textured (25.2–75.9) | r |
+|---|---|---|---|---|
+| code 0 | 4.33 | 4.25 | 3.31 | **−0.29** |
+| code 1 | 3.65 | 3.78 | 3.16 | −0.17 |
+| code 2 | 3.66 | 3.55 | 3.25 | −0.20 |
+| code 3 | 3.95 | 4.50 | 4.22 | +0.03 |
+| code 4 | 3.81 | 4.79 | 4.12 | **0.00** |
+
+**The correlation does not survive the ladder.** At the low tiers the format
+invents most on the *smooth* photographs — a handful of coefficients laid across
+a near-flat field, which is the classic low-order-basis banding, and which is
+also why ringing is highest on smooth content at every tier (r = −0.13 to
+−0.30). At the upper tiers that relationship is simply gone: r reaches +0.03 and
+0.00, and the bins stop being monotone in either direction, peaking on the
+middle tercile and falling back on the most textured one.
+
+An earlier form of this table read as a clean sign change — the invention
+following the texture at codes 3 and 4 — and that reading was an artifact of the
+instrument, not of the format. The pinned grid was double-quantizing every
+decode whose raster sat above it, which inflated the upper tiers' spurious
+scores in proportion to how far they had been pinned; `metrics/spurious.ts`
+records the defect and `selftest:metrics` now pins it shut. What is left is
+weaker and stranger than the sign change, and it is what the corpus actually
+says: whatever selects the smooth photographs at the low tiers stops operating
+by code 3, and nothing legible replaces it.
+
+That still leaves two different defects wearing one number, and they still want
+two different answers — but only the low-tier one has a shape this corpus can
+describe. Nothing above distinguishes them, and no aggregate could.
+
+Two supporting axes, same sweep:
+
+* **Chroma.** Spurious tracks mean C* strongly at the low tiers (r = +0.44,
+  +0.41, +0.53 at codes 0–2) and about half as strongly above them (+0.19,
+  +0.25). Saturated content drives invented structure hardest where the chroma
+  budget is tightest — 6 coefficients at code 0, 15 at code 1 — and this is the
+  one covariate that keeps pointing the same way all the way up the ladder.
+* **Lightness.** Spurious is lowest on high-key photographs at every tier
+  (r = −0.03 to −0.36), which is the DC-dominated case: little AC amplitude to
+  get wrong.
+
+And the fidelity side, for contrast: ΔE00's correlation with detail *strengthens*
+monotonically with tier, +0.23 at code 0 to **+0.56** at code 4. The upper tiers
+help smooth photographs far more than textured ones — so the format's error is
+becoming more content-dependent as the budget grows, not less.
+
+### 13.4 What this says for v0.8, and what it does not
+
+Stated as measurements, not as a plan. Nothing here adopts anything.
+
+* **The upper tiers are the artifact problem, and codes 1–2 are the floor.** Any
+  change aimed at invented structure should be evaluated at codes 3–4, where
+  §13.2 puts the exchange rate at ~1:1, and not at the default tier where it is
+  1:7. §12.2–§12.3 measured the synthesis window at codes 1 and 2 — the two
+  tiers where there is least to gain.
+* **The window's verdict was taken on the wrong tiers.** §12.3 found the
+  lightest taper statistically free on ΔE00 at code 2 and failing SSIMULACRA2
+  alone. §13.2 says code 2 sits on the *floor* invented structure never goes
+  below — indistinguishable from code 1, and ~0.7 levels under codes 3–4 with a
+  paired interval that excludes zero. A taper judged there is judged where there
+  is least invented structure for it to remove. The interesting measurement —
+  the same taper at codes 3 and 4 — has not been made.
+* **Two defects, not one.** A change that suppresses low-order banding on smooth
+  content and a change that stops the basis fighting real texture are different
+  changes, and §13.3 says a single corpus mean will always report their sum.
+* **U19 is still the ceiling, and this round raises it again.** §12.5 said so of
+  two metrics; there are now three, and §13.2's central claim — that a 1:1
+  invention-to-deficit ratio is *worse* than a 1:7 one at the same ΔE00 — is a
+  claim about human judgement that nothing in this repo has ever validated.
+  (1:1 and 1:7 are §13.1's 0.92 at code 4 and 0.14 at code 1 — the same two
+  figures the first bullet quotes, and the only ratios either table supports.)
+  It is stated as an exchange rate rather than a verdict for that reason.

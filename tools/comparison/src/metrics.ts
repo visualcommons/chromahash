@@ -70,9 +70,9 @@ export interface ScoringConfig {
    */
   alphaFidelity?: boolean;
   /**
-   * Score the locally-computed artifact metrics -- ringing (`metrics/local.ts`)
-   * and spurious detail (`metrics/spurious.ts`). Defaults to **off**, and the
-   * report opts in.
+   * Score the locally-computed artifact metrics -- ringing (`metrics/local.ts`),
+   * spurious detail and spectral deficit (`metrics/spurious.ts`). Defaults to
+   * **off**, and the report opts in.
    *
    * Optional-and-off rather than optional-and-on because the other entry points
    * -- `rd-gate.ts`, `rd-budget.ts`, `entropy-budget.ts`, and `sweep.ts` unless
@@ -88,6 +88,18 @@ export interface ScoringConfig {
    * opts in by default, and why a sweep has to ask.
    */
   artifacts?: boolean;
+  /**
+   * Cap the spurious/deficit analysis grid to this longest edge, for every
+   * decode regardless of its own raster.
+   *
+   * Only meaningful with {@link artifacts}, and only wanted when a run compares
+   * decodes at *different* rasters — a tier ladder, above all. Both spectral
+   * scores are defined on the decode's own grid, so without this a tier-4 row
+   * and a tier-0 row are answers to different questions and their difference is
+   * partly the instrument. Set it to the smallest raster in the comparison and
+   * every arm is asked the same one.
+   */
+  artifactGridEdge?: number;
 }
 
 let scoringConfig: ScoringConfig = {
@@ -98,6 +110,18 @@ let scoringConfig: ScoringConfig = {
 };
 
 export function setScoringConfig(config: ScoringConfig): void {
+  // A non-positive or fractional cap is not a smaller comparison, it is no
+  // comparison: `analysisGrid` clamps to a 1x1 grid, `computeSpurious` declines
+  // it, and every arm then reports N/A for both spectral scores -- which is
+  // indistinguishable, in the printed table, from a run that simply never
+  // enabled `artifacts`. The one input on which the §13 ladder's comparability
+  // rests must not fail by looking like it was switched off.
+  const edge = config.artifactGridEdge;
+  if (edge !== undefined && (!Number.isInteger(edge) || edge < 2)) {
+    throw new Error(
+      `artifactGridEdge must be an integer of at least 2 px; got ${edge}. Below that the analysis grid collapses and every spectral score is declined, which reads as "not measured" rather than as an error.`,
+    );
+  }
   scoringConfig = config;
 }
 
@@ -378,6 +402,7 @@ export async function computeAllMetrics(
           referenceH,
           decodedW,
           decodedH,
+          scoringConfig.artifactGridEdge,
         ) ?? NULL_SPURIOUS;
       artifactsScored = true;
     }
