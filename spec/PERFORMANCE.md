@@ -66,6 +66,21 @@ cell cannot be published here.
 > checked result. **The 10%-spread bar remains the rule for publishing a new
 > host; what this tree can prove is that the numbers match one committed run.**
 >
+> **That committed run was annotated after it ran, in two fields that are not
+> measurements.** `baselines/perf-report.json` records commit `e53e6cd` with
+> `dirty: false`, and every cell in it is that run's output, unedited. Its one
+> `unavailable` entry, Swift's, was then changed by hand twice: the `reason` lost
+> the measuring checkout's absolute path (it now reads `spawnSync
+> .build/release/ChromaHashCLI ENOENT`), and `kind: "absent"` was added. The
+> driver at `e53e6cd` could write neither — it recorded no `kind` and quoted the
+> absolute path — so the file is not byte-for-byte what that commit produces.
+> Both edits are what the current driver (`perf/availability.ts`) writes for the
+> same probe outcome: the `ENOENT` kept in the reason is the evidence for
+> `absent`, and the redaction removes nothing else. The run was kept rather than
+> re-measured because the host is no longer quiet, and a re-run would replace a
+> sweep that met the 10% bar with one that has not been tested against it. The
+> next `mise run benchmark` on a quiet host replaces it with an unannotated file.
+>
 > **What is still missing, and the one command that closes it:**
 >
 > | Cells | Why |
