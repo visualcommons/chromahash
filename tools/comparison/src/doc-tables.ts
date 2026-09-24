@@ -76,11 +76,23 @@ export function parseTables(markdown: string): DocTable[] {
 /**
  * Parse a doc cell like "**10.100**", "−0.81%", "8.57 @32 px", "—".
  *
- * A trailing prose clause after a comma is dropped, so a verdict cell like
- * "**−16.19%**, every guard improving" yields its figure rather than nothing.
- * That matters more than it looks: a cell that fails to parse is silently
- * skipped by `compare`, so a bound column full of unparseable cells checks
- * nothing while reporting as bound — the same class of invisible gap that
+ * A trailing prose clause is dropped, whether it follows a comma
+ * ("**−16.19%**, every guard improving") or sits in parentheses
+ * ("−14.48% (worse than without)"), so a verdict cell yields its figure rather
+ * than nothing.
+ *
+ * The parenthesised form is dropped *only when the parenthesis holds no
+ * digits*, and that restriction is the whole of its safety. "10.855 (−2.78%)"
+ * is a score **and** a delta — two claims in one cell — and taking the first
+ * would quietly discard the second, which is the trap `verify-claims` already
+ * refuses to fall into: its `cellPattern`/`PARENTHESISED_DELTA` exist so a
+ * claim on such a cell has to say which of the two figures it quotes. A parser
+ * that guessed here would be making that choice for every caller, invisibly.
+ *
+ * A cell this still refuses is not lost. `verify-experiments` counts every cell
+ * in a bound column that fails to parse and lists it (`--list-unparsed`),
+ * because a bound column full of unparseable cells checks nothing while
+ * reporting as bound — the same class of invisible gap that
  * `--list-unbound-columns` exists to expose, one level further down.
  */
 export function parseCell(raw: string): number | null {
@@ -90,6 +102,20 @@ export function parseCell(raw: string): number | null {
     .replace(/%/g, "")
     .replace(/@.*$/, "")
     .replace(/^(\s*[-+]?[0-9.]+)\s*,.*$/, "$1")
+    // Anchored at both ends, and digit-free inside the parenthesis, so this can
+    // only turn a cell that parsed to nothing into a number — never change a
+    // number a caller already gets.
+    .replace(/^(\s*[-+]?[0-9.]+)\s*\([^0-9()]*\)\s*$/, "$1")
+    // The same shape, but where the parenthesis holds the delta rather than a
+    // word: "10.855 (-2.78)" after the % above is stripped. The leading number
+    // is the score the column publishes and the parenthesis restates it against
+    // that section's incumbent, so taking the score is not a choice between two
+    // candidate values — the delta is a second column's worth of information
+    // that happens to be printed in the same cell. Kept separate from the rule
+    // above because this one *can* see digits, so it is anchored to a single
+    // signed number and nothing else: "11.4 (see 7.2)" and "11.4 (1.2, 3.4)"
+    // both still parse to nothing rather than silently to 11.4.
+    .replace(/^(\s*[-+]?[0-9.]+)\s*\(\s*[-+]?[0-9.]+\s*\)\s*$/, "$1")
     .replace(/\s*B$/i, "")
     .trim();
   if (cleaned === "" || cleaned === "-" || cleaned.toLowerCase() === "n/a") {

@@ -135,5 +135,8 @@
       "tune": "aspect_bits=5 l_dc_bits=6 a_dc_bits=6 b_dc_bits=6 l_scale_bits=4 a_scale_bits=4 b_scale_from_a=1 scale_mu=8 l1=30:4 c=16:3"
     }
   ],
-  "unpinnedLabels": "As `cfl` — see EXPERIMENTS.md 9.5's disclosed set."
+  "unpinnedLabels": {
+    "arms": 1,
+    "why": "As `cfl` — see EXPERIMENTS.md 9.5's disclosed set."
+  }
 }

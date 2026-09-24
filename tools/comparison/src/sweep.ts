@@ -90,7 +90,8 @@ interface SweepConfig {
   name: string;
   description?: string;
   /**
-   * Opt this config out of `verify:sweep-labels`, with the reason.
+   * Opt this config out of `verify:sweep-labels`, with the reason and the
+   * number of arms the opt-out excuses.
    *
    * That gate asserts every arm sets the constants its own label names, because
    * a `tune` string is applied on top of `Tunables::DEFAULT` and an omitted
@@ -101,8 +102,20 @@ interface SweepConfig {
    * `verify-experiments.ts` matches on. This is where that decision is
    * recorded. It takes a reason rather than a boolean, because an opt-out with
    * a reason is a disclosure and one without is a silence.
+   *
+   * `arms` is what stops the disclosure being permanent. The exemption is
+   * whole-config, so it also covers arms added later; the gate therefore fails
+   * if the opt-out suppresses nothing (its arms were pinned since, and it
+   * should be deleted) or suppresses a different number than it declares (it
+   * is excusing an arm nobody disclosed). Same policy as `not_in_parity` in
+   * `spec/validate.py`.
    */
-  unpinnedLabels?: string;
+  unpinnedLabels?: {
+    /** Arms in this config whose findings the opt-out suppresses. */
+    arms: number;
+    /** Why they are left unpinned. */
+    why: string;
+  };
   /** First variant is the incumbent the guards compare against. */
   variants: SweepVariant[];
   /**
@@ -125,8 +138,8 @@ interface SweepConfig {
   /** Also score the alpha plane directly, reported as `meanAlphaMae`. */
   alphaFidelity?: boolean;
   /**
-   * Also score the locally-computed artifact metrics (ringing and spurious
-   * detail), adding them as columns of the decision table.
+   * Also score the locally-computed artifact metrics (ringing, spurious detail
+   * and spectral deficit), adding them as columns of the decision table.
    *
    * Opt-in per config, not on by default, and the reason is the one commit
    * c23d929 acted on: they cost real CPU per pair and most sweeps do not read
@@ -225,6 +238,17 @@ interface SweepRow {
   perImageSpurious: (number | null)[] | null;
   perImageDeficit: (number | null)[] | null;
   perImageRinging: (number | null)[] | null;
+  /**
+   * The analysis grid each image's spectral scores were actually computed on,
+   * as a longest edge in px, aligned with `imageNames`.
+   *
+   * `artifactGridEdge` is a **cap, not a pin**: an arm whose decode raster is
+   * already below it keeps its own smaller grid. So a ladder pinned above some
+   * arm's raster is not the comparison its config claims to be -- it is §12.4's
+   * mistake again, under a footnote saying the opposite. Nothing recorded what
+   * each arm landed on, so nothing could tell. This does.
+   */
+  perImageSpuriousGrid: (number | null)[] | null;
   /** ΔE00 change vs the incumbent, in percent (negative = better). */
   ciedeDeltaPct: number | null;
   /** All guard metrics within tolerance of the incumbent. */
@@ -435,6 +459,7 @@ async function scoreVariant(
   const spuriousH: (number | null)[] = [];
   const spuriousD: (number | null)[] = [];
   const deficits: (number | null)[] = [];
+  const grids: (number | null)[] = [];
   let bytesSum = 0;
 
   for (const input of inputs) {
@@ -491,6 +516,7 @@ async function scoreVariant(
     spuriousH.push(local.spuriousHorizontal);
     spuriousD.push(local.spuriousDiagonal);
     deficits.push(local.deficit);
+    grids.push(local.spuriousGridEdge);
   }
 
   return {
@@ -521,6 +547,7 @@ async function scoreVariant(
     perImageSpurious: spuriouses.some((v) => v !== null) ? spuriouses : null,
     perImageDeficit: deficits.some((v) => v !== null) ? deficits : null,
     perImageRinging: ringings.some((v) => v !== null) ? ringings : null,
+    perImageSpuriousGrid: grids.some((v) => v !== null) ? grids : null,
     ciedeDeltaPct: null,
     guardsOk: null,
     pairedCi: null,
@@ -553,6 +580,38 @@ function roseNoMoreThan(
   if (value === null || base === null) return true;
   if (base === 0) return value <= ARTIFACT_ZERO_BASE_ALLOWANCE;
   return value <= base * (1 + rise);
+}
+
+/**
+ * Which images the arms did **not** all land on the same analysis grid for, or
+ * null when they did.
+ *
+ * `artifactGridEdge` caps the grid; it does not pin it. An arm whose decode
+ * raster is already below the cap keeps its own smaller grid, and the printed
+ * footnote still says the spectral columns "ARE comparable down this table".
+ * That footnote would then be making exactly the claim EXPERIMENTS.md §12.4
+ * records being withdrawn -- a difference between two instruments read as a
+ * difference between two formats. Compared per image rather than per arm
+ * because the corpus's aspect ratios differ, so the grid an image lands on is a
+ * property of the pair, not of the arm.
+ */
+function gridDisagreements(
+  rows: readonly SweepRow[],
+): { image: string; edges: string }[] | null {
+  const base = rows[0];
+  if (!base?.perImageSpuriousGrid) return null;
+  const out: { image: string; edges: string }[] = [];
+  for (const [i, name] of base.imageNames.entries()) {
+    const edges = rows.map((r) => r.perImageSpuriousGrid?.[i] ?? null);
+    const seen = new Set(edges.filter((e): e is number => e !== null));
+    if (seen.size > 1) {
+      out.push({
+        image: name,
+        edges: rows.map((r, j) => `${r.label}=${edges[j] ?? "N/A"}`).join(", "),
+      });
+    }
+  }
+  return out.length > 0 ? out : null;
 }
 
 /** Fill ciedeDeltaPct/guardsOk/paired stats on every row from the incumbent. */
@@ -637,6 +696,17 @@ async function main(): Promise<void> {
   if (config.artifactGridEdge !== undefined && !config.artifacts) {
     throw new Error(
       `config ${config.name} sets artifactGridEdge but not artifacts, so the cap would apply to a metric that is never computed`,
+    );
+  }
+  // And the value itself. `setScoringConfig` refuses the same range -- this
+  // repeats it only to name the config, which is what a sweep author is looking
+  // at. A cap below 2 px collapses the analysis grid, `computeSpurious`
+  // declines it, and the table then reads N/A on every arm: the exact
+  // appearance of a sweep that never asked for artifacts at all.
+  const gridEdge = config.artifactGridEdge;
+  if (gridEdge !== undefined && (!Number.isInteger(gridEdge) || gridEdge < 2)) {
+    throw new Error(
+      `config ${config.name} sets artifactGridEdge ${gridEdge}; it must be an integer of at least 2 px, or every arm's spectral scores are declined and the table reads as unmeasured`,
     );
   }
 
@@ -749,12 +819,32 @@ async function main(): Promise<void> {
     );
   }
   if (showArtifacts && pinned !== undefined) {
-    console.log(
-      `\n  * Spur and Deficit are pinned to a ${pinned} px analysis grid, so they ARE
-    comparable down this table. Ring is NOT: it derives its envelope radius
-    from each arm's own upscale factor and has no equivalent knob. Reading it
-    down the column compares instruments (EXPERIMENTS.md §12.4).`,
-    );
+    const disagreed = gridDisagreements(rows);
+    if (disagreed === null) {
+      console.log(
+        `\n  * Spur and Deficit are pinned to a ${pinned} px analysis grid, and every
+    arm landed on it, so they ARE comparable down this table. Ring is NOT: it
+    derives its envelope radius from each arm's own upscale factor and has no
+    equivalent knob. Reading it down the column compares instruments
+    (EXPERIMENTS.md §12.4).`,
+      );
+    } else {
+      // Loud, and above the reader rather than in a file they would have to go
+      // looking for: the table they are looking at is the one that is wrong.
+      console.log(
+        `\n  !! Spur and Deficit are NOT comparable down this table. artifactGridEdge
+     is a CAP, not a pin -- ${pinned} px was above some arm's own decode raster, so
+     that arm kept a smaller grid and is answering a different question. This
+     is EXPERIMENTS.md §12.4's mistake, and any reading down these columns is
+     partly a difference of instruments. Lower artifactGridEdge to the smallest
+     raster in the sweep, or drop the arm.
+
+     ${disagreed.length} image(s) disagree; the first few:`,
+      );
+      for (const d of disagreed.slice(0, 5)) {
+        console.log(`       ${d.image}: ${d.edges}`);
+      }
+    }
   }
 }
 

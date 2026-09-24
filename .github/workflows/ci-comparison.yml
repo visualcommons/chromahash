@@ -20,12 +20,20 @@ on:
       # verify:claims checks the files below against, and that gate needs no
       # sweep output, so it does run here.
       - "spec/EXPERIMENTS.md"
-      # The files that quote EXPERIMENTS.md figures by hand. verify:claims
-      # checks each registered figure against the cell it cites, so an edit to
-      # any of them must run it. rust/** is already listed above.
+      # The files that quote EXPERIMENTS.md figures by hand: README.md,
+      # spec/README.md, spec/RATIONALE.md, spec/constants.py and
+      # rust/src/constants.rs. verify:claims checks each registered figure
+      # against the cell it cites, so an edit to any of them must run it.
+      # rust/** is already listed above.
+      #
+      # spec/constants.py is here for the same reason and was missed when this
+      # list was written: it restates LAYOUT_T0's holdout and alpha figures in
+      # a comment, and validate:spec compares the constants those tables
+      # declare, never the prose around them.
       - "README.md"
       - "spec/README.md"
       - "spec/RATIONALE.md"
+      - "spec/constants.py"
       - ".github/workflows/ci-comparison.yml"
   pull_request:
     paths:
@@ -45,12 +53,20 @@ on:
       # verify:claims checks the files below against, and that gate needs no
       # sweep output, so it does run here.
       - "spec/EXPERIMENTS.md"
-      # The files that quote EXPERIMENTS.md figures by hand. verify:claims
-      # checks each registered figure against the cell it cites, so an edit to
-      # any of them must run it. rust/** is already listed above.
+      # The files that quote EXPERIMENTS.md figures by hand: README.md,
+      # spec/README.md, spec/RATIONALE.md, spec/constants.py and
+      # rust/src/constants.rs. verify:claims checks each registered figure
+      # against the cell it cites, so an edit to any of them must run it.
+      # rust/** is already listed above.
+      #
+      # spec/constants.py is here for the same reason and was missed when this
+      # list was written: it restates LAYOUT_T0's holdout and alpha figures in
+      # a comment, and validate:spec compares the constants those tables
+      # declare, never the prose around them.
       - "README.md"
       - "spec/README.md"
       - "spec/RATIONALE.md"
+      - "spec/constants.py"
       - ".github/workflows/ci-comparison.yml"
 
 jobs:

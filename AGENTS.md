@@ -13,7 +13,11 @@ architecture and the full set of build commands, and `spec/` for the format.
   byte-identical output for the same input and pass the shared
   `spec/test-vectors/`.
 - **Keep implementations in sync.** A format or API change lands in every
-  language in the same change, not one language at a time.
+  language in the same change, not one language at a time. A *language-local
+  ergonomic* addition is outside this rule — a helper that gives one binding
+  behaviour the others already have, adding no format, no contract and no
+  capability. If it would make one binding able to express something another
+  cannot, it is an API change and the rule applies.
 - **The core stays zero-dependency.** `rust/` has no runtime dependencies. The
   FFI deps (`uniffi`, `cbindgen`, `wasm-bindgen`) live only in their respective
   `bindings/` crate.
