@@ -25,6 +25,11 @@ import {
   TUNE_ARMS,
   makeFixture,
 } from "./matrix.ts";
+import {
+  type Availability,
+  type ProbeOutcome,
+  classifyProbe,
+} from "./availability.ts";
 import { probeCell } from "./probe.ts";
 import { ROOT, type Target, allTargets } from "./targets.ts";
 
@@ -90,30 +95,24 @@ const ONLY = only ? new Set(only.split(",").map((s) => s.trim())) : null;
 
 const targets = allTargets().filter((t) => (ONLY ? ONLY.has(t.name) : true));
 
-/** A target is available if its binary exists and answers `bench-info`. */
-function probeAvailability(t: Target): {
-  ok: boolean;
-  reason?: string;
-  info?: string;
-} {
+/**
+ * A target is available if its binary exists and answers `bench-info`. How a
+ * failed probe is classified — `absent` (skippable) or `broken` (reported) — is
+ * `classifyProbe` in availability.ts.
+ */
+function probeAvailability(t: Target): ProbeOutcome {
   const proc = spawnSync(t.command, [...t.args, "bench-info"], {
     cwd: t.cwd,
     encoding: "utf8",
     timeout: 120_000,
     env: { ...process.env, ...t.env },
   });
-  if (proc.error || proc.status !== 0) {
-    const why =
-      proc.error?.message ??
-      proc.stderr?.slice(0, 200) ??
-      `exit ${proc.status}`;
-    return { ok: false, reason: why.trim() };
-  }
-  return { ok: true, info: proc.stdout.trim() };
+  return classifyProbe(proc, ROOT);
 }
 
 const available: Target[] = [];
-const unavailable: { target: string; reason: string }[] = [];
+const unavailable: { target: string; reason: string; kind: Availability }[] =
+  [];
 const info: Record<string, string> = {};
 for (const t of targets) {
   const a = probeAvailability(t);
@@ -121,13 +120,28 @@ for (const t of targets) {
     available.push(t);
     info[t.name] = a.info ?? "";
   } else {
-    unavailable.push({ target: t.name, reason: a.reason ?? "unknown" });
+    unavailable.push({
+      target: t.name,
+      reason: a.reason ?? "unknown",
+      kind: a.kind ?? "broken",
+    });
   }
 }
 
-const unavailableNote = unavailable.length
-  ? `, ${unavailable.length} unavailable`
+const broken = unavailable.filter((u) => u.kind === "broken");
+const brokenNote = broken.length
+  ? ` (${broken.length} present but failing)`
   : "";
+const unavailableNote = unavailable.length
+  ? `, ${unavailable.length} unavailable${brokenNote}`
+  : "";
+const BROKEN_NOTE =
+  "      recorded as broken, not absent, so verify:benchmark will not skip its rows";
+for (const u of broken) {
+  process.stderr.write(
+    `perf: WARNING ${u.target} is built but its probe failed — ${u.reason.split("\n")[0]}\n${BROKEN_NOTE}\n`,
+  );
+}
 process.stderr.write(
   `perf: ${available.length} target(s) available${unavailableNote}\n`,
 );

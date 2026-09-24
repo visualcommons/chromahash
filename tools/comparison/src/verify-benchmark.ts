@@ -34,6 +34,25 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import {
+  type Binding,
+  CROSS_RUN_TOLERANCE,
+  type Edit,
+  type Failure,
+  type ProseClaim,
+  type Resolve,
+  type RunDoc,
+  Runs,
+  STAGES_BASELINE,
+  bare,
+  cells,
+  checkProseClaims,
+  checkStagesProvenance,
+  checkTable,
+  clean,
+  parseStages,
+  parseTables,
+} from "./verify-benchmark-core.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const DOC = path.join(REPO_ROOT, "spec/PERFORMANCE.md");
@@ -41,270 +60,6 @@ const BASELINE_DIR = path.join(REPO_ROOT, "tools/comparison/baselines");
 
 /** The committed runs, in the order a lookup prefers them. */
 const BASELINES = ["perf-report-full.json", "perf-report.json"] as const;
-
-/** The run format this document's figures are defined against. */
-const SCHEMA = "chromahash-perf/2";
-
-/**
- * Two runs of the same cell agree to about this much on a quiet machine. Used
- * only to flag disagreement *between* the committed runs, never to accept a
- * documented number — those are checked exactly.
- */
-const CROSS_RUN_TOLERANCE = 0.1;
-
-// ─── The document, as tables ────────────────────────────────────────────────
-
-interface DocTable {
-  section: string;
-  index: number;
-  line: number;
-  header: string[];
-  rows: string[][];
-  /** Source line of each row, parallel to `rows`, for --fix. */
-  rowLines: number[];
-}
-
-const clean = (s: string): string => s.replace(/[*`]/g, "").trim();
-
-function cells(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\|/, "")
-    .replace(/\|$/, "")
-    .split("|")
-    .map((c) => c.trim());
-}
-
-const isSeparator = (line: string): boolean =>
-  /^\s*\|[\s:|-]+\|\s*$/.test(line) && line.includes("-");
-
-function parseTables(markdown: string): DocTable[] {
-  const lines = markdown.split("\n");
-  const tables: DocTable[] = [];
-  let section = "0";
-  let indexInSection = 0;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    const heading = /^#{2,3}\s+([0-9]+(?:\.[0-9]+)?)[.\s]/.exec(line);
-    if (heading?.[1]) {
-      section = heading[1];
-      indexInSection = 0;
-      continue;
-    }
-    if (!line.trimStart().startsWith("|")) continue;
-    if (!isSeparator(lines[i + 1] ?? "")) continue;
-
-    const header = cells(line);
-    const rows: string[][] = [];
-    const rowLines: number[] = [];
-    let j = i + 2;
-    for (; j < lines.length; j++) {
-      const body = lines[j] ?? "";
-      if (!body.trimStart().startsWith("|")) break;
-      rows.push(cells(body));
-      rowLines.push(j);
-    }
-    tables.push({
-      section,
-      index: indexInSection++,
-      line: i + 1,
-      header,
-      rows,
-      rowLines,
-    });
-    i = j - 1;
-  }
-  return tables;
-}
-
-// ─── A documented number ────────────────────────────────────────────────────
-
-type Unit = "us" | "ms" | "s" | "ratio" | "percent";
-
-interface DocNumber {
-  value: number;
-  unit: Unit;
-  /** Decimal places the document used, which is the precision it is held to. */
-  decimals: number;
-}
-
-/**
- * A bound cell whose number has not been measured yet. Written into the
- * document as TBD so a rewrite can land with its tables bound but its figures
- * pending; the gate fails on it, so the document cannot be published in that
- * state. `--fix` against a committed run replaces them.
- */
-const PLACEHOLDER = "TBD";
-
-/**
- * Read a placeholder's intended format. Written as "TBD ms", "TBD µs", "TBD×"
- * or "TBD%", so a rewrite knows the unit the column is in; the decimals default
- * to what the document uses for that unit elsewhere.
- */
-function parsePlaceholder(raw: string): DocNumber | null {
-  const text = clean(raw).replace(/\*\*/g, "").trim();
-  const m = /^TBD\s*(µs|us|ms|s|×|x|%)?$/i.exec(text);
-  if (!m) return null;
-  const suffix = m[1];
-  const unit: Unit =
-    suffix === "ms"
-      ? "ms"
-      : suffix === "s"
-        ? "s"
-        : suffix === "%"
-          ? "percent"
-          : suffix === "×" || suffix === "x"
-            ? "ratio"
-            : suffix === undefined
-              ? "ratio"
-              : "us";
-  const decimals = unit === "us" ? 0 : unit === "percent" ? 1 : 2;
-  return { value: Number.NaN, unit, decimals };
-}
-
-/**
- * Read one table cell as a number. Markdown emphasis, thousands separators and
- * the unicode minus all appear in the document and none of them are data.
- * Returns null for a cell that is deliberately not a measurement — an em dash,
- * a "not measured", a prose note.
- */
-function parseDocNumber(raw: string): DocNumber | null {
-  const text = raw
-    .replace(/\*\*/g, "")
-    .replace(/[*_`]/g, "")
-    .replace(/−/g, "-")
-    .replace(/,/g, "")
-    .trim();
-  const m = /^(-?[0-9]+(?:\.[0-9]+)?)\s*(µs|us|ms|s|×|x|%)?$/.exec(text);
-  if (!m?.[1]) return null;
-  const value = Number.parseFloat(m[1]);
-  if (!Number.isFinite(value)) return null;
-  const suffix = m[2];
-  const unit: Unit =
-    suffix === "µs" || suffix === "us"
-      ? "us"
-      : suffix === "ms"
-        ? "ms"
-        : suffix === "s"
-          ? "s"
-          : suffix === "%"
-            ? "percent"
-            : suffix === "×" || suffix === "x"
-              ? "ratio"
-              : "ratio";
-  const dot = m[1].indexOf(".");
-  return { value, unit, decimals: dot < 0 ? 0 : m[1].length - dot - 1 };
-}
-
-const TIME_UNITS = new Set<Unit>(["us", "ms", "s"]);
-const PER_US: Record<string, number> = { us: 1, ms: 1e3, s: 1e6 };
-
-// ─── The committed runs ─────────────────────────────────────────────────────
-
-interface Cell {
-  id: string;
-  /** chromahash-perf/2. Older runs reported the median as the headline. */
-  nsPerOp?: number;
-  medianNsPerOp: number;
-  iqrPct: number;
-  noisy: boolean;
-  iters: number;
-}
-
-interface RunDoc {
-  file: string;
-  schema: string;
-  git: { commit: string; dirty: boolean };
-  environment: { cpuModel: string; arch: string; cores: number };
-  config: { mode: string; reps: number };
-  cells: Cell[];
-}
-
-class Runs {
-  private readonly byId = new Map<
-    string,
-    { us: number; cell: Cell; from: string }
-  >();
-  readonly loaded: RunDoc[] = [];
-  /** Same id, two runs, materially different: a property of the host. */
-  readonly crossRunSpread: string[] = [];
-  /** Same id twice inside one run: an integrity bug in the driver. */
-  readonly duplicates: string[] = [];
-  readonly dirty: string[] = [];
-  /** Runs rejected outright, with the reason. */
-  readonly rejected: string[] = [];
-
-  constructor(files: string[]) {
-    for (const file of files) {
-      const full = path.join(BASELINE_DIR, file);
-      if (!existsSync(full)) continue;
-      const doc = JSON.parse(readFileSync(full, "utf8")) as RunDoc;
-      doc.file = file;
-
-      // chromahash-perf/1 reported the median as a cell's headline figure; /2
-      // reports the minimum. Binding this document to a /1 run would compare
-      // numbers that do not mean the same thing, and a --fix against one would
-      // quietly write medians into a document that says minima.
-      if (doc.schema !== SCHEMA) {
-        this.rejected.push(
-          `${file}: schema ${doc.schema ?? "(none)"}, expected ${SCHEMA} — regenerate with \`mise run benchmark\``,
-        );
-        continue;
-      }
-
-      this.loaded.push(doc);
-      if (doc.git?.dirty) this.dirty.push(file);
-
-      const seen = new Set<string>();
-      for (const c of doc.cells) {
-        if (seen.has(c.id)) {
-          this.duplicates.push(`${file}: duplicate cell id ${c.id}`);
-          continue;
-        }
-        seen.add(c.id);
-        const us = (c.nsPerOp ?? c.medianNsPerOp) / 1000;
-        const prior = this.byId.get(c.id);
-        if (!prior) {
-          this.byId.set(c.id, { us, cell: c, from: file });
-          continue;
-        }
-        const delta = Math.abs(prior.us - us) / Math.min(prior.us, us);
-        if (delta > CROSS_RUN_TOLERANCE) {
-          this.crossRunSpread.push(
-            `${c.id}: ${prior.from} says ${prior.us.toFixed(1)} us, ` +
-              `${file} says ${us.toFixed(1)} us (${(delta * 100).toFixed(1)}% apart)`,
-          );
-        }
-      }
-    }
-  }
-
-  has(id: string): boolean {
-    return this.byId.has(id);
-  }
-
-  /** Median microseconds per op. Throws if the id is not in any committed run. */
-  us(id: string): number {
-    const hit = this.byId.get(id);
-    if (!hit) throw new MissingCell(id);
-    return hit.us;
-  }
-
-  cell(id: string): Cell | null {
-    return this.byId.get(id)?.cell ?? null;
-  }
-
-  get ids(): string[] {
-    return [...this.byId.keys()].sort();
-  }
-}
-
-class MissingCell extends Error {
-  constructor(readonly id: string) {
-    super(`no cell "${id}" in any committed run`);
-  }
-}
 
 // ─── Bindings ───────────────────────────────────────────────────────────────
 //
@@ -326,28 +81,6 @@ const TIER_BYTES: Record<number, number> = {
   3: 411,
   4: 1623,
 };
-
-/** Reads a named column out of the row being checked. */
-type Row = (column: string) => string;
-type Resolve = (row: Row, R: Runs) => number | null;
-
-interface Binding {
-  section: string;
-  index: number;
-  title: string;
-  /** Column header (exact) -> resolver. Unlisted columns are not checked. */
-  columns: Record<string, Resolve>;
-}
-
-/**
- * A header or row label without its parenthetical aside: the document writes
- * "auto (12)" for the thread count and "shipped (scale_fit=2 ...)" for the
- * lever, and in both the parenthesis is commentary, not the name.
- */
-const bare = (s: string): string =>
-  clean(s)
-    .replace(/\s*\([^)]*\)\s*$/, "")
-    .trim();
 
 /** "tier 3", "3 (archival)", "t3" -> 3 */
 function tierOf(raw: string): number | null {
@@ -371,7 +104,160 @@ function timeOr<T>(R: Runs, id: string): number | null {
   return R.has(id) ? R.us(id) : null;
 }
 
+/**
+ * §1's source, which is not a `perf/run.js` sweep.
+ *
+ * `benchmark:stages` runs the instrumented build and reports *shares* of one
+ * encode, taken inside a single process. §1 has carried a note since it was
+ * written saying it "writes no committed artifact, so this table is transcribed
+ * by hand. That is a remaining gap" — and it was the worst possible table to
+ * leave ungated, because it is the one that orders §10's whole roadmap.
+ *
+ * It is bound separately rather than folded into `Runs` because it is a
+ * different measurement: a ratio within one process rather than a wall-clock
+ * cell, which is also why it is readable on a host whose absolute timings would
+ * not be.
+ *
+ * `parseStages` (verify-benchmark-core.ts) decides what the file means, and
+ * refuses a missing, unparseable, wrong-schema or empty one; this only reads it.
+ */
+const STAGES_PATH = path.join(BASELINE_DIR, STAGES_BASELINE);
+const { cells: STAGES, error: STAGES_ERROR } = parseStages(
+  existsSync(STAGES_PATH) ? readFileSync(STAGES_PATH, "utf8") : null,
+);
+
+/** §1's column headers name a fixture; map each to the recorded cell key. */
+const STAGE_COLUMNS: Record<string, string> = {
+  "100×100 t1": "100x100-t1",
+  "512×512 t1": "512x512-t1",
+  "512×512 t4": "512x512-t4",
+};
+
+/** Doc row label -> the stage the instrumented build reports it as. */
+const STAGE_ROWS: Record<string, string> = {
+  eotf_lut: "eotf_lut",
+  linearize: "linearize",
+  oklab_forward: "oklab_forward",
+  alpha_average: "alpha_average",
+  composite: "composite",
+  selection: "selection",
+  cos_tables: "cos_tables",
+  dct_forward: "dct_forward",
+  quantize_and_pack: "quantize_and_pack",
+};
+
+/**
+ * Figures the prose derives from §1's table, bound to the same baseline. Why
+ * they exist, and how each is checked, is at `ProseClaim` and
+ * `checkProseClaims` in verify-benchmark-core.ts.
+ */
+const PROSE_CLAIMS: ProseClaim[] = [
+  {
+    what: "§1: the per-pixel colour pipeline's share at 512x512 t1",
+    pattern: /the per-pixel colour pipeline is ([\d.]+)%\*\* — `linearize`/,
+    cell: "512x512-t1",
+    stages: ["linearize", "oklab_forward", "composite"],
+  },
+  {
+    what: "§1: `linearize`'s share, quoted in prose",
+    pattern: /colour pipeline is [\d.]+%\*\* — `linearize` ([\d.]+)%/,
+    cell: "512x512-t1",
+    stages: ["linearize"],
+  },
+  {
+    what: "§1: `oklab_forward`'s share, quoted in prose",
+    pattern: /`oklab_forward` ([\d.]+)%, `composite`/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§1: `composite`'s share, quoted in prose",
+    pattern: /`oklab_forward` [\d.]+%, `composite` ([\d.]+)%/,
+    cell: "512x512-t1",
+    stages: ["composite"],
+  },
+  {
+    what: "§1: `oklab_forward` as the SIMD-covered share of the budget",
+    pattern: /covers ([\d.]+) points of a 100-point budget/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§1: `quantize_and_pack`'s share at 100x100 t1, quoted in prose",
+    pattern: /At 100×100, `quantize_and_pack` is ([\d.]+)%\*\*/,
+    cell: "100x100-t1",
+    stages: ["quantize_and_pack"],
+  },
+  {
+    what: "§1: `dct_forward`'s share at 100x100 t1, quoted in prose",
+    pattern: /([\d.]+)% of a 100×100\nencode/,
+    cell: "100x100-t1",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§1: `dct_forward`'s share at 512x512 t4, quoted in prose",
+    pattern: /and \*\*([\d.]+)%\*\* at 512×512 tier 4/,
+    cell: "512x512-t4",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§12 summary: the pipeline share, restated",
+    pattern: /the per-pixel colour pipeline is \*\*([\d.]+)%\*\* at 512×512/,
+    cell: "512x512-t1",
+    stages: ["linearize", "oklab_forward", "composite"],
+  },
+  {
+    what: "§12 summary: `quantize_and_pack`, restated",
+    pattern: /`quantize_and_pack` is \*\*([\d.]+)%\*\* of a 100×100 one/,
+    cell: "100x100-t1",
+    stages: ["quantize_and_pack"],
+  },
+  {
+    what: "§12 summary: `dct_forward` at tier 4, restated",
+    pattern: /encode and \*\*([\d.]+)%\*\* at tier 4/,
+    cell: "512x512-t4",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§12 summary: the SIMD-covered points, restated",
+    pattern: /because it covers ([\d.]+) of those points/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§10 lever 6: the pipeline share, restated",
+    pattern: /for a stage §1 prices at ([\d.]+)%/,
+    cell: "512x512-t1",
+    stages: ["linearize", "oklab_forward", "composite"],
+  },
+];
+
 const BINDINGS: Binding[] = [
+  {
+    section: "1",
+    index: 0,
+    title: "Where encode time goes (shares of one encode)",
+    columns: Object.fromEntries(
+      Object.entries(STAGE_COLUMNS).map(([header, key]) => [
+        header,
+        (row: (h: string) => string) => {
+          if (!STAGES) return null;
+          const cell = STAGES[key];
+          if (!cell) return null;
+          const label = clean(row("stage"));
+          // The total row is the one absolute number in the table, and it is in
+          // milliseconds rather than a share.
+          if (label === "total") {
+            const whole = cell.ns.whole_encode;
+            return whole === undefined ? null : whole / 1e3;
+          }
+          const stage = STAGE_ROWS[label];
+          return stage === undefined ? null : (cell.sharePct[stage] ?? null);
+        },
+      ]),
+    ) as Record<string, Resolve>,
+  },
+
   {
     section: "2",
     index: 0,
@@ -450,9 +336,14 @@ const BINDINGS: Binding[] = [
   {
     section: "4",
     index: 1,
-    title: "The same levers at 100x100 and 512x512",
+    title: "The same levers at 100x100, 256x256 and 512x512",
     columns: {
       "100×100": (row, R) => timeOr(R, armId(100, row("lever"))),
+      // The middle column was in the document and not in this map, so its eight
+      // cells were never visited: not failed, not counted, not listed. The
+      // driver has measured them all along. Same blindness `verify-experiments`
+      // grew `--list-unbound-columns` for, one document over.
+      "256×256": (row, R) => timeOr(R, armId(256, row("lever"))),
       "512×512": (row, R) => timeOr(R, armId(512, row("lever"))),
     },
   },
@@ -558,167 +449,6 @@ function batch(raw: string, R: Runs, threads: string): number | null {
   return us === null ? null : us / BATCH_COUNT;
 }
 
-// ─── Checking ───────────────────────────────────────────────────────────────
-
-interface Failure {
-  where: string;
-  column: string;
-  row: string;
-  documented: string;
-  measured: string;
-  detail?: string;
-}
-
-/** One cell `--fix` will rewrite: line in the document, column, new text. */
-interface Edit {
-  line: number;
-  cellIndex: number;
-  text: string;
-}
-
-/**
- * A documented value passes when it equals the measured value rounded to the
- * precision the document used. Rounding rather than a tolerance means the
- * assertion tightens automatically as the document quotes more digits, and a
- * figure written to three significant digits is not held to five.
- */
-function agrees(
-  doc: DocNumber,
-  measuredUs: number,
-): { ok: boolean; shown: string } {
-  const measured = TIME_UNITS.has(doc.unit)
-    ? measuredUs / (PER_US[doc.unit] ?? 1)
-    : measuredUs;
-  const rounded = Number(measured.toFixed(doc.decimals));
-  const suffix =
-    doc.unit === "ratio"
-      ? "×"
-      : doc.unit === "percent"
-        ? "%"
-        : ` ${doc.unit === "us" ? "µs" : doc.unit}`;
-  return {
-    ok: Math.abs(rounded - doc.value) < 1e-9,
-    shown: `${rounded.toFixed(doc.decimals)}${suffix}`,
-  };
-}
-
-/**
- * Render a measured value the way the document writes that column: same unit,
- * same number of decimals, same emphasis. Used by --fix so a rewritten cell is
- * indistinguishable from a hand-written one.
- */
-function formatLike(doc: DocNumber, measuredUs: number, raw: string): string {
-  const measured = TIME_UNITS.has(doc.unit)
-    ? measuredUs / (PER_US[doc.unit] ?? 1)
-    : measuredUs;
-  const suffix =
-    doc.unit === "ratio"
-      ? "×"
-      : doc.unit === "percent"
-        ? "%"
-        : ` ${doc.unit === "us" ? "µs" : doc.unit}`;
-  const body = `${measured.toFixed(doc.decimals)}${suffix}`;
-  // Preserve bold emphasis, which the document uses to mark a headline figure.
-  return /^\*\*.*\*\*$/.test(raw.trim()) ? `**${body}**` : body;
-}
-
-function checkTable(
-  binding: Binding,
-  table: DocTable,
-  R: Runs,
-  failures: Failure[],
-  counters: { checked: number; unbound: number; placeholders: number },
-  edits: Edit[],
-): void {
-  const headerIndex = new Map<string, number>();
-  table.header.forEach((h, i) => {
-    headerIndex.set(clean(h).toLowerCase(), i);
-    headerIndex.set(bare(h).toLowerCase(), i);
-  });
-
-  const columnOf = (name: string): number | undefined =>
-    headerIndex.get(name.toLowerCase()) ??
-    headerIndex.get(bare(name).toLowerCase());
-
-  table.rows.forEach((cellsOfRow, rowIdx) => {
-    const row: Row = (column) => {
-      const i = columnOf(column);
-      return i === undefined ? "" : (cellsOfRow[i] ?? "");
-    };
-    const rowLabel = clean(cellsOfRow[0] ?? "");
-    const sourceLine = table.rowLines[rowIdx] ?? table.line;
-
-    for (const [column, resolve] of Object.entries(binding.columns)) {
-      const i = columnOf(column);
-      if (i === undefined) continue;
-      const raw = cellsOfRow[i] ?? "";
-      const placeholder = parsePlaceholder(raw);
-      const doc = placeholder ?? parseDocNumber(raw);
-      if (!doc) continue;
-
-      let expected: number | null;
-      try {
-        expected = resolve(row, R);
-      } catch (e) {
-        if (e instanceof MissingCell) {
-          failures.push({
-            where: `§${binding.section} ${binding.title} (line ${table.line})`,
-            column,
-            row: rowLabel,
-            documented: raw,
-            measured: "—",
-            detail: e.message,
-          });
-          continue;
-        }
-        throw e;
-      }
-      if (expected === null) {
-        counters.unbound++;
-        continue;
-      }
-
-      // A placeholder is a bound cell whose number has not been measured yet.
-      // It always fails, so a document cannot be published still carrying one,
-      // and --fix knows exactly what to write in its place.
-      if (placeholder) {
-        counters.placeholders++;
-        edits.push({
-          line: sourceLine,
-          cellIndex: i,
-          text: formatLike(doc, expected, raw),
-        });
-        failures.push({
-          where: `§${binding.section} ${binding.title} (line ${sourceLine})`,
-          column,
-          row: rowLabel,
-          documented: raw,
-          measured: formatLike(doc, expected, raw),
-          detail: "placeholder — run with --fix against a committed run",
-        });
-        continue;
-      }
-
-      counters.checked++;
-      const verdict = agrees(doc, expected);
-      if (!verdict.ok) {
-        edits.push({
-          line: sourceLine,
-          cellIndex: i,
-          text: formatLike(doc, expected, raw),
-        });
-        failures.push({
-          where: `§${binding.section} ${binding.title} (line ${sourceLine})`,
-          column,
-          row: rowLabel,
-          documented: raw,
-          measured: verdict.shown,
-        });
-      }
-    }
-  });
-}
-
 // ─── Entry point ────────────────────────────────────────────────────────────
 
 const { values } = parseArgs({
@@ -746,7 +476,16 @@ if (values["list-unbound"]) {
   process.exit(0);
 }
 
-const runs = new Runs([...BASELINES]);
+const runs = new Runs(
+  BASELINES.filter((file) => existsSync(path.join(BASELINE_DIR, file))).map(
+    (file) => ({
+      ...(JSON.parse(
+        readFileSync(path.join(BASELINE_DIR, file), "utf8"),
+      ) as RunDoc),
+      file,
+    }),
+  ),
+);
 for (const r of runs.rejected) console.error(`Rejected ${r}`);
 if (runs.loaded.length === 0) {
   console.error(
@@ -776,9 +515,31 @@ for (const r of runs.loaded) {
 console.log();
 
 const failures: Failure[] = [];
-const counters = { checked: 0, unbound: 0, placeholders: 0 };
+const counters = { checked: 0, unbound: 0, placeholders: 0, unavailable: 0 };
 const edits: Edit[] = [];
 const missingTables: string[] = [];
+
+// §1's baseline is a hard requirement whenever §1 is in the binding set, and it
+// is the one table this gate was extended to cover. Without this, a missing or
+// schema-bumped `perf-stages.json` made every §1 resolver return null, which
+// `checkTable` counts as `unbound` and therefore as a pass — a green run for
+// the table, and all thirteen prose claims skipped with it. `Runs` exits 1 on
+// the same condition; so does this now.
+const stagesBound = BINDINGS.some(
+  (b) => b.section === "1" && (!values.section || values.section === b.section),
+);
+if (stagesBound && !STAGES) {
+  console.error(
+    [
+      `No committed stages run for PERFORMANCE.md §1: ${STAGES_ERROR ?? "unavailable"}`,
+      "",
+      "§1 orders §10's whole acceleration roadmap and is bound cell by cell to",
+      "this artifact, together with the figures §1, §10 and §12 derive from it.",
+      "Without it those checks do not become optional — they become unrun.",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
 
 for (const binding of BINDINGS) {
   if (values.section && binding.section !== values.section) continue;
@@ -866,11 +627,37 @@ if (values.fix) {
   process.exit(0);
 }
 
+// §1's provenance (one clean commit across all three columns) and the prose
+// figures derived from its table: `checkStagesProvenance` and
+// `checkProseClaims` in verify-benchmark-core.ts.
+let proseChecked = 0;
+if (STAGES) {
+  failures.push(...checkStagesProvenance(STAGES));
+  const prose = checkProseClaims(doc, STAGES, PROSE_CLAIMS);
+  failures.push(...prose.failures);
+  proseChecked = prose.checked;
+}
+
 console.log(
   `Checked ${counters.checked} documented value(s) against the committed runs` +
     `; ${counters.unbound} deliberately unbound` +
+    `${counters.unavailable > 0 ? `, ${counters.unavailable} on targets this run could not reach` : ""}` +
     `${counters.placeholders > 0 ? `, ${counters.placeholders} placeholder(s) not yet measured` : ""}.`,
 );
+console.log(
+  `Checked ${proseChecked} figure(s) the prose derives from §1's table.`,
+);
+const UNAVAILABLE_NOTE =
+  '               a cell marked "<host> only" is skipped, not failed — a target no\n' +
+  "               committed run reached cannot be asked to document a number. A cell\n" +
+  "               holding one anyway IS failed: nothing measured it.";
+for (const [target, u] of runs.unavailable) {
+  const label = u.kind === "absent" ? "UNAVAILABLE" : `PROBE-${u.kind}`;
+  // Only an absent target is skipped, so only an absent target gets the note
+  // explaining why a marker is acceptable in its rows.
+  const note = u.kind === "absent" ? `\n${UNAVAILABLE_NOTE}` : "";
+  console.log(`  ${label}  ${target}: ${u.reason.split("\n")[0]}${note}`);
+}
 for (const m of missingTables)
   console.log(`  SKIP  ${m} — not found in the document`);
 

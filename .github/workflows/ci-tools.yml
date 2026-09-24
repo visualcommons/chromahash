@@ -93,6 +93,11 @@ jobs:
       - name: Byte-compile
         run: python3 -m compileall -q tools/benchmark/benchmark.py
 
+      # record_stages.py writes the committed §1 baseline verify:benchmark gates
+      # against. Standard library and git only, in a throwaway repo.
+      - name: Test the stages recorder
+        run: python3 -m unittest discover -s tools/benchmark -p 'test_*.py'
+
   # Guards the release pipeline: every publishable manifest must agree with the
   # core crate's version. Duplicated from ci-repo.yml's `versions` job only in
   # that this one also fires when the script itself changes.
