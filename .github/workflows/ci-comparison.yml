@@ -135,7 +135,10 @@ jobs:
       # no iqa-cli, no corpus, no network, under a second. Two defects that
       # broke that property shipped past a green run once already, because the
       # suite exercised a single upscale factor; it now sweeps the decode sizes
-      # the real lineup produces.
+      # the real lineup produces. It also asserts verify:benchmark's pass, skip
+      # and fail rules against fixture runs, and the perf driver's absent/broken
+      # probe classification against real spawns: the gate's run below only
+      # exercises the one state the committed baseline happens to be in.
       - name: The locally-computed metrics hold their defining properties
         run: node tools/comparison/dist/metric-selftest.js
 

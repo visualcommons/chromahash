@@ -656,10 +656,14 @@ run = [
 # covers the three pure joins `stratify` reads per-image scores through
 # (`stratify-core.ts`) -- the Pearson coefficient, the equal-count binning and
 # the positional-alignment check -- because EXPERIMENTS.md 13.3 is the one table
-# no sweep binds, so no other gate reaches them. Pure computation: no iqa-cli,
-# no corpus, no network.
+# no sweep binds, so no other gate reaches them. Likewise the rules
+# verify:benchmark decides pass, skip and fail by (`verify-benchmark-core.ts`)
+# and the perf driver's absent/broken probe classification that feeds them
+# (`perf/availability.ts`): the gate's own run only ever exercises the one state
+# the committed baseline is in. Pure computation plus a few `node -e` spawns: no
+# iqa-cli, no corpus, no network.
 [tasks."selftest:metrics"]
-description = "Self-check the locally-computed metrics (ringing, spurious detail, deficit, aspect) and stratify's joins"
+description = "Self-check the locally-computed metrics (ringing, spurious detail, deficit, aspect), stratify's joins, and verify:benchmark's pass/skip/fail rules"
 depends = ["build:compare"]
 run = "node tools/comparison/dist/metric-selftest.js"
 

@@ -34,12 +34,42 @@
  * assertion that an ideal low-pass still scores exactly zero *through* a pin
  * failed immediately, on a bias that grew with the pin ratio and so ran along
  * the tier axis those figures are read down.
+ *
+ * The verify-benchmark and probe blocks are here for the stratify block's
+ * reason, one document over. `verify:benchmark` decides which PERFORMANCE.md
+ * cells pass, fail or are skipped, and every rule that makes that decision was
+ * added because an earlier version reported green over a case it had not
+ * checked. The gate's own run over the committed baseline exercises only the
+ * one state that baseline is in — Swift absent, one clean commit, every prose
+ * sentence present — so none of the failure paths had ever executed. They are
+ * asserted against fixture runs, tables and stage files
+ * (`verify-benchmark-core.ts`), and the probe classification that feeds them
+ * against real spawns (`perf/availability.ts`).
  */
 
+import { spawnSync } from "node:child_process";
 import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
 import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
+import { classifyProbe, repoRelative } from "./perf/availability.ts";
+import {
+  type Binding,
+  type Counters,
+  type Edit,
+  type Failure,
+  type ProseClaim,
+  type RunDoc,
+  Runs,
+  type StageCell,
+  checkProseClaims,
+  checkStagesProvenance,
+  checkTable,
+  clean,
+  parseStages,
+  parseTables,
+  parseUnavailableMarker,
+} from "./verify-benchmark-core.ts";
 
 let failures = 0;
 
@@ -982,6 +1012,506 @@ check(
   alignmentError([]) !== null,
   `${alignmentError([])}`,
 );
+
+console.log("\nverify-benchmark — what passes, what is skipped, what fails\n");
+
+// Fixtures: a run is a list of cell ids plus what it recorded unavailable, and
+// a table is markdown parsed exactly as PERFORMANCE.md is. The binding reads
+// `encode/<row label>/t1` and throws on a missing cell, as §7's binding does.
+
+function fixtureRun(
+  file: string,
+  ids: string[],
+  unavailable?: RunDoc["unavailable"],
+  overrides: Partial<RunDoc> = {},
+): RunDoc {
+  return {
+    file,
+    schema: "chromahash-perf/2",
+    git: { commit: "abc1234", dirty: false },
+    environment: { cpuModel: "fixture", arch: "x64", cores: 1 },
+    config: { mode: "bounded", reps: 1 },
+    cells: ids.map((id) => ({
+      id,
+      nsPerOp: 1_000_000,
+      medianNsPerOp: 1_000_000,
+      iqrPct: 0,
+      noisy: false,
+      iters: 1,
+    })),
+    ...(unavailable ? { unavailable } : {}),
+    ...overrides,
+  };
+}
+
+type UnavailableEntry = NonNullable<RunDoc["unavailable"]>[number];
+
+/** An `unavailable` record as the driver writes it; no kind means a pre-kind run. */
+function unavailableEntry(
+  target: string,
+  reason: string,
+  kind: string | undefined,
+): UnavailableEntry {
+  return kind === undefined ? { target, reason } : { target, reason, kind };
+}
+
+const FIXTURE_BINDING: Binding = {
+  section: "7",
+  index: 0,
+  title: "fixture",
+  columns: {
+    "encode t1": (row, R) => R.us(`encode/${clean(row("implementation"))}/t1`),
+  },
+};
+
+function fixtureTable(rows: [string, string][]): string {
+  return [
+    "## 7. Fixture",
+    "",
+    "| implementation | encode t1 |",
+    "|---|---:|",
+    ...rows.map(([label, cell]) => `| ${label} | ${cell} |`),
+    "",
+  ].join("\n");
+}
+
+function gate(
+  rows: [string, string][],
+  runs: RunDoc[],
+): { failures: Failure[]; counters: Counters; R: Runs } {
+  const table = parseTables(fixtureTable(rows))[0];
+  const failures: Failure[] = [];
+  const counters: Counters = {
+    checked: 0,
+    unbound: 0,
+    placeholders: 0,
+    unavailable: 0,
+  };
+  const edits: Edit[] = [];
+  const R = new Runs(runs);
+  if (table) checkTable(FIXTURE_BINDING, table, R, failures, counters, edits);
+  return { failures, counters, R };
+}
+
+const details = (fs: Failure[]): string =>
+  fs.map((f) => f.detail ?? f.measured).join(" | ");
+
+const SWIFT_ABSENT = [
+  { target: "Swift", reason: "spawnSync ChromaHashCLI ENOENT", kind: "absent" },
+];
+
+// B1. The marker is a token, not prose: emphasis required, host from a closed
+//     list. The first version matched any phrase ending in "only", and every
+//     bound cell runs through it.
+{
+  const accepted = ["*macOS only*", "**macOS only**", " *Linux only* "];
+  const rejected = [
+    "macOS only",
+    "*encoder only*",
+    "*batch only*",
+    "*macOS only* (see §0)",
+    "*macos only*",
+    "",
+  ];
+  const wrongly = [
+    ...accepted.filter((c) => parseUnavailableMarker(c) === null),
+    ...rejected.filter((c) => parseUnavailableMarker(c) !== null),
+  ];
+  check(
+    "a marker needs its emphasis and a known host; prose ending in 'only' is not one",
+    wrongly.length === 0 &&
+      parseUnavailableMarker("*macOS only*") === "macOS only",
+    wrongly.length === 0
+      ? `${accepted.length} accepted, ${rejected.length} rejected`
+      : `misread: ${JSON.stringify(wrongly)}`,
+  );
+}
+
+// B2. An absent target's marked row is skipped and counted — the one case
+//     the skip exists for.
+{
+  const { failures, counters } = gate(
+    [
+      ["Rust", "1.0 ms"],
+      ["Swift", "*macOS only*"],
+    ],
+    [fixtureRun("perf-report.json", ["encode/Rust/t1"], SWIFT_ABSENT)],
+  );
+  check(
+    "an absent target's marked row is skipped, and the measured row checked",
+    failures.length === 0 &&
+      counters.unavailable === 1 &&
+      counters.checked === 1,
+    `failures=${failures.length} unavailable=${counters.unavailable} checked=${counters.checked}`,
+  );
+}
+
+// B3. A *number* on an absent target is failed: nothing measured it. This is
+//     the case the skip used to wave through.
+{
+  const { failures } = gate(
+    [["Swift", "1.0 ms"]],
+    [fixtureRun("perf-report.json", ["encode/Rust/t1"], SWIFT_ABSENT)],
+  );
+  check(
+    "a documented number on an absent target fails",
+    failures.length === 1 &&
+      (failures[0]?.detail ?? "").includes("no committed run measured Swift"),
+    details(failures),
+  );
+}
+
+// B4/B5. Only `absent` may be skipped. A probe that found the target and saw
+//        it fail is a regression, and a run too old to say which it saw cannot
+//        be trusted to mean "absent" — both fail even with a marker.
+for (const [label, kind, needle] of [
+  ["broken", "broken", "regression in the target"],
+  ["unclassified (no kind)", undefined, "before absent/broken"],
+  ["unrecognised-kind", "missing", "before absent/broken"],
+] as const) {
+  const { failures, counters } = gate(
+    [["Swift", "*macOS only*"]],
+    [
+      fixtureRun(
+        "perf-report.json",
+        ["encode/Rust/t1"],
+        [unavailableEntry("Swift", "exit 1\nstack", kind)],
+      ),
+    ],
+  );
+  check(
+    `the marked row of a target recorded ${label} fails rather than being skipped`,
+    failures.length === 1 &&
+      counters.unavailable === 0 &&
+      (failures[0]?.detail ?? "").includes(needle),
+    details(failures),
+  );
+}
+
+// B6. Across two runs, `broken` outranks `absent` in either order: if any run
+//     got far enough to see the target fail, "not built here" is not the story.
+for (const order of ["absent first", "broken first"] as const) {
+  const a = fixtureRun("perf-report-full.json", [], SWIFT_ABSENT);
+  const b = fixtureRun(
+    "perf-report.json",
+    [],
+    [{ target: "Swift", reason: "exit 1", kind: "broken" }],
+  );
+  const R = new Runs(order === "absent first" ? [a, b] : [b, a]);
+  check(
+    `broken outranks absent across runs (${order})`,
+    R.unavailable.get("Swift")?.kind === "broken",
+    `kind=${R.unavailable.get("Swift")?.kind}`,
+  );
+}
+
+// B7. The clearing pass is order-independent: a target one run measured and
+//     another recorded absent is measured, whichever file is read first. It
+//     used to clear only against the same file's cells, so the full sweep on
+//     macOS (Swift present) read before the bounded one on Linux (Swift
+//     absent) left Swift marked unavailable while cells held it.
+for (const order of ["measured first", "absent first"] as const) {
+  const measured = fixtureRun("perf-report-full.json", [
+    "encode/Rust/t1",
+    "encode/Swift/t1",
+  ]);
+  const absent = fixtureRun(
+    "perf-report.json",
+    ["encode/Rust/t1"],
+    SWIFT_ABSENT,
+  );
+  const runs =
+    order === "measured first" ? [measured, absent] : [absent, measured];
+  const kept = new Runs(runs).unavailable.has("Swift");
+  const ok = gate([["Swift", "1.0 ms"]], runs);
+  const marked = gate([["Swift", "*macOS only*"]], runs);
+  check(
+    `a target any run measured is not unavailable (${order})`,
+    !kept &&
+      ok.failures.length === 0 &&
+      ok.counters.checked === 1 &&
+      marked.failures.length === 1 &&
+      (marked.failures[0]?.detail ?? "").includes(
+        "but a committed run measured Swift",
+      ),
+    `stillUnavailable=${kept} numberFailures=${ok.failures.length} marker=${details(marked.failures)}`,
+  );
+}
+
+// B8. A marker on a target no run probed at all (`--impls Rust`) is failed
+//     with that reason, not with the false claim that a run measured it.
+{
+  const { failures } = gate(
+    [["Swift", "*macOS only*"]],
+    [fixtureRun("perf-report.json", ["encode/Rust/t1"])],
+  );
+  check(
+    "a marker on a never-probed target fails as never probed",
+    failures.length === 1 &&
+      (failures[0]?.detail ?? "").includes("never probed"),
+    details(failures),
+  );
+}
+
+// B9. A parenthesised target name matches its own record. `bare()` strips the
+//     parenthetical, and "Rust (scalar)" is a driver target name verbatim.
+{
+  const { failures, counters } = gate(
+    [["Rust (scalar)", "*x86_64 only*"]],
+    [
+      fixtureRun(
+        "perf-report.json",
+        ["encode/Rust/t1"],
+        [{ target: "Rust (scalar)", reason: "ENOENT", kind: "absent" }],
+      ),
+    ],
+  );
+  check(
+    "a parenthesised absent target is found and its marked row skipped",
+    failures.length === 0 && counters.unavailable === 1,
+    `failures=${details(failures)} unavailable=${counters.unavailable}`,
+  );
+}
+
+// B10. A run in the wrong schema is rejected, not merged: /1 reported medians
+//      and /2 reports minima. A dirty run is loaded and listed as dirty.
+{
+  const R = new Runs([
+    fixtureRun("old.json", ["encode/Rust/t1"], undefined, {
+      schema: "chromahash-perf/1",
+    }),
+    fixtureRun("dirty.json", ["encode/Go/t1"], undefined, {
+      git: { commit: "abc1234", dirty: true },
+    }),
+  ]);
+  check(
+    "a wrong-schema run is rejected and a dirty run is flagged",
+    R.rejected.length === 1 &&
+      R.rejected[0]?.startsWith("old.json") === true &&
+      !R.has("encode/Rust/t1") &&
+      R.loaded.length === 1 &&
+      R.dirty.join() === "dirty.json",
+    `rejected=${JSON.stringify(R.rejected)} dirty=${JSON.stringify(R.dirty)}`,
+  );
+}
+
+// B11. §1's baseline: every way of not having one is an error with a reason,
+//      never a null that `checkTable` would count as deliberately unbound.
+{
+  const cell: StageCell = {
+    ns: { whole_encode: 1000 },
+    sharePct: { dct_forward: 100 },
+    git: { rev: "abc1234", dirty: false },
+  };
+  const cases: [string, string | null, string][] = [
+    ["no file", null, "does not exist"],
+    ["unparseable", "{", "not valid JSON"],
+    [
+      "wrong schema",
+      JSON.stringify({
+        schema: "chromahash-perf-stages/0",
+        cells: { a: cell },
+      }),
+      "expected chromahash-perf-stages/1",
+    ],
+    ["no schema", JSON.stringify({ cells: { a: cell } }), "schema (none)"],
+    [
+      "no cells",
+      JSON.stringify({ schema: "chromahash-perf-stages/1", cells: {} }),
+      "holds no cells",
+    ],
+  ];
+  const wrong = cases.filter(([, text, needle]) => {
+    const r = parseStages(text);
+    return r.cells !== null || !(r.error ?? "").includes(needle);
+  });
+  const good = parseStages(
+    JSON.stringify({
+      schema: "chromahash-perf-stages/1",
+      cells: { "100x100-t1": cell },
+    }),
+  );
+  check(
+    "a missing, unparseable, wrong-schema or empty stages file is an error",
+    wrong.length === 0 && good.error === null && good.cells !== null,
+    wrong.length === 0
+      ? `${cases.length} refused, a valid file accepted`
+      : `not refused: ${wrong.map(([n]) => n).join(", ")}`,
+  );
+}
+
+// B12. §1's provenance: one clean commit across all three columns, or a
+//      failure naming the cells that are not.
+{
+  const at = (rev: string, dirty: boolean): StageCell => ({
+    ns: {},
+    sharePct: {},
+    git: { rev, dirty },
+  });
+  const clean3 = checkStagesProvenance({
+    a: at("e53e6cd", false),
+    b: at("e53e6cd", false),
+    c: at("e53e6cd", false),
+  });
+  const dirty = checkStagesProvenance({
+    a: at("e53e6cd", false),
+    b: at("e53e6cd", true),
+  });
+  const mixed = checkStagesProvenance({
+    a: at("e53e6cd", false),
+    b: at("1111111", false),
+  });
+  const unrecorded = checkStagesProvenance({
+    a: at("e53e6cd", false),
+    b: { ns: {}, sharePct: {} } as unknown as StageCell,
+  });
+  check(
+    "stage cells from a dirty tree or from different commits fail",
+    clean3.length === 0 &&
+      dirty.length === 1 &&
+      dirty[0]?.column === "git.dirty" &&
+      dirty[0]?.row === "b" &&
+      mixed.length === 1 &&
+      mixed[0]?.column === "git.rev" &&
+      mixed[0]?.measured === "2 commits" &&
+      unrecorded.some((f) => f.column === "git.rev"),
+    `clean=${clean3.length} dirty=${JSON.stringify(dirty.map((f) => f.row))} mixed=${JSON.stringify(mixed.map((f) => f.measured))} unrecorded=${unrecorded.length}`,
+  );
+}
+
+// B13. Prose claims: the figure must be quoted exactly once and agree with the
+//      cells it sums to the precision it is written at. The sum case is the
+//      historical slip — 5.43 + 6.91 + 4.17 = 16.51, which "16.5" states and
+//      "16.6" (the parts rounded first, then added) does not.
+{
+  const stages: Record<string, StageCell> = {
+    "512x512-t1": {
+      ns: {},
+      sharePct: { linearize: 5.43, oklab_forward: 6.91, composite: 4.17 },
+      git: { rev: "e53e6cd", dirty: false },
+    },
+  };
+  const claim: ProseClaim = {
+    what: "pipeline",
+    pattern: /the colour pipeline is ([\d.]+)%/,
+    cell: "512x512-t1",
+    stages: ["linearize", "oklab_forward", "composite"],
+  };
+  const right = checkProseClaims(
+    "So the colour pipeline is 16.5% here.",
+    stages,
+    [claim],
+  );
+  const wrong = checkProseClaims(
+    "So the colour pipeline is 16.6% here.",
+    stages,
+    [claim],
+  );
+  const finer = checkProseClaims(
+    "So the colour pipeline is 16.52% here.",
+    stages,
+    [claim],
+  );
+  const gone = checkProseClaims("Reworded entirely.", stages, [claim]);
+  const twice = checkProseClaims(
+    "the colour pipeline is 16.5% and the colour pipeline is 16.5%",
+    stages,
+    [claim],
+  );
+  check(
+    "a prose figure is checked once, at its own precision, and a missing or doubled sentence fails",
+    right.checked === 1 &&
+      right.failures.length === 0 &&
+      wrong.failures.length === 1 &&
+      wrong.failures[0]?.measured === "16.51%" &&
+      finer.failures.length === 1 &&
+      gone.failures.length === 1 &&
+      (gone.failures[0]?.detail ?? "").includes("edited without updating") &&
+      gone.checked === 0 &&
+      twice.failures.length === 1 &&
+      (twice.failures[0]?.detail ?? "").includes("must name one figure"),
+    `right=${right.failures.length} wrong=${details(wrong.failures)} finer=${finer.failures.length} gone=${gone.failures.length} twice=${twice.failures.length}`,
+  );
+}
+
+console.log("\nperf probe — absent is skippable, anything else is broken\n");
+
+// P1–P5. Real spawns, classified exactly as `run.ts` classifies a target's
+//        `bench-info`. The root is fictitious so ENOENT is guaranteed and the
+//        redaction has something to strip.
+{
+  const root = "/nonexistent-chromahash-root/checkout";
+  const node = process.execPath;
+  const spawn = (cmd: string, args: string[], timeout = 30_000) =>
+    classifyProbe(spawnSync(cmd, args, { encoding: "utf8", timeout }), root);
+
+  const missing = spawn(`${root}/.build/release/ChromaHashCLI`, ["bench-info"]);
+  check(
+    "a binary that is not there is absent, and its path is repo-relative",
+    !missing.ok &&
+      missing.kind === "absent" &&
+      (missing.reason ?? "").includes("ENOENT") &&
+      !(missing.reason ?? "").includes(root) &&
+      (missing.reason ?? "").includes(".build/release/ChromaHashCLI"),
+    `kind=${missing.kind} reason=${missing.reason}`,
+  );
+
+  const failing = spawn(node, [
+    "-e",
+    "process.stderr.write('boom');process.exit(3)",
+  ]);
+  check(
+    "a binary that exits non-zero is broken, with what it said",
+    !failing.ok && failing.kind === "broken" && failing.reason === "boom",
+    `kind=${failing.kind} reason=${failing.reason}`,
+  );
+
+  const hung = spawn(node, ["-e", "setTimeout(() => {}, 60000)"], 300);
+  check(
+    "a binary that times out is broken",
+    !hung.ok && hung.kind === "broken",
+    `kind=${hung.kind} reason=${hung.reason}`,
+  );
+
+  const killed = spawn(node, ["-e", "process.kill(process.pid, 'SIGKILL')"]);
+  check(
+    "a binary killed by a signal is broken",
+    !killed.ok && killed.kind === "broken",
+    `kind=${killed.kind} reason=${killed.reason}`,
+  );
+
+  const fine = spawn(node, ["-e", "console.log('runtime=fixture\\n')"]);
+  check(
+    "a binary that answers is available, with its info",
+    fine.ok && fine.kind === undefined && fine.info === "runtime=fixture",
+    `ok=${fine.ok} info=${JSON.stringify(fine.info)}`,
+  );
+
+  check(
+    "the root alone redacts to '.'",
+    repoRelative(`cd ${root} failed`, root) === "cd . failed" &&
+      repoRelative(`${root}/a/b ENOENT`, root) === "a/b ENOENT",
+    repoRelative(`cd ${root} failed`, root),
+  );
+
+  // P6. And the two classifications carried through to the gate, the way the
+  //     driver records them: absent skips a marked row, broken fails it.
+  const recorded = (o: typeof missing) =>
+    fixtureRun(
+      "perf-report.json",
+      ["encode/Rust/t1"],
+      [unavailableEntry("Swift", o.reason ?? "", o.kind)],
+    );
+  const skipped = gate([["Swift", "*macOS only*"]], [recorded(missing)]);
+  const failed = gate([["Swift", "*macOS only*"]], [recorded(failing)]);
+  check(
+    "an absent probe skips the target's marked rows and a broken one fails them",
+    skipped.failures.length === 0 &&
+      skipped.counters.unavailable === 1 &&
+      failed.failures.length === 1,
+    `absent→failures=${skipped.failures.length} broken→failures=${failed.failures.length}`,
+  );
+}
 
 console.log(
   failures === 0

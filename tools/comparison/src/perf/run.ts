@@ -25,6 +25,11 @@ import {
   TUNE_ARMS,
   makeFixture,
 } from "./matrix.ts";
+import {
+  type Availability,
+  type ProbeOutcome,
+  classifyProbe,
+} from "./availability.ts";
 import { probeCell } from "./probe.ts";
 import { ROOT, type Target, allTargets } from "./targets.ts";
 
@@ -91,58 +96,18 @@ const ONLY = only ? new Set(only.split(",").map((s) => s.trim())) : null;
 const targets = allTargets().filter((t) => (ONLY ? ONLY.has(t.name) : true));
 
 /**
- * Why a target could not be measured, and whether that is a fact about the host
- * or a fact about the target.
- *
- * This used to be a bare `ok: false`, identical for a missing binary, a
- * non-zero exit, a timeout and a crash — and `verify-benchmark` skips a
- * target's rows on that alone. So on macOS, where `xcodebuild` exists, a Swift
- * *build regression* was indistinguishable from no Swift toolchain, and the
- * gate would have waved the rows through in both cases. Only `absent` may be
- * skipped; `broken` is reported.
+ * A target is available if its binary exists and answers `bench-info`. How a
+ * failed probe is classified — `absent` (skippable) or `broken` (reported) — is
+ * `classifyProbe` in availability.ts.
  */
-type Availability = "absent" | "broken";
-
-/**
- * Strip the author's checkout path out of a probe message.
- *
- * The reason is committed in `baselines/perf-report.json` and echoed into CI
- * logs by `verify-benchmark`, and Node's ENOENT message quotes the absolute
- * command — which for this repo was a maintainer's worktree path, published in
- * the baseline and reprinted on every CI run. Repo-relative says the same
- * thing and belongs to the repo rather than to whoever measured.
- */
-function repoRelative(message: string): string {
-  return message.split(`${ROOT}/`).join("").split(ROOT).join(".");
-}
-
-/** A target is available if its binary exists and answers `bench-info`. */
-function probeAvailability(t: Target): {
-  ok: boolean;
-  kind?: Availability;
-  reason?: string;
-  info?: string;
-} {
+function probeAvailability(t: Target): ProbeOutcome {
   const proc = spawnSync(t.command, [...t.args, "bench-info"], {
     cwd: t.cwd,
     encoding: "utf8",
     timeout: 120_000,
     env: { ...process.env, ...t.env },
   });
-  if (proc.error || proc.status !== 0) {
-    // ENOENT is the only outcome that means "nothing on this host could have
-    // measured it". A spawn that succeeded and then exited non-zero, timed out
-    // (ETIMEDOUT / SIGTERM) or died on a signal all mean the target is present
-    // and not working.
-    const code = (proc.error as NodeJS.ErrnoException | undefined)?.code;
-    const kind: Availability = code === "ENOENT" ? "absent" : "broken";
-    const why =
-      proc.error?.message ??
-      proc.stderr?.slice(0, 200) ??
-      (proc.signal ? `killed by ${proc.signal}` : `exit ${proc.status}`);
-    return { ok: false, kind, reason: repoRelative(why.trim()) };
-  }
-  return { ok: true, info: proc.stdout.trim() };
+  return classifyProbe(proc, ROOT);
 }
 
 const available: Target[] = [];
