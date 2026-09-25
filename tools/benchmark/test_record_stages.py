@@ -131,6 +131,19 @@ class RecordStagesTest(unittest.TestCase):
         self.assertNotIn("whole_encode", cell["sharePct"])
         self.assertNotIn("stage_sum", cell["sharePct"])
 
+    def test_a_tiny_share_is_written_as_biome_writes_it(self) -> None:
+        # 18 ns of a 1e9 ns encode is a share of 1.8e-06, which Python spells
+        # `1.8e-06` and `biome format` spells `1.8e-6`; the committed file has
+        # to be the one `format:check:compare` accepts, and still the same
+        # number.
+        stdin = "\n".join(["refine=18", "dct_forward=999999982", "stage_sum=1000000000"])
+        stdin += "\nwhole_encode=1000000000\nunmarked=0\n"
+        self.assertEqual(self.record(512, 512, 1, stdin=stdin).returncode, 0)
+        text = self.out.read_text(encoding="utf-8")
+        self.assertIn('"refine": 1.8e-6', text)
+        self.assertNotIn("e-06", text)
+        self.assertAlmostEqual(self.load()["cells"]["512x512-t1"]["sharePct"]["refine"], 1.8e-6)
+
     def test_rerecording_a_cell_replaces_only_that_cell(self) -> None:
         self.record(100, 100, 1)
         self.record(512, 512, 1)
