@@ -9,7 +9,7 @@ use crate::dct::{
 };
 use crate::encode::{
     band_split_index, dequantize_aspect, dequantize_c_dc, dequantize_cfl_gain, dequantize_l_dc,
-    dequantize_scale,
+    dequantize_scale, stage,
 };
 use crate::math_utils::{clamp01, round_half_away_from_zero};
 use crate::mulaw::compand_dequantize;
@@ -136,6 +136,14 @@ fn synthesize_detail(
 
 /// Render a ChromaHash at the given pixel dimensions, into the given output
 /// gamut (sRGB / Display P3 / Adobe RGB). Per spec §11 (v0.6).
+///
+/// The `stage!` marks are `mise run benchmark:decode-stages`' breakdown
+/// (spec/PERFORMANCE.md §1.1); they expand to nothing without the
+/// `bench-internals` feature. Each one closes the span since the previous mark,
+/// so together they cover the function end to end. The render loop is one mark
+/// and deliberately not split: separating its inverse DCT from its colour
+/// conversion would need a timer per pixel, or a second loop, and either would
+/// measure a decoder this crate does not ship.
 fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) -> Vec<u8> {
     // 1. Header fields: byte-0 descriptor + byte-1 aspect, then DC/scale prefix
     //    (bits 16..54). Per spec §3.1 (v1).
@@ -187,6 +195,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
         (t.max_b_scale, t.b_scale_bits)
     };
     let b_scale = dequantize_scale(b_scl_q, b_range, b_bits, t.scale_mu);
+    stage!("header");
 
     // 3. Coefficient selection (mirrors the encoder; counts scaled by tier)
     let shape = ac_shape(t, has_alpha, tier);
@@ -197,6 +206,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     let order = SelectionOrder::new(aspect, tier, t.aniso_oblique, t.sel_hv);
     let l_sel = order.take(l_count);
     let c_sel = order.take(c_count);
+    stage!("selection");
 
     // 4. Read AC payload (alpha DC/scale first in alpha mode)
     let (alpha_dc_val, alpha_scale_val) = if has_alpha {
@@ -320,6 +330,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     } else {
         (vec![], None)
     };
+    stage!("ac_dequant");
 
     // 4b. Decoder-side detail synthesis (zero bytes). Everything the format
     //     codes is a handful of global low frequencies, so the render is far
@@ -346,6 +357,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     } else {
         (vec![], vec![])
     };
+    stage!("window_filter");
 
     // 6. Cosine tables sized to the surviving frequencies
     let max_cx = l_scan
@@ -364,9 +376,11 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
         .unwrap_or(0);
     let cos_x = precompute_cos_table(w, max_cx + 1);
     let cos_y = precompute_cos_table(h, max_cy + 1);
+    stage!("cos_tables");
 
     // 7. Build gamma LUT and render
     let gamma_lut = build_gamma_lut(output);
+    stage!("gamma_lut");
     let mut rgba_out = vec![0u8; w * h * 4];
 
     for y in 0..h {
@@ -399,6 +413,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
             rgba_out[idx + 3] = round_half_away_from_zero(255.0 * clamp01(alpha)) as u8;
         }
     }
+    stage!("render");
 
     rgba_out
 }

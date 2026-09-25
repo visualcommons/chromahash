@@ -52,7 +52,7 @@ cell cannot be published here.
 >
 > | Claim | Reproducible from the tree? |
 > |---|---|
-> | Every table below equals a cell in `baselines/perf-report.json` and `baselines/perf-stages.json` | **Yes** — `mise run verify:benchmark`, cell by cell, exactly |
+> | Every table below equals a cell in `baselines/perf-report.json`, `baselines/perf-stages.json` and `baselines/perf-decode-stages.json` | **Yes** — `mise run verify:benchmark`, cell by cell, exactly |
 > | The M3 Pro's 34% / ~25% / 22-of-99 figures | **No.** That host's runs were never committed, and the machine was rejected rather than published |
 > | This host's cross-run agreement | **No.** Only one of the two bounded sweeps is committed, so `verify:benchmark`'s host-stability check has nothing to compare and reports itself `SKIP` |
 >
@@ -119,6 +119,11 @@ cell cannot be published here.
 > mise run benchmark:stages 512 512 1
 > mise run benchmark:stages 512 512 4
 >
+> # §1.1's three columns, the same way.
+> mise run benchmark:decode-stages 100 100 1 2000
+> mise run benchmark:decode-stages 100 100 4 20
+> mise run benchmark:decode-stages 100 100 4 200 32x32
+>
 > cp tools/comparison/output/perf/perf.json      tools/comparison/baselines/perf-report.json
 > cp tools/comparison/output/perf/perf-2.json    tools/comparison/baselines/perf-report-2.json
 > cp tools/comparison/output/perf/perf-full.json tools/comparison/baselines/perf-report-full.json
@@ -135,10 +140,11 @@ cell cannot be published here.
 > the middle.** Every recorder here stamps its output with `git.dirty`, and the
 > gate fails a run that carries it. `benchmark`/`benchmark:full` write to the
 > ignored `output/`, so they leave the tree clean — but they must therefore go
-> *first*, before anything else has dirtied it. `benchmark:stages` writes a
-> tracked file, and excludes only that one file from its own probe, so the three
-> invocations do not dirty each other but a copied-in `perf-report.json` would
-> dirty all three. Hence: sweeps, then stages, then the copies.
+> *first*, before anything else has dirtied it. `benchmark:stages` and
+> `benchmark:decode-stages` write tracked files, and their shared recorder
+> excludes exactly those two files from its probe, so the six invocations do
+> not dirty each other but a copied-in `perf-report.json` would dirty all six.
+> Hence: sweeps, then stages, then the copies.
 >
 > This block previously omitted `benchmark:stages` altogether, so following the
 > documented procedure left §1's baseline untouched at whatever revision it was
@@ -154,8 +160,10 @@ cell cannot be published here.
 >
 > Run it on a quiet machine, from a clean tree — every recorder stamps
 > `git.dirty`, and the gate fails on a run that cannot be traced to a revision.
-> That now includes §1: `benchmark:stages` commits `perf-stages.json`, and
-> `verify:benchmark` checks its provenance alongside the sweeps'.
+> That now includes §1 and §1.1: `benchmark:stages` and
+> `benchmark:decode-stages` commit `perf-stages.json` and
+> `perf-decode-stages.json`, and `verify:benchmark` checks their provenance
+> alongside the sweeps'.
 
 ---
 
@@ -231,6 +239,66 @@ any size or tier that matters":
   backend, which bounds what §5 can buy before §5 is measured at all: the
   `simd` feature covers 6.9 points of a 100-point budget at the size a caller
   most often encodes.
+
+### 1.1 Where decode time goes
+
+`mise run benchmark:decode-stages`, share of one decode. The fixture is a
+100×100 gradient encoded at the column's tier, then decoded at its natural
+raster or capped at 32×32; decode cost depends on the tier and the raster, not
+on the source's size. Before timing anything the instrumented build decodes
+every shared decode vector in `spec/test-vectors/` and must reproduce the
+spec's bytes, and the artifact records how many it did.
+
+> **Provenance.** Bound to `baselines/perf-decode-stages.json`, recorded at
+> **`8f5f4d1`** from a clean tree, all three columns at that one commit; the gate
+> checks both, and that each cell reproduced the spec vectors. The recorded
+> iterations are 2000, 20 and 200 — inversely to the cost of one decode, so each
+> column times a comparable interval.
+>
+> **Shares only, at whole-percent precision.** The host was loaded while these
+> were recorded, so no absolute decode time is published here; §2 remains the
+> source for those. Load moves shares too, least for a stage whose cost is
+> fixed: re-running the tier-1 column on the same host moved `render` by tens of
+> microseconds between runs while `gamma_lut` held within a few, so the tier-1
+> split between those two rows is the least stable figure in the table. Those
+> re-runs are not committed; only the recorded run is checked.
+
+| stage | t1 natural | t4 natural | t4 capped 32×32 |
+|---|---:|---:|---:|
+| `header` | 0% | 0% | 0% |
+| `selection` | 4% | 1% | 38% |
+| `ac_dequant` | 0% | 0% | 1% |
+| `window_filter` | 0% | 0% | 0% |
+| `cos_tables` | 1% | 0% | 0% |
+| `gamma_lut` | 66% | 0% | 4% |
+| **`render`** | 29% | 99% | 55% |
+| `unmarked` | 0% | 0% | 2% |
+
+Every row but `unmarked` is a `stage!` mark in `decode.rs`'s `render_at_size`,
+and the marks cover that function end to end: `header` (the descriptor, DC and
+scale fields), `selection` (sorting the candidate list and taking each
+channel's prefix), `ac_dequant` (reading and dequantizing every AC code),
+`window_filter` (the synthesis window and the frequency filter),
+`cos_tables`, `gamma_lut` (building the output gamut's 4096-entry transfer
+table) and `render` (the `O(w·h·K)` loop, with the output buffer it fills).
+**`unmarked` is a residual, like §1's `quantize_and_pack`, but it names no
+work:** it is the return from `render_at_size` and the timers' own overhead.
+
+**At the default tier, most of a decode is not the decode.** `gamma_lut` is
+**66%** of a tier-1 decode — the transfer table is rebuilt on every call, 4096
+evaluations of the gamma curve for a 32×32 raster of 1024 pixels, and it costs
+more than the render loop it serves (`render` is **29%**). The table depends only
+on the output gamut, so it is the same table every time.
+
+**At tier 4 the render loop is the decode:** **99%** of a natural tier-4 decode,
+everything else together about one point. **Capping moves the cost, not only
+the size:** at 32×32 the render loop shrinks and `selection` — which sorts the
+full tier-4 candidate list whatever the raster — is **38%** of what remains.
+
+The render loop is one mark on purpose. Splitting it into its inverse DCT and
+its per-pixel colour conversion would take a timer per pixel or a second loop,
+and either would measure a decoder this crate does not ship; §12.1 item 4 is
+sized with that limit stated.
 
 ## 2. Cost per tier
 
@@ -527,7 +595,9 @@ file and line, with each entry tagged by whether it moves a byte.
    tier, and their time cost vanishes at photo resolution.
 4. **SIMD in decode** — there is none. `decode.rs` runs a scalar per-pixel OKLAB
    inverse plus three gamma lookups inside the `O(w·h·K)` render loop, and at
-   tier 4 decode is the more expensive half (§2).
+   tier 4 decode is the more expensive half (§2). §1.1 adds that at the default
+   tier the larger cost is not that loop but a gamma table rebuilt on every
+   decode (§12.1 item 4).
 5. **A batch decode API** — none exists in any implementation, so every bulk
    decode is a serial loop.
 6. **Document the tier-4 cost.** §2 prices it; it is defensible for an archival
@@ -599,7 +669,7 @@ and `mise run rd:gate` are sufficient evidence, and no version moves.
 | 1 | `mulaw.rs:41` ← `encode.rs:561` | **Precompute the dequantization table, keyed on `(bits, index)`.** `mu_law_dequantize(index, bits, mu)` is a pure function of its arguments, and `mu` *is* fixed for a channel (`t.mu_l`) — yet `scale_fit=2` calls it inside a 63-code search over every coefficient, each call a `portable_pow` = a 20-term series plus a degree-25 Taylor polynomial. **`bits` is not fixed:** `AcQuantJob::bits_at(i)` (`encode.rs:468`) walks the job's tier list and returns a width that varies with the selection index. `LAYOUT_C` (`constants.rs:192`) is `l_tiers: [(8, 6), (14, 5)]` — 6-bit low band, 5-bit high band, one channel, reachable through `Tunables::layout_upper` and exercised by `constants.rs:823`. A table keyed on the index alone would hand the high band the low band's grid and dequantize it wrongly. Two widths per job at most, ≤ 2^6 − 1 = 63 indices each, so ≤ 128 entries — not the "≤ 32" an index-only table suggests. | The table holds the same values the calls return, *provided* `bits` is part of the key |
 | 2 | `mulaw.rs:7`, `encode.rs:469,481` | **Hoist the loop-invariants.** `mu_compress` recomputes `portable_ln(1.0 + mu)` on every quantize call for a constant `mu`; `bits_at`/`gain_at` walk the tier list per index per call. Note this is the *same* walk item 1 must key its table on: it is an inefficiency worth removing and a correctness constraint at once, so the two entries have to land together. | Same values, computed once |
 | 3 | `dct.rs:227` | **Vectorize across coefficients, not pixels.** The inner sum must keep its exact left-to-right order, which is why `simd/mod.rs` never touched it. Lanes over *distinct `(cx, cy)` pairs* preserve each coefficient's own order and are as parallel as the per-pixel case. | Per-lane arithmetic is unchanged; only which coefficient a lane holds — **but the arithmetic argument alone is not sufficient, and two things break it.** (a) **FMA contraction.** The kernel is `f += channel[x + y*w] * cx_row[x] * fy`; fusing the multiply-add keeps one rounding instead of two and changes the result. Rust does not contract today, but intrinsics backends are written by hand and `fmadd` is the obvious instruction to reach for. The lanes must use separate multiply and add. (b) **Regrouping.** `channel * (cx * fy)` is the natural vector form and is *not* `(channel * cx) * fy`; float multiplication is not associative, and this repo ships four hand-written backends that would each have to resist the same simplification. Both belong in the vector-diff gate, not in review |
-| 4 | `decode.rs:372`, `dct.rs:265` | **Flatten `cos_x`/`cos_y`.** They are `Vec<Vec<f64>>`, a pointer chase per coefficient per pixel in the `O(w·h·K)` render loop. A strided `Vec<f64>` removes it. And there is **no SIMD in decode at all** — a scalar per-pixel OKLAB inverse plus three gamma lookups — while §2 puts tier-4 decode at 234 ms, the most expensive operation the format asks for. | A layout change reads the same values |
+| 4 | `decode.rs:21,382`; `decode.rs:386`, `dct.rs:269` | **Decode, in two parts sized by §1.1.** (a) **Build the gamma LUT once per output gamut, not once per decode.** `build_gamma_lut` evaluates the transfer curve 4096 times — each a `portable_pow` for sRGB and Display P3 — on every call, and §1.1 measures it at **66%** of a default-tier decode, more than the render loop itself. It is a pure function of the gamut, so a table built once (or generated) holds the same 4096 bytes. `average_color` (`decode.rs:546`) builds the same table to convert one pixel. (b) **Flatten `cos_x`/`cos_y`, and vectorize the render loop.** They are `Vec<Vec<f64>>`, a pointer chase per coefficient per pixel in the `O(w·h·K)` loop, and there is **no SIMD in decode at all** — a scalar per-pixel OKLAB inverse plus three gamma lookups. §1.1 puts that loop at **99%** of a natural tier-4 decode, the operation §2 prices at 234 ms, so (b) is bounded by 99% there and by 29% at tier 1. §1.1 does not split the loop's inverse DCT from its colour conversion, so how that bound divides between flattening and SIMD is not measured. | (a) the same function of the same argument, computed fewer times; (b) a layout change reads the same values; a vector colour conversion is byte-identical only if it keeps the scalar path's operation order, and would need the differential tests `simd/` already runs for encode |
 | 5 | `encode.rs:736` | **Early-exit `sse_with_delta`.** `acc` accumulates monotonically and the caller keeps only strict improvements, so it can abort the moment `acc >= best`. Off by default (`refine_passes: 0`) but §4 measures refinement at **20–37 ms against 2.45 ms shipped**, and it is what the `refine-*` sweeps spend their time in. | Changes when the loop stops, never which code wins |
 | 6 | `encode.rs:224,233,240,263` | **Fuse the first three per-pixel passes; `composite` cannot join them.** Four full `W·H` passes and **eight** `W·H` allocations — `lin_r`/`lin_g`/`lin_b`/`alpha_pixels`, `oklab_pixels` (3 f64 each), `l_chan`/`a_chan`/`b_chan` — which is 10 f64 per pixel, or **20 MiB** at 512×512, for a stage §1 prices at 16.5%. **An earlier revision of this row said `linearize` and `composite` fuse. They do not:** `composite` (`encode.rs:263`) reads `avg_l`/`avg_a`/`avg_b`, which are the *completed* `alpha_average` reduction (`236`) after its normalization by `avg_alpha` (`250`). A full-array barrier sits between exactly the two passes that row paired, and fusing across it would composite against a running partial mean — different bytes, not merely a different order. What is available: fuse `linearize` + `oklab_forward` + `alpha_average` into one tiled pass, and drop `alpha_pixels` entirely by re-deriving alpha in `composite` from `rgba[i*4+3] as f64 / 255.0`, the identical expression. That is 8 buffers → 4 and 4 passes → 2; `oklab_pixels` must survive the barrier and cannot be tiled away. | Elementwise work in unchanged order, **and** the reduction still accumulates in flat pixel index order — which holds only if the tile length is a multiple of the SIMD lane count, so no pixel moves between `oklab_forward_batch`'s vector body and its scalar tail. `composite` stays a separate pass; nothing about this makes the barrier crossable |
 | 7 | `bitpack.rs:3` | **Word-at-a-time bit writing**, against the current divide-and-modulo per bit. Correct and genuinely small — ≤1623 bytes — and listed for completeness rather than for its size. | Same bits |
@@ -631,15 +701,18 @@ were.
 
 * **No entry here is measured as an implemented speedup** except #8, which is
   prototyped behind `Tunables::dct_separable`. The others are located and sized
-  from §1's stage shares, not from a build that has them. A stage share bounds a
+  from §1's and §1.1's stage shares, not from a build that has them. A stage share bounds a
   lever; it does not deliver one.
 * **The byte-identical column is an argument, not a proof.** Each entry states
   why the output cannot move, and each would still ship behind the full vector
   set across nine languages plus `rd:gate` at 0.00% drift, because "cannot move"
   and "did not move" are different claims and this repo has a gate for the
   second one.
-* **Decode is under-measured relative to its cost.** §2 prices tier-4 decode at
-  234 ms — the single most expensive operation the format performs — and §1's
-  stage breakdown covers *encode* only. There is no decode equivalent, so item 4
-  is sized by reading `decode.rs`, not by measurement. That is the largest gap
-  in this document that a run could close.
+* **Decode is measured by stage, not below it.** §1.1 is the decode
+  equivalent of §1, and item 4 is sized from it rather than from reading
+  `decode.rs`: the gamma LUT is **66%** of a default-tier decode and the render
+  loop **99%** of a tier-4 one. What §1.1 cannot say is how the render loop
+  divides between its inverse DCT and its colour conversion, so item 4(b)'s
+  two halves share one bound. §1.1 also publishes no absolute time: its shares
+  were recorded on a loaded host, and §2's 234 ms is still the only measured
+  tier-4 decode time.

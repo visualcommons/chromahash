@@ -79,18 +79,22 @@ import {
 import {
   type Binding,
   type Counters,
+  type DecodeStageCell,
   type Edit,
   type Failure,
   type ProseClaim,
   type RunDoc,
   Runs,
   type StageCell,
+  checkDecodeStagesProvenance,
   checkProseClaims,
   checkStability,
   checkStabilityClaim,
+  checkStageRowCoverage,
   checkStagesProvenance,
   checkTable,
   clean,
+  parseDecodeStages,
   parseStages,
   parseTables,
   parseUnavailableMarker,
@@ -1864,6 +1868,215 @@ for (const [label, overrides, needle] of [
       twice.failures.length === 1 &&
       (twice.failures[0]?.detail ?? "").includes("must name one figure"),
     `right=${right.failures.length} wrong=${details(wrong.failures)} finer=${finer.failures.length} gone=${gone.failures.length} twice=${twice.failures.length}`,
+  );
+}
+
+// B14. A prose claim bound to a cell or stage the baseline lacks fails. It
+//      used to be skipped, so a claim pointing at the wrong cell never failed.
+{
+  const stages: Record<string, StageCell> = {
+    "512x512-t1": {
+      ns: {},
+      sharePct: { linearize: 5.43 },
+      git: { rev: "e53e6cd", dirty: false },
+    },
+  };
+  const claim = (cell: string, stage: string): ProseClaim => ({
+    what: "x",
+    pattern: /is ([\d.]+)%/,
+    cell,
+    stages: [stage],
+  });
+  const noCell = checkProseClaims("is 5.4%", stages, [
+    claim("100x100-t1", "linearize"),
+  ]);
+  const noStage = checkProseClaims(
+    "is 5.4%",
+    stages,
+    [claim("512x512-t1", "composite")],
+    "perf-decode-stages.json",
+  );
+  check(
+    "a prose claim bound to a missing cell or stage fails, naming the baseline",
+    noCell.failures.length === 1 &&
+      noCell.checked === 0 &&
+      (noCell.failures[0]?.detail ?? "").includes("has no cell 100x100-t1") &&
+      noStage.failures.length === 1 &&
+      (noStage.failures[0]?.detail ?? "").includes(
+        "perf-decode-stages.json records no composite",
+      ),
+    `noCell=${details(noCell.failures)} noStage=${details(noStage.failures)}`,
+  );
+}
+
+// B15. §1.1's baseline: refused on §1's terms, under its own schema.
+{
+  const cases: [string, string | null, string][] = [
+    ["no file", null, "benchmark:decode-stages 100 100 4 20"],
+    [
+      "§1's schema",
+      JSON.stringify({ schema: "chromahash-perf-stages/1", cells: { a: {} } }),
+      "expected chromahash-perf-decode-stages/1",
+    ],
+    [
+      "no cells",
+      JSON.stringify({ schema: "chromahash-perf-decode-stages/1", cells: {} }),
+      "holds no cells",
+    ],
+  ];
+  const wrong = cases.filter(([, text, needle]) => {
+    const r = parseDecodeStages(text);
+    return r.cells !== null || !(r.error ?? "").includes(needle);
+  });
+  check(
+    "a missing, wrong-schema or empty decode-stages file is an error",
+    wrong.length === 0,
+    wrong.length === 0
+      ? "3 refused"
+      : `not refused: ${wrong.map(([n]) => n).join(", ")}`,
+  );
+}
+
+// B16. §1.1's provenance: a decode cell must say it reproduced the spec
+//      vectors, be filed under the key its fields describe, and carry shares
+//      that are its own ns over whole_decode.
+{
+  const good = (): DecodeStageCell => ({
+    width: 100,
+    height: 100,
+    tier: 4,
+    iters: 20,
+    cap: { width: 32, height: 32 },
+    render: { width: 32, height: 32 },
+    hashBytes: 1623,
+    vectorsChecked: 19,
+    ns: {
+      selection: 400,
+      render: 590,
+      unmarked: 10,
+      stage_sum: 990,
+      whole_decode: 1000,
+    },
+    sharePct: { selection: 40, render: 59, unmarked: 1 },
+    git: { rev: "e68291e", dirty: false },
+  });
+  const run = (
+    mut: (c: DecodeStageCell) => void,
+    key = "100x100-t4-cap32x32",
+  ) => {
+    const c = good();
+    mut(c);
+    return checkDecodeStagesProvenance({ [key]: c }).map((f) => f.column);
+  };
+  const cases: [string, string[], string][] = [
+    ["clean", run(() => {}), ""],
+    [
+      "no vector check",
+      run((c) => {
+        c.vectorsChecked = 0;
+      }),
+      "vectorsChecked",
+    ],
+    [
+      "vector check absent",
+      run((c) => {
+        (c as { vectorsChecked: number | undefined }).vectorsChecked =
+          undefined;
+      }),
+      "vectorsChecked",
+    ],
+    ["wrong key", run(() => {}, "100x100-t4-natural"), "key"],
+    [
+      "zero iters",
+      run((c) => {
+        c.iters = 0;
+      }),
+      "iters",
+    ],
+    [
+      "share edited",
+      run((c) => {
+        c.sharePct.render = 60;
+      }),
+      "sharePct",
+    ],
+    [
+      "share missing",
+      run((c) => {
+        c.sharePct = { selection: 40, render: 59 };
+      }),
+      "sharePct",
+    ],
+    [
+      // A key present with no number: `NaN > tol` is false, so a check
+      // written as "fail when off by more than tol" would wave it through.
+      "share not a number",
+      run((c) => {
+        c.sharePct.render = undefined as unknown as number;
+      }),
+      "sharePct",
+    ],
+    [
+      "sum exceeds whole",
+      run((c) => {
+        c.ns.stage_sum = 2000;
+      }),
+      "ns",
+    ],
+    [
+      "dirty",
+      run((c) => {
+        c.git.dirty = true;
+      }),
+      "git.dirty",
+    ],
+  ];
+  const wrong = cases.filter(([, cols, want]) =>
+    want === "" ? cols.length !== 0 : !(cols.length === 1 && cols[0] === want),
+  );
+  check(
+    "a decode cell without its vector check, under the wrong key, or with shares off its ns fails",
+    wrong.length === 0,
+    wrong.length === 0
+      ? `${cases.length} cases`
+      : wrong
+          .map(([n, cols]) => `${n}: ${cols.join(",") || "(none)"}`)
+          .join("; "),
+  );
+}
+
+// B17. A stage table's rows must be exactly the stages its baseline records.
+{
+  const cell: StageCell = {
+    ns: {},
+    sharePct: { selection: 40, render: 59, unmarked: 1 },
+    git: { rev: "e68291e", dirty: false },
+  };
+  const ok = checkStageRowCoverage(
+    ["selection", "render", "unmarked"],
+    { k: cell },
+    "t",
+  );
+  const omits = checkStageRowCoverage(
+    ["selection", "render"],
+    { k: cell },
+    "t",
+  );
+  const extra = checkStageRowCoverage(
+    ["selection", "render", "unmarked", "idct"],
+    { k: cell },
+    "t",
+  );
+  check(
+    "a stage table that omits a recorded stage or names an unrecorded one fails",
+    ok.length === 0 &&
+      omits.length === 1 &&
+      (omits[0]?.detail ?? "").includes(
+        "recorded but not in the table: unmarked",
+      ) &&
+      extra.length === 1 &&
+      (extra[0]?.detail ?? "").includes("in the table but not recorded: idct"),
+    `ok=${ok.length} omits=${details(omits)} extra=${details(extra)}`,
   );
 }
 

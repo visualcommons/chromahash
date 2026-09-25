@@ -686,14 +686,25 @@ export function parseStages(text: string | null): {
   cells: Record<string, StageCell> | null;
   error: string | null;
 } {
-  const where = `tools/comparison/baselines/${STAGES_BASELINE}`;
+  return parseStageFile<StageCell>(text, {
+    baseline: STAGES_BASELINE,
+    schema: STAGES_SCHEMA,
+    absent:
+      "record §1's three columns with `mise run benchmark:stages 100 100 1`, `… 512 512 1`, `… 512 512 4`",
+    rerecord: "re-record §1's three columns with `mise run benchmark:stages`",
+  });
+}
+
+/** What `parseStages` and `parseDecodeStages` share: every way of not having a file. */
+function parseStageFile<C>(
+  text: string | null,
+  o: { baseline: string; schema: string; absent: string; rerecord: string },
+): { cells: Record<string, C> | null; error: string | null } {
+  const where = `tools/comparison/baselines/${o.baseline}`;
   if (text === null) {
-    return {
-      cells: null,
-      error: `${where} does not exist — record §1's three columns with \`mise run benchmark:stages 100 100 1\`, \`… 512 512 1\`, \`… 512 512 4\``,
-    };
+    return { cells: null, error: `${where} does not exist — ${o.absent}` };
   }
-  let doc: { schema?: string; cells?: Record<string, StageCell> };
+  let doc: { schema?: string; cells?: Record<string, C> };
   try {
     doc = JSON.parse(text) as typeof doc;
   } catch (e) {
@@ -702,10 +713,10 @@ export function parseStages(text: string | null): {
       error: `${where} is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
     };
   }
-  if (doc.schema !== STAGES_SCHEMA) {
+  if (doc.schema !== o.schema) {
     return {
       cells: null,
-      error: `${where}: schema ${doc.schema ?? "(none)"}, expected ${STAGES_SCHEMA} — re-record §1's three columns with \`mise run benchmark:stages\``,
+      error: `${where}: schema ${doc.schema ?? "(none)"}, expected ${o.schema} — ${o.rerecord}`,
     };
   }
   if (!doc.cells || Object.keys(doc.cells).length === 0) {
@@ -713,6 +724,52 @@ export function parseStages(text: string | null): {
   }
   return { cells: doc.cells, error: null };
 }
+
+// ─── §1.1's decode-stages baseline ──────────────────────────────────────────
+
+export const DECODE_STAGES_BASELINE = "perf-decode-stages.json";
+export const DECODE_STAGES_SCHEMA = "chromahash-perf-decode-stages/1";
+
+/** The commands that record §1.1, one per column. */
+export const DECODE_STAGES_COMMANDS = [
+  "mise run benchmark:decode-stages 100 100 1 2000",
+  "mise run benchmark:decode-stages 100 100 4 20",
+  "mise run benchmark:decode-stages 100 100 4 200 32x32",
+] as const;
+
+/**
+ * One column of §1.1: a gradient of `width`×`height` encoded at `tier`, then
+ * decoded at its natural raster (`cap: null`) or capped, stage by stage.
+ */
+export interface DecodeStageCell extends StageCell {
+  width: number;
+  height: number;
+  tier: number;
+  iters: number;
+  cap: { width: number; height: number } | null;
+  render: { width: number; height: number };
+  hashBytes: number;
+  /** Spec decode vectors the instrumented build reproduced before timing. */
+  vectorsChecked: number;
+}
+
+/** §1.1's baseline, refused on exactly the terms §1's is. */
+export function parseDecodeStages(text: string | null): {
+  cells: Record<string, DecodeStageCell> | null;
+  error: string | null;
+} {
+  return parseStageFile<DecodeStageCell>(text, {
+    baseline: DECODE_STAGES_BASELINE,
+    schema: DECODE_STAGES_SCHEMA,
+    absent: `record §1.1's three columns with ${DECODE_STAGES_COMMANDS.map((c) => `\`${c}\``).join(", ")}`,
+    rerecord:
+      "re-record §1.1's three columns with `mise run benchmark:decode-stages`",
+  });
+}
+
+/** The key the recorder files a decode cell under, derived from its fields. */
+export const decodeCellKey = (c: DecodeStageCell): string =>
+  `${c.width}x${c.height}-t${c.tier}-${c.cap ? `cap${c.cap.width}x${c.cap.height}` : "natural"}`;
 
 /**
  * Figures the prose derives from §1's table, bound to the same baseline.
@@ -1004,19 +1061,27 @@ export function checkTable(
 export function checkStagesProvenance(
   stages: Record<string, StageCell>,
 ): Failure[] {
+  return checkOneCleanCommit(stages, STAGES_BASELINE, "§1", "benchmark:stages");
+}
+
+function checkOneCleanCommit(
+  stages: Record<string, StageCell>,
+  baseline: string,
+  section: string,
+  task: string,
+): Failure[] {
   const failures: Failure[] = [];
   const dirty = Object.entries(stages)
     .filter(([, c]) => c.git?.dirty)
     .map(([k]) => k);
   if (dirty.length > 0) {
     failures.push({
-      where: STAGES_BASELINE,
+      where: baseline,
       column: "git.dirty",
       row: dirty.join(", "),
       documented: "—",
       measured: "dirty",
-      detail:
-        "recorded from a working tree with uncommitted changes, so these shares cannot be traced to a source state — re-run benchmark:stages from a clean tree",
+      detail: `recorded from a working tree with uncommitted changes, so these shares cannot be traced to a source state — re-run ${task} from a clean tree`,
     });
   }
   const revs = new Map<string, string[]>();
@@ -1026,13 +1091,168 @@ export function checkStagesProvenance(
   }
   if (revs.size > 1) {
     failures.push({
-      where: STAGES_BASELINE,
+      where: baseline,
       column: "git.rev",
       row: [...revs.keys()].join(" vs "),
       documented: "one commit",
       measured: `${revs.size} commits`,
-      detail: `§1 reads as one measurement across its three columns, and these cells are from different builds: ${[...revs.entries()].map(([r, ks]) => `${r} (${ks.join(", ")})`).join("; ")}`,
+      detail: `${section} reads as one measurement across its columns, and these cells are from different builds: ${[...revs.entries()].map(([r, ks]) => `${r} (${ks.join(", ")})`).join("; ")}`,
     });
+  }
+  return failures;
+}
+
+/**
+ * §1.1's provenance: §1's one-clean-commit rule, plus what a decode cell must
+ * carry to mean what §1.1 says it means.
+ *
+ * - `vectorsChecked` ≥ 1. §1.1 says the instrumented build reproduced the
+ *   spec's decode vectors before timing; this is the field that says it did.
+ * - The key matches the fields, so a column header cannot be bound to a cell
+ *   that measured something else.
+ * - `iters` ≥ 1, `whole_decode` > 0, and `whole_decode` ≥ `stage_sum`.
+ * - Every share is its own `ns` over `whole_decode`, and together they cover
+ *   every recorded stage — so the file cannot be hand-edited in one field and
+ *   not the other, which is exactly how §1's shares could drift from its ns.
+ */
+export function checkDecodeStagesProvenance(
+  stages: Record<string, DecodeStageCell>,
+): Failure[] {
+  const failures = checkOneCleanCommit(
+    stages,
+    DECODE_STAGES_BASELINE,
+    "§1.1",
+    "benchmark:decode-stages",
+  );
+  const fail = (
+    row: string,
+    column: string,
+    measured: string,
+    detail: string,
+  ) =>
+    failures.push({
+      where: DECODE_STAGES_BASELINE,
+      column,
+      row,
+      documented: "—",
+      measured,
+      detail,
+    });
+  for (const [key, c] of Object.entries(stages)) {
+    if (!Number.isInteger(c.vectorsChecked) || c.vectorsChecked < 1) {
+      fail(
+        key,
+        "vectorsChecked",
+        String(c.vectorsChecked),
+        "no record that the instrumented build reproduced the spec's decode vectors before timing — re-record with benchmark:decode-stages",
+      );
+    }
+    const derived = decodeCellKey(c);
+    if (derived !== key) {
+      fail(
+        key,
+        "key",
+        derived,
+        "the cell's fields describe a different measurement from the key it is filed under",
+      );
+    }
+    if (!Number.isInteger(c.iters) || c.iters < 1) {
+      fail(
+        key,
+        "iters",
+        String(c.iters),
+        "a cell must average at least one decode",
+      );
+    }
+    const ns = c.ns ?? {};
+    const whole = ns.whole_decode;
+    const sum = ns.stage_sum;
+    if (
+      whole === undefined ||
+      !(whole > 0) ||
+      sum === undefined ||
+      sum > whole
+    ) {
+      fail(
+        key,
+        "ns",
+        `whole_decode=${whole} stage_sum=${sum}`,
+        "whole_decode must be positive and no smaller than the sum of its stages",
+      );
+      continue;
+    }
+    const stageKeys = Object.keys(ns)
+      .filter((k) => k !== "whole_decode" && k !== "stage_sum")
+      .sort();
+    const shareKeys = Object.keys(c.sharePct ?? {}).sort();
+    if (stageKeys.join(",") !== shareKeys.join(",")) {
+      fail(
+        key,
+        "sharePct",
+        shareKeys.join(", "),
+        `shares must cover exactly the recorded stages (${stageKeys.join(", ")})`,
+      );
+      continue;
+    }
+    // Written as "not within", so a share that is not a number fails too:
+    // every comparison with NaN is false.
+    const off = stageKeys.filter(
+      (k) =>
+        !(
+          Math.abs(
+            (c.sharePct[k] ?? Number.NaN) -
+              ((ns[k] ?? Number.NaN) * 100) / whole,
+          ) <= 1e-9
+        ),
+    );
+    if (off.length > 0) {
+      fail(
+        key,
+        "sharePct",
+        off.join(", "),
+        "a share disagrees with its own ns over whole_decode",
+      );
+    }
+  }
+  return failures;
+}
+
+/**
+ * The rows of a stage table against the stages its baseline records. A stage
+ * the table omits is time the table silently leaves out, and a row naming no
+ * recorded stage is a figure nothing backs; both fail. `labels` are the
+ * table's row labels, cleaned.
+ */
+export function checkStageRowCoverage(
+  labels: readonly string[],
+  stages: Record<string, StageCell>,
+  where: string,
+): Failure[] {
+  const failures: Failure[] = [];
+  const rows = new Set(labels);
+  for (const [key, cell] of Object.entries(stages)) {
+    const recorded = Object.keys(cell.sharePct ?? {});
+    const omitted = recorded.filter((s) => !rows.has(s));
+    const unbacked = [...rows].filter((r) => !recorded.includes(r));
+    if (omitted.length > 0 || unbacked.length > 0) {
+      failures.push({
+        where,
+        column: key,
+        row: [...omitted, ...unbacked].join(", "),
+        documented: [...rows].join(", "),
+        measured: recorded.join(", "),
+        detail: [
+          omitted.length > 0
+            ? `recorded but not in the table: ${omitted.join(", ")}`
+            : "",
+          unbacked.length > 0
+            ? `in the table but not recorded: ${unbacked.join(", ")}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("; "),
+      });
+    }
   }
   return failures;
 }
@@ -1047,6 +1267,7 @@ export function checkProseClaims(
   doc: string,
   stages: Record<string, StageCell>,
   claims: readonly ProseClaim[],
+  baseline: string = STAGES_BASELINE,
 ): { failures: Failure[]; checked: number } {
   const failures: Failure[] = [];
   let checked = 0;
@@ -1067,8 +1288,27 @@ export function checkProseClaims(
       continue;
     }
     const quotedRaw = all[0]?.[1];
+    if (quotedRaw === undefined) continue;
+    // A claim bound to a cell or stage the baseline does not hold is a figure
+    // nothing checks, and it used to be skipped without a word — so a claim
+    // could never fail by pointing at the wrong cell.
     const cell = stages[claim.cell];
-    if (quotedRaw === undefined || !cell) continue;
+    const absent = cell
+      ? claim.stages.filter((st) => cell.sharePct[st] === undefined)
+      : [];
+    if (!cell || absent.length > 0) {
+      failures.push({
+        where: "PERFORMANCE.md prose",
+        column: claim.what,
+        row: claim.stages.join(" + "),
+        documented: `${quotedRaw}%`,
+        measured: "—",
+        detail: cell
+          ? `${claim.cell} in ${baseline} records no ${absent.join(", ")}`
+          : `${baseline} has no cell ${claim.cell}`,
+      });
+      continue;
+    }
     const quoted = Number(quotedRaw);
     if (!Number.isFinite(quoted)) {
       failures.push({
@@ -1082,16 +1322,7 @@ export function checkProseClaims(
       continue;
     }
     let expected = 0;
-    let missing = false;
-    for (const st of claim.stages) {
-      const v = cell.sharePct[st];
-      if (v === undefined) {
-        missing = true;
-        break;
-      }
-      expected += v;
-    }
-    if (missing) continue;
+    for (const st of claim.stages) expected += cell.sharePct[st] ?? 0;
     const dot = quotedRaw.indexOf(".");
     const places = dot < 0 ? 0 : quotedRaw.length - dot - 1;
     const tol = 0.5 * 10 ** -places;
@@ -1103,7 +1334,7 @@ export function checkProseClaims(
         row: claim.stages.join(" + "),
         documented: `${quotedRaw}%`,
         measured: `${expected.toFixed(Math.max(places, 2))}%`,
-        detail: `from ${claim.cell} in ${STAGES_BASELINE}`,
+        detail: `from ${claim.cell} in ${baseline}`,
       });
     }
   }

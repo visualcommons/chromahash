@@ -436,7 +436,7 @@ run = "pnpm --prefix tools/comparison run lint:fix"
 # The original cross-language performance harness, superseded by the unified perf
 # sweep in tools/comparison/src/perf/ that `benchmark` now runs. No task here
 # executes it — the first four tasks below only lint and format the directory
-# (test:benchmark tests record_stages.py, the §1 recorder beside it), to the
+# (test:benchmark tests record_stages.py, the §1/§1.1 recorder beside it), to the
 # same contract as the `python/` package (see tools/benchmark/pyproject.toml).
 # It survives as a local investigation tool and as the only harness that carries
 # the ThumbHash timing baselines; nothing it prints is published.
@@ -459,12 +459,14 @@ description = "Auto-fix benchmark driver lint findings (Ruff)"
 run = "uvx ruff check --fix tools/benchmark"
 
 # record_stages.py is the one module here whose output is published: it writes
-# baselines/perf-stages.json, which verify:benchmark gates PERFORMANCE.md §1
-# against. Its tests run it in a throwaway git repo under tools/benchmark/output/
-# (ignored): per-cell merging, refusal of another schema, and a dirty probe that
-# excludes only its own output. Standard library only.
+# baselines/perf-stages.json and baselines/perf-decode-stages.json, which
+# verify:benchmark gates PERFORMANCE.md §1 and §1.1 against. Its tests run it in
+# a throwaway git repo under tools/benchmark/output/ (ignored): per-cell merging,
+# refusal of another schema, a decode cell refused without its spec-vector
+# check, and a dirty probe that excludes only the recorder's own two outputs.
+# Standard library only.
 [tasks."test:benchmark"]
-description = "Test the §1 stages recorder (tools/benchmark/record_stages.py)"
+description = "Test the §1/§1.1 stages recorder (tools/benchmark/record_stages.py)"
 run = "python3 -m unittest discover -s tools/benchmark -p 'test_*.py'"
 
 # ─── ThumbHash baseline (native Rust) ─────────────────────────────────────────

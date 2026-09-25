@@ -48,8 +48,10 @@ simd = []
 simd-diff-tests = ["simd"]
 
 # `bench-internals` (off by default) compiles the per-stage timing in
-# `src/encode.rs` and the `bench_stages` example that reads it, so
-# `mise run benchmark:stages` can say where encode time actually goes. It adds
+# `src/encode.rs` and `src/decode.rs`, and the `bench_stages` and
+# `bench_decode_stages` examples that read it, so `mise run benchmark:stages`
+# and `mise run benchmark:decode-stages` can say where encode and decode time
+# actually go. It adds
 # no dependency and no default-build API: with the feature off the `stage!`
 # marks expand to nothing, so the shipped build contains none of it. Deliberately
 # NOT part of `full` — `full` means "test everything", and this is a measurement
@@ -96,6 +98,13 @@ required-features = ["spec-vectors"]
 [[example]]
 name = "bench_stages"
 required-features = ["bench-internals"]
+
+# Also needs `spec-vectors`: before timing anything it decodes every shared
+# decode vector through the instrumented build and requires the spec's bytes,
+# which reads the sibling spec/ dir exactly as tests/spec_vectors.rs does.
+[[example]]
+name = "bench_decode_stages"
+required-features = ["bench-internals", "spec-vectors"]
 
 [dev-dependencies]
 # Test-only: randomized property tests for the invariants the golden vectors

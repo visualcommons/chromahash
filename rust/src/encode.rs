@@ -129,11 +129,9 @@ struct Analysis {
     cos_y: Vec<Vec<f64>>,
 }
 
-/// Signal-path front half of the encoder (spec §10 steps 1–7): color
-/// conversion, alpha handling, coefficient selection, and the forward DCT.
-/// Shared by [`encode_with`] and the sweep-only coefficient dump.
-/// Stage timing for `mise run benchmark:stages`, compiled only under the
-/// off-by-default `bench-internals` feature.
+/// Stage timing for `mise run benchmark:stages` and
+/// `mise run benchmark:decode-stages`, compiled only under the off-by-default
+/// `bench-internals` feature.
 ///
 /// Answering "where does encode time actually go" needs per-stage numbers, and
 /// this crate has no dependencies to profile with. Everything here is behind the
@@ -141,6 +139,13 @@ struct Analysis {
 /// `stage!` marks below expand to nothing at all. It is also invisible to the
 /// mutation sweep, which builds with `no_default_features` (see
 /// rust/.cargo/mutants.toml), so it adds no mutants to the hot path.
+///
+/// The decoder marks its own stages through the same recorder (`decode.rs`
+/// imports `stage!` from here). One recorder serves both because a mark is
+/// "time since the previous mark on this thread", so the two only stay
+/// separable while neither calls the other: the encoder calls no decode entry
+/// point outside its tests, and each example resets the recorder around the one
+/// operation it times.
 #[cfg(feature = "bench-internals")]
 pub mod stage_timing {
     use std::cell::RefCell;
@@ -190,6 +195,13 @@ macro_rules! stage {
     ($name:literal) => {};
 }
 
+// Crate-visible so the decoder marks its stages with the same macro, and so
+// with the same guarantee: nothing at all in a build without the feature.
+pub(crate) use stage;
+
+/// Signal-path front half of the encoder (spec §10 steps 1–7): color
+/// conversion, alpha handling, coefficient selection, and the forward DCT.
+/// Shared by [`encode_with`] and the sweep-only coefficient dump.
 fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) -> Analysis {
     assert!(w >= 1, "width must be >= 1");
     assert!(h >= 1, "height must be >= 1");
