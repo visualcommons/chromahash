@@ -743,6 +743,38 @@ export function naturalImagePath(spec: NaturalImageSpec): string {
 }
 
 /**
+ * The curated pins `ensureNaturalImages` fetches: every one that is not in
+ * the sealed holdout2 split, or only the labels in `only`. A label that is
+ * unknown, or that names a holdout2 pin, throws before anything is fetched.
+ * `images` is the table to select from, so the self-test can drive it with
+ * fixtures.
+ */
+export function naturalImagesToFetch(
+  only?: readonly string[],
+  images: readonly NaturalImageSpec[] = CURATED_IMAGES,
+): NaturalImageSpec[] {
+  const wanted = only ? new Set(only) : null;
+  if (wanted) {
+    const byLabel = new Map(images.map((s) => [s.label, s]));
+    for (const label of wanted) {
+      const spec = byLabel.get(label);
+      if (spec === undefined) {
+        throw new Error(`unknown curated image label: ${label}`);
+      }
+      if (spec.split === "holdout2") {
+        throw new Error(
+          `${label} is in the sealed holdout2 split; only ensureHoldout2Images fetches it, through the register gate`,
+        );
+      }
+    }
+  }
+  return images.filter(
+    (spec) =>
+      spec.split !== "holdout2" && (wanted === null || wanted.has(spec.label)),
+  );
+}
+
+/**
  * Ensure every curated image is present and content-verified, whether from
  * cache or from the network. A fetch failure or a digest mismatch throws: a
  * partial or drifted corpus would silently move every reported mean, so the
@@ -758,30 +790,13 @@ export function naturalImagePath(spec: NaturalImageSpec): string {
 export async function ensureNaturalImages(
   only?: readonly string[],
 ): Promise<string[]> {
+  const specs = naturalImagesToFetch(only);
   await fs.mkdir(NATURAL_DIR, { recursive: true });
-
-  const wanted = only ? new Set(only) : null;
-  if (wanted) {
-    const byLabel = new Map(CURATED_IMAGES.map((s) => [s.label, s]));
-    for (const label of wanted) {
-      const spec = byLabel.get(label);
-      if (spec === undefined) {
-        throw new Error(`unknown curated image label: ${label}`);
-      }
-      if (spec.split === "holdout2") {
-        throw new Error(
-          `${label} is in the sealed holdout2 split; only ensureHoldout2Images fetches it, through the register gate`,
-        );
-      }
-    }
-  }
 
   const paths: string[] = [];
   let downloadCount = 0;
 
-  for (const spec of CURATED_IMAGES) {
-    if (spec.split === "holdout2") continue;
-    if (wanted && !wanted.has(spec.label)) continue;
+  for (const spec of specs) {
     const filePath = naturalImagePath(spec);
     const downloaded = await ensurePinnedFixture({
       filePath,

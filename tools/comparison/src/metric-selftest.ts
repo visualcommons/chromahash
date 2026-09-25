@@ -86,7 +86,11 @@ import {
   openHoldout2,
   registerStatus,
 } from "./holdout-images.ts";
-import { CURATED_IMAGES, type NaturalImageSpec } from "./natural-images.ts";
+import {
+  CURATED_IMAGES,
+  type NaturalImageSpec,
+  naturalImagesToFetch,
+} from "./natural-images.ts";
 import { covariatesOf, isFreeLicence, srgbToLab } from "./corpus-covariates.ts";
 import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
@@ -2704,6 +2708,37 @@ console.log("\nverify:experiments — the table register and result shape\n");
     const message = thrown(() => holdout2Specs([bad]));
     check(`${what} is refused`, message.includes("is labelled"), message);
   }
+
+  // The ordinary natural-image fetch never touches a holdout2 pin.
+  const table: NaturalImageSpec[] = [
+    { ...spec, label: "natural-open", split: "tune" },
+    spec,
+    { ...spec, label: "natural-spent", split: "tune2" },
+  ];
+  const fetchLabels = (only?: readonly string[]): string =>
+    naturalImagesToFetch(only, table)
+      .map((s) => s.label)
+      .join(",");
+  check(
+    "the natural-image fetch skips every holdout2 pin",
+    fetchLabels() === "natural-open,natural-spent",
+    fetchLabels(),
+  );
+  check(
+    "a label list is honoured, and unknown labels still throw",
+    fetchLabels(["natural-spent"]) === "natural-spent" &&
+      thrown(() => fetchLabels(["natural-absent"])).startsWith(
+        "unknown curated image label",
+      ),
+    fetchLabels(["natural-spent"]),
+  );
+  const askedSealed = thrown(() => fetchLabels([spec.label]));
+  check(
+    "a holdout2 pin asked for by label is refused before any fetch",
+    askedSealed.includes("sealed holdout2 split") &&
+      askedSealed.includes("ensureHoldout2Images"),
+    askedSealed,
+  );
   if (opened !== null) {
     const empty = await rejected(() => ensureHoldout2Images(opened, []));
     check(
