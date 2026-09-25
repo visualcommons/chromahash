@@ -161,7 +161,12 @@ const STAGE_ROWS: Record<string, string> = {
   selection: "selection",
   cos_tables: "cos_tables",
   dct_forward: "dct_forward",
-  quantize_and_pack: "quantize_and_pack",
+  // What was one residual, `quantize_and_pack`, until these four had marks.
+  dc_search: "dc_search",
+  ac_quantize: "ac_quantize",
+  refine: "refine",
+  pack: "pack",
+  unmarked: "unmarked",
 };
 
 /**
