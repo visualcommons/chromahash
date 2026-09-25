@@ -396,16 +396,16 @@ and still points the right way; it is no longer a substitute for the search, and
 `sweeps/holdout-candidates.json`, **holdout split**, incumbent = shipped 32 B.
 "stack" = `aniso=1.2 scale_fit=2 ac_nearest=1`.
 
-| Variant | Bytes | ΔE00 | Δ% | SSIM2 | Butter | DSSIM | Guards |
-|---|---|---|---|---|---|---|---|
-| shipped | 32 | 11.735 | — | −318.4 | 28.66 | 0.2630 | (base) |
-| L38@4 C8@3 | 32 | 11.577 | −1.35% | −293.7 | 27.18 | 0.2628 | ok |
-| L28@4 C15@3 | 32 | 11.490 | −2.09% | −314.3 | 28.29 | 0.2628 | ok |
-| shipped + stack | 32 | 11.563 | −1.46% | −311.1 | 28.33 | 0.2628 | ok |
-| L38@4 C8@3 + stack | 32 | 11.464 | −2.31% | −287.8 | 27.07 | 0.2624 | ok |
-| **L28@4 C15@3 + stack** | 32 | **11.340** | **−3.37%** | −308.1 | 28.10 | 0.2624 | **ok** |
-| tier 1 shipped | 108 | 9.696 | −17.38% | −184.9 | 23.00 | 0.2589 | ok |
-| tier 1 + stack | 108 | 9.535 | −18.75% | −178.7 | 22.89 | 0.2583 | ok |
+| Variant | Bytes | ΔE00 | Δ% | SSIM2 | Butter | DSSIM | guards (means) | guards (CI) |
+|---|---|---|---|---|---|---|---|---|
+| shipped | 32 | 11.735 | — | −318.4 | 28.66 | 0.2630 | (base) | (base) |
+| L38@4 C8@3 | 32 | 11.577 | −1.35% | −293.7 | 27.18 | 0.2628 | ok | ok |
+| L28@4 C15@3 | 32 | 11.490 | −2.09% | −314.3 | 28.29 | 0.2628 | ok | ok |
+| shipped + stack | 32 | 11.563 | −1.46% | −311.1 | 28.33 | 0.2628 | ok | ok |
+| L38@4 C8@3 + stack | 32 | 11.464 | −2.31% | −287.8 | 27.07 | 0.2624 | ok | ok |
+| **L28@4 C15@3 + stack** | 32 | **11.340** | **−3.37%** | −308.1 | 28.10 | 0.2624 | **ok** | ok |
+| tier 1 shipped | 108 | 9.696 | −17.38% | −184.9 | 23.00 | 0.2589 | ok | ok |
+| tier 1 + stack | 108 | 9.535 | −18.75% | −178.7 | 22.89 | 0.2583 | ok | ok |
 
 **−3.37% holdout ΔE00 with every guard improving clears the pre-registered ≥3%
 retune threshold** — the first candidate in the project's history to do so. Two
@@ -659,6 +659,14 @@ mise run stratify artifact-ladder-common-grid --metric ciede    --by detail
 mise run stratify artifact-ladder-common-grid --metric spurious --by chroma
 mise run stratify artifact-ladder-common-grid --metric spurious --by lightness
 
+# Paired intervals, Holm-adjusted p and interval guards for every metric of a
+# committed sweep, against its incumbent or any other arm. They read the
+# committed results and re-score nothing (§13.2, §13.5).
+mise run arms artifact-ladder-common-grid --baseline "code 2 (108 B)"   # §13.2
+mise run arms artifact-ladder-common-grid --baseline "code 3 (411 B)"   # §13.2
+mise run arms --summary                                                 # §13.5
+mise run arms --seed-sensitivity                                        # §13.5
+
 # Check the tables in this file against the results above
 mise run verify:experiments
 mise run verify:experiments --list-unbound
@@ -848,18 +856,20 @@ already flags is now a performance requirement, not just a purity one.
 Every header field width is now tunable. Pure cost first (same AC layout, tune,
 32 B):
 
-| Narrowing | bits saved | ΔE00 Δ% | guards |
-|---|---|---|---|
-| aspect 8 → 5 b | 3 | **−0.11%** | ok |
-| aspect 8 → 4 b | 4 | **−0.06%** | **FAIL** |
-| scales 6/6/5 → 5/4/4, linear grid | 4 | 0.69% | ok |
-| scales 6/6/5 → 5/4/4, **µ-law grid** (`scale_mu=8`) | 4 | 0.09% | ok |
-| `b_scale_from_a` (drop the b field) | 5 | 2.20% | **FAIL** |
-| DC 7/7/7 → 6/6/6 | 3 | 0.76% | ok |
-| all of the above | 15 | 2.71% | **FAIL** |
+| Narrowing | bits saved | ΔE00 Δ% | guards (means) | guards (CI) |
+|---|---|---|---|---|
+| aspect 8 → 5 b | 3 | **−0.11%** | ok | inconclusive |
+| aspect 8 → 4 b | 4 | **−0.06%** | **FAIL** | inconclusive |
+| scales 6/6/5 → 5/4/4, linear grid | 4 | 0.69% | ok | inconclusive |
+| scales 6/6/5 → 5/4/4, **µ-law grid** (`scale_mu=8`) | 4 | 0.09% | ok | inconclusive |
+| `b_scale_from_a` (drop the b field) | 5 | 2.20% | **FAIL** | inconclusive |
+| DC 7/7/7 → 6/6/6 | 3 | 0.76% | ok | ok |
+| all of the above | 15 | 2.71% | **FAIL** | inconclusive |
 
-(The ΔE00 column is bound; the `guards` column is not, and two of its cells were
-stale — narrowing aspect to 4 b and the all-in row both fail their guards.)
+(Both guard columns are bound. The point-mean one was once unbound, and two of
+its cells were stale: narrowing aspect to 4 b and the all-in row both fail their
+guards on means. On intervals (§13.5) neither they nor `b_scale_from_a` is
+*shown* to regress. Each is `inconclusive`, so none of them passes either.)
 
 Then spend the recovered bits on AC at the same 32 bytes. **On ΔE00 this now
 pays.** The best 4-bit-luma row is **−0.68%** against the same layout with the
@@ -881,7 +891,8 @@ Two findings that survive intact:
   the range maximum, exactly as expected. If a future revision needs scale bits,
   this is how to take them.
 * **U9 is dead.** `b_scale_from_a` costs +2.20% and fails the guards. The two
-  chroma scales are not redundant.
+  chroma scales are not redundant. (§13.5: the ΔE00 cost survives Holm. The
+  guard failure is a point-mean one, and on intervals it is `inconclusive`.)
 
 **The aspect gain is bought with something the metric cannot see.**
 `upscaleRgba` resizes every decode to the reference dimensions with
@@ -1063,20 +1074,20 @@ and much worse on ΔE00. Progressive is affordable; it is an operational feature
 **STACK** = `l1=28:4 c=15:3 aniso=1.2 sel_hv=0.15 scale_fit=2 ac_nearest=1`;
 **REFINE** = `refine_passes=2 refine_grid=1 refine_obj=3 refine_wc=3 refine_dc=1 refine_scale=1`.
 
-| Variant | Bytes | ΔE00 | Δ% | SSIM2 | Butter | DSSIM | Guards |
-|---|---|---|---|---|---|---|---|
-| shipped | 32 | 11.735 | — | −318.4 | 28.66 | 0.2630 | (base) |
-| shipped layout + stack | 32 | 11.539 | −1.67% | −308.5 | 28.19 | 0.2626 | ok |
-| L36C9 stack | 32 | 11.377 | −3.05% | −287.1 | 27.23 | 0.2623 | ok |
-| L32C12 stack | 32 | 11.371 | −3.10% | −296.7 | 27.65 | 0.2624 | ok |
-| L30C13 stack | 32 | 11.364 | −3.16% | −302.0 | 27.93 | 0.2624 | ok |
-| L28C15 stack, hv = 0 | 32 | 11.340 | −3.37% | −308.1 | 28.10 | 0.2624 | ok |
-| **L28C15 stack** | 32 | **11.298** | **−3.72%** | −303.7 | 28.16 | 0.2623 | **ok** |
-| **L28C15 stack + REFINE** | 32 | **11.265** | **−4.01%** | −303.0 | 28.14 | 0.2628 | **ok** |
-| tier 1 base | 108 | 9.696 | −17.38% | −184.9 | 23.00 | 0.2589 | ok |
-| tier 1 stack | 108 | 9.517 | −18.90% | −174.1 | 22.75 | 0.2582 | ok |
-| tier 1 stack + REFINE | 108 | 9.489 | −19.14% | −173.0 | 22.78 | 0.2587 | ok |
-| tier 2 stack | 411 | 7.783 | −33.68% | −76.8 | 17.94 | 0.2507 | ok |
+| Variant | Bytes | ΔE00 | Δ% | SSIM2 | Butter | DSSIM | guards (means) | guards (CI) |
+|---|---|---|---|---|---|---|---|---|
+| shipped | 32 | 11.735 | — | −318.4 | 28.66 | 0.2630 | (base) | (base) |
+| shipped layout + stack | 32 | 11.539 | −1.67% | −308.5 | 28.19 | 0.2626 | ok | ok |
+| L36C9 stack | 32 | 11.377 | −3.05% | −287.1 | 27.23 | 0.2623 | ok | ok |
+| L32C12 stack | 32 | 11.371 | −3.10% | −296.7 | 27.65 | 0.2624 | ok | ok |
+| L30C13 stack | 32 | 11.364 | −3.16% | −302.0 | 27.93 | 0.2624 | ok | ok |
+| L28C15 stack, hv = 0 | 32 | 11.340 | −3.37% | −308.1 | 28.10 | 0.2624 | ok | ok |
+| **L28C15 stack** | 32 | **11.298** | **−3.72%** | −303.7 | 28.16 | 0.2623 | **ok** | ok |
+| **L28C15 stack + REFINE** | 32 | **11.265** | **−4.01%** | −303.0 | 28.14 | 0.2628 | **ok** | ok |
+| tier 1 base | 108 | 9.696 | −17.38% | −184.9 | 23.00 | 0.2589 | ok | ok |
+| tier 1 stack | 108 | 9.517 | −18.90% | −174.1 | 22.75 | 0.2582 | ok | ok |
+| tier 1 stack + REFINE | 108 | 9.489 | −19.14% | −173.0 | 22.78 | 0.2587 | ok | ok |
+| tier 2 stack | 411 | 7.783 | −33.68% | −76.8 | 17.94 | 0.2507 | ok | ok |
 
 Both winners clear the pre-registered ≥3% holdout threshold with **every guard
 improving**: the constants-only stack at **−3.72%** and the same stack with the
@@ -1967,17 +1978,20 @@ would have silently stopped being 32 bytes. It is the same class of drift the co
 exist to prevent, in the knob space rather than the corpus, and it is worth stating
 because a sweep that quietly changes budget mid-campaign reports a comparison nobody made.
 
-| layout | ΔE00 | Δ% | paired 95% CI | win/n |
-|---|---|---|---|---|
-| **shipped** L20@5 C9@4 | 15.689 | — | — | — |
-| L22@4 C14@3 (the arithmetic in §8.1) | 15.541 | −0.94% | [+0.053, +0.251] | 15/16 |
-| L29@4 C9@3 | 15.497 | −1.22% | [+0.058, +0.353] | 12/16 |
-| L36@3 C10@3 | 15.432 | −1.64% | [+0.093, +0.452] | 13/16 |
-| **L43@3 C11@2** | **15.401** | **−1.84%** | [+0.107, +0.518] | 13/16 |
+| layout | ΔE00 | Δ% | paired 95% CI | Holm p | win/n |
+|---|---|---|---|---|---|
+| **shipped** L20@5 C9@4 | 15.689 | — | — | — | — |
+| L22@4 C14@3 (the arithmetic in §8.1) | 15.541 | −0.94% | [+0.053, +0.251] | 0.0756 | 15/16 |
+| L29@4 C9@3 | 15.497 | −1.22% | [+0.058, +0.353] | 0.0066 | 12/16 |
+| L36@3 C10@3 | 15.432 | −1.64% | [+0.093, +0.452] | 0.0066 | 13/16 |
+| **L43@3 C11@2** | **15.401** | **−1.84%** | [+0.107, +0.518] | 0.0066 | 13/16 |
 
 The shipped layout is significantly worse than a dozen alternatives, and the
 direction is consistent: alpha mode wants **more luma coefficients at lower
 precision, and much less chroma** than the opaque row does.
+
+> **After Holm (§13.5):** ten alternatives, not a dozen, and `L22@4 C14@3` is
+> not among them. The direction is unchanged.
 
 ### 11.2 That direction belongs to alpha mode, not to the corpus
 
@@ -2015,28 +2029,32 @@ toward exactly the "no difference" verdict it is trying to test for.
 **Layout.** The photo-derived `L 28 @ 4 / C 15 @ 3` is not the graphics
 optimum, but it is close to it and the gap does not justify a second constant:
 
-| layout | ΔE00 | Δ% | paired 95% CI |
-|---|---|---|---|
-| **DEFAULT** L28@4 C15@3 | 10.450 | — | — |
-| pre-adoption L26@5 C9@4 | 10.569 | +1.14% | [−0.300, +0.022] |
-| L30@4 C13@3 | 10.394 | −0.54% | [+0.008, +0.102] |
-| L40@4 C7@3 | 10.344 | −1.01% | includes zero |
+| layout | ΔE00 | Δ% | paired 95% CI | Holm p |
+|---|---|---|---|---|
+| **DEFAULT** L28@4 C15@3 | 10.450 | — | — | — |
+| pre-adoption L26@5 C9@4 | 10.569 | +1.14% | [−0.300, +0.022] | 1.0000 |
+| L30@4 C13@3 | 10.394 | −0.54% | [+0.008, +0.102] | 0.5599 |
+| L40@4 C7@3 | 10.344 | −1.01% | includes zero | 1.0000 |
 
 Exactly one arm reaches significance, by 0.54%. Graphics wants slightly more
 luma and less chroma — the same direction as alpha mode, for the same reason
 that structure matters more than colour in synthetic content — but at a
 magnitude that does not warrant splitting the constant.
 
+> **After Holm (§13.5):** not even that one. Across the sweep's 28 arms
+> `L30@4 C13@3` adjusts to 0.56, and no layout differs from the default. That
+> strengthens this subsection's conclusion rather than weakening it.
+
 **The encoder stack generalizes.** This is the stronger result: every part of
 the §8 adoption was chosen on photographs, and it holds on content it never saw.
 
-| variant | ΔE00 | Δ% | paired 95% CI |
-|---|---|---|---|
-| **DEFAULT** (full stack) | 10.450 | — | — |
-| no selection weights | 10.513 | +0.60% | [−0.229, +0.076] |
-| no encoder search (`scale_fit=0 ac_nearest=0`) | 10.577 | +1.22% | **[−0.228, −0.039]** |
-| pre-adoption (everything off) | 10.766 | **+3.02%** | **[−0.597, −0.114]** |
-| `sel_hv = 0.30` | 10.410 | −0.39% | includes zero |
+| variant | ΔE00 | Δ% | paired 95% CI | Holm p |
+|---|---|---|---|---|
+| **DEFAULT** (full stack) | 10.450 | — | — | — |
+| no selection weights | 10.513 | +0.60% | [−0.229, +0.076] | 1.0000 |
+| no encoder search (`scale_fit=0 ac_nearest=0`) | 10.577 | +1.22% | **[−0.228, −0.039]** | 0.0320 |
+| pre-adoption (everything off) | 10.766 | **+3.02%** | **[−0.597, −0.114]** | 0.0018 |
+| `sel_hv = 0.30` | 10.410 | −0.39% | includes zero | 1.0000 |
 
 Turning the adoption off costs 3.02% on graphics, significantly. Note the last
 row: graphics independently prefers `sel_hv = 0.30` over the shipped `0.15`,
@@ -2052,17 +2070,17 @@ report `aniso=1.2` as 0.00% different from "isotropic", which is the tell.
 `sweeps/selection-weights.json` replaces them with the full 2-D grid, the
 adopted pair as incumbent and an explicit isotropic arm.
 
-| variant | ΔE00 | Δ% | paired 95% CI | win/n |
-|---|---|---|---|---|
-| **DEFAULT** aniso 1.2 / hv 0.15 | 11.473 | — | — | — |
-| isotropic (aniso 0, hv 0) | 11.453 | −0.17% | [−0.071, +0.120] | 16/31 |
-| **aniso 0.9 / hv 0.0** | **11.392** | **−0.71%** | **[+0.027, +0.143]** | 17/31 |
-| **aniso 1.2 / hv 0.0** (shipped aniso, `sel_hv` off) | **11.420** | **−0.46%** | **[+0.011, +0.101]** | 20/31 |
-| aniso 1.2 / hv 0.30 | 11.518 | 0.40% | [−0.119, +0.025] | 14/31 |
-| aniso 2.0 / hv 0.30 | 11.574 | 0.88% | **[−0.187, −0.025]** | 13/31 |
-| aniso 1.2 / hv −0.15 | 11.470 | −0.03% | [−0.076, +0.073] | 19/31 |
-| aniso 1.2 / hv −0.30 | 11.553 | 0.70% | [−0.185, +0.014] | 12/31 |
-| aniso 3.2 / hv 0.0 | 11.631 | 1.38% | **[−0.265, −0.072]** | 7/31 |
+| variant | ΔE00 | Δ% | paired 95% CI | Holm p | win/n |
+|---|---|---|---|---|---|
+| **DEFAULT** aniso 1.2 / hv 0.15 | 11.473 | — | — | — | — |
+| isotropic (aniso 0, hv 0) | 11.453 | −0.17% | [−0.071, +0.120] | 1.0000 | 16/31 |
+| **aniso 0.9 / hv 0.0** | **11.392** | **−0.71%** | **[+0.027, +0.143]** | 0.0850 | 17/31 |
+| **aniso 1.2 / hv 0.0** (shipped aniso, `sel_hv` off) | **11.420** | **−0.46%** | **[+0.011, +0.101]** | 0.3040 | 20/31 |
+| aniso 1.2 / hv 0.30 | 11.518 | 0.40% | [−0.119, +0.025] | 1.0000 | 14/31 |
+| aniso 2.0 / hv 0.30 | 11.574 | 0.88% | **[−0.187, −0.025]** | 0.1886 | 13/31 |
+| aniso 1.2 / hv −0.15 | 11.470 | −0.03% | [−0.076, +0.073] | 1.0000 | 19/31 |
+| aniso 1.2 / hv −0.30 | 11.553 | 0.70% | [−0.185, +0.014] | 1.0000 | 12/31 |
+| aniso 3.2 / hv 0.0 | 11.631 | 1.38% | **[−0.265, −0.072]** | 0.0056 | 7/31 |
 
 Three findings, and the first two are uncomfortable:
 
@@ -2073,7 +2091,9 @@ Three findings, and the first two are uncomfortable:
    direction has `hv = 0`; no arm with `hv ≠ 0` does. Two caveats before anyone
    acts on it: this is 28 arms scored against one incumbent with no multiplicity
    correction, and −0.71% is inside the range §9.3 has already watched a
-   selection-order effect halve under a corpus change.
+   selection-order effect halve under a corpus change. **The first caveat has
+   since been applied and the finding does not survive it**: after Holm the two
+   arms adjust to 0.085 and 0.304 (the `Holm p` column, §13.5).
 2. **Isotropic is statistically indistinguishable from the adopted weights.**
    On the current corpus the selection weights buy nothing measurable on tune;
    their justification rests entirely on the holdout delta §7.12 recorded
@@ -2081,7 +2101,8 @@ Three findings, and the first two are uncomfortable:
    the three constants-level changes"; this is weaker still.
 3. **Large `aniso` is real, and negative `hv` no longer is.** Every arm at
    `aniso ≥ 2.0` is significantly worse whatever `hv` does, so the weight is not
-   noise. But negative `hv`, which round 3 recorded as significantly worse, now
+   noise. (After Holm only `aniso 3.2 / hv 0` remains significantly worse; the
+   bound on `aniso` is looser than this sentence states. See §13.5.) But negative `hv`, which round 3 recorded as significantly worse, now
    is not: `hv −0.15` is −0.03% and `hv −0.30` is +0.70% with a CI straddling
    zero. What survives is a bound on `aniso`, not a sign for `hv`.
 
@@ -2170,17 +2191,17 @@ measures 15 layouts, all at exactly 21 bytes, at tier 0 with raw layout
 overrides — the same way §7.6 measured it, so the layout is decided before a
 tier code is spent on it.
 
-| layout | ΔE00 | Δ% vs shipped shape | paired CI vs the leader |
-|---|---|---|---|
-| shipped shape L13@5 C6@4 | 12.573 | — | **[−0.580, −0.288]** |
-| **L19@4 C6@3** | **12.147** | −3.39% | (leader) |
-| L26@3 C6@3 | 12.161 | −3.27% | [−0.090, +0.062] |
-| L18@4 C7@3 | 12.175 | −3.16% | [−0.098, +0.023] |
-| L16@4 C8@3 | 12.240 | −2.65% | **[−0.195, −0.002]** |
-| L24@3 C7@3 | 12.181 | −3.12% | [−0.106, +0.032] |
-| L20@4 C5@3 | 12.227 | −2.75% | [−0.204, +0.012] |
-| L35@3 C2@2 (count-maximal) | 12.279 | −2.34% | **[−0.403, +0.120]** |
-| L19@5 C2@4 (precision-maximal) | 12.436 | −1.09% | **[−0.501, −0.130]** |
+| layout | ΔE00 | Δ% vs shipped shape | paired CI vs the leader | Holm p vs the leader |
+|---|---|---|---|---|
+| shipped shape L13@5 C6@4 | 12.573 | — | **[−0.580, −0.288]** | 0.0028 |
+| **L19@4 C6@3** | **12.147** | −3.39% | (leader) | (leader) |
+| L26@3 C6@3 | 12.161 | −3.27% | [−0.090, +0.062] | 1.0000 |
+| L18@4 C7@3 | 12.175 | −3.16% | [−0.098, +0.023] | 1.0000 |
+| L16@4 C8@3 | 12.240 | −2.65% | **[−0.195, −0.002]** | 0.6555 |
+| L24@3 C7@3 | 12.181 | −3.12% | [−0.106, +0.032] | 1.0000 |
+| L20@4 C5@3 | 12.227 | −2.75% | [−0.204, +0.012] | 0.8153 |
+| L35@3 C2@2 (count-maximal) | 12.279 | −2.34% | **[−0.403, +0.120]** | 1.0000 |
+| L19@5 C2@4 (precision-maximal) | 12.436 | −1.09% | **[−0.501, −0.130]** | 0.0028 |
 
 The extremes are decisively rejected and the shipped shape is decisively beaten
 — by 3.39% — but **the leading five layouts are a plateau**: their paired CIs
@@ -2188,6 +2209,12 @@ against the leader all include zero. Only `L16@4 C8@3` has separated from the
 group, and it separated downward. The photographic split still cannot choose
 among the five, and squeezing its guard metrics for a winner would be mining
 noise.
+
+> **After Holm (§13.5):** `L16@4 C8@3` has not separated either. Against the
+> leader it adjusts to 0.66, and only the shipped shape and the
+> precision-maximal layout remain distinguishable. The count-maximal row's
+> interval, bold above, never excluded zero. The plateau is wider than five, and
+> the choice below does not rest on it.
 
 The *identity* of the leader did move, though, and toward the layout that
 shipped: on the old corpus `L18@4 C7@3` led and `L19@4 C6@3` sat second, and
@@ -2262,15 +2289,19 @@ The alpha field widths were never tunable, so this had never been asked.
 `sweeps/alpha-fields.json` asks it, trading each field against luma so every arm
 stays at exactly 32 bytes:
 
-| variant | ΔE00 | Δ% | αMAE | guards |
-|---|---|---|---|---|
-| **shipped** alpha DC 5 b, scale 4 b, AC 5 @ 4 b | 15.689 | — | 0.2625 | — |
-| alpha DC 4 b (−1) | 15.708 | +0.12% | 0.2623 | ok |
-| alpha scale 3 b (−1) | 15.677 | −0.08% | 0.2613 | ok |
-| **A 8 @ 4** (+3 coefficients, −3 luma) | 14.884 | **−5.13%** | 0.2316 | ok |
-| **A 12 @ 4** (+7 coefficients, −6 luma) | 14.465 | **−7.80%** | 0.2139 | ok |
-| A 3 @ 4 (−2 coefficients) | 17.005 | +8.39% | 0.3030 | FAIL |
-| A 0 (no alpha AC at all) | 19.428 | **+23.84%** | 0.3812 | FAIL |
+| variant | ΔE00 | Δ% | αMAE | guards (means) | guards (CI) |
+|---|---|---|---|---|---|
+| **shipped** alpha DC 5 b, scale 4 b, AC 5 @ 4 b | 15.689 | — | 0.2625 | — | — |
+| alpha DC 4 b (−1) | 15.708 | +0.12% | 0.2623 | ok | ok |
+| alpha scale 3 b (−1) | 15.677 | −0.08% | 0.2613 | ok | inconclusive |
+| **A 8 @ 4** (+3 coefficients, −3 luma) | 14.884 | **−5.13%** | 0.2316 | ok | ok |
+| **A 12 @ 4** (+7 coefficients, −6 luma) | 14.465 | **−7.80%** | 0.2139 | ok | inconclusive |
+| A 3 @ 4 (−2 coefficients) | 17.005 | +8.39% | 0.3030 | FAIL | FAIL |
+| A 0 (no alpha AC at all) | 19.428 | **+23.84%** | 0.3812 | FAIL | FAIL |
+
+(`A 12 @ 4` and `alpha scale 3 b` pass on means and are `inconclusive` on
+intervals, per §13.5. Neither was adopted: the adopted allocation comes from the
+ladder below, where `A28@3 L22@4 C3@3` is `ok` on both.)
 
 The field *widths* are asymmetric. Taking a bit *off* is noise — ±0.12% on the
 DC and scale — but adding one costs an alpha coefficient and is not: `dc 6b`
@@ -2638,16 +2669,16 @@ taper is decoder-side and the encoder is byte-identical with it on, so every
 arm is the same 32 bytes; adopting one would move every test vector and change
 no hash.
 
-| variant | ΔE00 | Δ% | SSIM2 | Ring | Spur | paired 95% CI | guards |
-|---|---|---|---|---|---|---|---|
-| shipped (no window) | 11.473 | — | −341.7 | 1.02 | 3.53 | — | (base) |
-| w_min 0.85 exp 1 | 11.510 | +0.33% | −343.8 | 0.78 | 2.44 | [−0.077, −0.003] | FAIL |
-| w_min 0.7 exp 1 | 11.646 | +1.51% | −347.7 | 0.67 | 1.80 | [−0.273, −0.092] | FAIL |
-| w_min 0.7 exp 2 | 11.775 | +2.64% | −349.5 | 0.73 | 1.53 | [−0.435, −0.187] | FAIL |
-| w_min 0.5 exp 1 | 11.980 | +4.42% | −356.1 | 0.78 | 1.28 | [−0.722, −0.329] | FAIL |
-| w_min 0.5 exp 2 | 12.308 | +7.28% | −360.6 | 1.00 | 0.95 | [−1.120, −0.590] | FAIL |
-| luma only 0.7 exp 1 | 11.649 | +1.53% | −347.1 | 0.67 | 1.90 | [−0.267, −0.102] | FAIL |
-| chroma only 0.7 exp 1 | 11.476 | +0.03% | −342.2 | 1.03 | 3.58 | [−0.029, +0.029] | ok |
+| variant | ΔE00 | Δ% | SSIM2 | Ring | Spur | paired 95% CI | Holm p | guards (means) | guards (CI) |
+|---|---|---|---|---|---|---|---|---|---|
+| shipped (no window) | 11.473 | — | −341.7 | 1.02 | 3.53 | — | — | (base) | (base) |
+| w_min 0.85 exp 1 | 11.510 | +0.33% | −343.8 | 0.78 | 2.44 | [−0.077, −0.003] | 0.0692 | FAIL | inconclusive |
+| w_min 0.7 exp 1 | 11.646 | +1.51% | −347.7 | 0.67 | 1.80 | [−0.273, −0.092] | 0.0014 | FAIL | FAIL |
+| w_min 0.7 exp 2 | 11.775 | +2.64% | −349.5 | 0.73 | 1.53 | [−0.435, −0.187] | 0.0014 | FAIL | FAIL |
+| w_min 0.5 exp 1 | 11.980 | +4.42% | −356.1 | 0.78 | 1.28 | [−0.722, −0.329] | 0.0014 | FAIL | FAIL |
+| w_min 0.5 exp 2 | 12.308 | +7.28% | −360.6 | 1.00 | 0.95 | [−1.120, −0.590] | 0.0014 | FAIL | FAIL |
+| luma only 0.7 exp 1 | 11.649 | +1.53% | −347.1 | 0.67 | 1.90 | [−0.267, −0.102] | 0.0014 | FAIL | FAIL |
+| chroma only 0.7 exp 1 | 11.476 | +0.03% | −342.2 | 1.03 | 3.58 | [−0.029, +0.029] | 0.7965 | ok | ok |
 
 Four things this settles.
 
@@ -2656,7 +2687,11 @@ Four things this settles.
    strongest setting. Nothing else on the roadmap moves an artifact number like
    that.
 2. **It is paid for in ΔE00 and SSIMULACRA2, monotonically.** Every windowed arm
-   fails guards, and the paired CI excludes zero from `w_min 0.85` onward. The
+   fails guards, and the paired CI excludes zero from `w_min 0.85` onward.
+   (§13.5: after Holm the ΔE00 cost is established from `w_min 0.7` onward.
+   `w_min 0.85`'s interval clears zero by a margin a different bootstrap seed
+   can erase, and on intervals its guards are `inconclusive` rather than
+   failed.) The
    pre-registered rule wants ≥3% ΔE00 *improvement* with all guards improving;
    this is the opposite sign. **The v0.6 rejection stands — and now it stands on
    evidence rather than on an instrument that could not see the other half.**
@@ -2680,14 +2715,14 @@ above rather than added to it: Δ%, guards and the paired CI are computed agains
 the first row, so mixing tiers would compare a 108-byte arm to a 32-byte
 incumbent and make the tightest instrument here meaningless.
 
-| variant | ΔE00 | Δ% | SSIM2 | DSSIM | Ring | Spur | paired 95% CI | guards |
-|---|---|---|---|---|---|---|---|---|
-| t2 shipped (no window) | 9.667 | — | −212.9 | 0.2559 | 1.32 | 3.65 | — | (base) |
-| t2 w_min 0.85 exp 1 | 9.674 | +0.06% | −216.1 | 0.2548 | 1.03 | 2.64 | [−0.027, +0.012] | FAIL |
-| t2 w_min 0.7 exp 1 | 9.756 | +0.92% | −221.8 | 0.2544 | 0.87 | 2.01 | [−0.136, −0.048] | FAIL |
-| t2 w_min 0.5 exp 2 | 10.255 | +6.08% | −242.2 | 0.2561 | 1.00 | 1.27 | [−0.732, −0.459] | FAIL |
-| t2 luma only 0.7 exp 1 | 9.750 | +0.85% | −221.0 | 0.2543 | 0.88 | 2.04 | [−0.126, −0.047] | FAIL |
-| t2 chroma only 0.7 exp 1 | 9.674 | +0.06% | −213.7 | 0.2561 | 1.30 | 3.71 | [−0.033, +0.022] | ok |
+| variant | ΔE00 | Δ% | SSIM2 | DSSIM | Ring | Spur | paired 95% CI | Holm p | guards (means) | guards (CI) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| t2 shipped (no window) | 9.667 | — | −212.9 | 0.2559 | 1.32 | 3.65 | — | — | (base) | (base) |
+| t2 w_min 0.85 exp 1 | 9.674 | +0.06% | −216.1 | 0.2548 | 1.03 | 2.64 | [−0.027, +0.012] | 1.0000 | FAIL | FAIL |
+| t2 w_min 0.7 exp 1 | 9.756 | +0.92% | −221.8 | 0.2544 | 0.87 | 2.01 | [−0.136, −0.048] | 0.0010 | FAIL | FAIL |
+| t2 w_min 0.5 exp 2 | 10.255 | +6.08% | −242.2 | 0.2561 | 1.00 | 1.27 | [−0.732, −0.459] | 0.0010 | FAIL | FAIL |
+| t2 luma only 0.7 exp 1 | 9.750 | +0.85% | −221.0 | 0.2543 | 0.88 | 2.04 | [−0.126, −0.047] | 0.0010 | FAIL | FAIL |
+| t2 chroma only 0.7 exp 1 | 9.674 | +0.06% | −213.7 | 0.2561 | 1.30 | 3.71 | [−0.033, +0.022] | 1.0000 | ok | inconclusive |
 
 The pattern holds, and the light arm gets interesting.
 
@@ -2698,7 +2733,9 @@ precisely to resolve differences this small. For that nothing, the arm buys a
 (0.2548 vs 0.2559).
 
 It fails guards on one metric: SSIMULACRA2, −3.2 points against a −1.0
-tolerance. That is the whole verdict, and it deserves to be stated as a tension
+tolerance. On intervals the failure is *shown*, not just probable: the arm's
+`guards (CI)` is `FAIL` (§13.5). `chroma only`'s pass, by contrast, is a
+point-mean one, and on intervals it is `inconclusive`. That is the whole verdict, and it deserves to be stated as a tension
 rather than filed as a refutation:
 
 * SSIMULACRA2 is the metric ChromaHash **already loses** to WebP and lqip-modern
@@ -2899,6 +2936,24 @@ equivalent knob, which is the asymmetry §12.4 documents.
 
 ### 13.2 The upper tiers buy fidelity by inventing
 
+The paired differences in spurious detail this section reads, every tier against
+code 2 on the same 31 photographs of the pinned-grid ladder, and the top two
+against each other:
+
+| comparison | Spur Δ | paired 95% CI | Holm p |
+|---|---|---|---|
+| code 0 − code 2 | +0.480 | [−0.014, +1.004] | 0.1064 |
+| code 1 − code 2 | +0.039 | [−0.393, +0.446] | 0.8297 |
+| code 3 − code 2 | +0.717 | [+0.334, +1.136] | 0.0008 |
+| code 4 − code 2 | +0.735 | [+0.261, +1.177] | 0.0078 |
+| code 4 − code 3 | +0.018 | [−0.269, +0.276] | 0.8851 |
+
+`mise run arms artifact-ladder-common-grid --baseline "code 2 (108 B)"` prints
+the first four rows (and the same comparison for every other metric), and
+`--baseline "code 3 (411 B)"` the fifth. Δ is the row's tier minus the reference
+tier, so positive means the row invents more. The Holm p is adjusted across the
+four tiers compared with the same reference, which for the last row is code 3.
+
 Three findings, on one instrument.
 
 1. **Invented structure has a floor, and it is codes 1–2.** Spurious falls
@@ -2921,9 +2976,12 @@ Three findings, on one instrument.
    numbers, but it is worth writing down.
 
    (Intervals are the seeded paired bootstrap in `stats.ts` that every sweep's
-   ΔE00 column already uses, taken over the `perImageSpurious` series in
-   `sweeps/artifact-ladder-common-grid.json` — the same construction §7.12 and
-   §11.5 quote.)
+   ΔE00 column already uses, taken over the spurious series in
+   `results/artifact-ladder-common-grid.json` — the same construction §7.12 and
+   §11.5 quote. They are the table above, which `verify:experiments` binds; until
+   `mise run arms` existed no committed command reproduced them. Every reading
+   above survives Holm, in both directions: the two rises stay significant and
+   the three gaps called unresolved stay unresolved.)
 2. **At code 4 the format invents almost as much as it still lacks.**
    Spurious 4.23 against deficit 4.58 — a ratio of 0.92, against 0.14 at the
    default tier. Read plainly: on the frequencies every tier can represent, the
@@ -3016,3 +3074,127 @@ Stated as measurements, not as a plan. Nothing here adopts anything.
   (1:1 and 1:7 are §13.1's 0.92 at code 4 and 0.14 at code 1 — the same two
   figures the first bullet quotes, and the only ratios either table supports.)
   It is stated as an exchange rate rather than a verdict for that reason.
+
+### 13.5 The statistics behind every table, re-read (2026-09)
+
+Until this section a sweep carried one interval, the paired bootstrap of ΔE00,
+and everything else was a point mean. That left three gaps under every table
+above. Each is now closed in the tooling (`stats.ts`, `arms-core.ts`), and each is
+read back here over every committed result. No number measured by a sweep moves:
+this section changes what the numbers are allowed to mean.
+
+**Guards were decided on point means.** A guard passed or failed on which side
+of its tolerance an arm's mean SSIMULACRA2, Butteraugli or DSSIM fell, on 16 or
+31 images. Every sweep now also reads each guard off the paired 95% interval of
+arm − incumbent, in three states:
+
+* `ok`: the interval lies inside the tolerance, so a regression beyond it is
+  ruled out.
+* `FAIL`: the interval lies entirely beyond the tolerance, so a regression is
+  shown.
+* `inconclusive`: the interval straddles the tolerance.
+
+Only `ok` passes. A guard exists to keep a regression out, so the burden of proof
+is on the arm. The six tables with a guard column (§4.5, §7.5, §7.12, §11.3,
+§12.2 and §12.3) now show both verdicts: `guards (means)` is the one each
+decision was taken on, and `guards (CI)` sits beside it.
+
+**Nothing corrected for the size of a table.** A 33-arm sweep runs 32 tests
+against one incumbent, so the arm that looks best in a wide table is more likely
+than any other to be the one luck favoured. Every metric's p-value is now
+adjusted across the arms of its sweep with Holm's step-down procedure, which
+controls the familywise error at 0.05 whatever the dependence between the tests
+(they share an incumbent, so they are dependent). The p-value is a bootstrap
+test that inverts the same construction as the interval, at 10,000 resamples
+rather than 1,000, because at 1,000 the smallest reportable p (2/1,001) times 32
+already exceeds 0.05. The seven tables that quote a paired ΔE00 interval (§11.1,
+§11.4 twice, §11.5, §11.10, §12.2 and §12.3) now carry the Holm p beside it. The
+family is always the whole committed sweep, never only the rows a table quotes:
+a table showing five arms of 29 was still chosen from 29.
+
+**§13.2's intervals had no command.** They now come from `mise run arms`, and the
+table at the head of §13.2 is bound.
+
+`mise run arms --summary` counts what this changes for each committed sweep
+against its incumbent:
+
+| sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
+|---|---|---|---|---|---|---|---|---|
+| all committed sweeps | 504 | 391 | 354 | 282 | 114 | 108 | 48 | 66 |
+| `selection-weights` | 28 | 12 | 1 | 0 | 27 | 1 | 12 | 15 |
+| `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
+| `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
+| `graphics-layout` | 28 | 1 | 0 | 16 | 12 | 0 | 7 | 5 |
+| `prefix-shrink` | 32 | 22 | 18 | 11 | 13 | 8 | 5 | 8 |
+| `synthesis-window` | 7 | 6 | 5 | 1 | 1 | 5 | 0 | 1 |
+| `holdout-candidates-holdout` | 13 | 13 | 13 | 8 | 0 | 5 | 0 | 0 |
+| `final-candidates-holdout` | 16 | 16 | 16 | 13 | 1 | 2 | 0 | 1 |
+
+What it says:
+
+1. **Both adoptions stand on the stricter reading.** Every arm §4.5 and §7.12
+   adopted (`L28@4 C15@3 + stack`, `L28C15 stack` and `+ REFINE`) is `ok` on
+   intervals: its guards are shown to hold, not just not shown to fail. The
+   holdout rule's ΔE00 half is untouched by Holm there. Those arms clear zero by
+   margins no adjustment over 13 or 16 arms reaches.
+2. **Holm removes differences where tables are widest and effects smallest.**
+   §11.5 loses both of its good-direction findings: `aniso 0.9 / hv 0` and
+   `aniso 1.2 / hv 0` adjust to 0.085 and 0.304. The one arm that survives is
+   `aniso 3.2 / hv 0`, and it is worse than the default. So §11.5's first
+   finding ("`sel_hv` is worth less than nothing") does not survive the
+   correction its own caveat asked for, and its third holds only at
+   `aniso 3.2`. §11.4's single significant layout (`L30@4 C13@3`) adjusts to
+   0.56. §11.1's shipped alpha layout is beaten by ten layouts after Holm rather
+   than "a dozen", and `L22@4 C14@3`, the §8.1 arithmetic, is not one of the ten.
+   Against §11.10's leader, `L16@4 C8@3`, the one layout said to have separated
+   from the plateau, adjusts to 0.66. After Holm, only the shipped shape and the
+   precision-maximal layout are distinguishable from the leader. §12.2's claim
+   that the CI excludes zero "from `w_min 0.85` onward" holds from `w_min 0.7`
+   onward.
+3. **The SSIMULACRA2 guard is finer than these corpora resolve.** Its tolerance
+   is 1.0 point, and a near-null arm's paired SSIMULACRA2 interval is several
+   points either side of zero. §11.5's isotropic arm, for example, is
+   [−4.64, +6.88] (`mise run arms selection-weights`). Such an arm cannot be
+   `ok` however good it is, which is why all 27 of `selection-weights`'
+   non-failing arms are `inconclusive`. That is not a verdict on those arms. It
+   says the tolerance and the sample size were never matched. A pre-registered
+   criterion for v0.8 has to settle one of them before it is used.
+4. **The two verdicts part in both directions.** The arms that passed on means
+   and are not `ok` on intervals include §11.3's `A 12 @ 4` and `alpha scale 3 b`
+   and §12.3's `chroma only`. The arms that failed on means without the interval
+   showing a regression include §7.5's `aspect 8 → 4 b`, `b_scale_from_a` and
+   all-in rows, and §12.2's `w_min 0.85`. §7.5's "U9 is dead" still stands, but on
+   `b_scale_from_a`'s ΔE00 cost, which survives Holm (0.0072,
+   `mise run arms prefix-shrink`). It does not stand on its guards.
+
+**The fixed seed, and what it decides.** Every interval here is drawn from a
+linear congruential generator seeded at 42, and the seed restarts on every call.
+So every arm of a sweep, all scored over one image list, is resampled with the
+*same* indices. The intervals in one table are therefore not independent Monte
+Carlo draws: their resampling errors move together rather than averaging out.
+That is deliberate, because it makes every quoted interval reproducible to the
+digit. Its cost was measured once with `mise run arms --seed-sensitivity`, which
+re-derives all 504 committed ΔE00 intervals against their incumbents under 20
+other seeds:
+
+* The largest move of either bound is 0.164 ΔE00, which is 15.5% of that
+  interval's width.
+* 14 arms' intervals change whether they exclude zero under some seed.
+* 10 arms change their Holm verdict.
+
+Among the rows this file quotes, §12.2's `w_min 0.85` [−0.077, −0.003] is one
+of the 14, and §11.1's `L22@4 C14@3` is one of the 10. An interval whose bound sits within about a tenth of its width of
+zero is decided by the seed as much as by the data. The
+remedy is more resamples, not another seed. It would move every interval this
+file quotes, so it belongs with the next full re-measure rather than here.
+
+**Correlations.** `stratify` now prints a Fisher-z interval for each `r`, the
+t-test p, a Holm p across the five tiers, and the threshold for its n: at
+n = 31, |r| must reach **0.355** to differ from zero at 0.05. None of §13.3's
+detail-axis coefficients for spurious detail reaches it at any tier. The largest,
+−0.29 at code 0, has an interval of [−0.59, +0.07]. §13.3's reading that the
+correlation "does not survive the ladder" therefore has no survival to lose: at
+this n no tier's coefficient is distinguishable from zero. The chroma axis
+reaches the threshold at codes 0–2, but only code 2's +0.53 survives Holm. ΔE00's
+correlation with detail reaches it at codes 3 and 4 (+0.44, +0.56), and both
+survive Holm. Reproduce with the §6 `stratify` lines.
