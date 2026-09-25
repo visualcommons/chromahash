@@ -50,9 +50,19 @@
  * register (`experiments-register.ts`) and the result reader's shape check
  * (`results.ts`) fail a run only on a state the committed document and results
  * are never in, so each failure branch is driven from a fixture instead.
+ *
+ * The alpha corpus block covers the retired alpha holdout split and withdrawn
+ * pins (`alpha-images.ts`, #83), whose refusal and skip no sweep CI runs ever
+ * reaches.
  */
 
 import { spawnSync } from "node:child_process";
+import {
+  ALPHA_HOLDOUT_RETIRED,
+  type AlphaImageSpec,
+  alphaImagesToFetch,
+} from "./alpha-images.ts";
+import { splitFor } from "./corpus.ts";
 import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
@@ -2130,6 +2140,72 @@ console.log("\nverify:experiments — the table register and result shape\n");
     "a series shorter than the image list is refused",
     only(fs5, 'row "arm" bytes has 1 values for 2 images'),
     JSON.stringify(fs5),
+  );
+}
+
+// --- Alpha corpus: the retired holdout and withdrawn pins (#83) ------------
+//
+// `ensureAlphaImages` refuses the retired holdout split and never fetches a
+// withdrawn pin. Neither branch runs in any sweep CI executes, so both are
+// driven here through the selection it delegates to, without the network.
+{
+  console.log("\nalpha corpus selection:");
+
+  let thrown = "";
+  try {
+    alphaImagesToFetch("holdout");
+  } catch (e) {
+    thrown = e instanceof Error ? e.message : String(e);
+  }
+  check(
+    "the retired alpha holdout split is refused",
+    thrown === ALPHA_HOLDOUT_RETIRED,
+    thrown === "" ? "no error thrown" : thrown,
+  );
+
+  const base: AlphaImageSpec = {
+    label: "fixture-kept",
+    url: "https://example.invalid/kept.png",
+    ext: ".png",
+    width: 1,
+    height: 1,
+    split: "tune",
+    nonOpaqueFraction: 0,
+    softAlphaFraction: 0,
+    sha256: "0".repeat(64),
+  };
+  const fixture: AlphaImageSpec[] = [
+    base,
+    { ...base, label: "fixture-withdrawn", withdrawn: "gone" },
+    { ...base, label: "fixture-holdout", split: "holdout" },
+  ];
+  const labels = (specs: AlphaImageSpec[]): string =>
+    specs.map((s) => s.label).join(",");
+  const tune = labels(alphaImagesToFetch("tune", fixture));
+  check(
+    "a withdrawn tune pin is not fetched for the tune split",
+    tune === "fixture-kept",
+    tune,
+  );
+  const all = labels(alphaImagesToFetch(undefined, fixture));
+  check(
+    "a withdrawn pin is not fetched with no split",
+    all === "fixture-kept,fixture-holdout",
+    all,
+  );
+
+  const shipped = alphaImagesToFetch().filter(
+    (s) => s.withdrawn !== undefined || s.label === "cutout-wordmark-aflac",
+  );
+  check(
+    "the deleted cutout-wordmark-aflac pin is never fetched",
+    shipped.length === 0,
+    labels(shipped),
+  );
+  check(
+    "the withdrawn pin keeps its holdout split, so a cached copy cannot join tune",
+    splitFor("cutout-wordmark-aflac") === "holdout",
+    splitFor("cutout-wordmark-aflac"),
   );
 }
 

@@ -335,6 +335,24 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
 ];
 
 /**
+ * The pins {@link ensureAlphaImages} fetches for `split`: withdrawn entries
+ * are skipped, and the retired holdout split throws
+ * {@link ALPHA_HOLDOUT_RETIRED}. Separate from the fetch so the self-test
+ * (`metric-selftest.ts`) can assert both without the network.
+ */
+export function alphaImagesToFetch(
+  split?: CorpusSplit,
+  images: readonly AlphaImageSpec[] = ALPHA_IMAGES,
+): AlphaImageSpec[] {
+  if (split === "holdout") throw new Error(ALPHA_HOLDOUT_RETIRED);
+  return images.filter(
+    (spec) =>
+      spec.withdrawn === undefined &&
+      (split === undefined || spec.split === split),
+  );
+}
+
+/**
  * Ensure every alpha fixture is present and content-pinned. A fetch failure or
  * digest mismatch throws — see `ensureNaturalImages` for why.
  *
@@ -350,13 +368,11 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
 export async function ensureAlphaImages(
   split?: CorpusSplit,
 ): Promise<string[]> {
-  if (split === "holdout") throw new Error(ALPHA_HOLDOUT_RETIRED);
+  const specs = alphaImagesToFetch(split);
   await fs.mkdir(ALPHA_DIR, { recursive: true });
   const paths: string[] = [];
   let downloaded = 0;
-  for (const spec of ALPHA_IMAGES) {
-    if (spec.withdrawn !== undefined) continue;
-    if (split !== undefined && spec.split !== split) continue;
+  for (const spec of specs) {
     const filePath = path.join(ALPHA_DIR, `${spec.label}${spec.ext}`);
     if (
       await ensurePinnedFixture({
