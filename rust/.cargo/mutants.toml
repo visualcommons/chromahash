@@ -68,7 +68,14 @@ exclude_re = [
     # (`write_bits`, and `write_bits_word` for PERFORMANCE.md §12.1 item 7)
     # treat as no-ops, so the body is identical. Anchored to the write, not to
     # the CfL computation's own `cfl_bits > 0`, which is killable.
-    "src/encode.rs:1560:19.*replace > with >= in encode_with",
+    "src/encode.rs:1582:19.*replace > with >= in encode_with",
+    # `quantize_one`'s `ac_nearest` search scans the symmetric offsets
+    # {0, -1, 1, -2, 2}, so `q + d` → `q - d` scans the same five candidates in
+    # a different order — the reasoning of `select_dc_codes`' entry above.
+    # With the strict `<`, order decides only an exact tie in reconstruction
+    # error between two codes, which the uneven µ-law grid does not produce.
+    # Anchored to the line.
+    "src/encode.rs:720:30.*replace \\+ with - in quantize_one",
     # `if ratio > 1.0` picks the landscape branch. decode_aspect(byte) is 2^k for
     # k = byte/255*8 - 4, which equals 1.0 only at the non-integer byte 127.5, so
     # ratio is never exactly 1.0 and `>` vs `>=` are equivalent over all 256
