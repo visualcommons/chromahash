@@ -55,9 +55,12 @@ export function classifyProbe(
     // and not working.
     const code = (proc.error as NodeJS.ErrnoException | undefined)?.code;
     const kind: Availability = code === "ENOENT" ? "absent" : "broken";
+    // `||`, not `??`: a utf8 spawn's stderr is always a string, so a target
+    // that died silently yields "" (or whitespace), which must fall through to
+    // the signal or exit status rather than record an empty reason.
     const why =
-      proc.error?.message ??
-      proc.stderr?.slice(0, 200) ??
+      proc.error?.message ||
+      proc.stderr?.trim().slice(0, 200) ||
       (proc.signal ? `killed by ${proc.signal}` : `exit ${proc.status}`);
     return { ok: false, kind, reason: repoRelative(why.trim(), root) };
   }
