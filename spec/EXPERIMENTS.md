@@ -2675,7 +2675,10 @@ split read once, not a rewording (#76).
 - **The replacement is `holdout2`**, sealed. Its images are chosen on
   covariates alone — the §9.1 axes plus the smartphone snapshots §9.4 lists as
   missing — with no encoder run on a candidate, and nothing is pinned until
-  the list is approved. Once pinned, `sweep` and `rd-budget` read it only with
+  the list is approved. The 32 candidates, the protocol that drew them in a
+  seeded order under thresholds fixed beforehand, and their covariates
+  (`corpus-covariates.ts`) are in #103, which pins them once approved. Once
+  pinned, `sweep` and `rd-budget` read it only with
   `--split holdout2 --decision <ID>`, only when `spec/V0.8-DECISIONS.md`
   records that decision as frozen (its criterion approved, and not yet
   answered), only whole, and only once: a second run under the same result

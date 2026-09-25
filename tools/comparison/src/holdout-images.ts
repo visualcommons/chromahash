@@ -300,7 +300,7 @@ export async function ensureHoldout2Images(
   const specs = holdout2Specs(images);
   if (specs.length === 0) {
     throw new Error(
-      `holdout2 has no pinned images yet: its candidate list awaits approval before anything is pinned (#76), so decision "${opening.decision}" cannot be read against it`,
+      `holdout2 has no pinned images yet: its candidate list awaits approval before anything is pinned (#103), so decision "${opening.decision}" cannot be read against it`,
     );
   }
   const paths: string[] = [];
