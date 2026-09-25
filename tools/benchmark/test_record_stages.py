@@ -27,7 +27,8 @@ HERE = Path(__file__).resolve().parent
 SCRIPT = HERE / "record_stages.py"
 
 # Scratch space under this directory rather than the system temp dir, so a test
-# run writes nothing outside the checkout. The root .gitignore ignores output/.
+# run writes nothing outside the checkout. tools/benchmark/.gitignore ignores
+# output/.
 SCRATCH = HERE / "output"
 
 STAGES = "\n".join(

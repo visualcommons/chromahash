@@ -2131,9 +2131,21 @@ console.log("\nperf probe — absent is skippable, anything else is broken\n");
 
   const killed = spawn(node, ["-e", "process.kill(process.pid, 'SIGKILL')"]);
   check(
-    "a binary killed by a signal is broken",
-    !killed.ok && killed.kind === "broken",
+    "a binary killed by a signal is broken, and names the signal",
+    !killed.ok &&
+      killed.kind === "broken" &&
+      killed.reason === "killed by SIGKILL",
     `kind=${killed.kind} reason=${killed.reason}`,
+  );
+
+  const silent = spawn(node, [
+    "-e",
+    "process.stderr.write(' \\n');process.exit(4)",
+  ]);
+  check(
+    "a binary that exits non-zero saying nothing is broken, with its status",
+    !silent.ok && silent.kind === "broken" && silent.reason === "exit 4",
+    `kind=${silent.kind} reason=${silent.reason}`,
   );
 
   const fine = spawn(node, ["-e", "console.log('runtime=fixture\\n')"]);
