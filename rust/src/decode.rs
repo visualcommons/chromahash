@@ -5,7 +5,8 @@ use crate::constants::{
     ALPHA_FLAG_BIT, Gamut, TIER_BITS, Tunables, VERSION_BITS, ac_shape, prefix_bits,
 };
 use crate::dct::{
-    SelectionOrder, dct_decode_pixel_separable, precompute_cos_table, window_weights,
+    SelectionOrder, dct_decode_pixel_flat, dct_decode_pixel_separable, precompute_cos_table,
+    precompute_cos_table_flat, window_weights,
 };
 use crate::encode::{
     band_split_index, dequantize_aspect, dequantize_c_dc, dequantize_cfl_gain, dequantize_l_dc,
@@ -30,6 +31,24 @@ fn build_gamma_lut(output: Gamut) -> [u8; 4096] {
         *entry = round_half_away_from_zero(g.clamp(0.0, 1.0) * 255.0) as u8;
     }
     lut
+}
+
+/// [`build_gamma_lut`]'s table for `output`, built once per process and
+/// shared — `spec/PERFORMANCE.md` §12.1 item 4(a), behind
+/// `Tunables::accel_gamma_lut_cache`. The table depends on the output gamut
+/// only through [`Gamut::output_uses_adobe_gamma`], which is also all that
+/// `build_gamma_lut` reads, so there are exactly two tables and each is the
+/// same 4096 bytes whether it is built once or on every call.
+fn cached_gamma_lut(output: Gamut) -> &'static [u8; 4096] {
+    use std::sync::OnceLock;
+    static SRGB_CURVE: OnceLock<[u8; 4096]> = OnceLock::new();
+    static ADOBE_CURVE: OnceLock<[u8; 4096]> = OnceLock::new();
+    let slot = if output.output_uses_adobe_gamma() {
+        &ADOBE_CURVE
+    } else {
+        &SRGB_CURVE
+    };
+    slot.get_or_init(|| build_gamma_lut(output))
 }
 
 /// Map linear [0,1] to gamma-encoded u8 via the output-gamut LUT. Per spec §12.6.
@@ -374,30 +393,51 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
         .map(|&(_, cy)| cy)
         .max()
         .unwrap_or(0);
-    let cos_x = precompute_cos_table(w, max_cx + 1);
-    let cos_y = precompute_cos_table(h, max_cy + 1);
+    // `accel_flat_cos` (§12.1 item 4(b)) builds the same entries in one
+    // contiguous array per axis; exactly one of the two layouts is built.
+    let (cos_x, cos_y, flat_x, flat_y) = if t.accel_flat_cos {
+        (
+            Vec::new(),
+            Vec::new(),
+            precompute_cos_table_flat(w, max_cx + 1),
+            precompute_cos_table_flat(h, max_cy + 1),
+        )
+    } else {
+        (
+            precompute_cos_table(w, max_cx + 1),
+            precompute_cos_table(h, max_cy + 1),
+            Vec::new(),
+            Vec::new(),
+        )
+    };
     stage!("cos_tables");
 
     // 7. Build gamma LUT and render
-    let gamma_lut = build_gamma_lut(output);
+    let built_lut;
+    let gamma_lut: &[u8; 4096] = if t.accel_gamma_lut_cache {
+        cached_gamma_lut(output)
+    } else {
+        built_lut = build_gamma_lut(output);
+        &built_lut
+    };
     stage!("gamma_lut");
     let mut rgba_out = vec![0u8; w * h * 4];
 
+    let pixel = |dc: f64, vals: &[f64], scan: &[(usize, usize)], x: usize, y: usize| -> f64 {
+        if t.accel_flat_cos {
+            dct_decode_pixel_flat(dc, vals, scan, x, y, &flat_x, w, &flat_y, h)
+        } else {
+            dct_decode_pixel_separable(dc, vals, scan, x, y, &cos_x, &cos_y)
+        }
+    };
+
     for y in 0..h {
         for x in 0..w {
-            let l = dct_decode_pixel_separable(l_dc, &l_vals, &l_scan, x, y, &cos_x, &cos_y);
-            let a = dct_decode_pixel_separable(a_dc, &a_vals, &a_scan, x, y, &cos_x, &cos_y);
-            let b = dct_decode_pixel_separable(b_dc, &b_vals, &b_scan, x, y, &cos_x, &cos_y);
+            let l = pixel(l_dc, &l_vals, &l_scan, x, y);
+            let a = pixel(a_dc, &a_vals, &a_scan, x, y);
+            let b = pixel(b_dc, &b_vals, &b_scan, x, y);
             let alpha = if has_alpha {
-                dct_decode_pixel_separable(
-                    alpha_dc_val,
-                    &alpha_vals,
-                    &alpha_scan,
-                    x,
-                    y,
-                    &cos_x,
-                    &cos_y,
-                )
+                pixel(alpha_dc_val, &alpha_vals, &alpha_scan, x, y)
             } else {
                 1.0
             };
@@ -407,9 +447,9 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
             let l_clamped = clamp01(l);
             let rgb_linear = oklab_to_linear_output([l_clamped, a, b], output);
             let idx = (y * w + x) * 4;
-            rgba_out[idx] = linear_to_gamma8(clamp01(rgb_linear[0]), &gamma_lut);
-            rgba_out[idx + 1] = linear_to_gamma8(clamp01(rgb_linear[1]), &gamma_lut);
-            rgba_out[idx + 2] = linear_to_gamma8(clamp01(rgb_linear[2]), &gamma_lut);
+            rgba_out[idx] = linear_to_gamma8(clamp01(rgb_linear[0]), gamma_lut);
+            rgba_out[idx + 1] = linear_to_gamma8(clamp01(rgb_linear[1]), gamma_lut);
+            rgba_out[idx + 2] = linear_to_gamma8(clamp01(rgb_linear[2]), gamma_lut);
             rgba_out[idx + 3] = round_half_away_from_zero(255.0 * clamp01(alpha)) as u8;
         }
     }
@@ -543,7 +583,15 @@ pub fn average_color_with(hash: &[u8], t: &Tunables) -> [u8; 4] {
 
     let l_clamped = clamp01(l_dc);
     let rgb_linear = oklab_to_linear_srgb([l_clamped, a_dc, b_dc]);
-    let gamma_lut = build_gamma_lut(Gamut::Srgb);
+    // Three table lookups need no 4096-entry table at all, but the shipped
+    // path builds one, so the lever that caches it reaches here too.
+    let built_lut;
+    let gamma_lut: &[u8; 4096] = if t.accel_gamma_lut_cache {
+        cached_gamma_lut(Gamut::Srgb)
+    } else {
+        built_lut = build_gamma_lut(Gamut::Srgb);
+        &built_lut
+    };
 
     // Alpha DC is the first field after the header prefix, in alpha mode.
     let alpha = if has_alpha {
@@ -554,9 +602,9 @@ pub fn average_color_with(hash: &[u8], t: &Tunables) -> [u8; 4] {
     };
 
     [
-        linear_to_gamma8(clamp01(rgb_linear[0]), &gamma_lut),
-        linear_to_gamma8(clamp01(rgb_linear[1]), &gamma_lut),
-        linear_to_gamma8(clamp01(rgb_linear[2]), &gamma_lut),
+        linear_to_gamma8(clamp01(rgb_linear[0]), gamma_lut),
+        linear_to_gamma8(clamp01(rgb_linear[1]), gamma_lut),
+        linear_to_gamma8(clamp01(rgb_linear[2]), gamma_lut),
         round_half_away_from_zero(255.0 * clamp01(alpha)) as u8,
     ]
 }

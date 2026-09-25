@@ -3,8 +3,16 @@ use crate::math_utils::{portable_exp, portable_ln, portable_pow, round_half_away
 
 /// µ-law compress: value in [-1, 1] → compressed in [-1, 1].
 pub fn mu_compress(value: f64, mu: f64) -> f64 {
+    mu_compress_by(value, mu, portable_ln(1.0 + mu))
+}
+
+/// [`mu_compress`] with its denominator `ln(1 + mu)` supplied by the caller,
+/// so a loop over one `mu` computes it once (`spec/PERFORMANCE.md` §12.1 item
+/// 2). `mu_compress` is this function, so the two cannot drift apart: the
+/// expression is evaluated once, in one place, in the same order.
+pub(crate) fn mu_compress_by(value: f64, mu: f64, ln_1p_mu: f64) -> f64 {
     let v = value.clamp(-1.0, 1.0);
-    v.signum() * portable_ln(1.0 + mu * v.abs()) / portable_ln(1.0 + mu)
+    v.signum() * portable_ln(1.0 + mu * v.abs()) / ln_1p_mu
 }
 
 /// µ-law expand: compressed in [-1, 1] → value in [-1, 1].
@@ -41,6 +49,50 @@ pub fn mu_law_quantize(value: f64, bits: u32, mu: f64) -> u32 {
 /// Per spec §7.3 (v0.6).
 pub fn mu_law_dequantize(index: u32, bits: u32, mu: f64) -> f64 {
     mu_expand(dequantize_compressed(index, bits), mu)
+}
+
+/// [`compand_quantize`] for a caller that already holds `ln(1 + mu)`.
+///
+/// Every family but µ-law is dispatched to [`compand_quantize`] unchanged; the
+/// µ-law arm is the same deadzone test and the same [`mu_law_quantize`]
+/// arithmetic, with [`mu_compress_by`] in place of [`mu_compress`].
+pub(crate) fn compand_quantize_hoisted(
+    value: f64,
+    bits: u32,
+    family: Companding,
+    mu: f64,
+    ln_1p_mu: f64,
+    table: &QuantTable,
+    deadzone: f64,
+) -> u32 {
+    match family {
+        Companding::MuLaw => {
+            if deadzone > 0.0 && value.abs() < deadzone {
+                return (1u32 << (bits - 1)) - 1;
+            }
+            quantize_compressed(mu_compress_by(value, mu, ln_1p_mu), bits)
+        }
+        _ => compand_quantize(value, bits, family, mu, table, deadzone),
+    }
+}
+
+/// Every value [`compand_dequantize`] returns at width `bits`, indexed by the
+/// code: `table[q] == compand_dequantize(q, bits, …)` for `q` in
+/// `0..2^bits`, the never-written top code included (it clamps, as the
+/// function does). A pure function of its arguments, so the table holds the
+/// same `f64`s the calls would — `spec/PERFORMANCE.md` §12.1 item 1.
+///
+/// The width is part of what the table is for: a job whose bit width varies
+/// with the selection index needs one table per width, never one per job.
+pub(crate) fn dequantize_table(
+    bits: u32,
+    family: Companding,
+    mu: f64,
+    table: &QuantTable,
+) -> Vec<f64> {
+    (0..1u32 << bits)
+        .map(|q| compand_dequantize(q, bits, family, mu, table))
+        .collect()
 }
 
 /// A-law compress (G.711's other companding half; linear near zero).
@@ -315,6 +367,89 @@ mod tests {
             compand_quantize(0.1, 5, Companding::MuLaw, MU, &table, 0.1),
             mu_law_quantize(0.1, 5, MU)
         );
+    }
+
+    /// The families and deadzones §12.1 items 1–2 must agree under.
+    fn accel_cases() -> Vec<(Companding, f64, QuantTable, f64)> {
+        let mut trained = QuantTable::EMPTY;
+        trained.levels[0] = 0.1;
+        trained.levels[1] = 0.35;
+        trained.levels[2] = 0.8;
+        trained.len = 3;
+        vec![
+            (Companding::MuLaw, 5.0, QuantTable::EMPTY, 0.0),
+            (Companding::MuLaw, 8.0, QuantTable::EMPTY, 0.0),
+            (Companding::MuLaw, 5.0, QuantTable::EMPTY, 0.05),
+            (Companding::ALaw { a: 87.6 }, 5.0, QuantTable::EMPTY, 0.0),
+            (
+                Companding::Power { gamma: 0.75 },
+                5.0,
+                QuantTable::EMPTY,
+                0.02,
+            ),
+            (Companding::Table, 5.0, trained, 0.0),
+        ]
+    }
+
+    #[test]
+    fn hoisted_quantize_is_bit_for_bit_the_plain_one() {
+        // A dense sweep of [-1.1, 1.1] plus the values where the arithmetic has
+        // edges: zero of both signs, the clamp boundary, the deadzone boundary.
+        let mut values: Vec<f64> = (-1100..=1100).map(|i| i as f64 / 1000.0).collect();
+        values.extend([-0.0, 0.05, -0.05, 0.02, f64::MIN_POSITIVE, 1.0, -1.0]);
+        for (family, mu, table, deadzone) in accel_cases() {
+            let ln = portable_ln(1.0 + mu);
+            for bits in [3u32, 4, 5, 6, 7, 8] {
+                for &v in &values {
+                    assert_eq!(
+                        compand_quantize_hoisted(v, bits, family, mu, ln, &table, deadzone),
+                        compand_quantize(v, bits, family, mu, &table, deadzone),
+                        "{family:?} mu={mu} dz={deadzone} bits={bits} v={v}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn mu_compress_by_is_mu_compress() {
+        for mu in [1.0, 5.0, 8.0, 255.0] {
+            let ln = portable_ln(1.0 + mu);
+            for i in -1100..=1100 {
+                let v = i as f64 / 1000.0;
+                assert_eq!(
+                    mu_compress_by(v, mu, ln).to_bits(),
+                    mu_compress(v, mu).to_bits()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn dequantize_table_holds_what_the_calls_return() {
+        for (family, mu, table, _) in accel_cases() {
+            for bits in [3u32, 4, 5, 6, 7, 8] {
+                let t = dequantize_table(bits, family, mu, &table);
+                assert_eq!(t.len(), 1usize << bits);
+                for (q, &v) in t.iter().enumerate() {
+                    assert_eq!(
+                        v.to_bits(),
+                        compand_dequantize(q as u32, bits, family, mu, &table).to_bits(),
+                        "{family:?} bits={bits} q={q}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn dequantize_tables_differ_by_width() {
+        // Why the key is `(bits, index)`: the same index names a different level
+        // at a different width, so a table keyed on the index alone would hand
+        // one band the other's grid (LAYOUT_C's 6-bit and 5-bit L bands).
+        let six = dequantize_table(6, Companding::MuLaw, MU, &QuantTable::EMPTY);
+        let five = dequantize_table(5, Companding::MuLaw, MU, &QuantTable::EMPTY);
+        assert!((1..31).any(|q| six[q] != five[q]));
     }
 
     #[test]

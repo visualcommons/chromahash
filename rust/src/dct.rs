@@ -186,13 +186,32 @@ pub fn precompute_cos_table(dim: usize, max_freq: usize) -> Vec<Vec<f64>> {
     for freq in 0..max_freq {
         let mut row = Vec::with_capacity(dim);
         for pos in 0..dim {
-            row.push(portable_cos(
-                PI / dim as f64 * freq as f64 * (pos as f64 + 0.5),
-            ));
+            row.push(cos_entry(dim, freq, pos));
         }
         table.push(row);
     }
     table
+}
+
+/// One cosine-table entry. Both table layouts call this, so they hold the
+/// same `f64` at the same `(freq, pos)` by construction.
+#[inline]
+fn cos_entry(dim: usize, freq: usize, pos: usize) -> f64 {
+    portable_cos(PI / dim as f64 * freq as f64 * (pos as f64 + 0.5))
+}
+
+/// [`precompute_cos_table`] as one contiguous row-major array:
+/// `flat[freq * dim + pos] == table[freq][pos]`. The decoder's render loop
+/// reads a cosine per coefficient per pixel, and a `Vec<Vec<f64>>` costs a
+/// pointer chase for each — `spec/PERFORMANCE.md` §12.1 item 4(b).
+pub fn precompute_cos_table_flat(dim: usize, max_freq: usize) -> Vec<f64> {
+    let mut flat = Vec::with_capacity(dim * max_freq);
+    for freq in 0..max_freq {
+        for pos in 0..dim {
+            flat.push(cos_entry(dim, freq, pos));
+        }
+    }
+    flat
 }
 
 /// Forward DCT over the selected coefficients. Per spec §10 (v0.6).
@@ -250,6 +269,88 @@ pub fn dct_encode_selected(
     (dc, ac, scale)
 }
 
+/// Coefficients one pass of [`dct_encode_selected_lanes`] computes together.
+const DCT_LANES: usize = 4;
+
+/// [`dct_encode_selected`], computing [`DCT_LANES`] coefficients per pass over
+/// the channel — `spec/PERFORMANCE.md` §12.1 item 3. Byte-identical to it, and
+/// the reason is structural rather than empirical:
+///
+/// * **Lanes are coefficients, never pixels.** Each lane is one `(cx, cy)`
+///   pair's own accumulator, visiting pixels in the same row-major order as
+///   the scalar loop, so no sum is split or reassociated. Vectorizing across
+///   pixels instead would reorder the reduction and change bytes.
+/// * **The per-term expression is the scalar one.** A lane adds
+///   `channel · cos_x · cos_y`, grouped `(channel · cos_x) · cos_y` exactly as
+///   `f += channel[i] * cx_row[x] * fy` parses. It is written with separate
+///   multiplies and one add: Rust never contracts `a * b + c` into a fused
+///   multiply-add (that needs an explicit `mul_add`), and there are no
+///   hand-written intrinsics here for anyone to reach for `fmadd` in.
+///
+/// The only thing that changes is how the work is scheduled: the channel is
+/// read once per group of lanes instead of once per coefficient, and each
+/// group's `cos_x` rows are interleaved so a pixel's lane factors are
+/// contiguous. The compiler may map the lanes onto vector registers; lane
+/// arithmetic under IEEE 754 does not depend on whether it does.
+pub fn dct_encode_selected_lanes(
+    channel: &[f64],
+    w: usize,
+    h: usize,
+    coeffs: &[(usize, usize)],
+    cos_x: &[Vec<f64>],
+    cos_y: &[Vec<f64>],
+) -> (f64, Vec<f64>, f64) {
+    let wh = (w * h) as f64;
+    let dc: f64 = channel.iter().sum::<f64>() / wh;
+
+    // The representable coefficients, in selection order. A dead one is an
+    // exact 0.0 exactly as in the scalar path, and takes no lane.
+    let mut ac = vec![0.0f64; coeffs.len()];
+    let live: Vec<usize> = (0..coeffs.len())
+        .filter(|&j| coeffs[j].0 < w && coeffs[j].1 < h)
+        .collect();
+
+    let mut gx = vec![0.0f64; w * DCT_LANES];
+    for group in live.chunks(DCT_LANES) {
+        let n = group.len();
+        // Interleave this group's cos_x rows: gx[x·LANES + k] = cos_x[cx_k][x].
+        // A short final group pads with lanes that are computed and discarded.
+        for (k, &j) in group.iter().enumerate() {
+            let row = &cos_x[coeffs[j].0];
+            for x in 0..w {
+                gx[x * DCT_LANES + k] = row[x];
+            }
+        }
+        let mut acc = [0.0f64; DCT_LANES];
+        for y in 0..h {
+            let mut fy = [0.0f64; DCT_LANES];
+            for (k, &j) in group.iter().enumerate() {
+                fy[k] = cos_y[coeffs[j].1][y];
+            }
+            let row = &channel[y * w..y * w + w];
+            for (x, &c) in row.iter().enumerate() {
+                let g = &gx[x * DCT_LANES..x * DCT_LANES + DCT_LANES];
+                for k in 0..DCT_LANES {
+                    acc[k] += c * g[k] * fy[k];
+                }
+            }
+        }
+        for k in 0..n {
+            ac[group[k]] = acc[k] / wh;
+        }
+    }
+
+    let mut scale = 0.0_f64;
+    for &f in &ac {
+        scale = scale.max(f.abs());
+    }
+    if scale < 1e-10 {
+        ac.fill(0.0);
+        scale = 0.0;
+    }
+    (dc, ac, scale)
+}
+
 /// Inverse DCT at a single pixel using precomputed cosine tables. Per spec §12.6.
 /// The cx/cy factors stay as separate multiplies to preserve the exact
 /// floating-point operation order. cos_x/cos_y must cover all (cx, cy) in scan.
@@ -268,6 +369,33 @@ pub fn dct_decode_pixel_separable(
         let cy_factor = if cy > 0 { 2.0 } else { 1.0 };
         let fx = cos_x[cx][x];
         let fy = cos_y[cy][y];
+        value += ac[j] * fx * fy * cx_factor * cy_factor;
+    }
+    value
+}
+
+/// [`dct_decode_pixel_separable`] over [`precompute_cos_table_flat`]'s layout:
+/// `cos_x` has row stride `w` and `cos_y` row stride `h`. The same factors,
+/// multiplied in the same order, summed in scan order.
+#[allow(clippy::too_many_arguments)]
+#[inline]
+pub fn dct_decode_pixel_flat(
+    dc: f64,
+    ac: &[f64],
+    scan: &[(usize, usize)],
+    x: usize,
+    y: usize,
+    cos_x: &[f64],
+    w: usize,
+    cos_y: &[f64],
+    h: usize,
+) -> f64 {
+    let mut value = dc;
+    for (j, &(cx, cy)) in scan.iter().enumerate() {
+        let cx_factor = if cx > 0 { 2.0 } else { 1.0 };
+        let cy_factor = if cy > 0 { 2.0 } else { 1.0 };
+        let fx = cos_x[cx * w + x];
+        let fy = cos_y[cy * h + y];
         value += ac[j] * fx * fy * cx_factor * cy_factor;
     }
     value
