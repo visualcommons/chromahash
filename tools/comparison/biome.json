@@ -1,7 +1,13 @@
 {
   "$schema": "https://biomejs.dev/schemas/1.9.0/schema.json",
   "files": {
-    "ignore": ["dist/**", "node_modules/**", ".versions/**", "output/**"]
+    "ignore": [
+      "dist/**",
+      "node_modules/**",
+      ".versions/**",
+      "output/**",
+      "results/**"
+    ]
   },
   "organizeImports": {
     "enabled": true

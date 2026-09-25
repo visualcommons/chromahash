@@ -22,14 +22,11 @@
  *                                 [--bins 3]
  */
 
-import { readFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { CURATED_IMAGES } from "./natural-images.ts";
+import { RESULTS_DIR, readResult, summarize } from "./results.ts";
 import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
-
-const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
-const SWEEP_DIR = path.join(REPO_ROOT, "tools/comparison/output/sweeps");
 
 /** The three covariates `natural-images.ts` records, parsed out of `notes`. */
 interface Covariates {
@@ -154,8 +151,18 @@ if (!Number.isInteger(binCount) || binCount < 2) {
   process.exit(2);
 }
 
-const file = path.join(SWEEP_DIR, `${sweepName}.json`);
-const sweep = JSON.parse(readFileSync(file, "utf8")) as { rows: SweepRow[] };
+// The committed result (results.ts), whose per-image series are the only thing
+// this reads. A missing one is an error, not an empty table.
+const result = readResult(RESULTS_DIR, sweepName);
+if (!result) {
+  console.error(
+    `no ${path.relative(process.cwd(), path.join(RESULTS_DIR, `${sweepName}.json`))} — run the sweep`,
+  );
+  process.exit(1);
+}
+const sweep: { rows: SweepRow[] } = {
+  rows: result.rows.map((r) => summarize(r, result.imageNames)),
+};
 const cov = covariates();
 
 const AXIS_LABEL: Record<Axis, string> = {

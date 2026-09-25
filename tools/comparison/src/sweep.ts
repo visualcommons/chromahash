@@ -3,6 +3,12 @@
  * of the corpus and emit a decision table.
  *
  * Usage: node dist/sweep.js <config.json> [--split tune|holdout] [--max-images N]
+ *                          [--out-dir DIR]
+ *
+ * A full run writes `tools/comparison/results/<name>[-holdout].json`, which is
+ * committed: the per-image scores and the run's provenance (`results.ts`). A
+ * `--max-images` run scores a different corpus, so it is scratch and goes to
+ * `output/sweeps/` instead.
  *
  * A config declares explicit variants (label + TUNE string + optional tier /
  * capToTier0 / version). The first variant is the incumbent: every other
@@ -51,9 +57,25 @@ import {
   flattenOverBackdrop,
   setScoringConfig,
 } from "./metrics.ts";
-import { ensureIqaAvailable } from "./metrics/iqa.ts";
+import { ensureIqaAvailable, iqaVersionBanner } from "./metrics/iqa.ts";
 import { ensureNaturalImages } from "./natural-images.ts";
-import { quantile } from "./stats.ts";
+import {
+  type PerImage,
+  RESULTS_DIR,
+  RESULT_SCHEMA,
+  type ResultFile,
+  SCRATCH_DIR,
+  captureProvenance,
+  fileSha256,
+  guardsHold,
+  mean,
+  median,
+  perImageOf,
+  repoRelative,
+  resultPath,
+  serializeResult,
+  sha256,
+} from "./results.ts";
 import type { ImageInput } from "./types.ts";
 import { prepareVersionBinaries } from "./version-builds.ts";
 
@@ -274,15 +296,9 @@ interface SweepRow {
   pairs: number | null;
   /** Corpus image names, in the same order as {@link perImageCiede}. */
   imageNames: string[];
+  /** Every per-image series this arm measured: what the committed result keeps. */
+  perImage: PerImage;
 }
-
-/**
- * Absolute allowance, in 8-bit levels, when an artifact guard's incumbent scores
- * exactly zero. One level is the dead zone both artifact metrics already apply
- * per pixel and per frequency, so anything at or below it is noise by their own
- * definition.
- */
-const ARTIFACT_ZERO_BASE_ALLOWANCE = 1.0;
 
 /** Guard tolerances vs the incumbent (absolute for SSIM2, relative otherwise). */
 const GUARD_SSIM2_DROP = 1.0;
@@ -293,13 +309,14 @@ const { values, positionals } = parseArgs({
   options: {
     split: { type: "string", default: "tune" },
     "max-images": { type: "string" },
+    "out-dir": { type: "string" },
   },
 });
 
 const configPathArg = positionals[0];
 if (!configPathArg) {
   console.error(
-    "Usage: node dist/sweep.js <config.json> [--split tune|holdout] [--max-images N]",
+    "Usage: node dist/sweep.js <config.json> [--split tune|holdout] [--max-images N] [--out-dir DIR]",
   );
   process.exit(1);
 }
@@ -313,6 +330,17 @@ if (split !== "tune" && split !== "holdout") {
 const maxImages = values["max-images"]
   ? Number.parseInt(values["max-images"], 10)
   : null;
+/**
+ * A full run is a result and is committed; a `--max-images` run scores a
+ * different corpus and is scratch. `--out-dir` overrides both, for a caller
+ * (the determinism check) that must not touch either.
+ */
+const outDir =
+  values["out-dir"] !== undefined
+    ? path.resolve(values["out-dir"])
+    : maxImages !== null
+      ? SCRATCH_DIR
+      : RESULTS_DIR;
 
 /**
  * Resolve a config's corpus, honouring the legacy `photoOnly` alias. Declaring
@@ -328,22 +356,6 @@ function corpusFor(config: SweepConfig): CorpusSet {
   }
   if (config.corpus !== undefined) return parseCorpusSet(config.corpus);
   return config.photoOnly ? "photo" : "all";
-}
-
-/** Mean of the non-null values, or null. */
-function mean(values: (number | null)[]): number | null {
-  const xs = values.filter(
-    (v): v is number => v !== null && Number.isFinite(v),
-  );
-  return xs.length > 0 ? xs.reduce((s, v) => s + v, 0) / xs.length : null;
-}
-
-/** Median of the non-null values, or null. */
-function median(values: (number | null)[]): number | null {
-  const xs = values
-    .filter((v): v is number => v !== null && Number.isFinite(v))
-    .sort((a, b) => a - b);
-  return xs.length > 0 ? quantile(xs, 0.5) : null;
 }
 
 async function loadCorpus(corpus: CorpusSet): Promise<ImageInput[]> {
@@ -460,6 +472,7 @@ async function scoreVariant(
   const spuriousD: (number | null)[] = [];
   const deficits: (number | null)[] = [];
   const grids: (number | null)[] = [];
+  const bytes: number[] = [];
   let bytesSum = 0;
 
   for (const input of inputs) {
@@ -467,6 +480,7 @@ async function scoreVariant(
     const gamut = input.gamut ?? "srgb";
     const hash = encodeViaRust(cli, w, h, rgba, gamut, tier, variant.tune);
     bytesSum += hash.length;
+    bytes.push(hash.length);
 
     let capW = w;
     let capH = h;
@@ -553,33 +567,22 @@ async function scoreVariant(
     pairedCi: null,
     wins: null,
     pairs: null,
+    perImage: perImageOf({
+      bytes,
+      ciede2000: ciedes,
+      ssimulacra2: ssim2s,
+      butteraugli: butters,
+      dssim: dssims,
+      alphaMae: alphaMaes,
+      ringing: ringings,
+      spurious: spuriouses,
+      spuriousVertical: spuriousV,
+      spuriousHorizontal: spuriousH,
+      spuriousDiagonal: spuriousD,
+      deficit: deficits,
+      spuriousGrid: grids,
+    }),
   };
-}
-
-/**
- * True when `value` is no more than `rise` above `base`, relatively.
- *
- * A null on either side passes: the metric was not scored, and a sweep that did
- * not ask for it must not fail on it. (A config that declares the tolerance and
- * forgets `artifacts` would therefore gate nothing at all, silently — so that
- * combination is rejected at load instead.)
- *
- * A base of exactly zero cannot be compared relatively: any positive value is an
- * infinite rise, which would fail every arm on a corpus where the incumbent
- * happens to be artifact-free. It falls back to an absolute allowance of
- * {@link ARTIFACT_ZERO_BASE_ALLOWANCE} levels rather than reusing `rise`, which
- * is a *fraction* and would otherwise be read as a level count -- 0.02 levels is
- * far below the metrics' own one-level dead zone and would fail an arm for
- * noise.
- */
-function roseNoMoreThan(
-  value: number | null,
-  base: number | null,
-  rise: number,
-): boolean {
-  if (value === null || base === null) return true;
-  if (base === 0) return value <= ARTIFACT_ZERO_BASE_ALLOWANCE;
-  return value <= base * (1 + rise);
 }
 
 /**
@@ -638,28 +641,16 @@ function applyGuards(rows: SweepRow[], config: SweepConfig): void {
       row.ciedeDeltaPct =
         ((row.meanCiede - base.meanCiede) / base.meanCiede) * 100;
     }
-    const ssim2Ok =
-      row.meanSsimulacra2 === null ||
-      base.meanSsimulacra2 === null ||
-      row.meanSsimulacra2 >= base.meanSsimulacra2 - GUARD_SSIM2_DROP;
-    const butterOk =
-      row.meanButteraugli === null ||
-      base.meanButteraugli === null ||
-      row.meanButteraugli <= base.meanButteraugli * (1 + GUARD_REL_RISE);
-    const dssimOk =
-      row.meanDssim === null ||
-      base.meanDssim === null ||
-      row.meanDssim <= base.meanDssim * (1 + GUARD_REL_RISE);
     // Artifact guards are opt-in per config: a sweep exploring a new knob wants
     // the columns visible before it decides what a regression in them even is.
     // Where a tolerance IS declared, an artifact rise fails the row exactly as a
     // guard-metric rise does -- which is the whole point of measuring them.
-    const artifactRise = config.artifactGuardRise;
-    const artifactOk =
-      artifactRise === undefined ||
-      (roseNoMoreThan(row.meanRinging, base.meanRinging, artifactRise) &&
-        roseNoMoreThan(row.meanSpurious, base.meanSpurious, artifactRise));
-    row.guardsOk = ssim2Ok && butterOk && dssimOk && artifactOk;
+    row.guardsOk = guardsHold(
+      row,
+      base,
+      { ssimulacra2Drop: GUARD_SSIM2_DROP, relativeRise: GUARD_REL_RISE },
+      config.artifactGuardRise,
+    );
   }
 }
 
@@ -740,6 +731,21 @@ async function main(): Promise<void> {
 
   const versionBinaries = resolveVersionBinaries(config.variants);
 
+  // Taken before the first encode: the state of the tree the binaries were
+  // built from, not whatever it has become by the time a long run finishes.
+  const provenance = {
+    ...captureProvenance({
+      config: repoRelative(configPath),
+      configSha256: sha256(raw),
+      iqaCli: iqaVersionBanner(),
+      binaries: [RUST_CLI, ...versionBinaries.values()],
+    }),
+    corpus: inputs.map((i) => ({
+      name: path.basename(i.filePath).replace(/\.[^.]+$/, ""),
+      sha256: fileSha256(i.filePath) ?? "missing",
+    })),
+  };
+
   const rows: SweepRow[] = [];
   for (const variant of config.variants) {
     const started = performance.now();
@@ -764,15 +770,48 @@ async function main(): Promise<void> {
     }
   }
 
-  const toolRoot = path.resolve(import.meta.dirname, "..");
-  const outDir = path.join(toolRoot, "output/sweeps");
   await fs.mkdir(outDir, { recursive: true });
   const suffix = split === "holdout" ? "-holdout" : "";
-  const outPath = path.join(outDir, `${config.name}${suffix}.json`);
-  await fs.writeFile(
-    outPath,
-    `${JSON.stringify({ name: config.name, description: config.description ?? null, split, images: inputs.length, guardTolerances: { ssimulacra2Drop: GUARD_SSIM2_DROP, relativeRise: GUARD_REL_RISE }, corpus, backdrops: config.backdrops ?? "white", alphaFidelity: config.alphaFidelity ?? false, artifacts: config.artifacts ?? false, artifactGuardRise: config.artifactGuardRise ?? null, artifactGridEdge: config.artifactGridEdge ?? null, forceOpaque: config.forceOpaque ?? false, expectBytes: config.expectBytes ?? null, rows }, null, 2)}\n`,
-  );
+  const outPath = resultPath(outDir, `${config.name}${suffix}`);
+  // Per-image series, the settings that give them meaning, and provenance --
+  // nothing derived. Means, Δ%, intervals and guard verdicts are recomputed by
+  // every reader from these (results.ts).
+  const result: ResultFile = {
+    schema: RESULT_SCHEMA,
+    tool: "sweep",
+    name: config.name,
+    split,
+    settings: {
+      description: config.description ?? null,
+      corpus,
+      backdrops: config.backdrops ?? "white",
+      alphaFidelity: config.alphaFidelity ?? false,
+      artifacts: config.artifacts ?? false,
+      artifactGuardRise: config.artifactGuardRise ?? null,
+      artifactGridEdge: config.artifactGridEdge ?? null,
+      forceOpaque: config.forceOpaque ?? false,
+      expectBytes: config.expectBytes ?? null,
+      guardTolerances: {
+        ssimulacra2Drop: GUARD_SSIM2_DROP,
+        relativeRise: GUARD_REL_RISE,
+      },
+    },
+    provenance,
+    imageNames: provenance.corpus.map((c) => c.name),
+    rows: rows.map((r) => ({
+      label: r.label,
+      tune: r.tune,
+      tier: r.tier,
+      version: r.version,
+      perImage: r.perImage,
+    })),
+  };
+  await fs.writeFile(outPath, serializeResult(result));
+  if (provenance.dirty) {
+    console.warn(
+      `\n  !! The tree was dirty when this run started (${provenance.dirtyPaths.length} path(s)); the result records it, and verify:experiments --strict refuses it.`,
+    );
+  }
 
   console.log(`\nDecision table (${split} split) → ${outPath}`);
   // The alpha column only exists when alpha was scored, so an opaque sweep's

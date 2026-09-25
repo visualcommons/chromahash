@@ -14,7 +14,7 @@ const KODAK_COUNT = 24;
  * changed, not that the corpus did; either way the run must stop rather than
  * score against different pixels (see corpus-pin.ts).
  */
-const KODAK_SHA256: readonly string[] = [
+export const KODAK_SHA256: readonly string[] = [
   "a56e27cbf5f843c048b6af1d6e090760e9c92fadba88b7dee0205918a37523bd", // kodak01
   "4f4b74a79237e311d72cad958237b5f7088d8bce1c82305ebefe1a70e3022dfd", // kodak02
   "e25ca1ff2f0c0cb5fdfd5f9b0a0bb21ac4c3de3c84a67f35b09a85d3306249db", // kodak03

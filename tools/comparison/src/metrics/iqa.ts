@@ -137,6 +137,22 @@ export function ensureIqaAvailable(): void {
 }
 
 /**
+ * The `iqa-cli --version` banner {@link ensureIqaAvailable} captured, for a
+ * result's provenance. "unknown" until that has run.
+ */
+export function iqaVersionBanner(): string {
+  return iqaVersion;
+}
+
+/**
+ * Whether the metric cache is consulted and written. `CHROMAHASH_METRIC_CACHE=off`
+ * turns it off for a run that must score every pair afresh: a determinism check
+ * whose second run is served from the first run's cache compares the cache with
+ * itself.
+ */
+const cacheEnabled = process.env.CHROMAHASH_METRIC_CACHE !== "off";
+
+/**
  * iqa-cli aborts the entire run if any requested metric errors, and several metrics
  * reject images below a minimum side length. Request only the metrics valid for these
  * dimensions; ciede2000/psnr (the primary + reference) work at any size.
@@ -230,6 +246,7 @@ function isCachedMetrics(v: unknown): v is IqaMetrics {
 }
 
 function cacheRead(key: string): IqaMetrics | null {
+  if (!cacheEnabled) return null;
   try {
     const raw = readFileSync(path.join(CACHE_DIR, `${key}.json`), "utf8");
     const parsed: unknown = JSON.parse(raw);
@@ -250,6 +267,7 @@ function cacheRead(key: string): IqaMetrics | null {
  * and "fails safe by accident" is not a property worth relying on.
  */
 function cacheWrite(key: string, metrics: IqaMetrics): void {
+  if (!cacheEnabled) return;
   try {
     if (!cacheDirReady) {
       mkdirSync(CACHE_DIR, { recursive: true });
