@@ -86,6 +86,7 @@ import {
   registerStatus,
 } from "./holdout-images.ts";
 import { CURATED_IMAGES, type NaturalImageSpec } from "./natural-images.ts";
+import { covariatesOf, isFreeLicence, srgbToLab } from "./corpus-covariates.ts";
 import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
@@ -2695,6 +2696,79 @@ console.log("\nverify:experiments — the table register and result shape\n");
       empty,
     );
   }
+  // The covariates holdout2 candidates are chosen on (corpus-covariates.ts).
+  const [rL, ra, rb] = srgbToLab(255, 0, 0);
+  check(
+    "sRGB red is CIELAB (53.24, 80.09, 67.20) under D65",
+    Math.abs(rL - 53.24) < 0.01 &&
+      Math.abs(ra - 80.09) < 0.01 &&
+      Math.abs(rb - 67.2) < 0.01,
+    `${rL.toFixed(3)}, ${ra.toFixed(3)}, ${rb.toFixed(3)}`,
+  );
+  const size = { width: 8, height: 4 };
+  const grey = covariatesOf(
+    makeRgba(8, 4, () => [119, 119, 119]),
+    8,
+    4,
+    size,
+  );
+  check(
+    "a flat grey is achromatic, keyless and has no detail",
+    // The sRGB→XYZ matrix's rows reach D65 only to 7 digits, so neutral
+    // lands within 1e-4 of the axis rather than on it.
+    grey.meanC < 1e-4 &&
+      grey.detail === 0 &&
+      grey.highKey === 0 &&
+      grey.lowKey === 0 &&
+      Math.abs(grey.meanL - 50) < 0.5,
+    `L ${grey.meanL.toFixed(2)} C ${grey.meanC} detail ${grey.detail}`,
+  );
+  const white = covariatesOf(
+    makeRgba(8, 4, () => [255, 255, 255]),
+    8,
+    4,
+    size,
+  );
+  check(
+    "white is all high-key",
+    white.highKey === 1 && Math.abs(white.meanL - 100) < 1e-4,
+    `L ${white.meanL} high ${white.highKey}`,
+  );
+  const checker = covariatesOf(
+    makeRgba(8, 4, (x, y) => ((x + y) % 2 === 0 ? [255, 255, 255] : [0, 0, 0])),
+    8,
+    4,
+    size,
+  );
+  check(
+    "a one-pixel checkerboard has the largest 4-neighbour Laplacian: 4 × 100 L*",
+    Math.abs(checker.detail - 400) < 1e-3 &&
+      checker.highKey === 0.5 &&
+      checker.lowKey === 0.5,
+    `detail ${checker.detail}`,
+  );
+  check(
+    "orientation is of the stored pixels",
+    grey.orientation === "landscape" && grey.exifOrientation === null,
+    grey.orientation,
+  );
+  for (const [licence, ok] of [
+    ["CC BY-SA 4.0", true],
+    ["CC BY-SA 3.0 us", true],
+    ["CC0", true],
+    ["Public domain", true],
+    ["CC BY-NC-SA 4.0", false],
+    ["CC BY-ND 4.0", false],
+    ["GFDL", false],
+    ["", false],
+  ] as const) {
+    check(
+      `the curation tool ${ok ? "admits" : "refuses"} "${licence}"`,
+      isFreeLicence(licence) === ok,
+      "",
+    );
+  }
+
   const shipped = thrown(() => holdout2Specs());
   check(
     "the shipped pin table's prefixes and splits agree",
