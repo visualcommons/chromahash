@@ -195,7 +195,11 @@ export interface Provenance {
   config: string;
   /** SHA-256 of the config file's bytes, or of rd-budget's effective arguments. */
   configSha256: string;
-  /** Repo-relative path → SHA-256 of every encoder binary the run executed. */
+  /**
+   * Path → SHA-256 of every encoder binary the run executed: repo-relative for
+   * a binary built in the tree, absolute for a system tool resolved from PATH
+   * (rd-budget's `cjxl`/`djxl`). `missing` when the file could not be read.
+   */
   binaries: Record<string, string>;
   /** `process.version`. */
   node: string;
@@ -266,7 +270,9 @@ export function captureProvenance(opts: {
           .map((l) => l.slice(3));
   const binaries: Record<string, string> = {};
   for (const b of opts.binaries) {
-    binaries[repoRelative(b)] = fileSha256(b) ?? "missing";
+    const rel = repoRelative(b);
+    const key = rel.startsWith("../") ? path.resolve(b) : rel;
+    binaries[key] = fileSha256(b) ?? "missing";
   }
   return {
     rev,

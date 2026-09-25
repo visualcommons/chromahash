@@ -39,7 +39,11 @@ import {
   decodeViaRust,
   encodeViaRust,
 } from "./adapters/chromahash.ts";
-import { CodecThumbAdapter, isJxlAvailable } from "./adapters/codec-thumb.ts";
+import {
+  CodecThumbAdapter,
+  isJxlAvailable,
+  jxlToolPaths,
+} from "./adapters/codec-thumb.ts";
 import { LqipModernAdapter } from "./adapters/lqip-modern.ts";
 import { RawPixelsAdapter } from "./adapters/raw-pixels.ts";
 import { ThumbHashAdapter } from "./adapters/thumbhash.ts";
@@ -642,12 +646,16 @@ async function main(): Promise<void> {
     maxImages,
     jxl: isJxlAvailable(),
   };
+  // cjxl/djxl come from PATH, not the tree, so the rev does not pin them: hash
+  // the binaries themselves whenever the JXL baseline will run.
+  const runsJxl =
+    effectiveArgs.jxl && (formatFilter === null || formatFilter.has("jxl"));
   const provenance = {
     ...captureProvenance({
       config: "tools/comparison/src/rd-budget.ts",
       configSha256: sha256(JSON.stringify(effectiveArgs)),
       iqaCli: iqaVersionBanner(),
-      binaries: [RUST_CLI],
+      binaries: [RUST_CLI, ...(runsJxl ? jxlToolPaths() : [])],
       codecs: Object.fromEntries(
         Object.entries(sharp.versions).filter(
           (e): e is [string, string] => typeof e[1] === "string",
@@ -753,7 +761,14 @@ async function main(): Promise<void> {
       await push(scoreAdapter("RawRGB565", new RawPixelsAdapter(b), b, inputs));
     }
   }
-  const codecs = ["webp", "jpeg", "avif", ...(isJxlAvailable() ? ["jxl"] : [])];
+  // The availability the provenance was taken under, so the binaries it hashed
+  // are the ones that run.
+  const codecs = [
+    "webp",
+    "jpeg",
+    "avif",
+    ...(effectiveArgs.jxl ? ["jxl"] : []),
+  ];
   for (const codec of codecs) {
     if (!want(codec)) continue;
     for (const b of budgets) {
