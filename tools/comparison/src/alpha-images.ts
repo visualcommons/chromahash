@@ -31,7 +31,31 @@ export interface AlphaImageSpec {
   softAlphaFraction: number;
   /** SHA-256 of the exact bytes (see corpus-pin.ts). */
   sha256: string;
+  /**
+   * Set when the upstream source no longer exists: when and why it went. A
+   * withdrawn image is never fetched. Its entry stays so the pin still says
+   * what the results that scored it measured. It also keeps the image's
+   * declared split: a cached copy with no entry would fall through `splitFor`
+   * to "tune" and join every alpha tune sweep.
+   */
+  withdrawn?: string;
 }
+
+/**
+ * Why the alpha holdout split is closed. `ensureAlphaImages("holdout")` throws
+ * this rather than fetching a split that no longer exists as pinned.
+ *
+ * The split was eight images. One is gone, so scoring the other seven would be
+ * a different experiment reported under the old one's name. It has also been
+ * spent: §11.12 read it to adopt the alpha row, and to adopt the compact alpha
+ * row, and to reject `alpha_ac_fit`. A replacement is a new split, curated on
+ * covariates and sealed before it is read, not a re-run of this one.
+ */
+export const ALPHA_HOLDOUT_RETIRED =
+  "the alpha holdout split is retired (#83): cutout-wordmark-aflac, one of its eight images, " +
+  "was deleted from Wikimedia Commons on 2026-08-25 as a copyright violation and has no archived copy, " +
+  "and the split has already informed the decisions spec/EXPERIMENTS.md §11.12 records. " +
+  "Scoring the remaining seven is a new experiment, not a reproduction; a replacement needs a new, sealed split.";
 
 /**
  * Curated alpha corpus, sourced from Wikimedia Commons under free licences
@@ -305,6 +329,8 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.5971,
     softAlphaFraction: 0.0077,
     sha256: "3e0ddc1b3b6856b16b48ac2003f343e0e8cfaff02f022e8b2c21fbf24de2e302",
+    withdrawn:
+      "deleted from Wikimedia Commons on 2026-08-25 as a copyright violation (COM:CSD#F1); no archived copy (#83)",
   },
 ];
 
@@ -315,17 +341,21 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
  * @param split Fetch only this split's images. A tune sweep never reads the
  *   holdout images, and requiring them made every alpha sweep depend on the
  *   one holdout file Wikimedia Commons has since deleted
- *   (`cutout-wordmark-aflac`, removed 2026-08-25 as a copyright violation):
- *   the tune split stays reproducible, and a holdout run still fails loudly
- *   rather than scoring a smaller corpus.
+ *   (`cutout-wordmark-aflac`, removed 2026-08-25 as a copyright violation).
+ *   The holdout split is retired, so asking for it throws
+ *   {@link ALPHA_HOLDOUT_RETIRED} before anything is fetched, rather than
+ *   failing on the missing file or scoring a smaller corpus.
+ *   With no split, every image that has not been withdrawn is fetched.
  */
 export async function ensureAlphaImages(
   split?: CorpusSplit,
 ): Promise<string[]> {
+  if (split === "holdout") throw new Error(ALPHA_HOLDOUT_RETIRED);
   await fs.mkdir(ALPHA_DIR, { recursive: true });
   const paths: string[] = [];
   let downloaded = 0;
   for (const spec of ALPHA_IMAGES) {
+    if (spec.withdrawn !== undefined) continue;
     if (split !== undefined && spec.split !== split) continue;
     const filePath = path.join(ALPHA_DIR, `${spec.label}${spec.ext}`);
     if (
