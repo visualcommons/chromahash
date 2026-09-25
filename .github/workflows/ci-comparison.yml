@@ -13,12 +13,10 @@ on:
       # verify:benchmark checks this document against the committed perf runs,
       # so an edit to either must run the gate.
       - "spec/PERFORMANCE.md"
-      # EXPERIMENTS.md's tables are transcribed from sweep output by hand. CI
-      # cannot check them -- the sweeps are gitignored and take hours -- but an
-      # edit here must at least rebuild the tool that can, so a binding cannot
-      # be broken by a rename without the build noticing. It is also the source
-      # verify:claims checks the files below against, and that gate needs no
-      # sweep output, so it does run here.
+      # EXPERIMENTS.md's tables are transcribed from sweep results by hand, and
+      # verify:experiments --strict checks them against the committed results
+      # under tools/comparison/results/ (already covered by the first filter).
+      # It is also the source verify:claims checks the files below against.
       - "spec/EXPERIMENTS.md"
       # The files that quote EXPERIMENTS.md figures by hand: README.md,
       # spec/README.md, spec/RATIONALE.md, spec/constants.py and
@@ -46,12 +44,10 @@ on:
       # verify:benchmark checks this document against the committed perf runs,
       # so an edit to either must run the gate.
       - "spec/PERFORMANCE.md"
-      # EXPERIMENTS.md's tables are transcribed from sweep output by hand. CI
-      # cannot check them -- the sweeps are gitignored and take hours -- but an
-      # edit here must at least rebuild the tool that can, so a binding cannot
-      # be broken by a rename without the build noticing. It is also the source
-      # verify:claims checks the files below against, and that gate needs no
-      # sweep output, so it does run here.
+      # EXPERIMENTS.md's tables are transcribed from sweep results by hand, and
+      # verify:experiments --strict checks them against the committed results
+      # under tools/comparison/results/ (already covered by the first filter).
+      # It is also the source verify:claims checks the files below against.
       - "spec/EXPERIMENTS.md"
       # The files that quote EXPERIMENTS.md figures by hand: README.md,
       # spec/README.md, spec/RATIONALE.md, spec/constants.py and
@@ -145,11 +141,20 @@ jobs:
       # The figures README.md, spec/README.md, spec/RATIONALE.md and
       # rust/src/constants.rs quote from spec/EXPERIMENTS.md, each checked
       # against the cell it cites. Reads four files and one markdown document:
-      # no sweep output, no iqa-cli, no corpus, no network. That is why this one
-      # can run in CI and verify:experiments cannot -- and it is the gate that
+      # no sweep output, no iqa-cli, no corpus, no network. It is the gate that
       # would have caught the six figures the 2026-09 re-baseline stranded.
       - name: The repo's quoted figures agree with EXPERIMENTS.md
         run: node tools/comparison/dist/verify-claims.js
+
+      # Every bound table in spec/EXPERIMENTS.md against the committed results
+      # in tools/comparison/results/, every mean, Δ%, interval and guard
+      # verdict recomputed from their per-image scores. --strict: a table whose
+      # result is missing, a result recorded from a dirty tree, by another
+      # iqa-cli or on unpinned corpus bytes, a table checking a different
+      # number of cells than asserted, or a table neither bound nor explained
+      # all fail. Reads committed files only: no sweep, no corpus, no network.
+      - name: EXPERIMENTS.md agrees with the committed sweep results
+        run: node tools/comparison/dist/verify-experiments.js --strict
 
       # Every sweep arm sets the constants its own label names. Reads the sweep
       # JSON only -- no corpus, no encoder, no sweep output -- so it runs here
@@ -232,6 +237,14 @@ jobs:
         if: steps.cache-iqa.outputs.cache-hit != 'true'
         run: cargo install iqa-cli --locked --version 1.2.1
 
+      # Every metric but the local ones comes from this binary, and a version
+      # pin says only which binary ran. This holds its CIEDE2000 to the Sharma,
+      # Wu & Dalal (2005) pairs and its SSIMULACRA2 / Butteraugli / DSSIM to a
+      # committed golden pair, on this runner -- the check that says whether
+      # the committed results are reproducible off the machine that made them.
+      - name: iqa-cli reproduces the metric reference data
+        run: node tools/comparison/dist/metric-reference-test.js
+
       - name: Build Rust harness
         run: cargo build --manifest-path rust/Cargo.toml --features research-render --example encode_stdin
 
@@ -247,9 +260,12 @@ jobs:
       # Asserts that fanning the image loop across cores does not move a
       # published number: the orchestrator runs twice over the generated
       # synthetic corpus, once serial and once wide, and the reports must be
-      # byte-identical. Needs no network and no pinned corpus, but it does score
-      # for real, so it sits after iqa-cli and the release encoder.
-      - name: A concurrent run scores identically to a serial one
+      # byte-identical. It then runs one small sweep twice with the metric cache
+      # off and requires the two to agree, and to reproduce the committed
+      # results/synthesis-window.json on the two photos it scores (fetched from
+      # the pinned corpus cached above). It scores for real, so it sits after
+      # iqa-cli and the release encoder.
+      - name: A concurrent run scores identically to a serial one, and a sweep reproduces its committed result
         run: node tools/comparison/dist/determinism-check.js
 
       - name: R-D regression gate (tier 0)
