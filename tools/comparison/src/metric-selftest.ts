@@ -45,6 +45,11 @@
  * asserted against fixture runs, tables and stage files
  * (`verify-benchmark-core.ts`), and the probe classification that feeds them
  * against real spawns (`perf/availability.ts`).
+ *
+ * The verify:experiments block is here for the same reason again: the table
+ * register (`experiments-register.ts`) and the result reader's shape check
+ * (`results.ts`) fail a run only on a state the committed document and results
+ * are never in, so each failure branch is driven from a fixture instead.
  */
 
 import { spawnSync } from "node:child_process";
@@ -53,6 +58,11 @@ import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
 import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
 import { classifyProbe, repoRelative } from "./perf/availability.ts";
+import {
+  type TableRegisterInput,
+  tableRegisterProblems,
+} from "./experiments-register.ts";
+import { RESULT_SCHEMA, type ResultFile, shapeProblems } from "./results.ts";
 import {
   type Binding,
   type Counters,
@@ -1510,6 +1520,193 @@ console.log("\nperf probe — absent is skippable, anything else is broken\n");
       skipped.counters.unavailable === 1 &&
       failed.failures.length === 1,
     `absent→failures=${skipped.failures.length} broken→failures=${failed.failures.length}`,
+  );
+}
+
+// ─── verify:experiments' table register and the result reader ──────────────
+//
+// `verify:experiments --strict` over the committed document and results runs
+// only the state they are in, where every register is complete and every
+// result well-formed, so none of the branches that fail a run had executed.
+// Each is driven here from a fixture that is clean but for the one defect.
+console.log("\nverify:experiments — the table register and result shape\n");
+{
+  const table = (section: string, index: number) => ({
+    section,
+    index,
+    line: 1,
+    header: ["a", "b"],
+  });
+  const complete: TableRegisterInput = {
+    tables: [table("1", 0), table("2", 0), table("2", 1)],
+    bound: new Set(["1#0", "2#1"]),
+    unboundNotes: { "2#0": "prose" },
+    expectedCells: { "1#0": 3, "2#1": 2 },
+    checkedByTable: new Map([
+      ["1#0", 3],
+      ["2#1", 2],
+    ]),
+    skippedTables: new Set<string>(),
+  };
+  const run = (over: Partial<TableRegisterInput>) =>
+    tableRegisterProblems({ ...complete, ...over });
+  const only = (problems: string[], needle: string) =>
+    problems.length === 1 && problems[0]?.includes(needle) === true;
+
+  const none = run({});
+  check(
+    "a complete register reports nothing",
+    none.length === 0,
+    JSON.stringify(none),
+  );
+
+  const unexplained = run({ unboundNotes: {} });
+  check(
+    "a table with neither a binding nor an UNBOUND_NOTES entry fails",
+    only(unexplained, "§2 table 0") &&
+      only(unexplained, "no binding and no UNBOUND_NOTES entry"),
+    JSON.stringify(unexplained),
+  );
+
+  const ghost = run({ unboundNotes: { "2#0": "prose", "9#0": "gone" } });
+  check(
+    "an UNBOUND_NOTES entry for a table the document lacks fails",
+    only(ghost, 'UNBOUND_NOTES["9#0"]') && only(ghost, "no such table"),
+    JSON.stringify(ghost),
+  );
+
+  const boundNote = run({ unboundNotes: { "2#0": "prose", "1#0": "why" } });
+  check(
+    "an UNBOUND_NOTES entry for a bound table fails",
+    only(boundNote, 'UNBOUND_NOTES["1#0"]') && only(boundNote, "is bound"),
+    JSON.stringify(boundNote),
+  );
+
+  const short = run({
+    checkedByTable: new Map([
+      ["1#0", 2],
+      ["2#1", 2],
+    ]),
+  });
+  check(
+    "a bound table checking fewer cells than EXPECTED_CELLS fails",
+    only(short, "§1 table 0: checked 2 cell(s), EXPECTED_CELLS asserts 3"),
+    JSON.stringify(short),
+  );
+
+  const silent = run({ checkedByTable: new Map([["2#1", 2]]) });
+  check(
+    "a bound table that checked nothing fails against its count",
+    only(silent, "§1 table 0: checked 0 cell(s), EXPECTED_CELLS asserts 3"),
+    JSON.stringify(silent),
+  );
+
+  const unasserted = run({ expectedCells: { "1#0": 3 } });
+  check(
+    "a bound table with no EXPECTED_CELLS entry fails",
+    only(unasserted, "§2 table 1: checked 2 cell(s) with no EXPECTED_CELLS"),
+    JSON.stringify(unasserted),
+  );
+
+  const stale = run({ expectedCells: { "1#0": 3, "2#1": 2, "2#0": 4 } });
+  check(
+    "an EXPECTED_CELLS entry for an unbound table fails",
+    only(stale, 'EXPECTED_CELLS["2#0"] asserts cells for a table no binding'),
+    JSON.stringify(stale),
+  );
+
+  const skippedShort = run({
+    checkedByTable: new Map([["2#1", 2]]),
+    skippedTables: new Set(["1#0"]),
+  });
+  check(
+    "a skipped table is not held to its count (the SKIP reports it)",
+    skippedShort.length === 0,
+    JSON.stringify(skippedShort),
+  );
+
+  const result = (): ResultFile => ({
+    schema: RESULT_SCHEMA,
+    tool: "sweep",
+    name: "fixture",
+    split: "tune",
+    settings: {},
+    provenance: {
+      rev: "0".repeat(40),
+      dirty: false,
+      dirtyPaths: [],
+      iqaCli: "iqa-cli fixture",
+      config: "fixture.json",
+      configSha256: "0".repeat(64),
+      binaries: {},
+      node: process.version,
+      corpus: [
+        { name: "a", sha256: "1".repeat(64) },
+        { name: "b", sha256: "2".repeat(64) },
+      ],
+    },
+    imageNames: ["a", "b"],
+    rows: [
+      {
+        label: "arm",
+        tune: null,
+        tier: null,
+        version: null,
+        perImage: { ciede2000: [1, 2], bytes: [30, 31] },
+      },
+    ],
+  });
+  check(
+    "a well-formed result has no shape problem",
+    shapeProblems(result()).length === 0,
+    JSON.stringify(shapeProblems(result())),
+  );
+
+  const futureSchema = result();
+  futureSchema.schema = RESULT_SCHEMA + 1;
+  const fs1 = shapeProblems(futureSchema);
+  check(
+    "a result of an unknown schema is refused",
+    only(fs1, `this reader knows ${RESULT_SCHEMA}`),
+    JSON.stringify(fs1),
+  );
+
+  const fewDigests = result();
+  fewDigests.provenance.corpus.pop();
+  const fs2 = shapeProblems(fewDigests);
+  check(
+    "a result with a corpus digest missing is refused",
+    only(fs2, "provenance lists 1 corpus digests for 2 images"),
+    JSON.stringify(fs2),
+  );
+
+  const misaligned = result();
+  misaligned.provenance.corpus.reverse();
+  const fs3 = shapeProblems(misaligned);
+  check(
+    "a result whose digests are out of image order is refused",
+    only(fs3, 'corpus digest 0 is for "b", image 0 is "a"'),
+    JSON.stringify(fs3),
+  );
+
+  const noCiede = result();
+  const noCiedeRow = noCiede.rows[0];
+  if (noCiedeRow) noCiedeRow.perImage = { bytes: [30, 31] };
+  const fs4 = shapeProblems(noCiede);
+  check(
+    "a row with no ciede2000 series is refused",
+    only(fs4, 'row "arm" carries no ciede2000 series'),
+    JSON.stringify(fs4),
+  );
+
+  const ragged = result();
+  const raggedRow = ragged.rows[0];
+  if (raggedRow) raggedRow.perImage = { ciede2000: [1, 2], bytes: [30] };
+  const fs5 = shapeProblems(ragged);
+  check(
+    "a series shorter than the image list is refused",
+    only(fs5, 'row "arm" bytes has 1 values for 2 images'),
+    JSON.stringify(fs5),
   );
 }
 

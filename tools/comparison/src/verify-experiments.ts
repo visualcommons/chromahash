@@ -75,6 +75,7 @@ import {
   parseCell,
   parseTables,
 } from "./doc-tables.ts";
+import { tableRegisterProblems } from "./experiments-register.ts";
 // A result from another iqa-cli is a different instrument, not a reproduction.
 import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
 import {
@@ -2116,53 +2117,19 @@ if (!values.section) {
       `UNBOUND_COLUMN_NOTES["${key}"] explains nothing: ${why}`,
     );
   }
-  const inDocument = new Set(tables.map((t) => `${t.section}#${t.index}`));
-  for (const key of Object.keys(UNBOUND_NOTES)) {
-    if (bound.has(key)) {
-      registerProblems.push(
-        `UNBOUND_NOTES["${key}"] explains nothing: that table is bound, so an unchecked column of it belongs in UNBOUND_COLUMN_NOTES`,
-      );
-    } else if (!inDocument.has(key)) {
-      registerProblems.push(
-        `UNBOUND_NOTES["${key}"] explains nothing: the document has no such table (renumbered or removed?)`,
-      );
-    }
-  }
-  // The table-level twin of the PARTIAL rule above. A table with neither a
-  // binding nor a note is exactly as silent as an undeclared column was, one
-  // level up: §8.3 and §12.4 quoted measured figures that nothing checked and
-  // nothing said were unchecked.
-  for (const t of tables) {
-    const key = `${t.section}#${t.index}`;
-    if (bound.has(key) || UNBOUND_NOTES[key] !== undefined) continue;
-    registerProblems.push(
-      `§${t.section} table ${t.index} (line ${t.line}, "${t.header.join(" | ")}"): no binding and no UNBOUND_NOTES entry`,
-    );
-  }
-
-  // The asserted count. A skipped table's count is incomplete by definition
-  // and is reported as a SKIP instead, so it is not held to the register here.
-  for (const key of Object.keys(EXPECTED_CELLS)) {
-    if (!bound.has(key)) {
-      registerProblems.push(
-        `EXPECTED_CELLS["${key}"] asserts cells for a table no binding checks`,
-      );
-    }
-  }
-  for (const key of bound) {
-    if (skippedTables.has(key)) continue;
-    const got = stats.byTable.get(key) ?? 0;
-    const want = EXPECTED_CELLS[key];
-    if (want === undefined) {
-      registerProblems.push(
-        `§${key.replace("#", " table ")}: checked ${got} cell(s) with no EXPECTED_CELLS entry to hold them to`,
-      );
-    } else if (got !== want) {
-      registerProblems.push(
-        `§${key.replace("#", " table ")}: checked ${got} cell(s), EXPECTED_CELLS asserts ${want}`,
-      );
-    }
-  }
+  // The table-level registers (stale UNBOUND_NOTES, a table with neither a
+  // binding nor a note, and the EXPECTED_CELLS count) live in
+  // `experiments-register.ts`, where `selftest:metrics` reaches each branch.
+  registerProblems.push(
+    ...tableRegisterProblems({
+      tables,
+      bound,
+      unboundNotes: UNBOUND_NOTES,
+      expectedCells: EXPECTED_CELLS,
+      checkedByTable: stats.byTable,
+      skippedTables,
+    }),
+  );
 }
 
 const reportProvenance = () => {
