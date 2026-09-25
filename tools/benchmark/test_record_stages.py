@@ -1,11 +1,13 @@
-"""Tests for record_stages.py, the recorder behind `spec/PERFORMANCE.md` §1.
+"""Tests for record_stages.py, the recorder behind `spec/PERFORMANCE.md` §1 and §1.1.
 
-The recorder defines what `verify:benchmark` gates §1 against, and its three
-load-bearing behaviours had no test: merging one cell per invocation (§1 is
-three columns, so a replace would drop two of them), refusing a file in another
-schema rather than silently discarding it, and a dirty probe that ignores the
-recorder's own output but nothing else (without the exclusion, invocations two
-and three record `dirty: true` and the gate can never pass).
+The recorder defines what `verify:benchmark` gates §1 and §1.1 against, and its
+load-bearing behaviours had no test: merging one cell per invocation (each table
+is several columns, so a replace would drop the others), refusing a file in
+another schema rather than silently discarding it, and a dirty probe that
+ignores the recorder's own outputs but nothing else (without the exclusion,
+invocations after the first record `dirty: true` and the gate can never pass).
+The decode mode adds a cell that must carry its raster and its spec-vector
+check, or not be written at all.
 
 Each test runs the script as `benchmark:stages` does - a subprocess reading
 `stage=nanoseconds` lines on stdin - inside a throwaway git repository, so the
@@ -37,6 +39,23 @@ STAGES = "\n".join(
         "quantize_and_pack=350",
         "stage_sum=650",
         "whole_encode=1000",
+        "",
+    ]
+)
+
+DECODE_STAGES = "\n".join(
+    [
+        "# decode of a 100x100 gradient at tier 4, capped 32x32",
+        "meta.hash_bytes=1623",
+        "meta.render_width=32",
+        "meta.render_height=32",
+        "meta.vectors_checked=19",
+        "header=10",
+        "selection=80",
+        "render=900",
+        "stage_sum=990",
+        "whole_decode=1000",
+        "unmarked=10",
         "",
     ]
 )
@@ -162,6 +181,96 @@ class RecordStagesTest(unittest.TestCase):
         (self.baselines / "perf-report.json").write_text("{}", encoding="utf-8")
         self.record(100, 100, 1)
         self.assertTrue(self.load()["cells"]["100x100-t1"]["git"]["dirty"])
+
+    # ─── --decode: PERFORMANCE.md §1.1 ─────────────────────────────────────
+
+    def record_decode(
+        self, tier: int, cap: str = "natural", iters: int = 5, stdin: str = DECODE_STAGES
+    ) -> subprocess.CompletedProcess[str]:
+        rel = os.path.relpath(self.decode_out, self.repo)
+        argv = ["--decode", "100", "100", str(tier), str(iters), cap, rel]
+        return subprocess.run(
+            [sys.executable, str(SCRIPT), *argv],
+            input=stdin,
+            cwd=self.repo,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    @property
+    def decode_out(self) -> Path:
+        return self.baselines / "perf-decode-stages.json"
+
+    def load_decode(self) -> dict:
+        return json.loads(self.decode_out.read_text(encoding="utf-8"))
+
+    def test_decode_cells_carry_raster_vectors_and_shares(self) -> None:
+        self.assertEqual(self.record_decode(1).returncode, 0)
+        self.assertEqual(self.record_decode(4, cap="32x32", iters=7).returncode, 0)
+        doc = self.load_decode()
+        self.assertEqual(doc["schema"], "chromahash-perf-decode-stages/1")
+        self.assertEqual(sorted(doc["cells"]), ["100x100-t1-natural", "100x100-t4-cap32x32"])
+
+        natural = doc["cells"]["100x100-t1-natural"]
+        self.assertIsNone(natural["cap"])
+        capped = doc["cells"]["100x100-t4-cap32x32"]
+        self.assertEqual(capped["cap"], [32, 32])
+        self.assertEqual((capped["tier"], capped["iters"]), (4, 7))
+        self.assertEqual(capped["render"], {"width": 32, "height": 32})
+        self.assertEqual((capped["hashBytes"], capped["vectorsChecked"]), (1623, 19))
+        # meta.* lines are fields, never stages.
+        self.assertNotIn("meta.render_width", capped["ns"])
+        self.assertNotIn("render_width", capped["sharePct"])
+        self.assertAlmostEqual(capped["sharePct"]["render"], 90.0)
+        self.assertAlmostEqual(capped["sharePct"]["unmarked"], 1.0)
+        self.assertNotIn("whole_decode", capped["sharePct"])
+        self.assertNotIn("stage_sum", capped["sharePct"])
+        self.assertAlmostEqual(sum(capped["sharePct"].values()), 100.0)
+
+    def test_decode_refuses_output_without_its_vector_check(self) -> None:
+        for broken in (
+            DECODE_STAGES.replace("meta.vectors_checked=19\n", ""),
+            DECODE_STAGES.replace("meta.vectors_checked=19", "meta.vectors_checked=0"),
+            DECODE_STAGES.replace("whole_decode=1000\n", ""),
+        ):
+            result = self.record_decode(4, stdin=broken)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("nothing recorded", result.stderr)
+        self.assertFalse(self.decode_out.exists())
+
+    def test_decode_refuses_a_malformed_cap(self) -> None:
+        for cap in ("32", "0x32", "32x", "capped"):
+            result = self.record_decode(4, cap=cap)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("CAP must be", result.stderr)
+        self.assertFalse(self.decode_out.exists())
+
+    def test_decode_refuses_a_file_in_another_schema(self) -> None:
+        original = json.dumps({"schema": "chromahash-perf-stages/1", "cells": {"x": {}}})
+        self.decode_out.write_text(original, encoding="utf-8")
+        result = self.record_decode(4)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refusing to overwrite", result.stderr)
+        self.assertIn("§1.1", result.stderr)
+        self.assertIn("benchmark:decode-stages", result.stderr)
+        self.assertEqual(self.decode_out.read_text(encoding="utf-8"), original)
+
+    def test_the_sibling_artifact_does_not_dirty_either_table(self) -> None:
+        # §0's procedure records §1 and then §1.1 before committing either.
+        head = self.git("rev-parse", "--short", "HEAD")
+        self.record(100, 100, 1)  # perf-stages.json now untracked
+        self.record_decode(4)
+        self.assertEqual(
+            self.load_decode()["cells"]["100x100-t4-natural"]["git"], {"rev": head, "dirty": False}
+        )
+        self.record(512, 512, 1)  # and the decode file is untracked for this one
+        self.assertEqual(self.load()["cells"]["512x512-t1"]["git"], {"rev": head, "dirty": False})
+
+    def test_decode_any_other_change_is_dirty(self) -> None:
+        (self.baselines / "perf-report.json").write_text("{}", encoding="utf-8")
+        self.record_decode(4)
+        self.assertTrue(self.load_decode()["cells"]["100x100-t4-natural"]["git"]["dirty"])
 
 
 if __name__ == "__main__":

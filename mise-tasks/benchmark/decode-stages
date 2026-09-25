@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#MISE description="Per-stage decode timing (Rust only — the core is the only tunable surface)"
+#
+# Usage: mise run benchmark:decode-stages [SRC_W] [SRC_H] [TIER] [ITERS] [CAP]
+#
+# The decode half of `benchmark:stages`, and the source of spec/PERFORMANCE.md
+# §1.1. Encodes a SRC_W x SRC_H gradient at TIER and times decoding it, stage by
+# stage — at its natural raster, or capped at CAP (`WxH`) when given. Before
+# timing, the instrumented build decodes every shared decode vector and must
+# reproduce the spec's bytes.
+#
+# Writes one cell of tools/comparison/baselines/perf-decode-stages.json per
+# invocation, merged like perf-stages.json and for the same reasons (see
+# mise-tasks/benchmark/stages): §1.1 is three columns, each its own
+# invocation, gated by `verify:benchmark`. The recorder's dirty probe excludes
+# its own two artifacts and nothing else, so §0's procedure can record §1 and
+# §1.1 back to back before committing either.
+#
+# ITERS scales inversely with the cost of one decode, so each column times a
+# comparable interval: §1.1 is recorded with
+#   mise run benchmark:decode-stages 100 100 1 2000
+#   mise run benchmark:decode-stages 100 100 4 20
+#   mise run benchmark:decode-stages 100 100 4 200 32x32
+set -euo pipefail
+
+w="${1:-100}"
+h="${2:-100}"
+tier="${3:-4}"
+iters="${4:-20}"
+cap="${5:-natural}"
+
+out_dir="tools/comparison/baselines"
+mkdir -p "$out_dir"
+
+example_args=("$w" "$h" "$tier" "$iters")
+if [ "$cap" != "natural" ]; then
+    example_args+=("$cap")
+fi
+
+raw="$(cargo run -q --manifest-path rust/Cargo.toml --release \
+    --features bench-internals --example bench_decode_stages \
+    -- "${example_args[@]}" < /dev/null)"
+
+echo "$raw"
+
+printf '%s\n' "$raw" | python3 tools/benchmark/record_stages.py --decode \
+    "$w" "$h" "$tier" "$iters" "$cap" "$out_dir/perf-decode-stages.json"
