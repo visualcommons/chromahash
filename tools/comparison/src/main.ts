@@ -55,7 +55,7 @@ import {
   TIER_BYTES,
 } from "./rd/lineup.ts";
 import { computeRdCurves, generateRdSection } from "./rd/report.ts";
-import { isSealed, splitFor, tierFor } from "./corpus.ts";
+import { partitionSealed, splitFor, tierFor } from "./corpus.ts";
 import { defaultJobs, mapConcurrent } from "./pool.ts";
 import { aspectFidelity, REFLOW_CONTAINER_PX } from "./aspect.ts";
 import {
@@ -311,14 +311,12 @@ async function main(): Promise<void> {
   // The sealed holdout2 is read only by a gated sweep or rd-budget run
   // (holdout-images.ts). A copy such a run cached is still under fixtures/, so
   // the report drops it here rather than scoring it for anyone who looks.
-  const sealed = imagePaths.filter((p) =>
-    isSealed(splitFor(path.parse(p).name)),
-  );
+  const { open, sealed } = partitionSealed(imagePaths);
   if (sealed.length > 0) {
     console.log(
       `Skipping ${sealed.length} sealed holdout2 image(s); the report never scores them.`,
     );
-    imagePaths = imagePaths.filter((p) => !sealed.includes(p));
+    imagePaths = open;
   }
 
   // R-D mode answers "which format wins at equal byte cost" for real

@@ -1,3 +1,4 @@
+import path from "node:path";
 import { ALPHA_IMAGES } from "./alpha-images.ts";
 import { GRAPHIC_IMAGES } from "./graphic-images.ts";
 import { CURATED_IMAGES } from "./natural-images.ts";
@@ -83,6 +84,24 @@ export function splitFor(imageName: string): CorpusSplit {
  */
 export function isSealed(split: CorpusSplit): boolean {
   return split === "holdout2";
+}
+
+/**
+ * Separate the image files a loader found into those it may score and the
+ * sealed ones it must drop, judged by filename (without extension) through
+ * {@link splitFor}. The report calls this on everything it globbed under
+ * `fixtures/`, where a gated holdout2 run may have left a cached copy.
+ */
+export function partitionSealed(paths: readonly string[]): {
+  open: string[];
+  sealed: string[];
+} {
+  const open: string[] = [];
+  const sealed: string[] = [];
+  for (const p of paths) {
+    (isSealed(splitFor(path.parse(p).name)) ? sealed : open).push(p);
+  }
+  return { open, sealed };
 }
 
 /**

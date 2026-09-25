@@ -76,6 +76,7 @@ import {
   inSplit,
   parseScratchPhotoSplit,
   parseSplit,
+  partitionSealed,
   splitFor,
 } from "./corpus.ts";
 import {
@@ -2537,6 +2538,21 @@ console.log("\nverify:experiments — the table register and result shape\n");
       "does not read holdout2",
     ),
     thrown(() => parseScratchPhotoSplit("holdout2")),
+  );
+  const globbed = [
+    "/fx/natural/natural-open.jpg",
+    `/fx/natural/${HOLDOUT2_PREFIX}fixture.jpg`,
+    "/fx/holdout/kodak07.png",
+    `/fx/natural/${HOLDOUT2_PREFIX}other.png`,
+  ];
+  const parted = partitionSealed(globbed);
+  check(
+    "the report drops every cached sealed- image and keeps the rest in order",
+    parted.open.join(",") ===
+      "/fx/natural/natural-open.jpg,/fx/holdout/kodak07.png" &&
+      parted.sealed.join(",") ===
+        `/fx/natural/${HOLDOUT2_PREFIX}fixture.jpg,/fx/natural/${HOLDOUT2_PREFIX}other.png`,
+    `open=${parted.open.join(",")} sealed=${parted.sealed.join(",")}`,
   );
 
   // The register's contract, one branch at a time.
