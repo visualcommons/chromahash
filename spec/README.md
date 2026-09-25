@@ -1505,10 +1505,11 @@ compatibility** with the v0.6 bitstream. The framing changes are:
 
 Together the four constants-level and encoder-side changes above are worth **−3.72% mean
 ΔE00** at the default tier on a never-tuned holdout split, with SSIMULACRA2, Butteraugli and DSSIM
-all improving. `spec/EXPERIMENTS.md` §8 records the measurements and what was rejected —
-including the equal-quality byte saving this paragraph used to quote (the optimized 32-byte
-encode matching the v0.6 constants at 40 bytes), which §8.3 withdrew: it was read off a
-ladder of the *pre-adoption* signal path, and no current sweep produces one.
+all improving. `spec/EXPERIMENTS.md` §8 records the measurements and what was rejected.
+The equal-quality byte saving this paragraph used to quote (the optimized 32-byte encode
+matching the v0.6 constants at 40 bytes) was withdrawn for want of a pre-adoption ladder on
+the current corpus, and has since been re-measured in `EXPERIMENTS.md` §7.12: it holds on
+the holdout split and falls short of 40 bytes on the tune split.
 
 The DCT, OKLAB color pipeline, ℓ2-ball candidate set, µ-law quantizer, decode-aware DC
 search, and gamut handling are **inherited from the v0.6 algorithm** (now parameterized by
@@ -1636,11 +1637,14 @@ SSIMULACRA2 off size-matched WebP. Below 48 bytes no general codec can produce o
 all, which is the compact and default tiers' whole argument.
 
 Codes 3 and 4 are **not** justified that way, and this specification does not claim they
-are. Measured at equal bytes on the same corpus, WebP overtakes ChromaHash somewhere
-around 300 bytes, and by ~1.6 kB even uncoded RGB565 pixels score better than code 4
-(`EXPERIMENTS.md` §2, §3). Entropy coding would recover roughly 4% — nowhere near the
-20–40% gap, and it would cost the O(1) length check that *is* this format's validity
-check (§2.6).
+are. Measured at equal bytes on the same corpus (`EXPERIMENTS.md` §11.14, holdout split),
+WebP overtakes ChromaHash on ΔE00 between 193 and 411 bytes. At ~1.6 kB AVIF scores
+5.471 mean ΔE00 against code 4's 6.768, and WebP and JPEG also beat code 4 on every
+metric. Even uncoded RGB565 pixels edge code 4 on ΔE00 there, 6.570, though not on
+SSIMULACRA2 or Butteraugli, and not on the tune split, where code 4 wins (§2).
+Entropy coding would recover a few percent (§7.13: 1.6% at 32 B, 4.8% at 108 B) — well
+short of that gap, and it would cost the O(1) length check that *is* this format's
+validity check (§2.6).
 
 They are kept for the operational properties they share with the rest of the format, and
 those are real: no codec dependency, no decoder CVE surface, no container or metadata
@@ -1669,12 +1673,12 @@ is a few hundred bytes and the target is intentionally low-pass.
 | Gaborish | Small post-decode smoothing convolution | **Re-evaluated, still off** — the decode-side synthesis window (`window_weights`, a Hann taper, disabled by default). `EXPERIMENTS.md` §12.2–§12.3 measured it at codes 1 and 2 with artifact metrics that did not exist when v0.6 rejected it: it removes up to 73% of the invented structure and costs ΔE00 and SSIMULACRA2 monotonically, failing the guards at every strength. At code 2 the lightest taper is statistically free on ΔE00 and fails on SSIMULACRA2 alone. |
 | Edge-preserving filter (EPF) | Adaptive deringing loop filter | **Reject** — a blurred placeholder has few edges to preserve. |
 | DC image + DC predictors | Separate DC plane with spatial predictors | **N/A** — chromahash has a single average-color DC per channel, already chosen by the decode-aware DC search (§10.3). |
-| **Quantization weighting matrices (HVS/CSF)** | Frequency-dependent quant step | **Evaluate / adopt** — a frequency-shaped bit allocation generalizes the existing two-tier `AcLayout` L split; cheap and on-trend with HVS sensitivity. |
+| **Quantization weighting matrices (HVS/CSF)** | Frequency-dependent quant step | **Built as scalefactor bands; below threshold, not adopted** — `EXPERIMENTS.md` §11.9 measured a frequency-shaped scale split on the current corpus: the best arm is −0.13% ΔE00, far under the ≥3% retune rule and unable to pay for signalling it. This row read "evaluate / adopt" until that sweep ran, and is kept as the prediction it scored against. |
 | **Entropy coding (rANS + context modeling + clustering, HybridUint tokens)** | Adaptive entropy coding of quantized coefficients | **Highest-impact v0.8+** — fixed-width µ-law leaves the most on the table; many high-frequency coefficients quantize to zero and would cost almost nothing under an entropy coder, raising the quality ceiling per byte. Heaviest to make bit-exact across all language bindings (incl. the hand-written TS decoder) and it trades away the fixed-per-tier length, so it is deferred deliberately. |
 | Coefficient ordering / scan + nonzero context | Frequency-ordered scan, run/EOB modeling | **Already frequency-ordered** — the top-K isotropic selection is exactly this; pairs naturally with entropy coding when added. |
 | Patches / splines / dots | Reference repeated elements / smooth gradients / point sources | **Reject** — no repeated elements or point sources in a placeholder; the DCT already models smooth gradients compactly. |
 | Noise synthesis | Add a per-image perceptual noise model at decode | **Low-priority option** — a few bits of noise amplitude could add cheap perceptual texture; minor. |
-| **Progressive / responsive passes** | DC-first, then refinement passes (embedded scalability) | **Compelling v0.8 direction** — make higher tiers *embedded* (the default-tier bytes are a prefix of code 2, etc.) so one stored hash serves both an instant preview and an on-demand detailed render. Constrains the layout but is very LQIP-appropriate. |
+| **Progressive / responsive passes** | DC-first, then refinement passes (embedded scalability) | **Built; an operational feature, not a quality one** — `EXPERIMENTS.md` §7.11 implemented embedded tiers (interleaved AC codes, any prefix decodable). The first 32 bytes of a 108-byte hash score 4.21% worse ΔE00 than a native 32-byte encode, so one stored hash can serve both sizes at that price. This row read "compelling v0.8 direction" until that sweep ran; whether the operational gain is worth ~4% is a v0.8 decision, not a measurement. |
 | Upsampling (2×/4×/8×) | Store small, upsample at decode with a fixed kernel | **Already covered** — the DCT renders at any target size and `decodeCapped` band-limits (§6.4, §11.3). |
 
 **Summary of the roadmap, as written for v1 — and how it scored.** The four directions

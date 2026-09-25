@@ -359,6 +359,34 @@ const REGISTER: Claim[] = [
       return ((webp - t2) / webp) * 100;
     },
   },
+  // The spec's case against codes 3–4 at ~1.6 kB. It used to cite round 1's
+  // §2 for "even uncoded RGB565 pixels score better than code 4", which §2's
+  // own note had marked as no longer holding on tune, while nothing checked
+  // holdout. §11.14 now carries the 1.6 kB rows, and the sentence quotes them.
+  {
+    file: "spec/README.md",
+    what: "AVIF at ~1.6 kB on holdout",
+    pattern: /At ~1\.6 kB AVIF scores\n([\d.]+) mean ΔE00/,
+    section: "11.14",
+    row: "1595.6",
+    column: "ΔE00 ↓",
+  },
+  {
+    file: "spec/README.md",
+    what: "code 4 on holdout",
+    pattern: /mean ΔE00 against code 4's ([\d.]+),/,
+    section: "11.14",
+    row: "1623",
+    column: "ΔE00 ↓",
+  },
+  {
+    file: "spec/README.md",
+    what: "raw RGB565 at ~1.6 kB on holdout",
+    pattern: /edge code 4 on ΔE00 there, ([\d.]+),/,
+    section: "11.14",
+    row: "1574.0",
+    column: "ΔE00 ↓",
+  },
 
   // ── The AC bit-depth trade, §7.4 of the spec ─────────────────────────────
   {

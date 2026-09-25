@@ -68,6 +68,7 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { ALPHA_IMAGES } from "./alpha-images.ts";
 import {
   type DocTable,
   cells,
@@ -364,6 +365,40 @@ interface RowBinding extends CommonBinding {
    * say this. Column overrides win where both apply.
    */
   rowBaselines?: Partial<Record<string, string>>;
+  /**
+   * Per-column image subset, for a column that restates a Δ% over part of the
+   * corpus. The column's metric must be `ciedeDeltaPct`, and it is recomputed
+   * as the ratio of the two arms' mean ΔE00 over the images the predicate
+   * keeps. §11.3's subgroup table is the case: its cut decides a constant, and
+   * until it was bound nothing re-derived it.
+   */
+  subsets?: Partial<Record<string, ImageSubset>>;
+}
+
+/** Whether `image` belongs to a subset of `images`, the result's whole list. */
+type ImageSubset = (image: string, images: readonly string[]) => boolean;
+
+/**
+ * Mean-ΔE00 Δ% of `row` against `baseline` over the images `subset` keeps, or
+ * null when it keeps none that both arms scored.
+ */
+function subsetDeltaPct(
+  row: SweepRow,
+  baseline: SweepRow,
+  subset: ImageSubset,
+): number | null {
+  let r = 0;
+  let b = 0;
+  let n = 0;
+  for (const [i, name] of row.imageNames.entries()) {
+    const rv = row.perImageCiede[i];
+    const bv = baseline.perImageCiede[i];
+    if (rv == null || bv == null || !subset(name, row.imageNames)) continue;
+    r += rv;
+    b += bv;
+    n++;
+  }
+  return n > 0 && b !== 0 ? ((r - b) / b) * 100 : null;
 }
 
 /**
@@ -372,7 +407,18 @@ interface RowBinding extends CommonBinding {
  * per byte budget.
  */
 type ColumnSeries =
-  | { docRow: string; sweep: string; metric: Metric; baseline?: string }
+  | {
+      docRow: string;
+      sweep: string;
+      metric: Metric;
+      baseline?: string;
+      /**
+       * Per-series override of the binding's `resolve`. §4.5 and §7.12 put two
+       * ladders from one sweep in one table, both indexed by byte budget, so
+       * the budget alone cannot say which arm a row means.
+       */
+      resolve?: Resolver;
+    }
   /**
    * A row the document derives from two others, e.g. "tune Δ" beneath
    * "tune, shipped" and "tune, tuned". Checking these is the point: §4.1
@@ -797,12 +843,15 @@ function checkRowTable(
       const metric = b.columns[header];
       if (!metric) continue;
       const overrideBase = b.baselines?.[header] ?? b.rowBaselines?.[docLabel];
-      const measured = measure(
-        metric,
-        sweepRow,
-        overrideBase ? findRow(sweep, overrideBase) : baseline,
-        sweep,
-      );
+      const base = overrideBase ? findRow(sweep, overrideBase) : baseline;
+      const subset = b.subsets?.[header];
+      if (subset && metric !== "ciedeDeltaPct") {
+        return `§${b.section} table ${table.index} [${header}]: a subset column must be ciedeDeltaPct`;
+      }
+      const measured =
+        subset && base
+          ? subsetDeltaPct(sweepRow, base, subset)
+          : measure(metric, sweepRow, base, sweep);
       if (measured === null) continue;
       compare(
         {
@@ -934,8 +983,9 @@ function checkColumnTable(
 
     for (const [i, colLabel] of table.header.entries()) {
       if (i === 0) continue;
+      const resolve = series.resolve ?? b.resolve;
       const sweepRow =
-        b.resolve?.(sweep.rows, [colLabel]) ??
+        resolve?.(sweep.rows, [colLabel]) ??
         findRow(sweep, b.aliases?.[colLabel] ?? colLabel);
       if (!sweepRow) {
         failures.push({
@@ -1026,6 +1076,23 @@ const byBudget: Resolver = (rows, docCells) => {
 };
 
 /**
+ * {@link byBudget} restricted to the arms whose label contains `marker`: the
+ * byte budget picks the column, the marker picks which of the sweep's ladders.
+ * Exactly one arm must match, so a second ladder added at the same budget
+ * fails the row rather than silently choosing one of them.
+ */
+const byBudgetIn =
+  (marker: string): Resolver =>
+  (rows, docCells) => {
+    const want = Number((docCells[0] ?? "").replace(/[*\s]/g, ""));
+    if (!Number.isFinite(want)) return undefined;
+    const hits = rows.filter(
+      (r) => r.bytes === want && r.label.includes(marker),
+    );
+    return hits.length === 1 ? hits[0] : undefined;
+  };
+
+/**
  * §11.14 lists a format at several budgets, so the format name alone is
  * ambiguous. Key on the name plus the byte column, allowing the rounding the
  * document applies to a measured mean size.
@@ -1049,6 +1116,16 @@ const byFormatAndBytes: Resolver = (rows, docCells) => {
 };
 
 /**
+ * {@link byFormatAndBytes} for a table that names the format in its first cell
+ * and the budget in its second (§11.12's positioning table). Handing that row
+ * to the §11.14 resolver as-is read the format name as the byte count: the
+ * resolver found nothing, and every row was matched by the label fallback
+ * instead, so the byte column never took part in choosing the row.
+ */
+const byFormatThenBytes: Resolver = (rows, docCells) =>
+  byFormatAndBytes(rows, [docCells[1] ?? "", docCells[0] ?? ""]);
+
+/**
  * §11.12's alpha rows, shared by its two bindings: the `tune` and `holdout`
  * columns are the same candidates measured by two runs of one config.
  */
@@ -1065,6 +1142,63 @@ const ALPHA_HOLDOUT_ALIASES: Record<string, string> = {
   "`alpha_ac_fit`": "alpha_ac_fit alone",
   "A28@3 + `alpha_ac_fit`": "+ alpha_ac_fit",
   "compact alpha A16@3 L12@4 C1@3": "compact 21B ADOPTED A16@3 L12@4 C1@3",
+};
+
+/**
+ * An alpha image's pinned non-opaque fraction. Throws rather than returning
+ * NaN: a subset that silently dropped an unknown image would be a different
+ * cut of a different corpus.
+ */
+function nonOpaqueFraction(image: string): number {
+  const f = ALPHA_IMAGES.find((a) => a.label === image)?.nonOpaqueFraction;
+  if (f === undefined) {
+    throw new Error(`no nonOpaqueFraction pinned for ${image}`);
+  }
+  return f;
+}
+
+/** Images less than `cut` transparent, or (`above`) at least `cut`. */
+const transparency =
+  (cut: number, above: boolean): ImageSubset =>
+  (image) =>
+    above ? nonOpaqueFraction(image) >= cut : nonOpaqueFraction(image) < cut;
+
+/**
+ * The more-opaque or more-transparent half of the images a result scored,
+ * split at their median non-opaque fraction. The cut is a property of the
+ * corpus alone, fixed before any arm is read.
+ */
+const transparencyHalf =
+  (above: boolean): ImageSubset =>
+  (image, images) => {
+    const sorted = images.map(nonOpaqueFraction).sort((a, b) => a - b);
+    const mid = sorted.length / 2;
+    const median =
+      sorted.length % 2 === 0
+        ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
+        : (sorted[Math.floor(mid)] ?? 0);
+    return transparency(median, above)(image, images);
+  };
+
+/** §11.3's subgroup columns, by header. */
+const ALPHA_SUBSETS: Record<string, ImageSubset> = {
+  "<35% transparent (4 images)": transparency(0.35, false),
+  "≥35% transparent (12)": transparency(0.35, true),
+  "more-opaque half (8)": transparencyHalf(false),
+  "more-transparent half (8)": transparencyHalf(true),
+};
+
+/** §11.12's photographic rows, shared by its tune and holdout bindings. */
+const V07_PHOTO_ALIASES: Record<string, string> = {
+  "`sel_hv` 0.15 → 0.30": "sel_hv=0.30",
+  "isotropic weights": "isotropic (aniso=0 hv=0)",
+  "pre-adoption v0.6-derived": "pre-adoption v0.6-derived",
+  "compact 21 B `L19@4 C6@3`": "compact 21B L19@4 C6@3",
+};
+
+/** As {@link ALPHA_HOLDOUT_ROW_BASELINES}: a 21 B row is read against the 21 B shape. */
+const V07_PHOTO_ROW_BASELINES: Record<string, string> = {
+  "compact 21 B `L19@4 C6@3`": "compact 21B shipped shape",
 };
 
 /**
@@ -1116,6 +1250,82 @@ const BINDINGS: Binding[] = [
     },
   },
 
+  // §4.2 — one base allocation at two budgets, so each column is a different
+  // arm of allocation-grid and each gets its own binding. The parenthesised
+  // Δ in each cell restates the score against the shipped row; the score is
+  // what is checked.
+  {
+    kind: "rows",
+    section: "4.2",
+    table: 0,
+    sweep: "allocation-grid",
+    columns: { "32 B ΔE00": "meanCiede" },
+    aliases: {
+      "L26@5 C9@4 — **shipped**": "32B SHIPPED L26@5 C9@4",
+      "L28@4 C15@3": "32B L28@4 C15@3",
+      "L38@4 C8@3": "32B L38@4 C8@3",
+      "L28@4 C11@4": "32B L28@4 C11@4",
+      "L44@3 C11@3": "32B L44@3 C11@3",
+      "L29@5 C9@3": "32B L29@5 C9@3",
+    },
+  },
+  {
+    kind: "rows",
+    section: "4.2",
+    table: 0,
+    sweep: "allocation-grid",
+    columns: { "108 B ΔE00": "meanCiede" },
+    aliases: {
+      "L26@5 C9@4 — **shipped**": "108B SHIPPED (t1)",
+      "L28@4 C15@3": "108B L28@4 C15@3",
+      "L38@4 C8@3": "108B L38@4 C8@3",
+      "L28@4 C11@4": "108B L28@4 C11@4",
+      "L44@3 C11@3": "108B L44@3 C11@3",
+      "L29@5 C9@3": "108B L29@5 C9@3",
+    },
+  },
+
+  // §4.4 — the encoder levers, one column per lever, so one binding per
+  // column as §4.2. A "—" cell is a lever the sweep does not run at that
+  // budget.
+  ...(
+    [
+      [
+        "shipped",
+        {
+          "21 B": "21 B shipped-quant",
+          "32 B": "32 B shipped",
+          "108 B": "108 B shipped-quant",
+          "411 B": "411 B shipped-quant",
+        },
+      ],
+      ["ac_nearest", { "32 B": "32 B ac_nearest" }],
+      ["scale_fit=1", { "32 B": "32 B scale_fit=1" }],
+      ["scale_fit=2", { "32 B": "32 B scale_fit=2" }],
+      [
+        "fit2 + nearest",
+        {
+          "21 B": "21 B fit2+nearest",
+          "32 B": "32 B fit2+nearest",
+          "108 B": "108 B fit2+nearest",
+          "411 B": "411 B fit2+nearest",
+        },
+      ],
+    ] as const
+  ).map(
+    ([column, aliases]): RowBinding => ({
+      kind: "rows",
+      section: "4.4",
+      table: 0,
+      sweep: "encoder-compute",
+      columns: { [column]: "meanCiede" },
+      aliases,
+      skipRows: ["21 B", "32 B", "108 B", "411 B"].filter(
+        (budget) => !(budget in aliases),
+      ),
+    }),
+  ),
+
   // §1 — the rate–distortion ladder, one column per byte budget.
   {
     kind: "columns",
@@ -1150,6 +1360,31 @@ const BINDINGS: Binding[] = [
         metric: "meanCiede",
       },
     ],
+  },
+  // §1's 32 B column is the ladder's own 26:9 arm, which is not the layout the
+  // default tier ships (L28@4 C15@3). The shipped arm is the ladder's
+  // incumbent, and this table puts the two side by side on both splits.
+  {
+    kind: "rows",
+    section: "1",
+    table: 3,
+    sweep: "budget-ladder",
+    columns: { "ΔE00 tune": "meanCiede" },
+    aliases: {
+      "ladder shape, L 26 @ 5 / C 9 @ 4": "32 B  t0 L26/C9",
+      "**shipped default, L 28 @ 4 / C 15 @ 3**": "32 B  t0 SHIPPED",
+    },
+  },
+  {
+    kind: "rows",
+    section: "1",
+    table: 3,
+    sweep: "budget-ladder-holdout",
+    columns: { "ΔE00 holdout": "meanCiede" },
+    aliases: {
+      "ladder shape, L 26 @ 5 / C 9 @ 4": "32 B  t0 L26/C9",
+      "**shipped default, L 28 @ 4 / C 15 @ 3**": "32 B  t0 SHIPPED",
+    },
   },
 
   // §4.3 — the 21 B head-to-head against ThumbHash, both splits.
@@ -1228,20 +1463,47 @@ const BINDINGS: Binding[] = [
     kind: "columns",
     section: "4.5",
     table: 1,
-    resolve: byBudget,
     series: [
+      {
+        docRow: "tune, pre-adoption shipped",
+        sweep: "budget-ladder-tuned",
+        metric: "meanCiede",
+        resolve: byBudgetIn("pre-adoption"),
+      },
       {
         docRow: "tune, tuned",
         sweep: "budget-ladder-tuned",
         metric: "meanCiede",
+        resolve: byBudgetIn("tuned"),
+      },
+      {
+        docRow: "tune Δ",
+        pctFrom: {
+          base: "tune, pre-adoption shipped",
+          cand: "tune, tuned",
+        },
+      },
+      {
+        docRow: "holdout, pre-adoption shipped",
+        sweep: "budget-ladder-tuned-holdout",
+        metric: "meanCiede",
+        resolve: byBudgetIn("pre-adoption"),
       },
       {
         docRow: "holdout, tuned",
         sweep: "budget-ladder-tuned-holdout",
         metric: "meanCiede",
+        resolve: byBudgetIn("tuned"),
+      },
+      {
+        docRow: "holdout Δ",
+        pctFrom: {
+          base: "holdout, pre-adoption shipped",
+          cand: "holdout, tuned",
+        },
       },
     ],
-    note: "The `pre-adoption shipped` rows, and the Δ rows derived from them, are round 1's baseline — the v0.6-derived constants, whose ladder run no longer exists on disk. §1 carries the ladder for the constants that ship today.",
+    note: "Both ladders are arms of budget-ladder-tuned: the round-1 recipe, and the v0.6-derived format resized to each budget with the four selection/encoder knobs pinned off. The pre-adoption rows once quoted the retired corpus's §2 ladder, which put every Δ below them on two different corpora.",
   },
 
   // §7 — the roadmap items, each behind its own tunable.
@@ -1372,9 +1634,21 @@ const BINDINGS: Binding[] = [
     resolve: byBudget,
     series: [
       {
+        docRow: "tune, pre-adoption shipped",
+        sweep: "budget-ladder-tuned",
+        metric: "meanCiede",
+        resolve: byBudgetIn("pre-adoption"),
+      },
+      {
         docRow: "tune, optimized",
         sweep: "budget-ladder-optimized",
         metric: "meanCiede",
+      },
+      {
+        docRow: "holdout, pre-adoption shipped",
+        sweep: "budget-ladder-tuned-holdout",
+        metric: "meanCiede",
+        resolve: byBudgetIn("pre-adoption"),
       },
       {
         docRow: "holdout, optimized",
@@ -1382,7 +1656,7 @@ const BINDINGS: Binding[] = [
         metric: "meanCiede",
       },
     ],
-    note: "As §4.5: the `pre-adoption shipped` rows are round 2's baseline and are not reproducible from a current build.",
+    note: "The `pre-adoption shipped` rows are the same arms as §4.5 table 1's, from budget-ladder-tuned.",
   },
 
   // §10.3 — what adoption bought, on both splits.
@@ -1480,6 +1754,7 @@ const BINDINGS: Binding[] = [
     aliases: {
       "shipped A5@4 L20@5 C9@4": "SHIPPED A5@4 L20@5 C9@4",
       "**A28@3 L22@4 C3@3**": "A28@3 L22@4 C3@3",
+      "A32@2 L24@4 C5@3 (fails Butteraugli)": "A32@2 L24@4 C5@3",
     },
     skipRows: ["A12@4 L18@4 C9@4", "A20@4 L20@5 C1@4"],
     note: "The ladder is assembled from two sweeps; the two lower rungs come from alpha-ac-count and are bound below.",
@@ -1504,8 +1779,28 @@ const BINDINGS: Binding[] = [
       "**A28@3 L22@4 C3@3**",
       "A40@3 L13@4 C3@3",
       "A48@3 L7@4 C3@3",
-      "A32@2 L24@4 C5@3",
+      "A32@2 L24@4 C5@3 (fails Butteraugli)",
     ],
+  },
+  // §11.3's subgroup table: the cut the adopted alpha row was chosen on, and
+  // a second cut fixed by the corpus alone.
+  {
+    kind: "rows",
+    section: "11.3",
+    table: 2,
+    sweep: "alpha-ceiling",
+    columns: {
+      all: "ciedeDeltaPct",
+      "<35% transparent (4 images)": "ciedeDeltaPct",
+      "≥35% transparent (12)": "ciedeDeltaPct",
+      "more-opaque half (8)": "ciedeDeltaPct",
+      "more-transparent half (8)": "ciedeDeltaPct",
+    },
+    subsets: ALPHA_SUBSETS,
+    aliases: {
+      "**A28@3 L22@4 C3@3** (adopted)": "A28@3 L22@4 C3@3",
+      "A28@2 L29@4 C3@3 (fails Butteraugli)": "A28@2 L29@4 C3@3",
+    },
   },
 
   // §11.10 — the compact tier, on the photographic corpus and cross-checked
@@ -1546,14 +1841,36 @@ const BINDINGS: Binding[] = [
       "L26@3 C6@3": "L26@3 C6@3  (§8.1 hold)",
     },
   },
+  // The compact tier's alpha row, on the alpha tune split. compact-tier-alpha
+  // had never been committed; its result is the tune half of §11.12's
+  // `compact alpha` row.
+  {
+    kind: "rows",
+    section: "11.10",
+    table: 2,
+    sweep: "compact-tier-alpha",
+    columns: {
+      ΔE00: "meanCiede",
+      "Δ%": "ciedeDeltaPct",
+      αMAE: "meanAlphaMae",
+      "more-opaque half (8)": "ciedeDeltaPct",
+      "paired CI vs the adopted row": "ci",
+      "guards (CI)": "guardsCi",
+    },
+    subsets: { "more-opaque half (8)": transparencyHalf(false) },
+    baselines: { "paired CI vs the adopted row": "A16@3 L12@4 C1@3" },
+    aliases: {
+      "**A16@3 L12@4 C1@3** (adopted)": "A16@3 L12@4 C1@3",
+    },
+  },
 
-  // §11.12 — the holdout, consulted once.
+  // §11.12 — the holdout, in the round that consulted it last.
   {
     kind: "rows",
     section: "11.12",
     table: 2,
     sweep: "rd-budget-holdout",
-    resolve: byFormatAndBytes,
+    resolve: byFormatThenBytes,
     labelColumn: 0,
     columns: {
       bytes: "bytes",
@@ -1583,6 +1900,34 @@ const BINDINGS: Binding[] = [
       "**shipped** L20@5 C9@4": "SHIPPED L20@5 C9@4",
       "L22@4 C14@3 (the arithmetic in §8.1)": "L22@4 C14@3 (arithmetic)",
     },
+  },
+  // §11.2 — the control: its two columns are two sweeps over the same images.
+  {
+    kind: "rows",
+    section: "11.2",
+    table: 0,
+    sweep: "alpha-layout-control",
+    columns: { "opaque mode (control)": "meanCiede" },
+    aliases: {
+      "v0.6 shape L26@5 C9@4": "v0.6 shape L26@5 C9@4",
+      "**the photographic winner** L28@4 C15@3": "DEFAULT L28@4 C15@3",
+      "L46@4 C2@3 (chroma-starved)": "L46@4 C2@3",
+    },
+    skipRows: ["L39@4 C2@3 (chroma-starved)"],
+  },
+  {
+    kind: "rows",
+    section: "11.2",
+    table: 0,
+    sweep: "alpha-layout",
+    columns: { "alpha mode (§11.1)": "meanCiede" },
+    aliases: { "L39@4 C2@3 (chroma-starved)": "L39@4 C2@3" },
+    skipRows: [
+      "v0.6 shape L26@5 C9@4",
+      "**the photographic winner** L28@4 C15@3",
+      "L35@3 C16@3",
+      "L46@4 C2@3 (chroma-starved)",
+    ],
   },
   {
     kind: "rows",
@@ -1718,6 +2063,28 @@ const BINDINGS: Binding[] = [
   // itself. The document's figures were right -- they predate the drift -- and
   // reproduce to the digit once the arms are pinned. Nothing noticed for the
   // usual reason: the table was unbound.
+  // §11.12's photographic verdicts: the same config on both splits, so the
+  // two columns are one measurement taken twice. The holdout column had been
+  // bound nowhere — the table's note sent the reader to §11.5 and §7.12, which
+  // are different sweeps — and v07-holdout-photo had no committed result.
+  {
+    kind: "rows",
+    section: "11.12",
+    table: 0,
+    sweep: "v07-holdout-photo",
+    columns: { tune: "ciedeDeltaPct" },
+    aliases: V07_PHOTO_ALIASES,
+    rowBaselines: V07_PHOTO_ROW_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "11.12",
+    table: 0,
+    sweep: "v07-holdout-photo-holdout",
+    columns: { holdout: "ciedeDeltaPct" },
+    aliases: V07_PHOTO_ALIASES,
+    rowBaselines: V07_PHOTO_ROW_BASELINES,
+  },
   {
     kind: "rows",
     section: "11.12",
@@ -1942,15 +2309,14 @@ function mergeCoverage(list: Coverage[]): Map<string, Coverage> {
  * "deliberately not bound, and here is the reason".
  */
 const UNBOUND_COLUMN_NOTES: Record<string, string> = {
-  "4.5#1":
-    "the `pre-adoption shipped` rows are round 2's baseline, which no current build reproduces; the two Δ rows derive from them",
-  "7.12#1": "as §4.5 table 1, same rows and same reason",
   "7.5#0":
     "`bits saved` is a property of the header layout each arm sets, not a measurement the sweep makes",
   "7.10#0":
     "every row names a *different* control, and two state it in prose inside the cell (\u201c-0.04% vs the same layout without CfL\u201d). rowBaselines could address the first half; the prose cells would still need the sentence parsed, and a binding that silently checked five rows of seven would recreate the problem this listing exists to expose",
   "11.10#1":
     "ranks, derived by ordering two other sweeps' results rather than read from either",
+  "11.12#0":
+    "`verdict` is the section's conclusion in words, not a measurement",
   "11.12#1":
     "`verdict` is the section's conclusion in words, not a measurement. `holdout` is UNREPRODUCIBLE: one of the alpha holdout images, cutout-wordmark-aflac, was deleted from Wikimedia Commons on 2026-08-25 as a copyright violation and has no archived copy, so v07-holdout-alpha --split holdout cannot be re-run and has no committed result (#83)",
   "13.1#1":
@@ -1979,27 +2345,40 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
  * +3 and +4, §11.5 +8, §11.10 +8, §12.2 +7, §12.3 +5), and two new tables:
  * §13.2's paired spurious differences (5 rows × 3) and §13.5's tally (9 rows ×
  * 8).
+ *
+ * The 2026-09 re-measure committed a result for every §6 sweep, and bound what
+ * those results made bindable: §1 table 3 (the shipped 32 B arm beside the
+ * ladder's, 4), §4.2 (12), §4.4 (11), §11.2 (5), §11.3's subgroup table (25),
+ * §11.10's compact alpha row (26) and §11.12's photographic verdicts (8); §4.5
+ * and §7.12's ladders gained their pre-adoption and Δ rows (22 → 66, 28 → 56);
+ * §11.3 table 1's αMAE cell that read FAIL now holds a number (+1); and §11.14
+ * gained the ~1.6 kB neighbourhood (+25).
  */
 const EXPECTED_CELLS: Record<string, number> = {
   "1#0": 26,
   "1#1": 22,
   "1#2": 6,
+  "1#3": 4,
   "4.1#0": 12,
+  "4.2#0": 12,
   "4.3#0": 25,
   "4.3#1": 25,
+  "4.4#0": 11,
   "4.5#0": 61,
-  "4.5#1": 22,
+  "4.5#1": 66,
   "7.1#1": 9,
   "7.5#0": 21,
   "7.8#0": 18,
   "7.10#0": 14,
   "7.11#0": 15,
   "7.12#0": 93,
-  "7.12#1": 28,
+  "7.12#1": 56,
   "10.3#0": 27,
   "11.1#0": 21,
+  "11.2#0": 5,
   "11.3#0": 32,
-  "11.3#1": 37,
+  "11.3#1": 38,
+  "11.3#2": 25,
   "11.4#0": 13,
   "11.4#1": 17,
   "11.5#0": 41,
@@ -2007,10 +2386,12 @@ const EXPECTED_CELLS: Record<string, number> = {
   "11.7#0": 7,
   "11.10#0": 33,
   "11.10#1": 6,
+  "11.10#2": 26,
   "11.11#0": 34,
+  "11.12#0": 8,
   "11.12#1": 3,
   "11.12#2": 10,
-  "11.14#0": 85,
+  "11.14#0": 110,
   "12.2#0": 67,
   "12.3#0": 55,
   "13.1#0": 35,
@@ -2102,11 +2483,8 @@ const UNBOUND_NOTES: Record<string, string> = {
     "superseded by §11.14 — the record of a round whose run is gone; its ChromaHash rows used a synthesized layout that no longer exists, and its competitor rows predate the cached rd-budget run",
   "8.6#0": "superseded by §11.14, same reason as §2",
 
-  "4.2#0": "an allocation grid quoted at two budgets from one sweep",
   "4.2#1":
     "a precision-by-budget matrix: columns are budgets, rows are precisions, and every cell names a different arm",
-  "4.4#0":
-    "encoder levers quoted as a budget x lever matrix over encoder-compute.json",
   "4.7#0":
     "per-image oracle analysis derived from allocation-grid's perImageCiede, not a sweep row",
   "4.9#0": "coeff-stats output, not a sweep",
@@ -2125,12 +2503,6 @@ const UNBOUND_NOTES: Record<string, string> = {
     "curated-corpus vs Wikimedia-corpus figures; the curated corpus no longer exists, same reason as §9.3",
   "10.2#0": "decode timings, not a corpus measurement",
   "11.0#0": "a two-row scoring demonstration on one synthetic fixture",
-  "11.2#0":
-    "a control table whose two columns are two different sweeps, one arm each",
-  "11.3#2":
-    "an alpha subgroup breakdown computed from alpha-ceiling's perImageCiede",
-  "11.12#0":
-    "verdict prose: tune and holdout deltas quoted side by side from two sweeps, and bound in §11.5 and §7.12 respectively",
   "13.3#0":
     "stratify output, not a sweep: bin means over per-image scores joined to natural-images.ts's covariates. Reproduce with `mise run stratify artifact-ladder-common-grid --metric spurious --by detail`",
 };
