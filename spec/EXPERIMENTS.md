@@ -2361,6 +2361,12 @@ Not a corpus artifact, checked two ways. **Every one of the 16 images improves**
 including those only 15–22% transparent. And §11.2's control shows the direction
 belongs to alpha mode rather than to cut-out content.
 
+Everything in this section is tune evidence. Its out-of-sample confirmation
+was §11.12's alpha holdout, which is **retired and can no longer be
+reproduced**: one of its images was deleted from Wikimedia Commons (§11.12,
+#83). The adopted row rests on this section until a new alpha split is sealed
+and read.
+
 **The alpha channel also ran a generation behind the others.** L, a and b go
 through `quantize_ac_channel`, where `scale_fit` and `ac_nearest` live; alpha
 used a bare per-coefficient quantize against a nominal scale code, the v0.6
@@ -2373,7 +2379,9 @@ The knob has to be read against a fixed layout. The row
 −0.94 pp of that is the layout and only −0.22 pp is the knob: quoting the
 combined figure would overstate it fivefold. Small, free and principled — the
 same argument that adopted `ac_nearest` at 0.05% — which is exactly why
-§11.12's holdout result gets to overrule it.
+§11.12's holdout result got to overrule it. That result is from the retired
+alpha split and cannot be re-run, so the default stands on a verdict nothing can
+now check.
 
 ### 11.11 Does the alpha finding hold above tier 0?
 
@@ -2410,6 +2418,10 @@ Among the equal-budget arms the tier-0 choice is essentially tied for best at
 tier 1 — 0.06% behind `A24@3 L22@4 C5@3` — so **one row still serves tiers
 1–3** and the `4^(tier−1)` structure is intact. Alpha AC counts are now 16 / 28 / 112 / 448 / 1792 across
 compact / 0 / 1 / 2 / 3 — monotone, which `validate.py` asserts.
+
+This is a tune measurement only. The tier-1 row was never scored on a holdout,
+and the tier-0 holdout figure it would lean on is from the retired alpha split,
+which can no longer be reproduced (§11.12).
 
 ### 11.12 The holdout, consulted once
 
@@ -2454,6 +2466,23 @@ unchanged; the reason it is rejected is now over-determined.
 | A28@3 + `alpha_ac_fit` | — | −14.48% (worse than without) | rejected |
 | compact alpha A16@3 L12@4 C1@3 | −13.00% | −9.49%, guards ok | adopted |
 
+> **This table's `holdout` column can no longer be reproduced, and nor can any
+> figure below taken from the alpha holdout.** One of its eight images,
+> `cutout-wordmark-aflac`, was deleted from Wikimedia Commons on 2026-08-25 as
+> a copyright violation, and no archived copy was found. The split is
+> **retired** (#83): `mise run sweep v07-holdout-alpha --split holdout` now
+> refuses to run rather than fail on the missing file, and the column has no
+> committed result (`verify:experiments --list-unbound` gives the reason).
+> Scoring the remaining seven would be a new experiment reported under this
+> one's name, and the split has already been read for every verdict in this
+> table. So the figures stand as what was measured in `bd6a530`, and nothing
+> can check them now. The `tune` column is bound and reproducible from
+> `tools/comparison/results/v07-holdout-alpha.json`. The four decisions this
+> table records keep their tune evidence (that column, and §11.3 for the alpha
+> row and `alpha_ac_fit`) and have lost their out-of-sample evidence. They get
+> it back only from a new alpha split, curated on covariates and sealed before
+> anything reads it.
+>
 > **The last row is measured against the 21-byte shipped shape**, not against
 > the 32-byte incumbent the three rows above it use — a 21 B candidate against a
 > 32 B baseline is a byte-count comparison wearing an allocation comparison's
@@ -2467,19 +2496,19 @@ unchanged; the reason it is rejected is now over-determined.
 > **The moved cell's provenance**, because nothing automatic can supply it: both
 > the pinning and the figures in this table are one re-run of `mise run sweep
 > v07-holdout-alpha --split holdout` (§6) in `bd6a530`, against the Wikimedia
-> corpus of `85f6af3` (§9.5). That output lands in the gitignored
-> `output/sweeps/`, so the only check that holds this row to it is
-> `verify:experiments`, which needs the sweep on disk and therefore does not run
-> in CI — it reports a missing output as SKIP (§6). A reviewer re-deriving
-> −9.49% runs that command on that corpus; a reviewer who has not is taking the
-> cell on the commit that produced it, which is why the commit is named.
+> corpus of `85f6af3` (§9.5). That output landed in the gitignored
+> `output/sweeps/` and was never committed, and the split it scored is now
+> retired (above), so the run cannot be repeated. Every holdout cell in this
+> table rests on the commit that produced it, which is why the commit is named.
 
-The alpha allocation validates emphatically: SSIMULACRA2 −307.2 → −242.7,
-Butteraugli 57.56 → 44.36, DSSIM 0.2319 → 0.2179, αMAE 0.2696 → 0.1675.
+The alpha allocation validated emphatically on that split: SSIMULACRA2
+−307.2 → −242.7, Butteraugli 57.56 → 44.36, DSSIM 0.2319 → 0.2179, αMAE
+0.2696 → 0.1675. Those figures are from the retired split and cannot be
+reproduced either.
 
 `alpha_ac_fit` does not, and is left at `false`. It is principled and free, and
-it measured −0.21% on tune — but out of sample it is +0.09% alone and makes the
-adopted allocation *worse* in combination. The knob stays for a future
+it measured −0.21% on tune — but on the retired split it was +0.09% alone and
+made the adopted allocation *worse* in combination. The knob stays for a future
 measurement; the default does not move on a result that will not replicate.
 
 **The compact tier's positioning claim, on holdout:**
@@ -2496,8 +2525,8 @@ Beaten on all four metrics, out of sample, at ThumbHash's own size — the claim
 
 | Change | Evidence |
 |---|---|
-| Alpha row → `L 22 @ 4, a/b 3 @ 3, A 28 @ 3` at tier 0 and the tier-1..3 base (the compact tier takes its own, below) | −16.19% holdout, all guards (§11.3, §11.11, §11.12) |
-| Compact tier, code 4, 21 B, `L 19 @ 4 / a/b 6 @ 3` (alpha `L 12 @ 4 / a/b 1 @ 3 / A 16 @ 3`) | Beats ThumbHash on all four on holdout (§11.10, §11.12) |
+| Alpha row → `L 22 @ 4, a/b 3 @ 3, A 28 @ 3` at tier 0 and the tier-1..3 base (the compact tier takes its own, below) | −17.10% on tune (§11.3), −11.95% on tune at tier 1 (§11.11); −16.19% holdout, all guards, on the retired alpha split, which can no longer be reproduced (§11.12) |
+| Compact tier, code 4, 21 B, `L 19 @ 4 / a/b 6 @ 3` (alpha `L 12 @ 4 / a/b 1 @ 3 / A 16 @ 3`) | Opaque layout: beats ThumbHash on all four on the photographic holdout (§11.10, §11.12). Alpha layout: −13.00% on tune against the 21 B shipped shape; −9.49% holdout, on the retired alpha split, which can no longer be reproduced (§11.12) |
 | Deadzone made reachable again | It was byte-identical at every value (§11.7) |
 
 Deliberately unchanged, each with the number that left it alone:
@@ -2511,7 +2540,7 @@ Deliberately unchanged, each with the number that left it alone:
 | Quantization ranges | Every arm within ±0.17% (§11.8) |
 | No scalefactor bands | −0.13%, below threshold and unable to pay its signalling (§11.9) |
 | Tier-0 opaque layout | Holds on non-photographic content; no candidate significantly better (§11.4) |
-| `alpha_ac_fit = false` | −0.21% on tune, +0.09% on holdout (§11.12) |
+| `alpha_ac_fit = false` | −0.21% on tune, +0.09% on the retired alpha holdout, which can no longer be reproduced (§11.12) |
 
 What is still not measured, and is now the honest list for v0.8:
 

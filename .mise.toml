@@ -741,8 +741,14 @@ run = "node tools/comparison/dist/verify-experiments.js"
 # it did not exist until now, so the generator was reachable only as a bare
 # `node dist/corpus-licenses.js` and nothing ran `--check` anywhere.
 #   --check   fail if LICENSES.md is stale rather than rewriting it
+#   --probe   ask Wikimedia Commons whether every pinned photographic, alpha and
+#             graphics source still exists at its pinned URL, and whether each
+#             recorded licence is still the one Commons records. Exit 1 when
+#             one no longer holds, 2 when Commons could not be asked. It needs
+#             the network, so CI does not run it (#83: a holdout image was
+#             deleted as a copyright violation, and --check could not notice).
 [tasks."corpus:licenses"]
-description = "Regenerate the curated corpus attribution file from the pin table"
+description = "Regenerate the curated corpus attribution file from the pin table, or --probe the pinned sources"
 depends = ["build:compare"]
 run = "node tools/comparison/dist/corpus-licenses.js"
 
