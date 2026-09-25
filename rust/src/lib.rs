@@ -140,9 +140,10 @@ pub use constants::{
 #[doc(hidden)]
 pub use encode::{CoeffDump, encode_debug_coefficients};
 
-/// Per-stage encode timing for `mise run benchmark:stages`. Compiled only under
-/// the off-by-default `bench-internals` feature, so this is not part of the
-/// published API surface — see `encode::stage_timing`.
+/// Per-stage encode and decode timing for `mise run benchmark:stages` and
+/// `mise run benchmark:decode-stages`. Compiled only under the off-by-default
+/// `bench-internals` feature, so this is not part of the published API surface —
+/// see `encode::stage_timing`.
 #[cfg(feature = "bench-internals")]
 #[doc(hidden)]
 pub use encode::stage_timing;
