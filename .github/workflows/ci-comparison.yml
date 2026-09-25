@@ -179,7 +179,9 @@ jobs:
       # placeholders — §2's tier-3/4 encode and §3's 128/1024 rows, which the
       # `bounded` matrix does not produce. A baseline IS now committed and 180
       # values are checked against it, so this is six cells from green rather
-      # than the whole document.
+      # than the whole document — plus §12.4's 34 lever cells, whose arms the
+      # bounded matrix gained after that baseline was taken; the next bounded
+      # run on a quiet host fills them.
       #
       # An earlier version of this comment said to remove the line "in the same
       # change that commits the baseline". That was not achievable as written:

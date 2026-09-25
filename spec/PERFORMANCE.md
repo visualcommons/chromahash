@@ -22,11 +22,12 @@ Every table below is bound to a cell in a committed run, and
 `mise run verify:benchmark` checks each one. A figure that cannot be traced to a
 cell cannot be published here.
 
-> ### Measured 2026-09, except six cells
+> ### Measured 2026-09, except six cells and §12.4's levers
 >
 > **180 of this document's values are now checked against a committed run**, on
 > an AMD Ryzen 7 7800X3D (16 threads, Linux), from a clean tree. Six are not,
-> and they are named below rather than left for a reader to find.
+> and neither are §12.4's 34, which are newer than the run; all of them are
+> named below rather than left for a reader to find.
 >
 > The previous revision carried `TBD` throughout, and the reason is worth
 > keeping: the runs behind the revision before *that* were not reproducible. The
@@ -93,18 +94,22 @@ cell cannot be published here.
 > |---|---|
 > | §2's tier-3 and tier-4 **encode** at 100×100 | the `bounded` matrix stops at tier 2 |
 > | §3's **128×128 and 1024×1024** rows | `bounded` measures 64/100/256/512 |
+> | §12.4's **34 lever cells** | the `bounded` matrix records them now, but its arms were added after the committed run was taken, and the host was not quiet enough to take another |
 > | §7 and §8's **Swift** rows | its binding consumes a UniFFI xcframework only `xcodebuild` can assemble, so it is empty on **every** run made off macOS — `ci-swift.yml` on `macos-latest` is where Swift is measured. These are marked *macOS only* rather than `TBD`: they are not pending anybody's run. |
 >
 > The first two groups need `mise run benchmark:full`, whose exhaustive matrix
-> takes hours; the third cannot be produced on this platform at all.
+> takes hours; the third needs only the bounded pair below; the fourth cannot
+> be produced on this platform at all.
 >
-> **`mise run verify:benchmark` therefore still fails**, on six placeholders and
-> nothing else, so `ci-comparison.yml` keeps `continue-on-error`. Note what that
+> **`mise run verify:benchmark` therefore still fails**, on those six
+> placeholders and §12.4's 34 cells and nothing else, so `ci-comparison.yml`
+> keeps `continue-on-error`. Note what that
 > means for the comment beside it, which says to remove the line "in the same
 > change that commits the baseline": a Linux runner can never satisfy this gate
 > while the Swift rows are bound, so the gate now reports an unreachable
-> target's rows as **unavailable** rather than failed. Six cells short of green
-> is a state worth naming; sixty-eight was not.
+> target's rows as **unavailable** rather than failed. Forty cells short of
+> green, every one of them named here, is a state worth naming; sixty-eight
+> unnamed ones was not.
 >
 > To fill the rest in:
 >

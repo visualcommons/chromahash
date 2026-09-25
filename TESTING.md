@@ -175,9 +175,10 @@ it can run where the sweeps cannot.
 > **`verify:benchmark` fails on six cells, and its CI job is still red.** A
 > baseline is now committed and **180 values are checked against it**; what is
 > left is §2's tier-3/4 encode and §3's 128/1024 rows, which the `bounded`
-> matrix does not produce — `mise run benchmark:full` is what closes them. Do
-> not bisect it and do not silence it; see the banner at the top of
-> `spec/PERFORMANCE.md`, which names the six.
+> matrix does not produce — `mise run benchmark:full` is what closes them. It
+> also fails on §12.4's 34 lever cells, which the bounded matrix records but
+> the committed baseline predates. Do not bisect it and do not silence it; see
+> the banner at the top of `spec/PERFORMANCE.md`, which names them all.
 >
 > Swift's rows in §7 and §8 are a different case and are **not** counted as
 > failures: its binding consumes an xcframework only `xcodebuild` can assemble,
