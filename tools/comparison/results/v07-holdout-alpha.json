@@ -4,7 +4,7 @@
   "name": "v07-holdout-alpha",
   "split": "tune",
   "settings": {
-    "description": "SS11.12 - the single holdout validation of the alpha-mode changes. Run once, after every tune decision was settled. The incumbent is the alpha layout as shipped at the start of SS11, so the delta is what stabilizing v0.7 moves alpha mode by. The tier-0 candidate is A28@3 L22@4 C3@3 and the compact-tier candidate A16@3 L12@4 C1@3; both were chosen on tune by protecting the mostly-opaque subgroup rather than by taking the deltaE00-optimal corner. Every arm pins alpha_ac_count and alpha_ac_bits explicitly. They are applied on top of Tunables::DEFAULT, so an arm that omitted them inherited the ADOPTED A28@3 -- which is what the incumbent labelled `SHIPPED A5@4` was doing: it encoded to 40 bytes rather than 32 and reported the adopted allocation's own alpha MAE, so this sweep was scoring the adopted layout against itself with a different luma/chroma split. Same defect class as EXPERIMENTS.md 9.5's seven configs; this one was not among them.",
+    "description": "SS11.12 - the holdout validation of the alpha-mode changes, run after every tune decision was settled, and run again once the mislabelled incumbent below was fixed. Its holdout split can no longer be reproduced: cutout-wordmark-aflac was deleted from Wikimedia Commons (#83), so only the tune run can be re-measured. The incumbent is the alpha layout as shipped at the start of SS11, so the delta is what stabilizing v0.7 moves alpha mode by. The tier-0 candidate is A28@3 L22@4 C3@3 and the compact-tier candidate A16@3 L12@4 C1@3; both were chosen on tune by protecting the mostly-opaque subgroup rather than by taking the deltaE00-optimal corner. Every arm pins alpha_ac_count and alpha_ac_bits explicitly. They are applied on top of Tunables::DEFAULT, so an arm that omitted them inherited the ADOPTED A28@3 -- which is what the incumbent labelled `SHIPPED A5@4` was doing: it encoded to 40 bytes rather than 32 and reported the adopted allocation's own alpha MAE, so this sweep was scoring the adopted layout against itself with a different luma/chroma split. Same defect class as EXPERIMENTS.md 9.5's seven configs; this one was not among them.",
     "corpus": "alpha",
     "backdrops": "white-black-grey",
     "alphaFidelity": true,
@@ -19,12 +19,12 @@
     }
   },
   "provenance": {
-    "rev": "323fdf280e85727b43c30e19dcd6170bb14009cb",
+    "rev": "e3104757d19ea3b0a00f932ab3ec3e7ff937895d",
     "dirty": false,
     "dirtyPaths": [],
     "iqaCli": "iqa-cli 1.2.1",
     "config": "tools/comparison/sweeps/v07-holdout-alpha.json",
-    "configSha256": "6d88b3784a285d7a75e0442923f4478bca5d01fc783c3f428f075d8d10b68b4a",
+    "configSha256": "5402ef20052b6bc1c18bf7206d6a536d4f8e131597ff6aac29196ad1e1a8c3aa",
     "binaries": {
       "rust/target/release/examples/encode_stdin": "4089c0fadd155363308828968b516999580bae7e53d3d275941d56cb66b14888"
     },
