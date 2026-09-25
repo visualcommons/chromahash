@@ -220,11 +220,19 @@ const PER_US: Record<string, number> = { us: 1, ms: 1e3, s: 1e6 };
 export const SCHEMA = "chromahash-perf/2";
 
 /**
- * Two runs of the same cell agree to about this much on a quiet machine. Used
- * only to flag disagreement *between* the committed runs, never to accept a
- * documented number — those are checked exactly.
+ * Two runs of the same cell agree to within this much on a host fit to publish
+ * from — §0's bar. Applied only *between* the committed runs, never to accept a
+ * documented number: those are checked exactly. Any shared cell further apart
+ * than this fails the gate.
  */
 export const CROSS_RUN_TOLERANCE = 0.1;
+
+/**
+ * The sweep mode §0's stability claim is about: two independent `bounded`
+ * sweeps at one commit. A `--full` sweep is compared with them for spread like
+ * any other run, but it is not one of the pair.
+ */
+export const STABILITY_MODE = "bounded";
 
 interface Cell {
   id: string;
@@ -286,8 +294,15 @@ export class Runs {
     string,
     { us: number; cell: Cell; from: string }
   >();
+  /** Every loaded run's own value for each of its cells, by file. */
+  private readonly perRun = new Map<string, Map<string, number>>();
   readonly loaded: RunDoc[] = [];
-  /** Same id, two runs, materially different: a property of the host. */
+  /**
+   * Same id, two runs, further apart than `CROSS_RUN_TOLERANCE`: the host did
+   * not hold its clock still across them. Compared across every pair of loaded
+   * runs, not against whichever run happened to be read first — with three
+   * runs, the second and third were otherwise never compared with each other.
+   */
   readonly crossRunSpread: string[] = [];
   /** Same id twice inside one run: an integrity bug in the driver. */
   readonly duplicates: string[] = [];
@@ -342,27 +357,30 @@ export class Runs {
         }
       }
 
-      const seen = new Set<string>();
+      const own = new Map<string, number>();
       for (const c of doc.cells) {
-        if (seen.has(c.id)) {
+        if (own.has(c.id)) {
           this.duplicates.push(`${file}: duplicate cell id ${c.id}`);
           continue;
         }
-        seen.add(c.id);
         const us = (c.nsPerOp ?? c.medianNsPerOp) / 1000;
-        const prior = this.byId.get(c.id);
-        if (!prior) {
-          this.byId.set(c.id, { us, cell: c, from: file });
-          continue;
+        own.set(c.id, us);
+        for (const [other, cellsOf] of this.perRun) {
+          const theirs = cellsOf.get(c.id);
+          if (theirs === undefined) continue;
+          const delta = spread(theirs, us);
+          if (delta > CROSS_RUN_TOLERANCE) {
+            this.crossRunSpread.push(
+              `${c.id}: ${other} says ${theirs.toFixed(1)} us, ` +
+                `${file} says ${us.toFixed(1)} us (${(delta * 100).toFixed(1)}% apart)`,
+            );
+          }
         }
-        const delta = Math.abs(prior.us - us) / Math.min(prior.us, us);
-        if (delta > CROSS_RUN_TOLERANCE) {
-          this.crossRunSpread.push(
-            `${c.id}: ${prior.from} says ${prior.us.toFixed(1)} us, ` +
-              `${file} says ${us.toFixed(1)} us (${(delta * 100).toFixed(1)}% apart)`,
-          );
+        if (!this.byId.has(c.id)) {
+          this.byId.set(c.id, { us, cell: c, from: file });
         }
       }
+      this.perRun.set(file, own);
     }
 
     // "The union of what was measured wins over any single run's gap" — as a
@@ -408,12 +426,212 @@ export class Runs {
   get ids(): string[] {
     return [...this.byId.keys()].sort();
   }
+
+  /** One loaded run's own cells, microseconds by id; undefined if not loaded. */
+  cellsOf(file: string): ReadonlyMap<string, number> | undefined {
+    return this.perRun.get(file);
+  }
 }
 
 export class MissingCell extends Error {
   constructor(readonly id: string) {
     super(`no cell "${id}" in any committed run`);
   }
+}
+
+/** Relative distance between two timings of one cell, against the faster. */
+export function spread(a: number, b: number): number {
+  return Math.abs(a - b) / Math.min(a, b);
+}
+
+// ─── §0's host-stability claim ──────────────────────────────────────────────
+//
+// §0 publishes a host only after two independent bounded sweeps at one commit
+// agreed within `CROSS_RUN_TOLERANCE` on every shared cell. That claim used to
+// stand on the maintainer's word: one sweep was committed, the gate had no slot
+// for a second, and the spread it computed was printed as a warning. It is now
+// a result with three outcomes, and §0's own table row is held to it.
+
+export interface Stability {
+  /**
+   * `pass` — two bounded runs, one commit, one CPU, at least one shared cell,
+   *          none further apart than the tolerance.
+   * `skip` — fewer than two bounded runs committed: nothing to compare, and the
+   *          gate says so rather than reporting agreement.
+   * `fail` — two are committed and they do not substantiate the claim.
+   */
+  status: "pass" | "skip" | "fail";
+  /** The bounded runs compared, by file. */
+  runs: string[];
+  /** Cells every compared run holds. */
+  shared: number;
+  /** Widest spread over the shared cells, as a fraction; null if none. */
+  widest: number | null;
+  /** Why the status is not `pass`. */
+  problems: string[];
+}
+
+export function checkStability(R: Runs): Stability {
+  const bounded = R.loaded.filter((d) => d.config?.mode === STABILITY_MODE);
+  const runs = bounded.map((d) => d.file);
+  if (bounded.length < 2) {
+    return {
+      status: "skip",
+      runs,
+      shared: 0,
+      widest: null,
+      problems: [
+        `${bounded.length} ${STABILITY_MODE} run(s) committed; the check needs two`,
+      ],
+    };
+  }
+
+  const problems: string[] = [];
+  const commits = new Set(bounded.map((d) => d.git?.commit));
+  if (commits.size > 1) {
+    const list = [...commits].join(", ");
+    problems.push(
+      `the ${STABILITY_MODE} runs are at different commits (${list}); the claim is about one commit measured twice`,
+    );
+  }
+  const cpus = new Set(bounded.map((d) => d.environment?.cpuModel));
+  if (cpus.size > 1) {
+    const list = [...cpus].join(", ");
+    problems.push(
+      `the ${STABILITY_MODE} runs are from different CPUs (${list}); the claim is about one host`,
+    );
+  }
+
+  const maps = runs.map((f) => R.cellsOf(f) ?? new Map<string, number>());
+  const [first, ...rest] = maps;
+  let shared = 0;
+  let outside = 0;
+  let widest: number | null = null;
+  for (const [id, us] of first ?? []) {
+    const all = [us];
+    for (const m of rest) {
+      const v = m.get(id);
+      if (v !== undefined) all.push(v);
+    }
+    if (all.length < maps.length) continue;
+    shared++;
+    const d = spread(Math.max(...all), Math.min(...all));
+    if (d > CROSS_RUN_TOLERANCE) outside++;
+    if (widest === null || d > widest) widest = d;
+  }
+  if (shared === 0) {
+    problems.push(`the ${STABILITY_MODE} runs share no cell`);
+  } else if (outside > 0) {
+    problems.push(
+      `${outside} of ${shared} shared cell(s) more than ` +
+        `${(CROSS_RUN_TOLERANCE * 100).toFixed(0)}% apart, the widest ` +
+        `${((widest ?? 0) * 100).toFixed(1)}%`,
+    );
+  }
+
+  return {
+    status: problems.length > 0 ? "fail" : "pass",
+    runs,
+    shared,
+    widest,
+    problems,
+  };
+}
+
+/** How §0 names the row, and what the gate requires it to quote on "Yes". */
+export const STABILITY_ROW =
+  /^[>\s]*\|\s*This host's [^|]*agreement\s*\|([^|]*)\|/;
+
+/**
+ * §0's table says whether the host-stability claim is reproducible from the
+ * tree. Hold that row to the check, in both directions: "Yes" needs a passing
+ * check and must quote its shared-cell count and widest spread, so the prose
+ * cannot drift from the runs; "No" while the check passes understates the
+ * tree, and is failed so the row is updated in the change that lands the run.
+ */
+export function checkStabilityClaim(doc: string, s: Stability): Failure[] {
+  const where = "§0 — reproducibility table";
+  const column = "Reproducible from the tree?";
+  const row = "This host's cross-run agreement";
+  const hit = doc
+    .split("\n")
+    .map((line) => STABILITY_ROW.exec(line))
+    .find((m) => m !== null);
+  if (!hit) {
+    return [
+      {
+        where,
+        column,
+        row,
+        documented: "(row not found)",
+        measured: s.status,
+        detail: `§0 must state whether its host-stability claim is reproducible; no line matched ${STABILITY_ROW}`,
+      },
+    ];
+  }
+
+  const cell = clean(hit[1] ?? "");
+  const says = /^yes\b/i.test(cell) ? "Yes" : /^no\b/i.test(cell) ? "No" : "";
+  const documented = cell.slice(0, 60);
+  if (says === "") {
+    return [
+      {
+        where,
+        column,
+        row,
+        documented,
+        measured: s.status,
+        detail: 'the cell must begin with "Yes" or "No"',
+      },
+    ];
+  }
+  if (says === "Yes" && s.status !== "pass") {
+    return [
+      {
+        where,
+        column,
+        row,
+        documented,
+        measured: s.status,
+        detail: `the check did not pass: ${s.problems.join("; ")}`,
+      },
+    ];
+  }
+  if (says === "No" && s.status === "pass") {
+    return [
+      {
+        where,
+        column,
+        row,
+        documented,
+        measured: s.status,
+        detail: `${s.runs.join(" and ")} agree on ${s.shared} shared cells; the row understates the tree — change it to "Yes"`,
+      },
+    ];
+  }
+  if (says === "Yes") {
+    const widest = `${((s.widest ?? 0) * 100).toFixed(1)}%`;
+    // Bounded on the left, so "2 shared cells" is not found inside "12 shared
+    // cells".
+    const quoted = (q: string): boolean =>
+      new RegExp(`(^|[^0-9.])${q.replace(/[.%]/g, "\\$&")}`).test(cell);
+    const missing = [`${s.shared} shared cells`, `widest ${widest}`].filter(
+      (q) => !quoted(q),
+    );
+    if (missing.length > 0) {
+      return [
+        {
+          where,
+          column,
+          row,
+          documented,
+          measured: `${s.shared} shared cells, widest ${widest}`,
+          detail: `the row must quote the check's figures: missing ${missing.map((m) => `"${m}"`).join(", ")}`,
+        },
+      ];
+    }
+  }
+  return [];
 }
 
 // ─── Bindings ───────────────────────────────────────────────────────────────

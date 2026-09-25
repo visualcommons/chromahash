@@ -54,17 +54,22 @@ cell cannot be published here.
 > |---|---|
 > | Every table below equals a cell in `baselines/perf-report.json` and `baselines/perf-stages.json` | **Yes** — `mise run verify:benchmark`, cell by cell, exactly |
 > | The M3 Pro's 34% / ~25% / 22-of-99 figures | **No.** That host's runs were never committed, and the machine was rejected rather than published |
-> | This host's 100-shared-cells agreement | **No.** Only one of the two bounded sweeps is committed. There is no second artifact for `verify:benchmark`'s `crossRunSpread` check to read, so it compares nothing and reports nothing |
+> | This host's cross-run agreement | **No.** Only one of the two bounded sweeps is committed, so `verify:benchmark`'s host-stability check has nothing to compare and reports itself `SKIP` |
 >
-> The gate reads exactly two sweep files, `baselines/perf-report-full.json` then
-> `baselines/perf-report.json`, and one of them is a `--full` matrix rather than
-> a second bounded sweep. There is no slot a second bounded sweep could occupy,
-> so committing one would mean extending the gate, not just adding a file.
-> Until that happens the cross-run agreement above stands on the maintainer's
-> word and nothing else — which is exactly the standard §11 indicts `spec/README`
-> §14 for, kept here only because it is *labelled* rather than presented as a
-> checked result. **The 10%-spread bar remains the rule for publishing a new
-> host; what this tree can prove is that the numbers match one committed run.**
+> The gate now has the slot and the rule; what it lacks is the second run. It
+> reads `baselines/perf-report-full.json`, `baselines/perf-report.json` and
+> `baselines/perf-report-2.json`, and **fails** on any cell two of them share
+> that is more than 10% apart — the spread used to be printed as a warning. The
+> stability check itself needs two `bounded` runs at one commit on one CPU,
+> sharing at least one cell, and it holds the row above to its result in both
+> directions: "Yes" fails unless the check passes and the row quotes its
+> figures (`N shared cells`, `widest X.X%`), and "No" fails once it passes.
+> Until a second bounded sweep is committed the cross-run agreement above stands
+> on the maintainer's word and nothing else — which is exactly the standard §11
+> indicts `spec/README` §14 for, kept here only because it is *labelled* rather
+> than presented as a checked result. **The 10%-spread bar remains the rule for
+> publishing a new host; what this tree can prove is that the numbers match one
+> committed run.**
 >
 > **That committed run was annotated after it ran, in two fields that are not
 > measurements.** `baselines/perf-report.json` records commit `e53e6cd` with
@@ -79,7 +84,8 @@ cell cannot be published here.
 > `absent`, and the redaction removes nothing else. The run was kept rather than
 > re-measured because the host is no longer quiet, and a re-run would replace a
 > sweep that met the 10% bar with one that has not been tested against it. The
-> next `mise run benchmark` on a quiet host replaces it with an unannotated file.
+> next pair of `mise run benchmark` runs on a quiet host replaces it with two
+> unannotated files, and the gate now tests them against that bar.
 >
 > **What is still missing, and the one command that closes it:**
 >
@@ -104,6 +110,7 @@ cell cannot be published here.
 >
 > ```bash
 > mise run benchmark          # -> tools/comparison/output/perf/perf.json
+> mise run benchmark -- --out tools/comparison/output/perf/perf-2.json
 > mise run benchmark:full     # -> tools/comparison/output/perf/perf-full.json
 >
 > # §1's three columns. Each is its own invocation and each writes the committed
@@ -113,10 +120,16 @@ cell cannot be published here.
 > mise run benchmark:stages 512 512 4
 >
 > cp tools/comparison/output/perf/perf.json      tools/comparison/baselines/perf-report.json
+> cp tools/comparison/output/perf/perf-2.json    tools/comparison/baselines/perf-report-2.json
 > cp tools/comparison/output/perf/perf-full.json tools/comparison/baselines/perf-report-full.json
 > mise run verify:benchmark -- --fix   # rewrites every TBD from the runs
 > mise run verify:benchmark            # must pass
 > ```
+>
+> The two bounded runs are the host-stability pair: independent processes, one
+> commit, one host. Once both are committed, `verify:benchmark` prints `Host
+> stability (§0): PASS` with the shared-cell count and the widest spread, and
+> fails until the reproducibility row above says **Yes** and quotes both.
 >
 > **The order is load-bearing, and it is the reason `benchmark:stages` sits in
 > the middle.** Every recorder here stamps its output with `git.dirty`, and the
@@ -131,9 +144,10 @@ cell cannot be published here.
 > documented procedure left §1's baseline untouched at whatever revision it was
 > last recorded at — the one table in the document with no way to notice.
 >
-> The two `cp` lines **rename** as they copy, and that is not cosmetic: the gate
-> reads `baselines/perf-report-full.json` then `baselines/perf-report.json` and
-> ignores anything else in the directory (`verify-benchmark.ts`). This block used
+> The `cp` lines **rename** as they copy, and that is not cosmetic: the gate
+> reads `baselines/perf-report-full.json`, `baselines/perf-report.json` and
+> `baselines/perf-report-2.json` and ignores anything else in the directory
+> (`verify-benchmark.ts`). This block used
 > to say `cp …/perf*.json tools/comparison/baselines/`, which lands the files
 > under their output names, leaves the gate reading nothing, and reports the
 > document as unmeasured with no hint as to why. `TESTING.md` had it right.

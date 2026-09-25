@@ -192,17 +192,23 @@ output depends on the machine, so a re-measurement is reviewed the way a test
 vector regeneration is:
 
 ```bash
-mise run benchmark && mise run benchmark:full
+mise run benchmark
+mise run benchmark -- --out tools/comparison/output/perf/perf-2.json
+mise run benchmark:full
 cp tools/comparison/output/perf/perf.json      tools/comparison/baselines/perf-report.json
+cp tools/comparison/output/perf/perf-2.json    tools/comparison/baselines/perf-report-2.json
 cp tools/comparison/output/perf/perf-full.json tools/comparison/baselines/perf-report-full.json
 mise run verify:benchmark -- --fix   # rewrite the document's cells from the runs
 mise run verify:benchmark            # must pass
 ```
 
 Run it on a quiet machine from a clean tree: the driver records `git.dirty` and
-the gate refuses a run that cannot be traced to a revision. The gate also warns
-when the two runs disagree on a shared cell, which is the measuring host's
-reproducibility floor — no figure in the document is tighter than it. A laptop
+the gate refuses a run that cannot be traced to a revision. The gate also
+**fails** when any two committed runs disagree by more than 10% on a shared
+cell, which is the measuring host's reproducibility floor — no figure in the
+document is tighter than it. The two bounded runs are §0's host-stability pair:
+they must be at one commit on one CPU, and §0's reproducibility row must say
+what the check says (`Host stability (§0): PASS | SKIP | FAIL`). A laptop
 is usually not good enough; an Apple M3 Pro measured the same cell across fresh
 processes with a 34% spread and drifted ~25% over a few hours.
 
