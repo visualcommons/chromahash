@@ -20,8 +20,9 @@
  * one shared set of resamples: arm A's and arm B's intervals are not
  * independent Monte Carlo draws, and their Monte Carlo errors do not average
  * out across the table — they move together. That is deliberate (it is what
- * makes a document's intervals reproducible to the digit, and it removes
- * resampling noise from a comparison *between* arms), and it is also why the
+ * makes a document's intervals reproducible to the digit, and as common random
+ * numbers it reduces the resampling noise in a comparison *between* arms), and
+ * it is also why the
  * seed's own influence is measured rather than assumed: `mise run arms
  * --seed-sensitivity` re-derives every committed ΔE00 interval under other
  * seeds, and EXPERIMENTS.md §13.5 records the result.
