@@ -699,15 +699,17 @@ were.
 
 ### 12.3 What this list does not claim
 
-* **No entry here is measured as an implemented speedup** except #8, which is
-  prototyped behind `Tunables::dct_separable`. The others are located and sized
-  from §1's and §1.1's stage shares, not from a build that has them. A stage share bounds a
-  lever; it does not deliver one.
-* **The byte-identical column is an argument, not a proof.** Each entry states
-  why the output cannot move, and each would still ship behind the full vector
-  set across nine languages plus `rd:gate` at 0.00% drift, because "cannot move"
-  and "did not move" are different claims and this repo has a gate for the
-  second one.
+* **No entry here is yet measured as an implemented speedup** except #8, which
+  is prototyped behind `Tunables::dct_separable`. Items 1–7 are now *built*
+  (§12.4), each behind its own flag and each held to the shipped bytes, and
+  §12.4's tables are bound to the perf cells that will time them — but no
+  committed run holds those cells yet, so the figures there are placeholders
+  and the stage shares above are still the only size any of them has. A stage
+  share bounds a lever; it does not deliver one.
+* **The byte-identical column is an argument, not a proof** — and for items
+  1–7 it is no longer only an argument. §12.4 lists what now checks "did not
+  move" for each; "cannot move" and "did not move" are different claims, and
+  this repo has a gate for the second one.
 * **Decode is measured by stage, not below it.** §1.1 is the decode
   equivalent of §1, and item 4 is sized from it rather than from reading
   `decode.rs`: the gamma LUT is **66%** of a default-tier decode and the render
@@ -716,3 +718,81 @@ were.
   two halves share one bound. §1.1 also publishes no absolute time: its shares
   were recorded on a loaded host, and §2's 234 ms is still the only measured
   tier-4 decode time.
+
+### 12.4 The byte-identical levers, built
+
+§12.1's items 1–7 exist in `rust/`, each behind a `Tunables` flag that is
+**off** in `Tunables::DEFAULT`. They are off so the shipped path stays the
+reference each one is timed against, not because any of them changes a byte:
+
+| # | flag | what is built |
+|---|---|---|
+| 1, 2 | `accel_quant_table` | Each AC job precomputes its per-index bit widths and one `compand_dequantize` table **per width** — keyed on `(bits, index)`, so `LAYOUT_C`'s 6- and 5-bit luma bands each get their own grid — and hoists `ln(1 + µ)` out of every µ-law quantize (`mulaw::mu_compress_by`, which `mu_compress` now calls, so the two are one expression). Landed together, as item 2 requires |
+| 3 | `accel_dct_lanes` | `dct::dct_encode_lanes`: four coefficients per pass over the channel, one accumulator each, each summing in the scalar pixel order with the scalar term `(channel · cos_x) · cos_y`. Portable Rust with no intrinsics, so there is no `fmadd` to reach for; Rust never contracts `a * b + c` on its own |
+| 4(a) | `accel_gamma_lut_cache` | The decoder's 4096-entry gamma table is built once per transfer curve (`OnceLock`) — two tables serve all five output gamuts, because `build_gamma_lut` reads only whether the gamut uses Adobe's γ. `average_color` uses it too |
+| 4(b) | `accel_flat_cos` | The render loop reads its cosines from one contiguous array per axis (`precompute_cos_table_flat`, `dct_decode_pixel_flat`). **Only the layout half of 4(b) is built.** Vectorizing the render loop's colour conversion is not: it needs the differential-test harness `simd/` has for encode, and belongs with it |
+| 5 | `accel_sse_early_exit` | `sse_with_delta` stops at the end of the first row whose partial sum has reached the candidate it must beat; each term is `≥ 0` or NaN, so a partial sum at the bound can never finish below it |
+| 6 | `accel_fused_pixels` | `linearize`, `oklab_forward` and `alpha_average` run as one pass over 1024-pixel tiles; the alpha buffer is built only when the image has alpha to transform. `composite` stays behind its barrier |
+| 7 | `accel_word_bitpack` | `bitpack::write_bits_word`: a field is masked and shifted into one 64-bit word and OR-ed a byte at a time |
+
+**"Did not move", checked.** `rust/tests/accel_levers.rs` reproduces every
+encode, decode and capped-decode vector in `spec/test-vectors/` with each flag
+on alone and with all seven on; then compares every flag against the shipped
+path under the shipped `Tunables` and eight non-default ones that reach what
+the vectors cannot —
+`LAYOUT_C`'s two widths at tier 2, refinement (the only caller of item 5),
+alpha through the channel quantizer, CfL, the interleaved payload, the other
+companding families — over opaque and translucent images from 1×1 to 64×48,
+two fused tiles included. Library tests in `encode.rs`, `decode.rs`, `dct.rs`,
+`mulaw.rs` and `bitpack.rs` repeat the core of it without reading `spec/`, so
+the mutation sweep holds every lever too. And the eight photographs
+`rd:gate` scores hash identically with all seven levers on, at every tier on
+their encoder-input size and at tiers 0–2 on their display-size reference: 64
+of 64 hashes. (`rd:gate` itself cannot take a flag — its adapter strips
+`CHROMAHASH_TUNE` by design — but its figure is a function of the hash, so
+identical hashes are 0.00% drift.)
+
+No binding exposes `Tunables`, so the other eight languages cannot reach a
+lever and their vector suites are unaffected by construction. **Making a lever
+the default is the change that would need them**, and the vectors they run are
+the ones this file already holds every lever to.
+
+**What each buys: bound, not yet measured.** Every cell below is a
+`verify:benchmark` binding to a perf arm the bounded sweep now records
+(`perf/matrix.ts`: `TUNE_ARMS`, `TIER4_ACCEL_ARMS`, `DECODE_ACCEL_ARMS`), each
+lever against a `shipped` cell from the same sweep. None is filled, because no
+committed run holds those cells: the host this revision was written on was
+under sustained load, and §0's rule is that a wall-clock figure is published
+from a host that holds a clock still. The next pair of §0's `mise run
+benchmark` runs fills them with `--fix`, and until then the gate reports each
+as missing rather than passing it.
+
+Speedup at tier 1 (shipped time ÷ lever time; the early exit is divided into
+`refine_passes=1`, the only encode it can shorten):
+
+| lever | 100×100 | 256×256 | 512×512 |
+|---|---:|---:|---:|
+| accel_quant_table | TBD× | TBD× | TBD× |
+| accel_dct_lanes | TBD× | TBD× | TBD× |
+| accel_fused_pixels | TBD× | TBD× | TBD× |
+| accel_word_bitpack | TBD× | TBD× | TBD× |
+| accel all | TBD× | TBD× | TBD× |
+| refine_passes=1 accel_sse_early_exit | TBD× | TBD× | TBD× |
+
+Tier 4 at 100×100, where the quantizer searches ~16× the coefficients of tier 1
+over the same source:
+
+| lever | encode | speedup |
+|---|---:|---:|
+| shipped | TBD ms | — |
+| accel_quant_table | TBD ms | TBD× |
+| accel_dct_lanes | TBD ms | TBD× |
+| accel all | TBD ms | TBD× |
+
+Decode (§12.1 item 4), 100×100 gradient source, speedup over the shipped decode:
+
+| lever | t1 natural | t4 natural | t4 capped 32×32 |
+|---|---:|---:|---:|
+| accel_gamma_lut_cache | TBD× | TBD× | TBD× |
+| accel_flat_cos | TBD× | TBD× | TBD× |
+| accel all | TBD× | TBD× | TBD× |

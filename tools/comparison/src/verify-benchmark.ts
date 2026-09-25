@@ -525,6 +525,66 @@ const BINDINGS: Binding[] = [
     },
   },
   {
+    section: "12.4",
+    index: 1,
+    title: "§12.1's encode levers, built: speedup at tier 1",
+    // `R.us`, not `timeOr`: a lever cell no committed run holds is a missing
+    // measurement, and must fail as one rather than count as deliberately
+    // unbound — these rows exist only to carry a number.
+    columns: Object.fromEntries(
+      [100, 256, 512].map((n) => [
+        `${n}×${n}`,
+        (row: (h: string) => string, R: Runs) => {
+          const arm = clean(row("lever"));
+          // The early exit acts only inside refinement, so its baseline is
+          // the refinement arm, not the shipped encode.
+          const base = arm.startsWith("refine_passes=1 ")
+            ? "refine_passes=1"
+            : "shipped";
+          return ratio(R.us(armId(n, base)), R.us(armId(n, arm)));
+        },
+      ]),
+    ) as Record<string, Resolve>,
+  },
+  {
+    section: "12.4",
+    index: 2,
+    title: "§12.1's encode levers, built: tier 4 at 100x100",
+    columns: {
+      encode: (row, R) =>
+        R.us(`encode/Rust/t4/100x100/gradient/${clean(row("lever"))}`),
+      speedup: (row, R) => {
+        const arm = clean(row("lever"));
+        if (arm === "shipped") return null;
+        return ratio(
+          R.us("encode/Rust/t4/100x100/gradient/shipped"),
+          R.us(`encode/Rust/t4/100x100/gradient/${arm}`),
+        );
+      },
+    },
+  },
+  {
+    section: "12.4",
+    index: 3,
+    title: "§12.1's decode levers, built: speedup",
+    columns: Object.fromEntries(
+      (
+        [
+          ["t1 natural", "t1/natural"],
+          ["t4 natural", "t4/natural"],
+          ["t4 capped 32×32", "t4/capped32"],
+        ] as const
+      ).map(([header, raster]) => [
+        header,
+        (row: (h: string) => string, R: Runs) =>
+          ratio(
+            R.us(`decode/Rust/${raster}/shipped`),
+            R.us(`decode/Rust/${raster}/${clean(row("lever"))}`),
+          ),
+      ]),
+    ) as Record<string, Resolve>,
+  },
+  {
     section: "7",
     index: 0,
     title: "Cross-language, startup excluded",
