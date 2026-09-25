@@ -233,16 +233,46 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     // byte-identical to per-pixel `linear_rgb_to_oklab`. The alpha-weighted
     // average is a reduction, so it stays a scalar pass in pixel order to keep
     // the floating-point summation bit-exact.
+    //
+    // The shipped path allocates, fills and frees these buffers exactly as it
+    // always has — the three linear-RGB planes and the alpha plane first, all
+    // four living to the end of this function — because it is the reference
+    // every lever is timed against, and the allocator is part of what a timing
+    // measures. Shortening one lifetime or moving one allocation lets a later
+    // buffer reuse freed, already-faulted memory, and that alone moved a
+    // 512×512 encode by more than 10% while this was being written. The fused
+    // path (`accel_fused_pixels`) allocates none of the four; the alpha plane
+    // is rebuilt below only when the image has alpha to transform.
+    let fused = t.accel_fused_pixels;
+    let unfused = if fused { 0 } else { pixel_count };
+    let mut lin_r = vec![0.0f64; unfused];
+    let mut lin_g = vec![0.0f64; unfused];
+    let mut lin_b = vec![0.0f64; unfused];
+    let mut alpha_pixels = vec![0.0f64; unfused];
+    if !fused {
+        // Sliced to `pixel_count` for the reason given at `alpha_average`.
+        let (r, g, b) = (
+            &mut lin_r[..pixel_count],
+            &mut lin_g[..pixel_count],
+            &mut lin_b[..pixel_count],
+        );
+        let a = &mut alpha_pixels[..pixel_count];
+        for i in 0..pixel_count {
+            r[i] = eotf_lut[rgba[i * 4] as usize];
+            g[i] = eotf_lut[rgba[i * 4 + 1] as usize];
+            b[i] = eotf_lut[rgba[i * 4 + 2] as usize];
+            a[i] = rgba[i * 4 + 3] as f64 / 255.0;
+        }
+        stage!("linearize");
+    }
+
     let mut oklab_pixels = vec![[0.0f64; 3]; pixel_count];
     let mut avg_l = 0.0;
     let mut avg_a = 0.0;
     let mut avg_b = 0.0;
     let mut avg_alpha = 0.0;
-    // Empty on the fused path until `composite` knows whether the image has
-    // alpha to transform; see below.
-    let mut alpha_pixels: Vec<f64>;
 
-    if t.accel_fused_pixels {
+    if fused {
         // §12.1 item 6: linearize, OKLAB and the alpha-weighted reduction in
         // one pass over tiles of `FUSED_TILE` pixels, with no full-size
         // linear-RGB or alpha buffer. Byte-identical because (a) each pixel's
@@ -285,26 +315,18 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
                 avg_alpha += alpha;
             }
         }
-        alpha_pixels = Vec::new();
         stage!("fused_pixels");
     } else {
-        let mut lin_r = vec![0.0f64; pixel_count];
-        let mut lin_g = vec![0.0f64; pixel_count];
-        let mut lin_b = vec![0.0f64; pixel_count];
-        alpha_pixels = vec![0.0f64; pixel_count];
-        for i in 0..pixel_count {
-            lin_r[i] = eotf_lut[rgba[i * 4] as usize];
-            lin_g[i] = eotf_lut[rgba[i * 4 + 1] as usize];
-            lin_b[i] = eotf_lut[rgba[i * 4 + 2] as usize];
-            alpha_pixels[i] = rgba[i * 4 + 3] as f64 / 255.0;
-        }
-        stage!("linearize");
-
         crate::simd::oklab_forward_batch(&lin_r, &lin_g, &lin_b, gamut, &mut oklab_pixels);
         stage!("oklab_forward");
 
+        // Re-slice to `pixel_count`: the plane's length is now `unfused`, a
+        // runtime value, and without the one check here the compiler cannot
+        // drop the per-element bounds checks it could when the plane was
+        // allocated at `pixel_count` in plain sight — which cost this loop 3×.
+        let alpha_plane = &alpha_pixels[..pixel_count];
         for i in 0..pixel_count {
-            let alpha = alpha_pixels[i];
+            let alpha = alpha_plane[i];
             let lab = oklab_pixels[i];
             avg_l += alpha * lab[0];
             avg_a += alpha * lab[1];

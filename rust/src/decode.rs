@@ -423,27 +423,98 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     stage!("gamma_lut");
     let mut rgba_out = vec![0u8; w * h * 4];
 
-    let pixel = |dc: f64, vals: &[f64], scan: &[(usize, usize)], x: usize, y: usize| -> f64 {
-        if t.accel_flat_cos {
-            dct_decode_pixel_flat(dc, vals, scan, x, y, &flat_x, w, &flat_y, h)
-        } else {
-            dct_decode_pixel_separable(dc, vals, scan, x, y, &cos_x, &cos_y)
-        }
-    };
+    // The flat-table loop lives in its own never-inlined function. With both
+    // loops in this one, the shipped loop below rendered a tier-4 decode ~12%
+    // slower than it did before `accel_flat_cos` existed — the second loop
+    // changed what the compiler inlined into the first — and the shipped loop
+    // is the reference every decode lever is timed against.
+    if t.accel_flat_cos {
+        render_flat(
+            &mut rgba_out,
+            (w, h),
+            (&flat_x, &flat_y),
+            [
+                (l_dc, &l_vals, &l_scan),
+                (a_dc, &a_vals, &a_scan),
+                (b_dc, &b_vals, &b_scan),
+                (alpha_dc_val, &alpha_vals, &alpha_scan),
+            ],
+            has_alpha,
+            gamma_lut,
+            output,
+        );
+    } else {
+        for y in 0..h {
+            for x in 0..w {
+                let l = dct_decode_pixel_separable(l_dc, &l_vals, &l_scan, x, y, &cos_x, &cos_y);
+                let a = dct_decode_pixel_separable(a_dc, &a_vals, &a_scan, x, y, &cos_x, &cos_y);
+                let b = dct_decode_pixel_separable(b_dc, &b_vals, &b_scan, x, y, &cos_x, &cos_y);
+                let alpha = if has_alpha {
+                    dct_decode_pixel_separable(
+                        alpha_dc_val,
+                        &alpha_vals,
+                        &alpha_scan,
+                        x,
+                        y,
+                        &cos_x,
+                        &cos_y,
+                    )
+                } else {
+                    1.0
+                };
 
+                // Clamp L from DCT ringing; out-of-gamut chroma is handled by the
+                // per-channel clamp01 below (relative-colorimetric clip, §12.6).
+                let l_clamped = clamp01(l);
+                let rgb_linear = oklab_to_linear_output([l_clamped, a, b], output);
+                let idx = (y * w + x) * 4;
+                rgba_out[idx] = linear_to_gamma8(clamp01(rgb_linear[0]), gamma_lut);
+                rgba_out[idx + 1] = linear_to_gamma8(clamp01(rgb_linear[1]), gamma_lut);
+                rgba_out[idx + 2] = linear_to_gamma8(clamp01(rgb_linear[2]), gamma_lut);
+                rgba_out[idx + 3] = round_half_away_from_zero(255.0 * clamp01(alpha)) as u8;
+            }
+        }
+    }
+    stage!("render");
+
+    rgba_out
+}
+
+/// One channel's render input: DC, windowed AC values, and their `(cx, cy)`.
+type RenderChannel<'a> = (f64, &'a [f64], &'a [(usize, usize)]);
+
+/// `render_at_size`'s pixel loop over [`precompute_cos_table_flat`]'s layout
+/// (`Tunables::accel_flat_cos`, `spec/PERFORMANCE.md` §12.1 item 4(b)): the
+/// same per-pixel expressions in the same order, with each cosine read from
+/// one contiguous array per axis. `channels` is L, a, b, alpha; alpha is read
+/// only when `has_alpha`.
+#[inline(never)]
+fn render_flat(
+    rgba_out: &mut [u8],
+    (w, h): (usize, usize),
+    (cos_x, cos_y): (&[f64], &[f64]),
+    channels: [RenderChannel<'_>; 4],
+    has_alpha: bool,
+    gamma_lut: &[u8; 4096],
+    output: Gamut,
+) {
+    let [
+        (l_dc, l_vals, l_scan),
+        (a_dc, a_vals, a_scan),
+        (b_dc, b_vals, b_scan),
+        alpha_ch,
+    ] = channels;
     for y in 0..h {
         for x in 0..w {
-            let l = pixel(l_dc, &l_vals, &l_scan, x, y);
-            let a = pixel(a_dc, &a_vals, &a_scan, x, y);
-            let b = pixel(b_dc, &b_vals, &b_scan, x, y);
+            let l = dct_decode_pixel_flat(l_dc, l_vals, l_scan, x, y, cos_x, w, cos_y, h);
+            let a = dct_decode_pixel_flat(a_dc, a_vals, a_scan, x, y, cos_x, w, cos_y, h);
+            let b = dct_decode_pixel_flat(b_dc, b_vals, b_scan, x, y, cos_x, w, cos_y, h);
             let alpha = if has_alpha {
-                pixel(alpha_dc_val, &alpha_vals, &alpha_scan, x, y)
+                let (dc, vals, scan) = alpha_ch;
+                dct_decode_pixel_flat(dc, vals, scan, x, y, cos_x, w, cos_y, h)
             } else {
                 1.0
             };
-
-            // Clamp L from DCT ringing; out-of-gamut chroma is handled by the
-            // per-channel clamp01 below (relative-colorimetric clip, §12.6).
             let l_clamped = clamp01(l);
             let rgb_linear = oklab_to_linear_output([l_clamped, a, b], output);
             let idx = (y * w + x) * 4;
@@ -453,9 +524,6 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
             rgba_out[idx + 3] = round_half_away_from_zero(255.0 * clamp01(alpha)) as u8;
         }
     }
-    stage!("render");
-
-    rgba_out
 }
 
 /// Decode a ChromaHash into RGBA pixel data in the given output gamut, with
