@@ -165,11 +165,12 @@ jobs:
       - name: Every sweep arm sets the constants its label names
         run: node tools/comparison/dist/verify-sweep-labels.js
 
-      # The corpus attribution file against the pin table that generates it.
-      # 39 Wikimedia Commons images under free licences require per-image
-      # attribution, and the generated file is the only place it is recorded.
-      # Reads two files: no corpus download, no network.
-      - name: The corpus attribution file is current
+      # The photographic, alpha and graphics attribution files against the pin
+      # tables that generate them. The Wikimedia Commons images under free
+      # licences require per-image attribution, and the generated files are
+      # the only place it is recorded. Reads committed files only: no corpus
+      # download, no network.
+      - name: The corpus attribution files are current
         run: node tools/comparison/dist/corpus-licenses.js --check
 
       # Reads spec/PERFORMANCE.md and the committed runs under baselines/ only —
