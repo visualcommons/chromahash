@@ -1,8 +1,17 @@
+import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ensurePinnedFixture } from "./corpus-pin.ts";
+import { ensurePinnedFixture, sha256 } from "./corpus-pin.ts";
+import { HOLDOUT2_PREFIX } from "./corpus.ts";
+import {
+  CURATED_IMAGES,
+  type NaturalImageSpec,
+  naturalImagePath,
+} from "./natural-images.ts";
 
 const HOLDOUT_DIR = path.resolve(import.meta.dirname, "../fixtures/holdout");
+/** Not `results.ts`'s: that module imports this one, and a cycle leaves it undefined here. */
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 
 /** Number of images in the Kodak True Color suite (kodim01 … kodim24). */
 const KODAK_COUNT = 24;
@@ -42,18 +51,23 @@ export const KODAK_SHA256: readonly string[] = [
 ];
 
 /**
- * Ensure the holdout images are downloaded, cached and content-pinned. The set
+ * Ensure the Kodak images are downloaded, cached and content-pinned. The set
  * is the Kodak True Color suite: 24 uncompressed 768x512 / 512x768
  * photographs, free for unrestricted use and hosted at the same URL since
- * 1999 — a stable, well-known corpus no LQIP format's constants were tuned on.
- * (CLIC datasets were considered as an additional holdout source, but their
- * hosting URLs are unstable.) Labels are `kodak01` … `kodak24`; corpus.ts maps
- * every `kodak*` image to the "holdout" split, so sweeps never tune on them.
+ * 1999 — a stable, well-known corpus no LQIP format's constants were tuned on
+ * when it was chosen. (CLIC datasets were considered as an additional holdout
+ * source, but their hosting URLs are unstable.) Labels are `kodak01` …
+ * `kodak24`.
+ *
+ * It was the core of the photographic holdout until #76 retired that split as
+ * spent: it had informed a decision in every round (`spec/EXPERIMENTS.md`
+ * §11.12). corpus.ts now maps every `kodak*` image to "tune2", and the
+ * out-of-sample verdict belongs to the sealed holdout2 split
+ * ({@link ensureHoldout2Images}).
  *
  * Every file is verified against its declared SHA-256 whether it came from the
  * cache or from the network. A fetch failure or a digest mismatch throws — a
- * partial holdout split would silently move the validation mean the
- * pre-registered ≥3% rule is decided against.
+ * partial split would silently move every mean taken over it.
  */
 export async function ensureHoldoutImages(): Promise<string[]> {
   await fs.mkdir(HOLDOUT_DIR, { recursive: true });
@@ -87,10 +101,230 @@ export async function ensureHoldoutImages(): Promise<string[]> {
   }
 
   if (downloadCount > 0) {
-    console.log(
-      `Downloaded ${downloadCount} holdout image(s) to ${HOLDOUT_DIR}`,
-    );
+    console.log(`Downloaded ${downloadCount} Kodak image(s) to ${HOLDOUT_DIR}`);
   }
 
+  return paths;
+}
+
+// ─── The sealed holdout (holdout2, #76) ─────────────────────────────────────
+
+/**
+ * The v0.8 decision register the gate reads. Only a decision it records as
+ * `frozen` — criterion fixed and approved, not yet answered — may open
+ * holdout2.
+ */
+export const DECISION_REGISTER = path.join(REPO_ROOT, "spec/V0.8-DECISIONS.md");
+
+/**
+ * Proof that the gate ran and what it read. `ensureHoldout2Images` takes one,
+ * so nothing can fetch the sealed split without having passed
+ * {@link openHoldout2}; a result scored on holdout2 records it.
+ */
+export interface Holdout2Opening {
+  /** The register decision this reading answers. */
+  decision: string;
+  /** Repo-relative path of the register that was read. */
+  register: string;
+  /** SHA-256 of the register's bytes when it was read. */
+  registerSha256: string;
+}
+
+/** A decision ID: a letter, then letters, digits, `.`, `_` or `-`. */
+const DECISION_ID = /^[A-Za-z][A-Za-z0-9._-]*$/;
+
+/**
+ * A status line, in any of the forms Markdown prose puts one: `Status: frozen`,
+ * `**Status:** frozen`, `**Status**: frozen`, optionally as a list item.
+ */
+const STATUS_LINE =
+  /^\s*(?:[-*+]\s+)?(?:\*\*|__)?status(?:\*\*|__)?\s*:\s*(?:\*\*|__)?\s*([A-Za-z-]+)/i;
+
+const escapeRegExp = (s: string): string =>
+  s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * What the register records as a decision's status, or why it records none.
+ *
+ * The register's contract, which this parser is the whole of:
+ *
+ * - A decision is a Markdown heading, at any level, whose text starts with the
+ *   decision's ID followed by the end of the heading, whitespace, `:`, `)`, an
+ *   em or en dash, or `.` and then whitespace — `## D3. Entropy-coded AC` and
+ *   `### D3 — Entropy-coded AC` are decision `D3`; `## D3.1 …` is not.
+ * - Its section runs to the next heading of the same or a higher level.
+ * - The section holds exactly one status line (`Status: frozen`, bold or
+ *   not, optionally a list item). Its first word, lowercased, is the status.
+ *
+ * Anything else — no such heading, two of them, no status line, two status
+ * lines — is reported rather than guessed at: a gate that opens on an
+ * ambiguous register is not a gate.
+ */
+export function registerStatus(
+  text: string,
+  decision: string,
+): { status: string } | { error: string } {
+  const headingAt = new RegExp(
+    `^(#{1,6})\\s+${escapeRegExp(decision)}(?=$|[\\s:)\\u2013\\u2014]|\\.(?:\\s|$))`,
+  );
+  const lines = text.split("\n");
+  const starts: { index: number; level: number }[] = [];
+  lines.forEach((line, index) => {
+    const m = headingAt.exec(line);
+    if (m?.[1] !== undefined) starts.push({ index, level: m[1].length });
+  });
+  if (starts.length === 0) {
+    return { error: `records no decision headed "${decision}"` };
+  }
+  const first = starts[0];
+  if (starts.length > 1 || first === undefined) {
+    return {
+      error: `heads decision "${decision}" ${starts.length} times (lines ${starts.map((s) => s.index + 1).join(", ")})`,
+    };
+  }
+  const statuses: string[] = [];
+  let fenced = false;
+  for (let i = first.index + 1; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
+    if (fenced) continue;
+    const heading = /^(#{1,6})\s/.exec(line);
+    if (heading?.[1] !== undefined && heading[1].length <= first.level) break;
+    const m = STATUS_LINE.exec(line);
+    if (m?.[1] !== undefined) statuses.push(m[1].toLowerCase());
+  }
+  const only = statuses[0];
+  if (statuses.length !== 1 || only === undefined) {
+    return {
+      error: `gives decision "${decision}" ${statuses.length} status lines (${statuses.join(", ") || "none"}); it must give exactly one`,
+    };
+  }
+  return { status: only };
+}
+
+/**
+ * The gate. Throws unless `decision` names a decision the register records
+ * as `frozen`: criteria approved, not yet answered. `open` or `draft` has no
+ * approved criterion for a result to be judged against; `decided` has already
+ * been answered, so reading the split for it again is a second look.
+ *
+ * @param registerPath Overridable only so the self-test can drive the gate
+ *   against a fixture; every tool reads {@link DECISION_REGISTER}.
+ */
+export function openHoldout2(
+  decision: string | undefined,
+  registerPath: string = DECISION_REGISTER,
+): Holdout2Opening {
+  const where = path
+    .relative(REPO_ROOT, registerPath)
+    .split(path.sep)
+    .join("/");
+  if (decision === undefined || decision === "") {
+    throw new Error(
+      `--split holdout2 needs --decision <ID>: the sealed holdout opens only for one decision ${where} records as frozen`,
+    );
+  }
+  if (!DECISION_ID.test(decision)) {
+    throw new Error(
+      `--decision "${decision}" is not a decision ID (a letter, then letters, digits, ".", "_" or "-")`,
+    );
+  }
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(registerPath);
+  } catch {
+    throw new Error(
+      `holdout2 is sealed: ${where} does not exist, so no decision is frozen (the register is #77)`,
+    );
+  }
+  const found = registerStatus(bytes.toString("utf8"), decision);
+  if ("error" in found) {
+    throw new Error(`holdout2 is sealed: ${where} ${found.error}`);
+  }
+  if (found.status !== "frozen") {
+    throw new Error(
+      `holdout2 is sealed: ${where} records decision "${decision}" as "${found.status}", and only a frozen decision opens it`,
+    );
+  }
+  return {
+    decision,
+    register: where,
+    registerSha256: sha256(bytes),
+  };
+}
+
+/**
+ * Refuse to overwrite a committed holdout2 result. The split is read once per
+ * question: a second run under the same name, after the first has been seen,
+ * is the forking path the seal exists to close. A result that has to be
+ * re-read is a new, named run, and the document says why.
+ */
+export function assertHoldout2Unread(resultFile: string): void {
+  if (existsSync(resultFile)) {
+    throw new Error(
+      `${path.relative(REPO_ROOT, resultFile)} already holds a holdout2 reading; the sealed split is read once per question, so a re-read needs a new name and a reason recorded in spec/EXPERIMENTS.md`,
+    );
+  }
+}
+
+/**
+ * The holdout2 pins, after checking that the prefix and the declared split
+ * agree. `splitFor` seals by the `sealed-` prefix, so a holdout2 pin without
+ * it would be scored as tune by every other loader, and a `sealed-` image
+ * declared anything else would be sealed without the table saying so.
+ */
+export function holdout2Specs(
+  images: readonly NaturalImageSpec[] = CURATED_IMAGES,
+): NaturalImageSpec[] {
+  const mismatched = images.filter(
+    (s) => (s.split === "holdout2") !== s.label.startsWith(HOLDOUT2_PREFIX),
+  );
+  if (mismatched.length > 0) {
+    throw new Error(
+      `every holdout2 pin, and only a holdout2 pin, is labelled "${HOLDOUT2_PREFIX}*"; these are not: ${mismatched.map((s) => `${s.label} (${s.split})`).join(", ")}`,
+    );
+  }
+  return images.filter((s) => s.split === "holdout2");
+}
+
+/**
+ * Ensure the sealed holdout2 images are present and content-pinned. Takes the
+ * gate's {@link Holdout2Opening}, so the only way to fetch them is through
+ * {@link openHoldout2}. Throws when the split has no pinned image, rather than
+ * letting a run score an empty holdout and report it as one.
+ */
+export async function ensureHoldout2Images(
+  opening: Holdout2Opening,
+  images: readonly NaturalImageSpec[] = CURATED_IMAGES,
+): Promise<string[]> {
+  const specs = holdout2Specs(images);
+  if (specs.length === 0) {
+    throw new Error(
+      `holdout2 has no pinned images yet: its candidate list awaits approval before anything is pinned (#103), so decision "${opening.decision}" cannot be read against it`,
+    );
+  }
+  const paths: string[] = [];
+  let downloadCount = 0;
+  for (const spec of specs) {
+    const filePath = naturalImagePath(spec);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    if (
+      await ensurePinnedFixture({
+        filePath,
+        urls: spec.urls,
+        sha256: spec.sha256,
+        label: spec.label,
+      })
+    ) {
+      downloadCount++;
+    }
+    paths.push(filePath);
+  }
+  if (downloadCount > 0) {
+    console.log(`Downloaded ${downloadCount} holdout2 image(s)`);
+  }
+  console.log(
+    `holdout2 opened for decision "${opening.decision}" (${opening.register} sha256 ${opening.registerSha256.slice(0, 12)})`,
+  );
   return paths;
 }

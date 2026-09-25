@@ -10,14 +10,20 @@ fatal: the corpus a number was measured on is part of what the number means.
 **This file is generated.** Edit the table in `src/natural-images.ts` and run
 `mise run corpus:licenses`; `--check` fails when the two disagree.
 
-| Axis | Meaning |
-| --- | --- |
-| Measured on the 512 px scoring reference: mean L\*, mean chroma C\*, and the
-  fraction of pixels in the top two L\* deciles (high-key) — the quantities
-  `spec/EXPERIMENTS.md` §9.1 audits the corpus against. |
+**Splits.** `tune` is what constants are chosen on. `tune2` is the
+photographic holdout retired as spent (#76): it informed a decision in every
+round (`spec/EXPERIMENTS.md` §11.12), so it is tuning data now, together with
+the Kodak24 suite (`src/holdout-images.ts`, not listed here). `holdout2`, if
+any entry carries it, is the sealed holdout: no tool fetches it until
+`spec/V0.8-DECISIONS.md` records the decision it answers as frozen.
+
+**Axis** is the §9.1 corpus-audit axis the image was chosen to cover.
+**Notes** are its covariates on the 512 px scoring reference: orientation,
+mean CIELAB L\*, mean chroma C\*, and a Laplacian detail energy whose exact
+formula was not recorded when these were measured.
 
 
-39 images — 31 tune, 8 holdout.
+39 images — 31 tune, 8 tune2.
 
 ### `chroma-black-and-white`
 
@@ -26,7 +32,7 @@ fatal: the corpus a number was measured on is part of what the number means.
 - Author: Kızıl
 - License: CC BY-SA 4.0
 - Dimensions: 4157x2771
-- Split: holdout
+- Split: tune2
 - Axis: the chroma floor: near-zero C*
 - Notes: landscape, mean L* 40.1, mean C* 6.8, detail 9.85
 
@@ -114,7 +120,7 @@ fatal: the corpus a number was measured on is part of what the number means.
 - Author: Frank Schulenburg
 - License: CC BY-SA 3.0
 - Dimensions: 2437x3159
-- Split: holdout
+- Split: tune2
 - Axis: fine fur/feather texture
 - Notes: portrait, mean L* 53, mean C* 13.9, detail 8.12
 
@@ -158,7 +164,7 @@ fatal: the corpus a number was measured on is part of what the number means.
 - Author: James Petts from London, England
 - License: CC BY-SA 2.0
 - Dimensions: 4608x3456
-- Split: holdout
+- Split: tune2
 - Axis: interior and mixed illuminants
 - Notes: landscape, mean L* 50.6, mean C* 9.7, detail 23.09
 
@@ -169,7 +175,7 @@ fatal: the corpus a number was measured on is part of what the number means.
 - Author: Lukas Beck
 - License: CC BY 4.0
 - Dimensions: 4032x3024
-- Split: holdout
+- Split: tune2
 - Axis: high-key framing, DC-dominated
 - Notes: landscape, mean L* 66.4, mean C* 13.3, detail 40.79
 
@@ -202,7 +208,7 @@ fatal: the corpus a number was measured on is part of what the number means.
 - Author: Hayan Alhasan
 - License: CC BY-SA 4.0
 - Dimensions: 3456x4608
-- Split: holdout
+- Split: tune2
 - Axis: close framing, saturated food
 - Notes: portrait, mean L* 47.7, mean C* 13.5, detail 35.72
 
@@ -312,7 +318,7 @@ fatal: the corpus a number was measured on is part of what the number means.
 - Author: Shixart1985
 - License: CC BY 2.0
 - Dimensions: 4032x6048
-- Split: holdout
+- Split: tune2
 - Axis: interior and mixed illuminants
 - Notes: portrait, mean L* 51.8, mean C* 19.3, detail 14.53
 
@@ -334,7 +340,7 @@ fatal: the corpus a number was measured on is part of what the number means.
 - Author: Alpha from Melbourne, Australia
 - License: CC BY-SA 2.0
 - Dimensions: 3872x2592
-- Split: holdout
+- Split: tune2
 - Axis: close framing, saturated food
 - Notes: landscape, mean L* 43.8, mean C* 44.4, detail 9.07
 
@@ -378,7 +384,7 @@ fatal: the corpus a number was measured on is part of what the number means.
 - Author: Dietmar Rabich
 - License: CC BY-SA 4.0
 - Dimensions: 3601x5401
-- Split: holdout
+- Split: tune2
 - Axis: low key, saturated artificial light
 - Notes: portrait, mean L* 47.9, mean C* 10.5, detail 22.71
 

@@ -12,7 +12,10 @@
  * perfect per-image CfL predictor would shrink the chroma residual before
  * quantization. ρ² near 0 means CfL has nothing to predict at this scale.
  *
- * Usage: node dist/cfl-probe.js [--split tune|holdout] [--count N] [--tier T]
+ * Usage: node dist/cfl-probe.js [--split tune|tune2|all] [--count N] [--tier T]
+ *
+ * Reads only the images already cached under `fixtures/`, and never a sealed
+ * one (`corpus.ts` `parseScratchPhotoSplit`).
  */
 
 import { glob } from "node:fs/promises";
@@ -21,7 +24,12 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { RUST_CLI } from "./adapters/chromahash.ts";
 import { execFileSync } from "node:child_process";
-import { inCorpus, splitFor } from "./corpus.ts";
+import {
+  type CorpusSplit,
+  inCorpus,
+  inSplit,
+  parseScratchPhotoSplit,
+} from "./corpus.ts";
 import { loadImage } from "./image-loader.ts";
 
 const { values } = parseArgs({
@@ -31,7 +39,13 @@ const { values } = parseArgs({
     tier: { type: "string", default: "0" },
   },
 });
-const split = values.split ?? "tune";
+let split: CorpusSplit | "all" = "tune";
+try {
+  split = parseScratchPhotoSplit(values.split ?? "tune");
+} catch (e) {
+  console.error(e instanceof Error ? e.message : String(e));
+  process.exit(1);
+}
 const count = Number.parseInt(values.count ?? "26", 10);
 const tier = Number.parseInt(values.tier ?? "0", 10);
 
@@ -84,7 +98,7 @@ async function main(): Promise<void> {
   )) {
     const name = path.basename(entry).replace(/\.[^.]+$/, "");
     if (!inCorpus(name, "photo")) continue;
-    if (split !== "all" && splitFor(name) !== split) continue;
+    if (!inSplit(name, split)) continue;
     paths.push(entry);
   }
   paths.sort();

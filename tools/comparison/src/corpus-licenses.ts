@@ -38,6 +38,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ALPHA_IMAGES } from "./alpha-images.ts";
+import { CORPUS_SPLITS, type CorpusSplit } from "./corpus.ts";
 import { GRAPHIC_IMAGES } from "./graphic-images.ts";
 import { CURATED_IMAGES } from "./natural-images.ts";
 
@@ -55,13 +56,29 @@ fatal: the corpus a number was measured on is part of what the number means.
 **This file is generated.** Edit the table in \`src/natural-images.ts\` and run
 \`mise run corpus:licenses\`; \`--check\` fails when the two disagree.
 
-| Axis | Meaning |
-| --- | --- |
-| Measured on the 512 px scoring reference: mean L\\*, mean chroma C\\*, and the
-  fraction of pixels in the top two L\\* deciles (high-key) — the quantities
-  \`spec/EXPERIMENTS.md\` §9.1 audits the corpus against. |
+**Splits.** \`tune\` is what constants are chosen on. \`tune2\` is the
+photographic holdout retired as spent (#76): it informed a decision in every
+round (\`spec/EXPERIMENTS.md\` §11.12), so it is tuning data now, together with
+the Kodak24 suite (\`src/holdout-images.ts\`, not listed here). \`holdout2\`, if
+any entry carries it, is the sealed holdout: no tool fetches it until
+\`spec/V0.8-DECISIONS.md\` records the decision it answers as frozen.
+
+**Axis** is the §9.1 corpus-audit axis the image was chosen to cover.
+**Notes** are its covariates on the 512 px scoring reference: orientation,
+mean CIELAB L\\*, mean chroma C\\*, and a Laplacian detail energy whose exact
+formula was not recorded when these were measured.
 
 `;
+
+/** "31 tune, 8 tune2": every split with an image in it, in corpus.ts order. */
+function splitCounts(rows: readonly { split: CorpusSplit }[]): string {
+  return CORPUS_SPLITS.map(
+    (s) => [s, rows.filter((r) => r.split === s).length] as const,
+  )
+    .filter(([, n]) => n > 0)
+    .map(([s, n]) => `${n} ${s}`)
+    .join(", ");
+}
 
 function renderNatural(): string {
   const rows = [...CURATED_IMAGES].sort((a, b) =>
@@ -69,9 +86,7 @@ function renderNatural(): string {
   );
 
   const parts = [NATURAL_HEADER];
-  parts.push(
-    `${rows.length} images — ${rows.filter((r) => r.split === "tune").length} tune, ${rows.filter((r) => r.split === "holdout").length} holdout.\n`,
-  );
+  parts.push(`${rows.length} images — ${splitCounts(rows)}.\n`);
 
   for (const r of rows) {
     parts.push(
