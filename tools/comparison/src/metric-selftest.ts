@@ -61,9 +61,11 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import sharp from "sharp";
 import {
   ALPHA_HOLDOUT_RETIRED,
   type AlphaImageSpec,
@@ -91,7 +93,15 @@ import {
   type NaturalImageSpec,
   naturalImagesToFetch,
 } from "./natural-images.ts";
-import { covariatesOf, isFreeLicence, srgbToLab } from "./corpus-covariates.ts";
+import {
+  type CommonsFacts,
+  admit,
+  covariatesOf,
+  isFreeLicence,
+  measureFile,
+  sha1Mismatch,
+  srgbToLab,
+} from "./corpus-covariates.ts";
 import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
@@ -2819,6 +2829,102 @@ console.log("\nverify:experiments — the table register and result shape\n");
       "",
     );
   }
+
+  // measureFile: the reference is capped at 512 px and never enlarged, and
+  // the stored pixels are measured without rotation.
+  const checkerPng = (w: number, h: number): Promise<Buffer> =>
+    sharp(
+      Buffer.from(
+        makeRgba(w, h, (x, y) =>
+          (x + y) % 2 === 0 ? [255, 255, 255] : [0, 0, 0],
+        ),
+      ),
+      { raw: { width: w, height: h, channels: 4 } },
+    )
+      .png()
+      .toBuffer();
+  const small = await measureFile(await checkerPng(16, 8));
+  check(
+    "measureFile never enlarges: a 16 × 8 checkerboard keeps detail 400",
+    small.width === 16 && Math.abs(small.detail - 400) < 1e-3,
+    `${small.width}×${small.height} detail ${small.detail}`,
+  );
+  const large = await measureFile(await checkerPng(1024, 512));
+  check(
+    "measureFile resamples to the 512 px reference: a 1024 × 512 checkerboard averages to flat grey",
+    large.width === 1024 &&
+      large.height === 512 &&
+      large.detail < 0.01 &&
+      large.highKey === 0 &&
+      large.lowKey === 0,
+    `${large.width}×${large.height} detail ${large.detail}`,
+  );
+  const rotated = await measureFile(
+    await sharp(Buffer.alloc(24 * 12 * 3, 128), {
+      raw: { width: 24, height: 12, channels: 3 },
+    })
+      .jpeg()
+      .withMetadata({ orientation: 6 })
+      .toBuffer(),
+  );
+  check(
+    "measureFile records EXIF Orientation and measures the stored, unrotated pixels",
+    rotated.exifOrientation === 6 &&
+      rotated.width === 24 &&
+      rotated.orientation === "landscape",
+    `exif ${rotated.exifOrientation} ${rotated.width}×${rotated.height}`,
+  );
+
+  // The --commons path's refusals, on the facts Commons would return.
+  const facts: CommonsFacts = {
+    title: "File:Fixture.jpg",
+    url: "https://example.invalid/Fixture.jpg",
+    descriptionUrl: "https://example.invalid/File:Fixture.jpg",
+    sha1: createHash("sha1").update("fixture").digest("hex"),
+    mime: "image/jpeg",
+    licence: "CC BY-SA 4.0",
+    author: "fixture",
+    make: null,
+    model: null,
+    dateTimeOriginal: null,
+    categories: [],
+  };
+  const reason = (f: CommonsFacts | string | undefined): string => {
+    const a = admit(f);
+    return "reason" in a ? a.reason : "";
+  };
+  check(
+    "a free JPEG Commons describes is admitted",
+    reason(facts) === "",
+    reason(facts),
+  );
+  check(
+    "a file Commons does not describe is refused with Commons' reason",
+    reason("Commons has no such file") === "Commons has no such file" &&
+      reason(undefined) === "not asked",
+    reason("Commons has no such file"),
+  );
+  check(
+    "a non-free licence is refused",
+    reason({ ...facts, licence: "CC BY-NC 4.0" }).includes(
+      "not one the corpus admits",
+    ),
+    reason({ ...facts, licence: "CC BY-NC 4.0" }),
+  );
+  check(
+    "a MIME type other than JPEG or PNG is refused",
+    reason({ ...facts, mime: "image/tiff" }) ===
+      "image/tiff is not JPEG or PNG",
+    reason({ ...facts, mime: "image/tiff" }),
+  );
+  check(
+    "bytes matching Commons' SHA-1 pass, and any other bytes are refused",
+    sha1Mismatch(Buffer.from("fixture"), facts.sha1) === null &&
+      (sha1Mismatch(Buffer.from("fixturf"), facts.sha1) ?? "").includes(
+        `Commons records ${facts.sha1}`,
+      ),
+    sha1Mismatch(Buffer.from("fixturf"), facts.sha1) ?? "",
+  );
 
   const shipped = thrown(() => holdout2Specs());
   check(

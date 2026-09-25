@@ -326,6 +326,40 @@ async function download(url: string): Promise<Buffer> {
   throw new Error(`gave up on ${url}`);
 }
 
+/**
+ * Whether a candidate may be downloaded and measured, judged on what Commons
+ * said about it: a file Commons does not describe (the reason `commonsFacts`
+ * recorded), a licence {@link isFreeLicence} refuses, or a MIME type other
+ * than JPEG or PNG is refused with its reason.
+ */
+export function admit(
+  f: CommonsFacts | string | undefined,
+): { facts: CommonsFacts } | { reason: string } {
+  if (f === undefined) return { reason: "not asked" };
+  if (typeof f === "string") return { reason: f };
+  if (!isFreeLicence(f.licence)) {
+    return { reason: `licence "${f.licence}" is not one the corpus admits` };
+  }
+  if (f.mime !== "image/jpeg" && f.mime !== "image/png") {
+    return { reason: `${f.mime} is not JPEG or PNG` };
+  }
+  return { facts: f };
+}
+
+/**
+ * Why downloaded bytes are refused, or null when their SHA-1 is the one
+ * Commons records for the file.
+ */
+export function sha1Mismatch(
+  bytes: Buffer,
+  commonsSha1: string,
+): string | null {
+  const sha1 = createHash("sha1").update(bytes).digest("hex");
+  return sha1 === commonsSha1
+    ? null
+    : `downloaded bytes have SHA-1 ${sha1}, Commons records ${commonsSha1}`;
+}
+
 /** One measured candidate: what a pin would record, plus its covariates. */
 export interface Candidate extends CommonsFacts {
   sha256: string;
@@ -345,22 +379,12 @@ async function runCommons(
   const measured: Candidate[] = [];
   const refused: { title: string; reason: string }[] = [];
   for (const title of titles) {
-    const f = facts.get(title);
-    if (f === undefined || typeof f === "string") {
-      refused.push({ title, reason: f ?? "not asked" });
+    const admitted = admit(facts.get(title));
+    if ("reason" in admitted) {
+      refused.push({ title, reason: admitted.reason });
       continue;
     }
-    if (!isFreeLicence(f.licence)) {
-      refused.push({
-        title,
-        reason: `licence "${f.licence}" is not one the corpus admits`,
-      });
-      continue;
-    }
-    if (f.mime !== "image/jpeg" && f.mime !== "image/png") {
-      refused.push({ title, reason: `${f.mime} is not JPEG or PNG` });
-      continue;
-    }
+    const f = admitted.facts;
     const file = path.join(
       CANDIDATE_DIR,
       path.basename(new URL(f.url).pathname),
@@ -372,12 +396,9 @@ async function runCommons(
       bytes = await download(f.url);
       await fs.writeFile(file, bytes);
     }
-    const sha1 = createHash("sha1").update(bytes).digest("hex");
-    if (sha1 !== f.sha1) {
-      refused.push({
-        title,
-        reason: `downloaded bytes have SHA-1 ${sha1}, Commons records ${f.sha1}`,
-      });
+    const mismatch = sha1Mismatch(bytes, f.sha1);
+    if (mismatch !== null) {
+      refused.push({ title, reason: mismatch });
       continue;
     }
     measured.push({
