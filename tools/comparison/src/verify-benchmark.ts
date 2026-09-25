@@ -692,7 +692,28 @@ for (const binding of BINDINGS) {
     );
     continue;
   }
+  const before = counters.checked + counters.placeholders;
   checkTable(binding, table, runs, failures, counters, edits);
+  // §1.1 has no cell that may be skipped: every row is a recorded stage and
+  // every column a recorded cell. `checkTable` passes over a cell whose text
+  // is not a number, so count what it actually checked and hold it to the
+  // table's size — otherwise "n/a" in a cell would be a silent pass.
+  if (binding.section === "1.1") {
+    const expected =
+      table.rows.length * Object.keys(DECODE_STAGE_COLUMNS).length;
+    const got = counters.checked + counters.placeholders - before;
+    if (got !== expected) {
+      failures.push({
+        where: `§1.1 ${binding.title} (line ${table.line})`,
+        column: "cells checked",
+        row: "—",
+        documented: `${expected} cells`,
+        measured: `${got} checked`,
+        detail:
+          "every cell of this table is a bound share; one that is not a number, or a column the table lacks, was not checked",
+      });
+    }
+  }
 }
 
 // A dirty tree means the numbers cannot be traced back to a source state, which
