@@ -65,7 +65,7 @@
  * `ci-comparison.yml` runs it with `--strict`.
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import {
@@ -81,9 +81,12 @@ import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
 import {
   type ArmComparison,
   type GuardVerdict,
+  type InferenceSummary,
+  addSummaries,
   compareArms,
   guardVerdictOnIntervals,
   statFor,
+  summarizeInference,
 } from "./arms-core.ts";
 import {
   type PerImageKey,
@@ -414,7 +417,77 @@ interface RatioBinding extends CommonBinding {
   arms: Record<string, { cand: string; base: string }>;
 }
 
-type Binding = RowBinding | ColumnBinding | RatioBinding;
+/**
+ * A table whose rows are whole sweeps and whose columns are
+ * {@link InferenceSummary} counts: §13.5's tally of what the paired inference
+ * changes. A row is labelled with a result name, or `all committed sweeps` for
+ * the sum over every result in the directory — which is the row that goes
+ * stale first when a sweep is re-run, and so is the one most worth binding.
+ */
+interface SummaryBinding extends CommonBinding {
+  kind: "summary";
+  columns: Partial<Record<string, keyof InferenceSummary>>;
+}
+
+type Binding = RowBinding | ColumnBinding | RatioBinding | SummaryBinding;
+
+/** The label of a summary table's row that sums every committed sweep. */
+const ALL_SWEEPS = "all committed sweeps";
+
+const inferenceCache = new Map<string, InferenceSummary | null>();
+function inferenceOf(name: string): InferenceSummary | null | undefined {
+  if (inferenceCache.has(name)) return inferenceCache.get(name);
+  const sweep = loadSweep(name);
+  if (!sweep) return undefined;
+  const s = summarizeInference(sweep.result);
+  inferenceCache.set(name, s);
+  return s;
+}
+
+function checkSummaryTable(
+  b: SummaryBinding,
+  table: DocTable,
+  failures: Failure[],
+  stats: Stats,
+): string | null {
+  for (const [rowIndex, row] of table.rows.entries()) {
+    const label = (row[0] ?? "").replace(/[*`]/g, "").trim();
+    let summary: InferenceSummary | null | undefined;
+    if (normalize(label) === normalize(ALL_SWEEPS)) {
+      const names = readdirSync(resultsDir)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => f.replace(/\.json$/, ""));
+      const each = names
+        .map((n) => inferenceOf(n))
+        .filter((s): s is InferenceSummary => s !== null && s !== undefined);
+      summary = addSummaries(each);
+    } else {
+      summary = inferenceOf(label);
+      if (summary === undefined) return missingResult(label);
+    }
+    if (summary === null) {
+      return `${label} is not a sweep with an incumbent and guard tolerances`;
+    }
+    for (const [i, header] of table.header.entries()) {
+      const key = b.columns[header];
+      if (!key) continue;
+      compare(
+        {
+          section: b.section,
+          table: table.index,
+          row: label,
+          column: header,
+          fix: { line: table.line, rowIndex, colIndex: i },
+        },
+        row[i] ?? "",
+        summary[key],
+        failures,
+        stats,
+      );
+    }
+  }
+  return null;
+}
 
 // ─── Checking ───────────────────────────────────────────────────────────────
 
@@ -1133,7 +1206,8 @@ const BINDINGS: Binding[] = [
       SSIM2: "meanSsimulacra2",
       Butter: "meanButteraugli",
       DSSIM: "meanDssim",
-      Guards: "guardsOk",
+      "guards (means)": "guardsOk",
+      "guards (CI)": "guardsCi",
     },
     aliases: {
       shipped: "32B SHIPPED",
@@ -1187,7 +1261,11 @@ const BINDINGS: Binding[] = [
     section: "7.5",
     table: 0,
     sweep: "prefix-shrink",
-    columns: { "ΔE00 Δ%": "ciedeDeltaPct", guards: "guardsOk" },
+    columns: {
+      "ΔE00 Δ%": "ciedeDeltaPct",
+      "guards (means)": "guardsOk",
+      "guards (CI)": "guardsCi",
+    },
     aliases: {
       "aspect 8 → 5 b": "cost aspect 5b (-3)",
       "aspect 8 → 4 b": "cost aspect 4b (-4)",
@@ -1265,7 +1343,8 @@ const BINDINGS: Binding[] = [
       SSIM2: "meanSsimulacra2",
       Butter: "meanButteraugli",
       DSSIM: "meanDssim",
-      Guards: "guardsOk",
+      "guards (means)": "guardsOk",
+      "guards (CI)": "guardsCi",
     },
     aliases: {
       shipped: "32B shipped",
@@ -1368,7 +1447,8 @@ const BINDINGS: Binding[] = [
       ΔE00: "meanCiede",
       "Δ%": "ciedeDeltaPct",
       αMAE: "meanAlphaMae",
-      guards: "guardsOk",
+      "guards (means)": "guardsOk",
+      "guards (CI)": "guardsCi",
     },
     aliases: {
       "**shipped** alpha DC 5 b, scale 4 b, AC 5 @ 4 b":
@@ -1435,8 +1515,12 @@ const BINDINGS: Binding[] = [
       ΔE00: "meanCiede",
       "Δ% vs shipped shape": "ciedeDeltaPct",
       "paired CI vs the leader": "ci",
+      "Holm p vs the leader": "pHolm:ciede2000",
     },
-    baselines: { "paired CI vs the leader": "L19@4 C6@3  (§8.1 tune)" },
+    baselines: {
+      "paired CI vs the leader": "L19@4 C6@3  (§8.1 tune)",
+      "Holm p vs the leader": "L19@4 C6@3  (§8.1 tune)",
+    },
     aliases: {
       "**L19@4 C6@3**": "L19@4 C6@3  (§8.1 tune)",
       "L26@3 C6@3": "L26@3 C6@3  (§8.1 hold)",
@@ -1488,6 +1572,7 @@ const BINDINGS: Binding[] = [
       ΔE00: "meanCiede",
       "Δ%": "ciedeDeltaPct",
       "paired 95% CI": "ci",
+      "Holm p": "pHolm:ciede2000",
       "win/n": "winN",
     },
     aliases: {
@@ -1504,6 +1589,7 @@ const BINDINGS: Binding[] = [
       ΔE00: "meanCiede",
       "Δ%": "ciedeDeltaPct",
       "paired 95% CI": "ci",
+      "Holm p": "pHolm:ciede2000",
     },
     aliases: {
       "**DEFAULT** L28@4 C15@3": "DEFAULT L28@4 C15@3 (photo winner)",
@@ -1518,6 +1604,7 @@ const BINDINGS: Binding[] = [
       ΔE00: "meanCiede",
       "Δ%": "ciedeDeltaPct",
       "paired 95% CI": "ci",
+      "Holm p": "pHolm:ciede2000",
     },
     aliases: {
       "**DEFAULT** (full stack)": "DEFAULT (full stack)",
@@ -1535,6 +1622,7 @@ const BINDINGS: Binding[] = [
       ΔE00: "meanCiede",
       "Δ%": "ciedeDeltaPct",
       "paired 95% CI": "ci",
+      "Holm p": "pHolm:ciede2000",
       "win/n": "winN",
     },
     aliases: {
@@ -1656,7 +1744,9 @@ const BINDINGS: Binding[] = [
       Ring: "meanRinging",
       Spur: "meanSpurious",
       "paired 95% CI": "ci",
-      guards: "guardsOk",
+      "Holm p": "pHolm:ciede2000",
+      "guards (means)": "guardsOk",
+      "guards (CI)": "guardsCi",
     },
   },
   {
@@ -1672,7 +1762,9 @@ const BINDINGS: Binding[] = [
       Ring: "meanRinging",
       Spur: "meanSpurious",
       "paired 95% CI": "ci",
-      guards: "guardsOk",
+      "Holm p": "pHolm:ciede2000",
+      "guards (means)": "guardsOk",
+      "guards (CI)": "guardsCi",
     },
   },
 
@@ -1708,6 +1800,49 @@ const BINDINGS: Binding[] = [
     },
     aliases: ARTIFACT_LADDER_ALIASES,
   },
+
+  // §13.2 — the paired spurious-detail differences its findings turn on. Until
+  // `arms` existed these were quoted in prose from a computation no committed
+  // command reproduced; they are row − reference, against code 2 except the
+  // last row, which reads the top two tiers against each other.
+  {
+    kind: "rows",
+    section: "13.2",
+    table: 0,
+    sweep: "artifact-ladder-common-grid",
+    baseline: "code 2 (108 B)",
+    columns: {
+      "Spur Δ": "diff:spurious",
+      "paired 95% CI": "diffCi:spurious",
+      "Holm p": "pHolm:spurious",
+    },
+    aliases: {
+      "code 0 − code 2": "code 0 (compact, 21 B)",
+      "code 1 − code 2": "code 1 (default, 32 B)",
+      "code 3 − code 2": "code 3 (411 B)",
+      "code 4 − code 2": "code 4 (1623 B)",
+      "code 4 − code 3": "code 4 (1623 B)",
+    },
+    rowBaselines: { "code 4 − code 3": "code 3 (411 B)" },
+  },
+
+  // §13.5 — what the paired inference changes, per committed sweep and summed
+  // over all of them. The summed row is the one a re-run of any sweep moves.
+  {
+    kind: "summary",
+    section: "13.5",
+    table: 0,
+    columns: {
+      arms: "arms",
+      "ΔE00 p < 0.05": "differs",
+      "after Holm": "differsHolm",
+      "guards (CI) ok": "guardsOk",
+      inconclusive: "guardsInconclusive",
+      FAIL: "guardsFail",
+      "ok on means, not on CI": "meansOkCiNot",
+      "FAIL on means, not shown on CI": "meansFailCiNot",
+    },
+  },
 ];
 
 /**
@@ -1737,8 +1872,8 @@ interface Coverage {
 function coverageOf(b: Binding, table: DocTable): Coverage {
   const base = { section: b.section, table: b.table ?? 0 };
 
-  if (b.kind === "rows") {
-    const labelCol = b.labelColumn ?? 0;
+  if (b.kind === "rows" || b.kind === "summary") {
+    const labelCol = b.kind === "rows" ? (b.labelColumn ?? 0) : 0;
     const covered: string[] = [];
     const uncovered: string[] = [];
     for (const [i, header] of table.header.entries()) {
@@ -1833,6 +1968,13 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
  * what the table checks today, not what it ought to: a column that compares
  * fewer cells than its rows is a finding for the table's binding, and this
  * register only guarantees it cannot get worse unnoticed.
+ *
+ * §13.5 added a `guards (CI)` column beside every guard column (one cell per
+ * non-incumbent row: §4.5 +7, §7.5 +7, §7.12 +11, §11.3 +6, §12.2 +7, §12.3
+ * +5), a `Holm p` column beside every paired ΔE00 interval (§11.1 +4, §11.4
+ * +3 and +4, §11.5 +8, §11.10 +8, §12.2 +7, §12.3 +5), and two new tables:
+ * §13.2's paired spurious differences (5 rows × 3) and §13.5's tally (9 rows ×
+ * 8).
  */
 const EXPECTED_CELLS: Record<string, number> = {
   "1#0": 26,
@@ -1841,34 +1983,36 @@ const EXPECTED_CELLS: Record<string, number> = {
   "4.1#0": 12,
   "4.3#0": 25,
   "4.3#1": 25,
-  "4.5#0": 54,
+  "4.5#0": 61,
   "4.5#1": 22,
   "7.1#1": 9,
-  "7.5#0": 14,
+  "7.5#0": 21,
   "7.8#0": 18,
   "7.10#0": 14,
   "7.11#0": 15,
-  "7.12#0": 82,
+  "7.12#0": 93,
   "7.12#1": 28,
   "10.3#0": 27,
-  "11.1#0": 17,
-  "11.3#0": 26,
+  "11.1#0": 21,
+  "11.3#0": 32,
   "11.3#1": 37,
-  "11.4#0": 10,
-  "11.4#1": 13,
-  "11.5#0": 33,
+  "11.4#0": 13,
+  "11.4#1": 17,
+  "11.5#0": 41,
   "11.6#0": 13,
   "11.7#0": 7,
-  "11.10#0": 25,
+  "11.10#0": 33,
   "11.10#1": 6,
   "11.11#0": 34,
   "11.12#1": 3,
   "11.12#2": 10,
   "11.14#0": 85,
-  "12.2#0": 53,
-  "12.3#0": 45,
+  "12.2#0": 67,
+  "12.3#0": 55,
   "13.1#0": 35,
   "13.1#1": 20,
+  "13.2#0": 15,
+  "13.5#0": 72,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
@@ -2057,7 +2201,9 @@ for (const binding of BINDINGS) {
       ? checkRowTable(binding, table, failures, stats)
       : binding.kind === "row-ratio"
         ? checkRatioTable(binding, table, failures, stats)
-        : checkColumnTable(binding, table, failures, stats);
+        : binding.kind === "summary"
+          ? checkSummaryTable(binding, table, failures, stats)
+          : checkColumnTable(binding, table, failures, stats);
   if (problem) {
     skipped.push(`§${binding.section} table ${binding.table ?? 0}: ${problem}`);
     skippedTables.add(key);

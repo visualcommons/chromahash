@@ -11,22 +11,29 @@
  *
  * Usage:
  *   node dist/arms.js <result> [--baseline LABEL]
- *   node dist/arms.js --seed-sensitivity [N] [<result>]
+ *   node dist/arms.js --summary [<result>...]
+ *   node dist/arms.js --seed-sensitivity [--seeds N] [<result>...]
  *
- * `--seed-sensitivity` re-derives every committed ΔE00 interval against its
- * incumbent under N other bootstrap seeds (default 20) and reports how far the
- * bounds move and whether any verdict turns: the check `stats.ts`'s fixed seed
- * is documented against, recorded in EXPERIMENTS.md §13.5.
+ * `--summary` tallies, over every committed sweep, how many arms differ from
+ * their incumbent on ΔE00 before and after Holm, and how the interval guard
+ * verdict compares with the point-mean one. `--seed-sensitivity` re-derives
+ * every committed ΔE00 interval against its incumbent under N other bootstrap
+ * seeds (default 20) and reports how far the bounds move and whether any
+ * verdict turns: the check `stats.ts`'s fixed seed is documented against. Both
+ * are recorded in EXPERIMENTS.md §13.5.
  */
 
 import { readdirSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import {
+  type InferenceSummary,
+  addSummaries,
   compareArms,
   formatArmTables,
   guardVerdictOnIntervals,
   pairedDeltas,
+  summarizeInference,
 } from "./arms-core.ts";
 import {
   type GuardTolerances,
@@ -44,8 +51,19 @@ const { values, positionals } = parseArgs({
     baseline: { type: "string" },
     "seed-sensitivity": { type: "boolean", default: false },
     seeds: { type: "string", default: "20" },
+    summary: { type: "boolean", default: false },
   },
 });
+
+/** Every committed result's name, or the ones named on the command line. */
+function resultNames(): string[] {
+  return positionals.length > 0
+    ? positionals
+    : readdirSync(RESULTS_DIR)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => f.replace(/\.json$/, ""))
+        .sort();
+}
 
 /** Loose label match, the same reduction `verify-experiments.ts` applies. */
 const normalize = (s: string): string =>
@@ -68,8 +86,32 @@ function load(name: string): ResultFile {
 
 if (values["seed-sensitivity"]) {
   seedSensitivity();
+} else if (values.summary) {
+  summary();
 } else {
   report();
+}
+
+/**
+ * What the new inference changes, across every committed sweep against its
+ * incumbent: ΔE00 differences before and after Holm, and the interval guard
+ * verdict against the point-mean one. rd-budget results are formats at
+ * budgets rather than arms against an incumbent, and are skipped.
+ */
+function summary(): void {
+  const line = (label: string, s: InferenceSummary) =>
+    `${label.padEnd(36)} ${String(s.arms).padStart(5)} ${String(s.differs).padStart(11)} ${String(s.differsHolm).padStart(9)} ${String(s.guardsOk).padStart(6)} ${String(s.guardsInconclusive).padStart(7)} ${String(s.guardsFail).padStart(8)} ${String(s.meansOkCiNot).padStart(16)} ${String(s.meansFailCiNot).padStart(18)}`;
+  console.log(
+    `${"result".padEnd(36)} ${"arms".padStart(5)} ${"ΔE00 p<.05".padStart(11)} ${"Holm<.05".padStart(9)} ${"CI ok".padStart(6)} ${"incon.".padStart(7)} ${"CI FAIL".padStart(8)} ${"means ok→CI not".padStart(16)} ${"means FAIL→CI not".padStart(18)}`,
+  );
+  const all: InferenceSummary[] = [];
+  for (const name of resultNames()) {
+    const s = summarizeInference(load(name));
+    if (!s) continue;
+    all.push(s);
+    console.log(line(name, s));
+  }
+  console.log(line("total", addSummaries(all)));
 }
 
 function report(): void {
@@ -146,13 +188,7 @@ function seedSensitivity(): void {
   for (let s = 1; seeds.length < count; s++) {
     if (s !== BOOTSTRAP_SEED) seeds.push(s);
   }
-  const names =
-    positionals.length > 0
-      ? positionals
-      : readdirSync(RESULTS_DIR)
-          .filter((f) => f.endsWith(".json"))
-          .map((f) => f.replace(/\.json$/, ""))
-          .sort();
+  const names = resultNames();
 
   let arms = 0;
   let worstShift = 0;

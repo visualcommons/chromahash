@@ -20,6 +20,9 @@ import {
   type GuardTolerances,
   type PerImage,
   type PerImageKey,
+  type ResultFile,
+  guardsHold,
+  summarize,
 } from "./results.ts";
 import { bootstrapCI, bootstrapP, holm } from "./stats.ts";
 
@@ -229,6 +232,89 @@ export function guardVerdictOnIntervals(
   if (verdicts.includes("FAIL")) return "FAIL";
   if (verdicts.includes("inconclusive")) return "inconclusive";
   return "ok";
+}
+
+/**
+ * What the paired inference changes about one committed sweep, against its
+ * incumbent: how many arms differ on ΔE00 before and after Holm, and how the
+ * interval guard verdict falls against the point-mean one. EXPERIMENTS.md
+ * §13.5 tabulates it and `verify:experiments` binds that table.
+ */
+export interface InferenceSummary {
+  arms: number;
+  /** ΔE00 bootstrap p < 0.05, unadjusted. */
+  differs: number;
+  /** ΔE00 Holm-adjusted p < 0.05. */
+  differsHolm: number;
+  guardsOk: number;
+  guardsInconclusive: number;
+  guardsFail: number;
+  /** Passed on means, not `ok` on intervals. */
+  meansOkCiNot: number;
+  /** Failed on means, not shown to regress on intervals. */
+  meansFailCiNot: number;
+}
+
+/**
+ * {@link InferenceSummary} for a sweep result, or null for anything with no
+ * incumbent to judge against (an rd-budget run, which is formats at budgets, or
+ * a result that recorded no guard tolerances).
+ */
+export function summarizeInference(file: ResultFile): InferenceSummary | null {
+  if (file.tool !== "sweep") return null;
+  const tol = file.settings.guardTolerances as GuardTolerances | undefined;
+  if (!tol) return null;
+  const rise = (file.settings.artifactGuardRise as number | null) ?? undefined;
+  const summaries = file.rows.map((r) => summarize(r, file.imageNames));
+  const base = summaries[0];
+  if (!base) return null;
+  const out: InferenceSummary = {
+    arms: 0,
+    differs: 0,
+    differsHolm: 0,
+    guardsOk: 0,
+    guardsInconclusive: 0,
+    guardsFail: 0,
+    meansOkCiNot: 0,
+    meansFailCiNot: 0,
+  };
+  for (const [i, cmp] of compareArms(file.rows).entries()) {
+    out.arms++;
+    const de = statFor(cmp, "ciede2000");
+    if (de && de.p < 0.05) out.differs++;
+    if (de && de.pHolm < 0.05) out.differsHolm++;
+    const onIntervals = guardVerdictOnIntervals(cmp, tol, rise);
+    const row = summaries[i + 1];
+    const onMeans = row ? guardsHold(row, base, tol, rise) : true;
+    if (onIntervals === "ok") out.guardsOk++;
+    else if (onIntervals === "inconclusive") out.guardsInconclusive++;
+    else out.guardsFail++;
+    if (onMeans && onIntervals !== "ok") out.meansOkCiNot++;
+    if (!onMeans && onIntervals !== "FAIL") out.meansFailCiNot++;
+  }
+  return out;
+}
+
+/** Field-wise sum of several summaries. */
+export function addSummaries(
+  list: readonly InferenceSummary[],
+): InferenceSummary {
+  const out: InferenceSummary = {
+    arms: 0,
+    differs: 0,
+    differsHolm: 0,
+    guardsOk: 0,
+    guardsInconclusive: 0,
+    guardsFail: 0,
+    meansOkCiNot: 0,
+    meansFailCiNot: 0,
+  };
+  for (const s of list) {
+    for (const k of Object.keys(out) as (keyof InferenceSummary)[]) {
+      out[k] += s[k];
+    }
+  }
+  return out;
 }
 
 /**
