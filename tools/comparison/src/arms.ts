@@ -204,10 +204,16 @@ function seedSensitivity(): void {
     if (file.tool !== "sweep") continue;
     const base = file.rows[0]?.perImage.ciede2000;
     if (!base) continue;
-    const deltas = file.rows
+    // Keep each series' own row, so an arm dropped for having no ΔE00
+    // pairs cannot shift the label a later flip is reported under.
+    const series = file.rows
       .slice(1)
-      .map((r) => pairedDeltas(r.perImage.ciede2000 ?? [], base).deltas)
-      .filter((d) => d.length > 0);
+      .map((row) => ({
+        label: row.label,
+        deltas: pairedDeltas(row.perImage.ciede2000 ?? [], base).deltas,
+      }))
+      .filter((s) => s.deltas.length > 0);
+    const deltas = series.map((s) => s.deltas);
     const excludes = (ci: [number, number]) => ci[0] > 0 || ci[1] < 0;
     const reference = deltas.map((d) => bootstrapCI(d));
     const holmAt = (seed: number) =>
@@ -239,10 +245,10 @@ function seedSensitivity(): void {
       }
     }
     for (const i of ciFlip) {
-      flipped.push(`${name}: "${file.rows[i + 1]?.label}" (interval)`);
+      flipped.push(`${name}: "${series[i]?.label}" (interval)`);
     }
     for (const i of holmFlip) {
-      flipped.push(`${name}: "${file.rows[i + 1]?.label}" (Holm)`);
+      flipped.push(`${name}: "${series[i]?.label}" (Holm)`);
     }
     arms += deltas.length;
     worstShift = Math.max(worstShift, shift);
