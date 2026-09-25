@@ -192,7 +192,9 @@ def main_decode(argv: list[str]) -> None:
             "height": int(h),
             "tier": int(tier),
             "iters": int(iters),
-            "cap": None if m is None else [int(m.group(1)), int(m.group(2))],
+            # An object, not a [w, h] pair: `biome format` rewraps short arrays,
+            # and the committed file must stay byte-for-byte this script's output.
+            "cap": None if m is None else {"width": int(m.group(1)), "height": int(m.group(2))},
             "render": {"width": meta["render_width"], "height": meta["render_height"]},
             "hashBytes": meta["hash_bytes"],
             # How many shared decode vectors the instrumented build reproduced

@@ -215,7 +215,7 @@ class RecordStagesTest(unittest.TestCase):
         natural = doc["cells"]["100x100-t1-natural"]
         self.assertIsNone(natural["cap"])
         capped = doc["cells"]["100x100-t4-cap32x32"]
-        self.assertEqual(capped["cap"], [32, 32])
+        self.assertEqual(capped["cap"], {"width": 32, "height": 32})
         self.assertEqual((capped["tier"], capped["iters"]), (4, 7))
         self.assertEqual(capped["render"], {"width": 32, "height": 32})
         self.assertEqual((capped["hashBytes"], capped["vectorsChecked"]), (1623, 19))
