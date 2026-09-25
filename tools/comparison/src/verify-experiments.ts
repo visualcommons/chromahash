@@ -191,7 +191,7 @@ function recomputeGuards(file: SweepFile): void {
   for (const row of file.rows.slice(1)) {
     row.guardsOk = guardsHold(row, base, tol, artifactRise);
     row.guardsCi = guardVerdictOnIntervals(
-      comparisons.get(row.label),
+      comparisons.get(row),
       tol,
       artifactRise,
     );
@@ -200,22 +200,26 @@ function recomputeGuards(file: SweepFile): void {
 
 /**
  * Every arm's paired comparison against `baseline`, Holm-adjusted across the
- * whole sweep, keyed by arm label. The family is every arm of the committed
- * result, not only the rows a table happens to quote: a table that shows five
- * of 29 arms was still chosen from 29.
+ * whole sweep, keyed by the arm's row object (`sweep.rows` and the result's
+ * rows are index-aligned, so a label shared by two arms cannot cross them).
+ * The family is every arm of the committed result, not only the rows a table
+ * happens to quote: a table that shows five of 29 arms was still chosen from
+ * 29.
  */
-const comparisonCache = new Map<string, Map<string, ArmComparison>>();
+const comparisonCache = new Map<string, Map<SweepRow, ArmComparison>>();
 function comparisonsFor(
   sweep: SweepFile,
   baseline: SweepRow,
-): Map<string, ArmComparison> {
+): Map<SweepRow, ArmComparison> {
   const baseIndex = sweep.rows.indexOf(baseline);
   const key = `${sweep.name}#${sweep.split}#${baseIndex}`;
   const cached = comparisonCache.get(key);
   if (cached) return cached;
-  const out = new Map<string, ArmComparison>();
-  for (const cmp of compareArms(sweep.result.rows, baseIndex)) {
-    out.set(cmp.label, cmp);
+  const out = new Map<SweepRow, ArmComparison>();
+  const others = sweep.rows.filter((_, i) => i !== baseIndex);
+  for (const [j, cmp] of compareArms(sweep.result.rows, baseIndex).entries()) {
+    const row = others[j];
+    if (row) out.set(row, cmp);
   }
   comparisonCache.set(key, out);
   return out;
@@ -558,7 +562,7 @@ function measure(
   if (paired) {
     if (!baseline || baseline === row) return null;
     const stat = statFor(
-      comparisonsFor(sweep, baseline).get(row.label),
+      comparisonsFor(sweep, baseline).get(row),
       paired[2] as PerImageKey,
     );
     if (!stat) return null;
