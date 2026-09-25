@@ -19,7 +19,8 @@
  * - **Provenance.** The git revision and whether the tree was dirty, the
  *   SHA-256 of every corpus image scored, the `iqa-cli` version banner, the
  *   SHA-256 of the config (or of the effective arguments), and the SHA-256 of
- *   the encoder binary the run shelled out to.
+ *   every encoder binary the run shelled out to (the Rust encoder, and
+ *   rd-budget's system `cjxl`/`djxl` when its JXL baseline runs).
  *
  * A run restricted with `--max-images` is not a result -- its means are over a
  * different corpus -- and is written to `output/sweeps/` instead, where the
