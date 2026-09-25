@@ -10,7 +10,7 @@
  *
  * 1. **CIEDE2000 against Sharma, Wu & Dalal (2005).** An implementation of the
  *    formula written here from the paper is first held to all 34 published
- *    pairs (`fixtures/metric-reference/sharma-ciede2000.json`) at their printed
+ *    pairs (`metric-reference/sharma-ciede2000.json`) at their printed
  *    precision. `iqa-cli` only reads 8-bit sRGB images, so it cannot be handed
  *    those Lab pairs directly: each pair is carried to the nearest 8-bit sRGB
  *    colours, written as a one-pixel image pair, and `iqa-cli`'s ΔE00 is
@@ -18,7 +18,7 @@
  *    deterministic pseudo-random colours then does the same across the gamut.
  *    The sRGB → CIELAB conversion both sides share is itself held to the
  *    published Lab of the sRGB primaries.
- * 2. **A committed golden pair** (`fixtures/metric-reference/*.png`) whose
+ * 2. **A committed golden pair** (`metric-reference/*.png`) whose
  *    SSIMULACRA2, Butteraugli, DSSIM and ΔE00 were recorded from the pinned
  *    `iqa-cli`. These three have no closed-form reference a test can compute:
  *    SSIMULACRA2 and Butteraugli are libjxl's own kernels, vendored by iqa-rs,
@@ -50,10 +50,10 @@ import sharp from "sharp";
 import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
 
 const IQA_CLI = process.env.IQA_CLI ?? "iqa-cli";
-const FIXTURES = path.resolve(
-  import.meta.dirname,
-  "../fixtures/metric-reference",
-);
+// Deliberately outside `fixtures/`: every corpus glob in this package
+// (`fixtures/**/*.{png,jpg}` in main.ts, train-tables.ts, rd-budget.ts and
+// others) would otherwise score the golden pair as two extra images.
+const FIXTURES = path.resolve(import.meta.dirname, "../metric-reference");
 const GOLDEN_REF = path.join(FIXTURES, "golden-reference.png");
 const GOLDEN_DIST = path.join(FIXTURES, "golden-distorted.png");
 const GOLDEN_EXPECTED = path.join(FIXTURES, "golden-expected.json");
