@@ -59,6 +59,23 @@ exclude_re = [
     # lands a channel's peak |AC| exactly on 1e-10 (solids ~1e-15, detail ≫1e-10),
     # so `<` and `<=` are indistinguishable.
     "src/dct.rs.*replace < with <= in dct_encode_selected",
+    # The same scale floor in `dct_encode_lanes` (PERFORMANCE.md §12.1 item 3),
+    # equivalent for the same reason. Anchored to its line: the function's
+    # other `<`s are the frequency clamp, and those are killable.
+    "src/dct.rs:347:14.*replace < with <= in dct_encode_lanes",
+    # The CfL gain fields are written only `if t.cfl_bits > 0`. At the shipped
+    # `cfl_bits = 0`, `>=` writes two zero-width fields, which both bit writers
+    # (`write_bits`, and `write_bits_word` for PERFORMANCE.md §12.1 item 7)
+    # treat as no-ops, so the body is identical. Anchored to the write, not to
+    # the CfL computation's own `cfl_bits > 0`, which is killable.
+    "src/encode.rs:1582:19.*replace > with >= in encode_with",
+    # `quantize_one`'s `ac_nearest` search scans the symmetric offsets
+    # {0, -1, 1, -2, 2}, so `q + d` → `q - d` scans the same five candidates in
+    # a different order — the reasoning of `select_dc_codes`' entry above.
+    # With the strict `<`, order decides only an exact tie in reconstruction
+    # error between two codes, which the uneven µ-law grid does not produce.
+    # Anchored to the line.
+    "src/encode.rs:720:30.*replace \\+ with - in quantize_one",
     # `if ratio > 1.0` picks the landscape branch. decode_aspect(byte) is 2^k for
     # k = byte/255*8 - 4, which equals 1.0 only at the non-integer byte 127.5, so
     # ratio is never exactly 1.0 and `>` vs `>=` are equivalent over all 256
@@ -134,4 +151,7 @@ exclude_re = [
     # failing — a property of the kernel, not a test gap.
     "replace \\+ with - in mu_compress",
     "replace \\* with / in mu_compress",
+    # (Unanchored, those two also match `mu_compress_by`, which is
+    # `mu_compress`'s body with the denominator passed in — PERFORMANCE.md
+    # §12.1 item 2 — and so carries the same two hanging mutations.)
 ]

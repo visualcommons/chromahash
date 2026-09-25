@@ -117,9 +117,26 @@ def load(out: str, schema: str = SCHEMA) -> dict:
     return existing
 
 
+# Python writes a float's exponent with at least two digits (`1.8e-05`); `biome
+# format`, which `format:check:compare` runs over every committed baseline,
+# writes the fewest (`1.8e-5`). The two spell the same number, but the committed
+# file must stay byte-for-byte this script's output, so the exponent is
+# normalized to biome's spelling here. A share small enough to need an exponent
+# is ordinary: the `refine` stage is off in the shipped build and measures a few
+# millionths of an encode.
+#
+# Anchored to a whole value — after `": "`, before the line's end — so it can
+# only ever rewrite a number: a string value starts with a quote, and a hex
+# revision like `3e05abc` is never touched.
+_PADDED_EXPONENT = re.compile(
+    r'(?<=": )(-?[0-9]+(?:\.[0-9]+)?)e([+-]?)0+([0-9]+)(?=,?$)', re.MULTILINE
+)
+
+
 def write(out: str, doc: dict) -> None:
+    text = json.dumps(doc, indent=2, sort_keys=True)
     with open(out, "w", encoding="utf-8") as f:
-        json.dump(doc, f, indent=2, sort_keys=True)
+        f.write(_PADDED_EXPONENT.sub(r"\1e\2\3", text))
         f.write("\n")
 
 
@@ -234,10 +251,11 @@ def main() -> None:
             # taken inside one process, and the reason that table is readable on
             # a host whose absolute wall-clock is not.
             #
-            # `quantize_and_pack` is not a marked stage. bench_stages.rs derives
-            # it as whole_encode - stage_sum, so it is a residual and its share
-            # is whatever the marked stages do not account for. §1 says so in
-            # place.
+            # `unmarked` is not a marked stage. bench_stages.rs derives it as
+            # whole_encode - stage_sum; the marks cover `encode_with` end to
+            # end, so it is the return and the timers' own overhead. (It was
+            # `quantize_and_pack` while the quantizer searches, the refinement
+            # and the packing were one unmarked span.) §1 says so in place.
             "sharePct": shares(stages, "whole_encode"),
             "recordedAt": datetime.datetime.now(datetime.UTC).isoformat(),
         },

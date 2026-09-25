@@ -172,12 +172,13 @@ it can run where the sweeps cannot.
 > `--list-unbound-columns` gives the breakdown. Every unchecked column is either
 > bound or listed in `UNBOUND_COLUMN_NOTES` with the reason.
 
-> **`verify:benchmark` fails on six cells, and its CI job is still red.** A
-> baseline is now committed and **180 values are checked against it**; what is
+> **`verify:benchmark` fails on 40 cells — six, plus §12.4's 34 — and its CI job is still red.** A
+> baseline is now committed and **216 values are checked against it**; what is
 > left is §2's tier-3/4 encode and §3's 128/1024 rows, which the `bounded`
-> matrix does not produce — `mise run benchmark:full` is what closes them. Do
-> not bisect it and do not silence it; see the banner at the top of
-> `spec/PERFORMANCE.md`, which names the six.
+> matrix does not produce — `mise run benchmark:full` is what closes them. It
+> also fails on §12.4's 34 lever cells, which the bounded matrix records but
+> the committed baseline predates. Do not bisect it and do not silence it; see
+> the banner at the top of `spec/PERFORMANCE.md`, which names them all.
 >
 > Swift's rows in §7 and §8 are a different case and are **not** counted as
 > failures: its binding consumes an xcframework only `xcodebuild` can assemble,
@@ -311,6 +312,17 @@ Tolerances here are **measured, not guessed**. `average_color`'s bound of 16/255
 is the worst deviation over a stride-3 sweep of the RGB cube (~636k solids), on
 saturated green, where the bounded chroma range is least precise. Widening a
 tolerance to make a test pass defeats it; if one of these fails, the number moved.
+
+**5. Acceleration levers** — `rust/tests/accel_levers.rs`, plus library tests
+in `encode.rs`, `decode.rs`, `dct.rs`, `mulaw.rs` and `bitpack.rs`.
+
+`spec/PERFORMANCE.md` §12.1's byte-identical levers are `Tunables::accel_*`
+flags, off by default. Each must reproduce the shipped path *exactly*: every
+integration vector with each flag on alone and with all on, and a
+deterministic differential sweep under non-default `Tunables` that reach what
+the vectors cannot (a tiered-width luma job, refinement, alpha, CfL). The
+library half needs no `spec/` directory, so the mutation sweep runs it. A
+failure here means a lever changed a byte, which no lever is allowed to do.
 
 ### Tolerances
 

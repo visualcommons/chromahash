@@ -95,6 +95,12 @@ full = ["spec-vectors", "simd", "simd-diff-tests", "research-render"]
 name = "spec_vectors"
 required-features = ["spec-vectors"]
 
+# PERFORMANCE.md §12.1's byte-identical levers against the same vectors, plus a
+# differential sweep; reads ../spec/test-vectors, so it is gated the same way.
+[[test]]
+name = "accel_levers"
+required-features = ["spec-vectors"]
+
 [[example]]
 name = "bench_stages"
 required-features = ["bench-internals"]

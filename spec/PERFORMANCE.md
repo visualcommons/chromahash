@@ -22,11 +22,12 @@ Every table below is bound to a cell in a committed run, and
 `mise run verify:benchmark` checks each one. A figure that cannot be traced to a
 cell cannot be published here.
 
-> ### Measured 2026-09, except six cells
+> ### Measured 2026-09, except six cells and §12.4's levers
 >
-> **180 of this document's values are now checked against a committed run**, on
+> **216 of this document's values are now checked against a committed run**, on
 > an AMD Ryzen 7 7800X3D (16 threads, Linux), from a clean tree. Six are not,
-> and they are named below rather than left for a reader to find.
+> and neither are §12.4's 34, which are newer than the run; all of them are
+> named below rather than left for a reader to find.
 >
 > The previous revision carried `TBD` throughout, and the reason is worth
 > keeping: the runs behind the revision before *that* were not reproducible. The
@@ -93,18 +94,22 @@ cell cannot be published here.
 > |---|---|
 > | §2's tier-3 and tier-4 **encode** at 100×100 | the `bounded` matrix stops at tier 2 |
 > | §3's **128×128 and 1024×1024** rows | `bounded` measures 64/100/256/512 |
+> | §12.4's **34 lever cells** | the `bounded` matrix records them now, but its arms were added after the committed run was taken, and the host was not quiet enough to take another |
 > | §7 and §8's **Swift** rows | its binding consumes a UniFFI xcframework only `xcodebuild` can assemble, so it is empty on **every** run made off macOS — `ci-swift.yml` on `macos-latest` is where Swift is measured. These are marked *macOS only* rather than `TBD`: they are not pending anybody's run. |
 >
 > The first two groups need `mise run benchmark:full`, whose exhaustive matrix
-> takes hours; the third cannot be produced on this platform at all.
+> takes hours; the third needs only the bounded pair below; the fourth cannot
+> be produced on this platform at all.
 >
-> **`mise run verify:benchmark` therefore still fails**, on six placeholders and
-> nothing else, so `ci-comparison.yml` keeps `continue-on-error`. Note what that
+> **`mise run verify:benchmark` therefore still fails**, on those six
+> placeholders and §12.4's 34 cells and nothing else, so `ci-comparison.yml`
+> keeps `continue-on-error`. Note what that
 > means for the comment beside it, which says to remove the line "in the same
 > change that commits the baseline": a Linux runner can never satisfy this gate
 > while the Swift rows are bound, so the gate now reports an unreachable
-> target's rows as **unavailable** rather than failed. Six cells short of green
-> is a state worth naming; sixty-eight was not.
+> target's rows as **unavailable** rather than failed. Forty cells short of
+> green, every one of them named here, is a state worth naming; sixty-eight
+> unnamed ones was not.
 >
 > To fill the rest in:
 >
@@ -178,47 +183,66 @@ anything.
 > against it. It had been the one table nothing checked, which was the worst
 > possible one to leave open: §10's whole ordering rests on it.
 >
-> **Provenance.** All three cells were measured at **`e53e6cd`**, which the
-> artifact records and the gate checks for uniformity across the three columns.
-> That is not the head of this branch, and it does not need to be:
-> `git diff e53e6cd..HEAD -- rust/` is empty, so the encoder these shares
-> describe is the encoder this revision ships. Every commit since is
-> documentation, the gate, or the task.
+> **Provenance.** All three cells were re-measured at **`4d68c1f`**, which the
+> artifact records and the gate checks for uniformity across the three columns,
+> from a clean tree with the recorder's fixed dirty probe. They were re-measured
+> because the table changed shape: the four rows from `dc_search` down were one
+> unmarked residual, `quantize_and_pack`, until that revision's encoder gave
+> them marks.
 >
-> The artifact also **predates the fix to the recorder's own dirty probe.** The
-> probe used to run before the write and without excluding the file it was about
-> to write, so of three invocations the first recorded `dirty: false` and the
-> next two recorded `dirty: true` — and the gate hard-fails those with "re-run
-> `benchmark:stages` from a clean tree", which no three-column table can comply
-> with. The recorder now probes after the write and excludes only its own
-> output. These cells were recorded before that and read `dirty: false`; the
-> next re-measurement will produce the same flags for a reason rather than by
-> hand.
+> The encoder they describe is the one `master` ships. This revision adds
+> §12.4's levers, all off by default, and before recording anything the shipped
+> path was timed against `master`'s own build on the same host, stage by stage:
+> at 512×512 every shared stage agreed within noise, and so did the whole
+> encode at 100×100 tier 1 and tier 4 and a tier-4 decode. (That check caught
+> two places where the lever code *had* moved the shipped path — by more than
+> 10%, once in each direction — and both were fixed before these cells were
+> taken.)
+>
+> **The host was not idle, and that is not free for shares either.** Its load
+> average was about 2.5 of 16 threads, in bursts. One recording taken during a
+> burst moved `linearize` at 512×512 from 5.4% to 7.0% and `ac_quantize` at
+> 100×100 from 37% to 44% — a share is a ratio inside one process, but load
+> does not slow every stage alike. So the three columns were recorded twice,
+> back to back, and kept only because the two agreed: every share within 0.4
+> points, every total within 2.2%. The second is the one committed. As with §0's
+> stability claim, the first run is not committed, so that agreement is a
+> statement about the host at the time rather than something this tree can
+> re-derive. Against the previous, quieter recording at `e53e6cd` the totals
+> land within 0.6% at 512×512; at 100×100 they are 9% lower, and `master`'s own
+> build measures the same ~2.5 ms on this host today, so that gap is the host
+> and toolchain since then, not the code.
 
 | stage | 100×100 t1 | 512×512 t1 | 512×512 t4 |
 |---|---:|---:|---:|
 | `eotf_lut` | 0.6% | 0.0% | 0.0% |
 | `linearize` | 0.6% | 5.4% | 0.2% |
-| `oklab_forward` | 2.4% | 6.9% | 0.2% |
+| `oklab_forward` | 2.5% | 6.9% | 0.2% |
 | `alpha_average` | 0.2% | 0.4% | 0.0% |
-| `composite` | 0.4% | 4.2% | 0.1% |
-| `selection` | 0.5% | 0.0% | 0.1% |
+| `composite` | 0.5% | 4.3% | 0.1% |
+| `selection` | 0.6% | 0.0% | 0.1% |
 | `cos_tables` | 0.3% | 0.1% | 0.0% |
-| **`dct_forward`** | 57.4% | 79.1% | 96.9% |
-| `quantize_and_pack` | 37.5% | 3.9% | 2.5% |
-| total | 2.81 ms | 47.25 ms | 1835.17 ms |
+| **`dct_forward`** | 57.2% | 78.8% | 96.7% |
+| `dc_search` | 0.2% | 0.0% | 0.0% |
+| `ac_quantize` | 37.2% | 1.9% | 2.6% |
+| `refine` | 0.0% | 0.0% | 0.0% |
+| `pack` | 0.0% | 0.0% | 0.0% |
+| `unmarked` | 0.0% | 2.1% | 0.1% |
+| total | 2.55 ms | 47.20 ms | 1845.11 ms |
 
-**`quantize_and_pack` is a residual, not a marked stage.** Every other row here
-is a `stage!` mark around a named span of `encode.rs`. This one is computed in
-`rust/examples/bench_stages.rs` as `whole_encode − stage_sum`, so it is
-everything the marks do not cover: the scale and AC code searches, the
-decode-aware DC search, the bit packing — and also every unmarked line between
-the marks, plus the instrumentation's own overhead. At 512×512 t1 that is
-47 246 423 − 45 391 795 ns. **The consequence is that this column sums to
-exactly 100% by construction**, and that the row is an *upper bound* on the work
-it names rather than a measurement of it. Sizing a lever inside it (§12.1 items
-1, 2 and 7) needs its own marks; the share only bounds what those levers could
-be worth.
+**Every row but `unmarked` is a `stage!` mark, and the marks now cover
+`encode_with` end to end.** Until this revision the last four stages —
+`dc_search` (the decode-aware DC code search), `ac_quantize` (every AC scale and
+code search: `scale_fit`, `ac_nearest`, the alpha plane, CfL), `refine` (the
+pixel-domain refinement, off in the shipped build) and `pack` (the body
+allocation and every bit written into it) — were one residual,
+`quantize_and_pack`, computed as `whole_encode − stage_sum`. That made it an
+*upper bound* on four kinds of work at once, and it was the only size §12.1
+items 1, 2 and 7 had. They now have their own. **`unmarked` is the residual
+that remains, and it names no search:** it is the return from `encode_with`,
+which frees every per-pixel buffer the encode allocated, plus the timers' own
+overhead — negligible at 100×100, and 2.1% at 512×512, where the buffers are
+megabytes each.
 
 **The forward DCT is the encoder, above thumbnail size.** 57% of a 100×100
 encode, 79% at 512×512, and **97%** at 512×512 tier 4 — the share rises with both
@@ -230,12 +254,14 @@ encodes, however elegant.
 paragraph asserted past both by calling every other stage "a rounding error at
 any size or tier that matters":
 
-* **At 100×100, `quantize_and_pack` is 37.5%** — the scale and AC code searches,
-  not a rounding error at all. That is exactly the trap §4 documents, and it is
+* **At 100×100, `ac_quantize` is 37.2%** — the scale and AC code searches,
+  not a rounding error at all, and now measured rather than bounded: the rest
+  of the old residual (`dc_search`, `refine`, `pack`, `unmarked`) is under half
+  a point together. That is exactly the trap §4 documents, and it is
   why the encoder-only levers look decisive on a thumbnail and vanish on a
   photograph.
-* **At 512×512 the per-pixel colour pipeline is 16.5%** — `linearize` 5.4%,
-  `oklab_forward` 6.9%, `composite` 4.2%. Only the middle one has a SIMD
+* **At 512×512 the per-pixel colour pipeline is 16.6%** — `linearize` 5.4%,
+  `oklab_forward` 6.9%, `composite` 4.3%. Only the middle one has a SIMD
   backend, which bounds what §5 can buy before §5 is measured at all: the
   `simd` feature covers 6.9 points of a 100-point budget at the size a caller
   most often encodes.
@@ -281,8 +307,8 @@ channel's prefix), `ac_dequant` (reading and dequantizing every AC code),
 `window_filter` (the synthesis window and the frequency filter),
 `cos_tables`, `gamma_lut` (building the output gamut's 4096-entry transfer
 table) and `render` (the `O(w·h·K)` loop, with the output buffer it fills).
-**`unmarked` is a residual, like §1's `quantize_and_pack`, but it names no
-work:** it is the return from `render_at_size` and the timers' own overhead.
+**`unmarked` is a residual, like §1's, and names no work:** it is the return
+from `render_at_size` and the timers' own overhead.
 
 **At the default tier, most of a decode is not the decode.** `gamma_lut` is
 **66%** of a tier-1 decode — the transfer table is rebuilt on every call, 4096
@@ -397,7 +423,7 @@ two more sizes:
 | refine_passes=1 | 20.27 ms | 127.28 ms | 504.47 ms |
 | refine_passes=2 | 37.42 ms | 240.21 ms | 976.18 ms |
 
-This is §1 restated: the searches live in `quantize_and_pack`, and can only ever
+This is §1 restated: the searches live in `ac_quantize`, and can only ever
 be worth what that stage is worth — which collapses as the source grows and the
 DCT takes over. **The encoder-only levers are a thumbnail-sized concern.** Any
 decision to drop them should be scoped to small inputs, which is the opposite of
@@ -422,8 +448,8 @@ Default build vs `--no-default-features`, both byte-identical:
 **2%, and flat across every size measured.** `src/simd/` is four hand-written
 backends (AVX2, SSE2, NEON, wasm simd128), a `simd-diff-tests` feature that
 fails rather than skips, and a QEMU/wasmtime emulation matrix in CI. It covers
-exactly one of the pipeline's nine stages — `oklab_forward` — and §1 now prices
-that stage at **6.9%** of a 512×512 encode. So the ceiling was 6.9%, the
+exactly one of the encoder's twelve marked stages — `oklab_forward` — and §1
+now prices that stage at **6.9%** of a 512×512 encode. So the ceiling was 6.9%, the
 measured gain is 2%, and the backends are capturing roughly a third of the one
 stage they touch.
 
@@ -649,15 +675,15 @@ release; one that reassociates a float sum or moves a coefficient is a format
 version, a regenerated vector set, and nine languages landing together.
 
 The measured context, from §1 and §5: the forward DCT is **79%** of a 512×512
-encode and **97%** at tier 4; `quantize_and_pack` is **37.5%** of a 100×100 one;
-the per-pixel colour pipeline is **16.5%** at 512×512; and the shipped `simd`
+encode and **97%** at tier 4; `ac_quantize` is **37.2%** of a 100×100 one;
+the per-pixel colour pipeline is **16.6%** at 512×512; and the shipped `simd`
 feature buys **1.02×** because it covers 6.9 of those points.
 
-One of those four is a different kind of number. `quantize_and_pack` is not a
-marked stage — §1 explains that it is the residual `whole_encode − stage_sum`,
-so it holds the quantizer searches *and* every unmarked line and every scrap of
-instrumentation overhead. Treat it as a ceiling on a bucket, never as the size
-of anything inside it.
+All four are now marked stages. The second used to be a residual,
+`quantize_and_pack`, which held the quantizer searches *and* the DC search, the
+bit packing, the buffer frees and the instrumentation's overhead, so it could
+only ever be a ceiling on a bucket; §1 now splits it, and the searches are
+37.2 of its old 37.5 points at 100×100.
 
 ### 12.1 Byte-identical — legal in a patch release
 
@@ -666,48 +692,49 @@ and `mise run rd:gate` are sufficient evidence, and no version moves.
 
 | # | Where | What | Why it is safe |
 |---|---|---|---|
-| 1 | `mulaw.rs:41` ← `encode.rs:561` | **Precompute the dequantization table, keyed on `(bits, index)`.** `mu_law_dequantize(index, bits, mu)` is a pure function of its arguments, and `mu` *is* fixed for a channel (`t.mu_l`) — yet `scale_fit=2` calls it inside a 63-code search over every coefficient, each call a `portable_pow` = a 20-term series plus a degree-25 Taylor polynomial. **`bits` is not fixed:** `AcQuantJob::bits_at(i)` (`encode.rs:468`) walks the job's tier list and returns a width that varies with the selection index. `LAYOUT_C` (`constants.rs:192`) is `l_tiers: [(8, 6), (14, 5)]` — 6-bit low band, 5-bit high band, one channel, reachable through `Tunables::layout_upper` and exercised by `constants.rs:823`. A table keyed on the index alone would hand the high band the low band's grid and dequantize it wrongly. Two widths per job at most, ≤ 2^6 − 1 = 63 indices each, so ≤ 128 entries — not the "≤ 32" an index-only table suggests. | The table holds the same values the calls return, *provided* `bits` is part of the key |
-| 2 | `mulaw.rs:7`, `encode.rs:469,481` | **Hoist the loop-invariants.** `mu_compress` recomputes `portable_ln(1.0 + mu)` on every quantize call for a constant `mu`; `bits_at`/`gain_at` walk the tier list per index per call. Note this is the *same* walk item 1 must key its table on: it is an inefficiency worth removing and a correctness constraint at once, so the two entries have to land together. | Same values, computed once |
-| 3 | `dct.rs:227` | **Vectorize across coefficients, not pixels.** The inner sum must keep its exact left-to-right order, which is why `simd/mod.rs` never touched it. Lanes over *distinct `(cx, cy)` pairs* preserve each coefficient's own order and are as parallel as the per-pixel case. | Per-lane arithmetic is unchanged; only which coefficient a lane holds — **but the arithmetic argument alone is not sufficient, and two things break it.** (a) **FMA contraction.** The kernel is `f += channel[x + y*w] * cx_row[x] * fy`; fusing the multiply-add keeps one rounding instead of two and changes the result. Rust does not contract today, but intrinsics backends are written by hand and `fmadd` is the obvious instruction to reach for. The lanes must use separate multiply and add. (b) **Regrouping.** `channel * (cx * fy)` is the natural vector form and is *not* `(channel * cx) * fy`; float multiplication is not associative, and this repo ships four hand-written backends that would each have to resist the same simplification. Both belong in the vector-diff gate, not in review |
-| 4 | `decode.rs:21,382`; `decode.rs:386`, `dct.rs:269` | **Decode, in two parts sized by §1.1.** (a) **Build the gamma LUT once per output gamut, not once per decode.** `build_gamma_lut` evaluates the transfer curve 4096 times — each a `portable_pow` for sRGB and Display P3 — on every call, and §1.1 measures it at **66%** of a default-tier decode, more than the render loop itself. It is a pure function of the gamut, so a table built once (or generated) holds the same 4096 bytes. `average_color` (`decode.rs:546`) builds the same table to convert one pixel. (b) **Flatten `cos_x`/`cos_y`, and vectorize the render loop.** They are `Vec<Vec<f64>>`, a pointer chase per coefficient per pixel in the `O(w·h·K)` loop, and there is **no SIMD in decode at all** — a scalar per-pixel OKLAB inverse plus three gamma lookups. §1.1 puts that loop at **99%** of a natural tier-4 decode, the operation §2 prices at 234 ms, so (b) is bounded by 99% there and by 29% at tier 1. §1.1 does not split the loop's inverse DCT from its colour conversion, so how that bound divides between flattening and SIMD is not measured. | (a) the same function of the same argument, computed fewer times; (b) a layout change reads the same values; a vector colour conversion is byte-identical only if it keeps the scalar path's operation order, and would need the differential tests `simd/` already runs for encode |
-| 5 | `encode.rs:736` | **Early-exit `sse_with_delta`.** `acc` accumulates monotonically and the caller keeps only strict improvements, so it can abort the moment `acc >= best`. Off by default (`refine_passes: 0`) but §4 measures refinement at **20–37 ms against 2.45 ms shipped**, and it is what the `refine-*` sweeps spend their time in. | Changes when the loop stops, never which code wins |
-| 6 | `encode.rs:224,233,240,263` | **Fuse the first three per-pixel passes; `composite` cannot join them.** Four full `W·H` passes and **eight** `W·H` allocations — `lin_r`/`lin_g`/`lin_b`/`alpha_pixels`, `oklab_pixels` (3 f64 each), `l_chan`/`a_chan`/`b_chan` — which is 10 f64 per pixel, or **20 MiB** at 512×512, for a stage §1 prices at 16.5%. **An earlier revision of this row said `linearize` and `composite` fuse. They do not:** `composite` (`encode.rs:263`) reads `avg_l`/`avg_a`/`avg_b`, which are the *completed* `alpha_average` reduction (`236`) after its normalization by `avg_alpha` (`250`). A full-array barrier sits between exactly the two passes that row paired, and fusing across it would composite against a running partial mean — different bytes, not merely a different order. What is available: fuse `linearize` + `oklab_forward` + `alpha_average` into one tiled pass, and drop `alpha_pixels` entirely by re-deriving alpha in `composite` from `rgba[i*4+3] as f64 / 255.0`, the identical expression. That is 8 buffers → 4 and 4 passes → 2; `oklab_pixels` must survive the barrier and cannot be tiled away. | Elementwise work in unchanged order, **and** the reduction still accumulates in flat pixel index order — which holds only if the tile length is a multiple of the SIMD lane count, so no pixel moves between `oklab_forward_batch`'s vector body and its scalar tail. `composite` stays a separate pass; nothing about this makes the barrier crossable |
+| 1 | `mulaw.rs:50` ← `encode.rs:652` | **Precompute the dequantization table, keyed on `(bits, index)`.** `mu_law_dequantize(index, bits, mu)` is a pure function of its arguments, and `mu` *is* fixed for a channel (`t.mu_l`) — yet `scale_fit=2` calls it inside a 63-code search over every coefficient, each call a `portable_pow` = a 20-term series plus a degree-25 Taylor polynomial. **`bits` is not fixed:** `AcQuantJob::bits_at(i)` (`encode.rs:682`) walks the job's tier list and returns a width that varies with the selection index. `LAYOUT_C` (`constants.rs:193`) is `l_tiers: [(8, 6), (14, 5)]` — 6-bit low band, 5-bit high band, one channel, reachable through `Tunables::layout_upper` and exercised by `constants.rs:863`. A table keyed on the index alone would hand the high band the low band's grid and dequantize it wrongly. Two widths per job at most, ≤ 2^6 − 1 = 63 indices each, so ≤ 128 entries — not the "≤ 32" an index-only table suggests. | The table holds the same values the calls return, *provided* `bits` is part of the key |
+| 2 | `mulaw.rs:6`, `encode.rs:682,694` | **Hoist the loop-invariants.** `mu_compress` recomputes `portable_ln(1.0 + mu)` on every quantize call for a constant `mu`; `bits_at`/`gain_at` walk the tier list per index per call. Note this is the *same* walk item 1 must key its table on: it is an inefficiency worth removing and a correctness constraint at once, so the two entries have to land together. | Same values, computed once |
+| 3 | `dct.rs:251` | **Vectorize across coefficients, not pixels.** The inner sum must keep its exact left-to-right order, which is why `simd/mod.rs` never touched it. Lanes over *distinct `(cx, cy)` pairs* preserve each coefficient's own order and are as parallel as the per-pixel case. | Per-lane arithmetic is unchanged; only which coefficient a lane holds — **but the arithmetic argument alone is not sufficient, and two things break it.** (a) **FMA contraction.** The kernel is `f += channel[x + y*w] * cx_row[x] * fy`; fusing the multiply-add keeps one rounding instead of two and changes the result. Rust does not contract today, but intrinsics backends are written by hand and `fmadd` is the obvious instruction to reach for. The lanes must use separate multiply and add. (b) **Regrouping.** `channel * (cx * fy)` is the natural vector form and is *not* `(channel * cx) * fy`; float multiplication is not associative, and this repo ships four hand-written backends that would each have to resist the same simplification. Both belong in the vector-diff gate, not in review |
+| 4 | `decode.rs:22,420`; `decode.rs:447`, `dct.rs:370` | **Decode, in two parts sized by §1.1.** (a) **Build the gamma LUT once per output gamut, not once per decode.** `build_gamma_lut` evaluates the transfer curve 4096 times — each a `portable_pow` for sRGB and Display P3 — on every call, and §1.1 measures it at **66%** of a default-tier decode, more than the render loop itself. It is a pure function of the gamut, so a table built once (or generated) holds the same 4096 bytes. `average_color` (`decode.rs:660`) builds the same table to convert one pixel. (b) **Flatten `cos_x`/`cos_y`, and vectorize the render loop.** They are `Vec<Vec<f64>>`, a pointer chase per coefficient per pixel in the `O(w·h·K)` loop, and there is **no SIMD in decode at all** — a scalar per-pixel OKLAB inverse plus three gamma lookups. §1.1 puts that loop at **99%** of a natural tier-4 decode, the operation §2 prices at 234 ms, so (b) is bounded by 99% there and by 29% at tier 1. §1.1 does not split the loop's inverse DCT from its colour conversion, so how that bound divides between flattening and SIMD is not measured. | (a) the same function of the same argument, computed fewer times; (b) a layout change reads the same values; a vector colour conversion is byte-identical only if it keeps the scalar path's operation order, and would need the differential tests `simd/` already runs for encode |
+| 5 | `encode.rs:934` | **Early-exit `sse_with_delta`.** `acc` accumulates monotonically and the caller keeps only strict improvements, so it can abort the moment `acc >= best`. Off by default (`refine_passes: 0`) but §4 measures refinement at **20–37 ms against 2.45 ms shipped**, and it is what the `refine-*` sweeps spend their time in. | Changes when the loop stops, never which code wins |
+| 6 | `encode.rs:260,320,328,369` | **Fuse the first three per-pixel passes; `composite` cannot join them.** Four full `W·H` passes and **eight** `W·H` allocations — `lin_r`/`lin_g`/`lin_b`/`alpha_pixels`, `oklab_pixels` (3 f64 each), `l_chan`/`a_chan`/`b_chan` — which is 10 f64 per pixel, or **20 MiB** at 512×512, for a stage §1 prices at 16.6%. **An earlier revision of this row said `linearize` and `composite` fuse. They do not:** `composite` (`encode.rs:369`) reads `avg_l`/`avg_a`/`avg_b`, which are the *completed* `alpha_average` reduction (`328`) after its normalization by `avg_alpha` (`340`). A full-array barrier sits between exactly the two passes that row paired, and fusing across it would composite against a running partial mean — different bytes, not merely a different order. What is available: fuse `linearize` + `oklab_forward` + `alpha_average` into one tiled pass, and drop `alpha_pixels` entirely by re-deriving alpha in `composite` from `rgba[i*4+3] as f64 / 255.0`, the identical expression. That is 8 buffers → 4 and 4 passes → 2; `oklab_pixels` must survive the barrier and cannot be tiled away. | Elementwise work in unchanged order, **and** the reduction still accumulates in flat pixel index order — which holds only if the tile length is a multiple of the SIMD lane count, so no pixel moves between `oklab_forward_batch`'s vector body and its scalar tail. `composite` stays a separate pass; nothing about this makes the barrier crossable |
 | 7 | `bitpack.rs:3` | **Word-at-a-time bit writing**, against the current divide-and-modulo per bit. Correct and genuinely small — ≤1623 bytes — and listed for completeness rather than for its size. | Same bits |
 
 Items 1 and 2 are the ones worth doing first, and not because they are the
-largest: they sit inside `quantize_and_pack`, which is 37.5% of a thumbnail
-encode and 3.9% of a photograph. That is the shape §4 already documents for the
+largest: they sit inside `ac_quantize`, which is 37.2% of a thumbnail encode
+and 1.9% of a photograph. That is the shape §4 already documents for the
 encoder-only *quality* levers, and it applies to their cost too.
 
-**But 37.5% is an upper bound on a bucket, not the size of these two levers.**
-`quantize_and_pack` is §1's residual — `whole_encode` minus the marked stages —
-so it contains the scale and AC code searches, the DC search, the bit packing,
-every unmarked line of `encode.rs`, and the instrumentation's own overhead,
-with no way to tell from §1 which of them the 37.5 points belong to. Items 1
-and 2 are somewhere in there and cannot be larger than it. Sizing them needs
-`stage!` marks around the searches themselves, which is a change to
-`bench_stages.rs`, not a reading of the table above. **Nothing in §12.1 is
-measured** (§12.3), and this row is the one most likely to be misread as if it
-were.
+**37.2% is now the stage these two levers act in, not a bucket they share.**
+Until §1 marked it, the only figure was `quantize_and_pack`'s 37.5% — a
+residual that also held the DC search, the bit packing and the buffer frees,
+and so only an upper bound. The marks settle two more things the residual hid:
+item 7 acts in `pack`, which rounds to **0.0%** in every column of §1 — it was
+listed for completeness, and its stage confirms it — and the DC search, which
+no lever touches, is `dc_search` at 0.2%. A stage is still a ceiling, not a
+speedup: how much of `ac_quantize` items 1 and 2 remove is §12.4's to measure,
+and **nothing in §12.1 is measured yet** (§12.3).
 
 ### 12.2 Format changes — v0.8 work
 
 | # | Where | What | What it costs |
 |---|---|---|---|
-| 8 | `dct.rs:296` | **Adopt the separable forward DCT.** §6 measures **3.68× at 512×512**, growing with size. Prototyped, and byte-identical over 40 encodings spanning five tiers and three content classes. | Reassociating float addition is not *guaranteed* to preserve quantized codes, and spec §10/§12.6 pin the direct summation as normative. Version bump, regenerated vectors, nine languages together |
-| 9 | `encode.rs:1044` | **Downsample before the transform.** There is none: `dct_encode_selected` runs over the full source, so encode is `O(K·W·H)` in the *original's* pixels — 46.7 ms for one 512×512 image, and §3's per-megapixel column is what a caller encoding 12 MP originals actually pays. `refine_grid`/`resample_channel_dct` (`encode.rs:806`) already gesture at the machinery | Changes the coefficients, so it changes every hash |
+| 8 | `dct.rs:424` | **Adopt the separable forward DCT.** §6 measures **3.68× at 512×512**, growing with size. Prototyped, and byte-identical over 40 encodings spanning five tiers and three content classes. | Reassociating float addition is not *guaranteed* to preserve quantized codes, and spec §10/§12.6 pin the direct summation as normative. Version bump, regenerated vectors, nine languages together |
+| 9 | `encode.rs:437` | **Downsample before the transform.** There is none: `dct_encode_selected` runs over the full source, so encode is `O(K·W·H)` in the *original's* pixels — 46.7 ms for one 512×512 image, and §3's per-megapixel column is what a caller encoding 12 MP originals actually pays. `refine_grid`/`resample_channel_dct` (`encode.rs:1023`) already gesture at the machinery | Changes the coefficients, so it changes every hash |
 
 ### 12.3 What this list does not claim
 
-* **No entry here is measured as an implemented speedup** except #8, which is
-  prototyped behind `Tunables::dct_separable`. The others are located and sized
-  from §1's and §1.1's stage shares, not from a build that has them. A stage share bounds a
-  lever; it does not deliver one.
-* **The byte-identical column is an argument, not a proof.** Each entry states
-  why the output cannot move, and each would still ship behind the full vector
-  set across nine languages plus `rd:gate` at 0.00% drift, because "cannot move"
-  and "did not move" are different claims and this repo has a gate for the
-  second one.
+* **No entry here is yet measured as an implemented speedup** except #8, which
+  is prototyped behind `Tunables::dct_separable`. Items 1–7 are now *built*
+  (§12.4), each behind its own flag and each held to the shipped bytes, and
+  §12.4's tables are bound to the perf cells that will time them — but no
+  committed run holds those cells yet, so the figures there are placeholders
+  and the stage shares above are still the only size any of them has. A stage
+  share bounds a lever; it does not deliver one.
+* **The byte-identical column is an argument, not a proof** — and for items
+  1–7 it is no longer only an argument. §12.4 lists what now checks "did not
+  move" for each; "cannot move" and "did not move" are different claims, and
+  this repo has a gate for the second one.
 * **Decode is measured by stage, not below it.** §1.1 is the decode
   equivalent of §1, and item 4 is sized from it rather than from reading
   `decode.rs`: the gamma LUT is **66%** of a default-tier decode and the render
@@ -716,3 +743,81 @@ were.
   two halves share one bound. §1.1 also publishes no absolute time: its shares
   were recorded on a loaded host, and §2's 234 ms is still the only measured
   tier-4 decode time.
+
+### 12.4 The byte-identical levers, built
+
+§12.1's items 1–7 exist in `rust/`, each behind a `Tunables` flag that is
+**off** in `Tunables::DEFAULT`. They are off so the shipped path stays the
+reference each one is timed against, not because any of them changes a byte:
+
+| # | flag | what is built |
+|---|---|---|
+| 1, 2 | `accel_quant_table` | Each AC job precomputes its per-index bit widths and one `compand_dequantize` table **per width** — keyed on `(bits, index)`, so `LAYOUT_C`'s 6- and 5-bit luma bands each get their own grid — and hoists `ln(1 + µ)` out of every µ-law quantize (`mulaw::mu_compress_by`, which `mu_compress` now calls, so the two are one expression). Landed together, as item 2 requires |
+| 3 | `accel_dct_lanes` | `dct::dct_encode_lanes`: four coefficients per pass over the channel, one accumulator each, each summing in the scalar pixel order with the scalar term `(channel · cos_x) · cos_y`. Portable Rust with no intrinsics, so there is no `fmadd` to reach for; Rust never contracts `a * b + c` on its own |
+| 4(a) | `accel_gamma_lut_cache` | The decoder's 4096-entry gamma table is built once per transfer curve (`OnceLock`) — two tables serve all five output gamuts, because `build_gamma_lut` reads only whether the gamut uses Adobe's γ. `average_color` uses it too |
+| 4(b) | `accel_flat_cos` | The render loop reads its cosines from one contiguous array per axis (`precompute_cos_table_flat`, `dct_decode_pixel_flat`). **Only the layout half of 4(b) is built.** Vectorizing the render loop's colour conversion is not: it needs the differential-test harness `simd/` has for encode, and belongs with it |
+| 5 | `accel_sse_early_exit` | `sse_with_delta` stops at the end of the first row whose partial sum has reached the candidate it must beat; each term is `≥ 0` or NaN, so a partial sum at the bound can never finish below it |
+| 6 | `accel_fused_pixels` | `linearize`, `oklab_forward` and `alpha_average` run as one pass over 1024-pixel tiles; the alpha buffer is built only when the image has alpha to transform. `composite` stays behind its barrier |
+| 7 | `accel_word_bitpack` | `bitpack::write_bits_word`: a field is masked and shifted into one 64-bit word and OR-ed a byte at a time |
+
+**"Did not move", checked.** `rust/tests/accel_levers.rs` reproduces every
+encode, decode and capped-decode vector in `spec/test-vectors/` with each flag
+on alone and with all seven on; then compares every flag against the shipped
+path under the shipped `Tunables` and eight non-default ones that reach what
+the vectors cannot —
+`LAYOUT_C`'s two widths at tier 2, refinement (the only caller of item 5),
+alpha through the channel quantizer, CfL, the interleaved payload, the other
+companding families — over opaque and translucent images from 1×1 to 64×48,
+two fused tiles included. Library tests in `encode.rs`, `decode.rs`, `dct.rs`,
+`mulaw.rs` and `bitpack.rs` repeat the core of it without reading `spec/`, so
+the mutation sweep holds every lever too. And the eight photographs
+`rd:gate` scores hash identically with all seven levers on, at every tier on
+their encoder-input size and at tiers 0–2 on their display-size reference: 64
+of 64 hashes. (`rd:gate` itself cannot take a flag — its adapter strips
+`CHROMAHASH_TUNE` by design — but its figure is a function of the hash, so
+identical hashes are 0.00% drift.)
+
+No binding exposes `Tunables`, so the other eight languages cannot reach a
+lever and their vector suites are unaffected by construction. **Making a lever
+the default is the change that would need them**, and the vectors they run are
+the ones this file already holds every lever to.
+
+**What each buys: bound, not yet measured.** Every cell below is a
+`verify:benchmark` binding to a perf arm the bounded sweep now records
+(`perf/matrix.ts`: `TUNE_ARMS`, `TIER4_ACCEL_ARMS`, `DECODE_ACCEL_ARMS`), each
+lever against a `shipped` cell from the same sweep. None is filled, because no
+committed run holds those cells: the host this revision was written on was
+under sustained load, and §0's rule is that a wall-clock figure is published
+from a host that holds a clock still. The next pair of §0's `mise run
+benchmark` runs fills them with `--fix`, and until then the gate reports each
+as missing rather than passing it.
+
+Speedup at tier 1 (shipped time ÷ lever time; the early exit is divided into
+`refine_passes=1`, the only encode it can shorten):
+
+| lever | 100×100 | 256×256 | 512×512 |
+|---|---:|---:|---:|
+| accel_quant_table | TBD× | TBD× | TBD× |
+| accel_dct_lanes | TBD× | TBD× | TBD× |
+| accel_fused_pixels | TBD× | TBD× | TBD× |
+| accel_word_bitpack | TBD× | TBD× | TBD× |
+| accel all | TBD× | TBD× | TBD× |
+| refine_passes=1 accel_sse_early_exit | TBD× | TBD× | TBD× |
+
+Tier 4 at 100×100, where the quantizer searches ~16× the coefficients of tier 1
+over the same source:
+
+| lever | encode | speedup |
+|---|---:|---:|
+| shipped | TBD ms | — |
+| accel_quant_table | TBD ms | TBD× |
+| accel_dct_lanes | TBD ms | TBD× |
+| accel all | TBD ms | TBD× |
+
+Decode (§12.1 item 4), 100×100 gradient source, speedup over the shipped decode:
+
+| lever | t1 natural | t4 natural | t4 capped 32×32 |
+|---|---:|---:|---:|
+| accel_gamma_lut_cache | TBD× | TBD× | TBD× |
+| accel_flat_cos | TBD× | TBD× | TBD× |
+| accel all | TBD× | TBD× | TBD× |

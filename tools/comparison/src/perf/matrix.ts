@@ -75,6 +75,20 @@ export const FULL_SIZES = [64, 100, 128, 256, 512, 1024] as const;
 export const BOUNDED_CROSS_TIERS = [0, 1, 2] as const;
 
 /**
+ * Every §12.1 lever on at once. Encode-only and decode-only flags are both
+ * harmless on the other operation, so one string serves both arm sets.
+ */
+export const ACCEL_ALL = [
+  "accel_quant_table=1",
+  "accel_dct_lanes=1",
+  "accel_gamma_lut_cache=1",
+  "accel_flat_cos=1",
+  "accel_sse_early_exit=1",
+  "accel_fused_pixels=1",
+  "accel_word_bitpack=1",
+].join(" ");
+
+/**
  * Encoder-only levers: zero wire cost, decoder untouched, bytes unchanged.
  * Rust-only, because no binding exposes `Tunables`.
  */
@@ -95,7 +109,52 @@ export const TUNE_ARMS: ReadonlyArray<{ label: string; tune: string | null }> =
     // binding (constants.rs `dct_separable: false`, pinned by a test), so this
     // is the only way to price it — and PERFORMANCE.md §6 quotes it.
     { label: "dct_separable", tune: "dct_separable=1" },
+    // PERFORMANCE.md §12.1's byte-identical levers that act on encode, each
+    // alone and then all seven together. Unlike `dct_separable` these produce
+    // the shipped bytes (rust/tests/accel_levers.rs), so the time column is
+    // the whole of what they change. The two decode-only levers are in
+    // `DECODE_ACCEL_ARMS`; the early exit only acts inside refinement, so it
+    // is priced against `refine_passes=1` rather than against `shipped`.
+    { label: "accel_quant_table", tune: "accel_quant_table=1" },
+    { label: "accel_dct_lanes", tune: "accel_dct_lanes=1" },
+    { label: "accel_fused_pixels", tune: "accel_fused_pixels=1" },
+    { label: "accel_word_bitpack", tune: "accel_word_bitpack=1" },
+    { label: "accel all", tune: ACCEL_ALL },
+    {
+      label: "refine_passes=1 accel_sse_early_exit",
+      tune: "refine_passes=1 accel_sse_early_exit=1",
+    },
   ];
+
+/**
+ * The encode levers whose share grows with the tier rather than the source:
+ * `scale_fit = 2` searches every scale code over every selected coefficient,
+ * and tier 4 selects ~16× the coefficients of tier 1. Priced at tier 4 on the
+ * centre fixture, against a `shipped` cell measured in the same block.
+ */
+export const TIER4_ACCEL_ARMS: ReadonlyArray<{
+  label: string;
+  tune: string | null;
+}> = [
+  { label: "shipped", tune: null },
+  { label: "accel_quant_table", tune: "accel_quant_table=1" },
+  { label: "accel_dct_lanes", tune: "accel_dct_lanes=1" },
+  { label: "accel all", tune: ACCEL_ALL },
+];
+
+/**
+ * §12.1 item 4's two decode levers, alone and together with everything else,
+ * each against a `shipped` decode measured in the same block.
+ */
+export const DECODE_ACCEL_ARMS: ReadonlyArray<{
+  label: string;
+  tune: string | null;
+}> = [
+  { label: "shipped", tune: null },
+  { label: "accel_gamma_lut_cache", tune: "accel_gamma_lut_cache=1" },
+  { label: "accel_flat_cos", tune: "accel_flat_cos=1" },
+  { label: "accel all", tune: ACCEL_ALL },
+];
 
 /** Batch thread counts for the scaling sweep. */
 export const BOUNDED_THREADS = [1, 0] as const;

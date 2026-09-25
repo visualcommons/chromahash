@@ -161,7 +161,12 @@ const STAGE_ROWS: Record<string, string> = {
   selection: "selection",
   cos_tables: "cos_tables",
   dct_forward: "dct_forward",
-  quantize_and_pack: "quantize_and_pack",
+  // What was one residual, `quantize_and_pack`, until these four had marks.
+  dc_search: "dc_search",
+  ac_quantize: "ac_quantize",
+  refine: "refine",
+  pack: "pack",
+  unmarked: "unmarked",
 };
 
 /**
@@ -286,10 +291,40 @@ const PROSE_CLAIMS: ProseClaim[] = [
     stages: ["oklab_forward"],
   },
   {
-    what: "§1: `quantize_and_pack`'s share at 100x100 t1, quoted in prose",
-    pattern: /At 100×100, `quantize_and_pack` is ([\d.]+)%\*\*/,
+    what: "§1: `ac_quantize`'s share at 100x100 t1, quoted in prose",
+    pattern: /At 100×100, `ac_quantize` is ([\d.]+)%\*\*/,
     cell: "100x100-t1",
-    stages: ["quantize_and_pack"],
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§1: `unmarked`'s share at 512x512 t1, quoted in prose",
+    pattern: /negligible at 100×100, and ([\d.]+)% at 512×512/,
+    cell: "512x512-t1",
+    stages: ["unmarked"],
+  },
+  {
+    what: "§12 summary: the searches' share of the old residual at 100x100 t1",
+    pattern: /the searches are\s+([\d.]+) of its old/,
+    cell: "100x100-t1",
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§12.1: `ac_quantize` at 100x100 t1, after the table",
+    pattern: /`ac_quantize`, which is ([\d.]+)% of a thumbnail encode/,
+    cell: "100x100-t1",
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§12.1: `ac_quantize` at 512x512 t1, after the table",
+    pattern: /of a thumbnail encode\nand ([\d.]+)% of a photograph/,
+    cell: "512x512-t1",
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§12.1: `dc_search` at 100x100 t1",
+    pattern: /is `dc_search` at ([\d.]+)%/,
+    cell: "100x100-t1",
+    stages: ["dc_search"],
   },
   {
     what: "§1: `dct_forward`'s share at 100x100 t1, quoted in prose",
@@ -310,10 +345,10 @@ const PROSE_CLAIMS: ProseClaim[] = [
     stages: ["linearize", "oklab_forward", "composite"],
   },
   {
-    what: "§12 summary: `quantize_and_pack`, restated",
-    pattern: /`quantize_and_pack` is \*\*([\d.]+)%\*\* of a 100×100 one/,
+    what: "§12 summary: `ac_quantize`, restated",
+    pattern: /`ac_quantize` is \*\*([\d.]+)%\*\* of a 100×100 one/,
     cell: "100x100-t1",
-    stages: ["quantize_and_pack"],
+    stages: ["ac_quantize"],
   },
   {
     what: "§12 summary: `dct_forward` at tier 4, restated",
@@ -523,6 +558,66 @@ const BINDINGS: Binding[] = [
         return ratio(R.us(direct), R.us(sep));
       },
     },
+  },
+  {
+    section: "12.4",
+    index: 1,
+    title: "§12.1's encode levers, built: speedup at tier 1",
+    // `R.us`, not `timeOr`: a lever cell no committed run holds is a missing
+    // measurement, and must fail as one rather than count as deliberately
+    // unbound — these rows exist only to carry a number.
+    columns: Object.fromEntries(
+      [100, 256, 512].map((n) => [
+        `${n}×${n}`,
+        (row: (h: string) => string, R: Runs) => {
+          const arm = clean(row("lever"));
+          // The early exit acts only inside refinement, so its baseline is
+          // the refinement arm, not the shipped encode.
+          const base = arm.startsWith("refine_passes=1 ")
+            ? "refine_passes=1"
+            : "shipped";
+          return ratio(R.us(armId(n, base)), R.us(armId(n, arm)));
+        },
+      ]),
+    ) as Record<string, Resolve>,
+  },
+  {
+    section: "12.4",
+    index: 2,
+    title: "§12.1's encode levers, built: tier 4 at 100x100",
+    columns: {
+      encode: (row, R) =>
+        R.us(`encode/Rust/t4/100x100/gradient/${clean(row("lever"))}`),
+      speedup: (row, R) => {
+        const arm = clean(row("lever"));
+        if (arm === "shipped") return null;
+        return ratio(
+          R.us("encode/Rust/t4/100x100/gradient/shipped"),
+          R.us(`encode/Rust/t4/100x100/gradient/${arm}`),
+        );
+      },
+    },
+  },
+  {
+    section: "12.4",
+    index: 3,
+    title: "§12.1's decode levers, built: speedup",
+    columns: Object.fromEntries(
+      (
+        [
+          ["t1 natural", "t1/natural"],
+          ["t4 natural", "t4/natural"],
+          ["t4 capped 32×32", "t4/capped32"],
+        ] as const
+      ).map(([header, raster]) => [
+        header,
+        (row: (h: string) => string, R: Runs) =>
+          ratio(
+            R.us(`decode/Rust/${raster}/shipped`),
+            R.us(`decode/Rust/${raster}/${clean(row("lever"))}`),
+          ),
+      ]),
+    ) as Record<string, Resolve>,
   },
   {
     section: "7",

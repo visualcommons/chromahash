@@ -19,8 +19,10 @@ import {
   BOUNDED_CROSS_TIERS,
   BOUNDED_SIZES,
   BOUNDED_THREADS,
+  DECODE_ACCEL_ARMS,
   FULL_SIZES,
   FULL_THREADS,
+  TIER4_ACCEL_ARMS,
   TIER_BYTES,
   TUNE_ARMS,
   makeFixture,
@@ -332,6 +334,54 @@ if (!QUICK) {
             env: arm.tune ? { CHROMAHASH_TUNE: arm.tune } : {},
             tune: arm.tune,
             bytes: 32,
+          },
+        );
+      }
+    }
+    // E2. §12.1's levers at tier 4, where the quantizer's search is ~16× the
+    // tier-1 one while the source is the same 100×100.
+    for (const arm of TIER4_ACCEL_ARMS) {
+      record(
+        `encode/Rust/t4/100x100/gradient/${arm.label}`,
+        "encode",
+        rust,
+        4,
+        { w: 100, h: 100, content: "gradient" },
+        {
+          argv: ["bench-encode", "100", "100", "srgb", "@ITERS@"],
+          stdin: centre.rgba,
+          env: arm.tune ? { CHROMAHASH_TUNE: arm.tune } : {},
+          tune: arm.tune,
+          bytes: TIER_BYTES[4] ?? null,
+        },
+      );
+    }
+    // E3. §12.1 item 4's decode levers: the default tier, where §1.1 puts the
+    // gamma table at most of a decode, and tier 4 natural and capped, where
+    // the render loop is. Each against a `shipped` cell in the same block.
+    for (const [tier, cap] of [
+      [1, null],
+      [4, null],
+      [4, [32, 32]],
+    ] as const) {
+      const hash = hashFor(tier, 100, 100, "gradient");
+      const raster = cap ? `capped${cap[0]}` : "natural";
+      for (const arm of DECODE_ACCEL_ARMS) {
+        record(
+          `decode/Rust/t${tier}/${raster}/${arm.label}`,
+          "decode",
+          rust,
+          tier,
+          null,
+          {
+            argv: cap
+              ? ["bench-decode", "@ITERS@", String(cap[0]), String(cap[1])]
+              : ["bench-decode", "@ITERS@"],
+            stdin: hash,
+            env: arm.tune ? { CHROMAHASH_TUNE: arm.tune } : {},
+            tune: arm.tune,
+            decodeCap: cap ? [cap[0], cap[1]] : null,
+            bytes: TIER_BYTES[tier] ?? null,
           },
         );
       }
