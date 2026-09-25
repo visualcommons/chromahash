@@ -134,4 +134,7 @@ exclude_re = [
     # failing — a property of the kernel, not a test gap.
     "replace \\+ with - in mu_compress",
     "replace \\* with / in mu_compress",
+    # (Unanchored, those two also match `mu_compress_by`, which is
+    # `mu_compress`'s body with the denominator passed in — PERFORMANCE.md
+    # §12.1 item 2 — and so carries the same two hanging mutations.)
 ]

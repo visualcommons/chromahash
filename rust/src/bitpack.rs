@@ -22,11 +22,8 @@ pub fn write_bits(hash: &mut [u8], bitpos: usize, count: u32, value: u32) {
 /// byte's run in at the same offset.
 pub fn write_bits_bytewise(hash: &mut [u8], bitpos: usize, count: u32, value: u32) {
     debug_assert!(count <= 32, "a field is at most 32 bits wide");
-    let mut v = if count >= 32 {
-        value as u64
-    } else {
-        (value as u64) & ((1u64 << count) - 1)
-    };
+    // In u64 the mask is well-defined at every width up to and including 32.
+    let mut v = (value as u64) & ((1u64 << count) - 1);
     let mut pos = bitpos;
     let mut remaining = count as usize;
     while remaining > 0 {

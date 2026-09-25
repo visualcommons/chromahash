@@ -696,6 +696,84 @@ mod tests {
     }
 
     #[test]
+    fn cached_gamma_lut_is_the_built_one_for_every_output() {
+        // §12.1 item 4(a): two cached tables serve five gamuts, which holds
+        // only because `build_gamma_lut` reads nothing but the transfer curve.
+        for g in [
+            Gamut::Srgb,
+            Gamut::DisplayP3,
+            Gamut::AdobeRgb,
+            Gamut::Bt2020,
+            Gamut::ProPhotoRgb,
+        ] {
+            assert_eq!(cached_gamma_lut(g), &build_gamma_lut(g), "{g:?}");
+            // And a second call returns the same table, not a rebuilt one.
+            assert!(std::ptr::eq(cached_gamma_lut(g), cached_gamma_lut(g)));
+        }
+    }
+
+    #[test]
+    fn decoder_levers_reproduce_the_shipped_pixels() {
+        // §12.1 item 4, both halves, alone and together, over opaque and
+        // translucent hashes at three tiers, natural and capped, into both
+        // transfer curves.
+        let levers: [fn(&mut Tunables); 2] = [
+            |t| t.accel_gamma_lut_cache = true,
+            |t| t.accel_flat_cos = true,
+        ];
+        let d = Tunables::DEFAULT;
+        let mut all = d;
+        let mut arms = Vec::new();
+        for set in levers {
+            let mut t = d;
+            set(&mut t);
+            set(&mut all);
+            arms.push(t);
+        }
+        arms.push(all);
+        for (rgba, w, h) in [
+            (gradient_image(9, 7), 9, 7),
+            (checkerboard_alpha(8, 8), 8, 8),
+            (alpha_gradient(6, 10), 6, 10),
+        ] {
+            for tier in 0..=2u8 {
+                let hash = crate::encode::encode_with(w, h, &rgba, Gamut::Srgb, &d, tier);
+                for out in [Gamut::Srgb, Gamut::DisplayP3, Gamut::AdobeRgb] {
+                    let natural = decode_to_with(&hash, &d, out);
+                    let capped = decode_capped_to_with(&hash, 11, 5, &d, out);
+                    for t in &arms {
+                        assert_eq!(decode_to_with(&hash, t, out), natural, "t{tier} {out:?}");
+                        assert_eq!(
+                            decode_capped_to_with(&hash, 11, 5, t, out),
+                            capped,
+                            "capped t{tier} {out:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn average_color_is_unmoved_by_the_cached_gamma_lut() {
+        let t = Tunables {
+            accel_gamma_lut_cache: true,
+            ..Tunables::DEFAULT
+        };
+        for (rgba, w, h) in [
+            (gradient_image(9, 7), 9, 7),
+            (checkerboard_alpha(8, 8), 8, 8),
+            (solid(3, 3, 12, 250, 99, 200), 3, 3),
+        ] {
+            let hash = crate::ChromaHash::encode(w, h, &rgba, Gamut::Srgb);
+            assert_eq!(
+                average_color_with(hash.as_bytes(), &t),
+                average_color_with(hash.as_bytes(), &Tunables::DEFAULT)
+            );
+        }
+    }
+
+    #[test]
     fn decode_output_gamut_changes_wide_gamut_color() {
         use crate::ChromaHash;
         // A saturated Display P3 green sits outside the sRGB gamut. Rendering it

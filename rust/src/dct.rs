@@ -269,7 +269,7 @@ pub fn dct_encode_selected(
     (dc, ac, scale)
 }
 
-/// Coefficients one pass of [`dct_encode_selected_lanes`] computes together.
+/// Coefficients one pass of [`dct_encode_lanes`] computes together.
 const DCT_LANES: usize = 4;
 
 /// [`dct_encode_selected`], computing [`DCT_LANES`] coefficients per pass over
@@ -292,7 +292,7 @@ const DCT_LANES: usize = 4;
 /// group's `cos_x` rows are interleaved so a pixel's lane factors are
 /// contiguous. The compiler may map the lanes onto vector registers; lane
 /// arithmetic under IEEE 754 does not depend on whether it does.
-pub fn dct_encode_selected_lanes(
+pub fn dct_encode_lanes(
     channel: &[f64],
     w: usize,
     h: usize,
@@ -824,6 +824,63 @@ mod tests {
             assert!((dc_a - dc_b).abs() < 1e-12, "{w}x{h}");
             for (a, b) in ac_a.iter().zip(ac_b.iter()) {
                 assert!((a - b).abs() < 1e-12, "{w}x{h}: {a} vs {b}");
+            }
+        }
+    }
+
+    #[test]
+    fn lanes_dct_is_bit_for_bit_the_direct_sum() {
+        // §12.1 item 3. Coefficient lists of every length mod DCT_LANES, dead
+        // frequencies mixed in (cx >= w or cy >= h), and a near-constant
+        // channel that trips the scale floor.
+        let mut s: u32 = 0x1234_5678;
+        let mut noise = || {
+            s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (s >> 8) as f64 / (1u32 << 24) as f64 - 0.5
+        };
+        for &(w, h) in &[(1usize, 1usize), (1, 9), (7, 1), (5, 4), (13, 11)] {
+            let channel: Vec<f64> = (0..w * h).map(|_| noise()).collect();
+            let flat = vec![0.25f64; w * h];
+            let all: Vec<(usize, usize)> = (0..6)
+                .flat_map(|cy| (0..6).map(move |cx| (cx, cy)))
+                .filter(|&p| p != (0, 0))
+                .collect();
+            let cos_x = precompute_cos_table(w, 6.min(w));
+            let cos_y = precompute_cos_table(h, 6.min(h));
+            for n in 0..all.len() {
+                let coeffs = &all[..n];
+                for ch in [&channel, &flat] {
+                    let (dc_a, ac_a, sc_a) = dct_encode_selected(ch, w, h, coeffs, &cos_x, &cos_y);
+                    let (dc_b, ac_b, sc_b) = dct_encode_lanes(ch, w, h, coeffs, &cos_x, &cos_y);
+                    assert_eq!(dc_a.to_bits(), dc_b.to_bits(), "{w}x{h} n={n}");
+                    assert_eq!(sc_a.to_bits(), sc_b.to_bits(), "{w}x{h} n={n}");
+                    assert_eq!(ac_a.len(), ac_b.len());
+                    for (j, (a, b)) in ac_a.iter().zip(&ac_b).enumerate() {
+                        assert_eq!(a.to_bits(), b.to_bits(), "{w}x{h} n={n} j={j}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn flat_cos_table_and_pixel_match_the_nested_ones() {
+        // §12.1 item 4(b): the same entries at `freq * dim + pos`, and the same
+        // pixel sum over them.
+        let (w, h) = (7usize, 5usize);
+        let nested_x = precompute_cos_table(w, 4);
+        let nested_y = precompute_cos_table(h, 3);
+        let flat_x = precompute_cos_table_flat(w, 4);
+        let flat_y = precompute_cos_table_flat(h, 3);
+        assert_eq!(flat_x, nested_x.concat());
+        assert_eq!(flat_y, nested_y.concat());
+        let scan = [(1usize, 0usize), (0, 1), (3, 2), (2, 1), (1, 2)];
+        let ac = [0.11, -0.07, 0.03, -0.2, 0.05];
+        for y in 0..h {
+            for x in 0..w {
+                let a = dct_decode_pixel_separable(0.4, &ac, &scan, x, y, &nested_x, &nested_y);
+                let b = dct_decode_pixel_flat(0.4, &ac, &scan, x, y, &flat_x, w, &flat_y, h);
+                assert_eq!(a.to_bits(), b.to_bits(), "({x}, {y})");
             }
         }
     }

@@ -13,10 +13,6 @@ use crate::math_utils::{clamp_neg1_1, clamp01, round_half_away_from_zero};
 use crate::mulaw::{compand_dequantize, compand_quantize, mu_compress, mu_expand};
 use crate::transfer::{adobe_rgb_eotf, bt2020_pq_eotf, prophoto_rgb_eotf, srgb_eotf, srgb_gamma};
 
-/// Pixels per tile of the fused colour pass (`Tunables::accel_fused_pixels`).
-/// A multiple of every SIMD lane count `simd/` uses (1, 2 and 4).
-const FUSED_TILE: usize = 1024;
-
 /// Build a 256-entry EOTF lookup table for the given gamut. Per spec §5.2.
 fn build_eotf_lut(gamut: Gamut) -> [f64; 256] {
     let mut lut = [0.0f64; 256];
@@ -202,6 +198,10 @@ macro_rules! stage {
 // Crate-visible so the decoder marks its stages with the same macro, and so
 // with the same guarantee: nothing at all in a build without the feature.
 pub(crate) use stage;
+
+/// Pixels per tile of the fused colour pass (`Tunables::accel_fused_pixels`).
+/// A multiple of every SIMD lane count `simd/` uses (1, 2 and 4).
+const FUSED_TILE: usize = 1024;
 
 /// Signal-path front half of the encoder (spec §10 steps 1–7): color
 /// conversion, alpha handling, coefficient selection, and the forward DCT.
@@ -403,12 +403,12 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     // byte-identical — see `dct::dct_encode_selected_separable` — and is false
     // in `Tunables::DEFAULT`, so the shipped path is always the direct sum.
     // `accel_dct_lanes` is §12.1 item 3, which *is* byte-identical
-    // (`dct::dct_encode_selected_lanes`); the separable prototype wins if both
+    // (`dct::dct_encode_lanes`); the separable prototype wins if both
     // are set, since it is the one that changes what is computed.
     let forward = if t.dct_separable {
         crate::dct::dct_encode_selected_separable
     } else if t.accel_dct_lanes {
-        crate::dct::dct_encode_selected_lanes
+        crate::dct::dct_encode_lanes
     } else {
         dct_encode_selected
     };
@@ -614,19 +614,20 @@ impl AcQuantJob<'_> {
     }
 
     /// Bit width at selection index `i`: the precomputed one where there is
-    /// one, the tier walk otherwise.
+    /// one, the tier walk otherwise. Every caller indexes within the job's
+    /// values, which is the range the precomputation covers.
     fn width(&self, i: usize) -> u32 {
         match &self.accel {
-            Some(a) if i < a.bits.len() => a.bits[i],
-            _ => self.bits_at(i),
+            Some(a) => a.bits[i],
+            None => self.bits_at(i),
         }
     }
 
     /// `compand_dequantize(q, bits_at(i), …)`, from the table when there is one.
     fn deq(&self, i: usize, q: u32) -> f64 {
         match &self.accel {
-            Some(a) if i < a.base.len() => a.deq[a.base[i] + q as usize],
-            _ => compand_dequantize(q, self.bits_at(i), self.family, self.mu, self.table),
+            Some(a) => a.deq[a.base[i] + q as usize],
+            None => compand_dequantize(q, self.bits_at(i), self.family, self.mu, self.table),
         }
     }
 
@@ -1262,6 +1263,7 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
 
     // 8. Quantize header values (decode-aware DC code search, v0.6)
     let (l_dc_q, a_dc_q, b_dc_q) = select_dc_codes(l_dc, a_dc, b_dc, t);
+    stage!("dc_search");
 
     // Scalefactor-band split points (index >= split uses scale*band_gain).
     let l_split = band_split_index(shape.l_count(), t.band_split);
@@ -1449,6 +1451,10 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     } else {
         quantize_ac_channel(&b_job, b_scale, t)
     };
+    // Every AC scale and code search: the jobs, `scale_fit`'s scale search and
+    // `ac_nearest`'s neighbourhood, the alpha plane, and CfL when it is on —
+    // where §12.1 items 1 and 2 act.
+    stage!("ac_quantize");
 
     // Encoder-only pixel-domain refinement (off by default). Rebinds the header
     // and AC codes; the decoder is untouched and the byte length is unchanged.
@@ -1514,6 +1520,9 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     let [l_dc_q, a_dc_q, b_dc_q] = dc_codes;
     let [l_scl_q, a_scl_q, b_scl_q] = scale_codes;
     let [l_codes, a_codes, b_codes] = ac_codes;
+    // Near zero in the shipped build, where `refine_passes` is 0; §12.1 item 5
+    // acts here when it is not.
+    stage!("refine");
 
     // 9. Allocate the variable-length body and write the descriptor bytes.
     //    Byte 0: version (bits 0..3) | tier (bits 3..6) | hasAlpha (bit 6) |
@@ -1620,6 +1629,8 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
         prefix_bits(t) as usize + alpha_prefix + ac_payload_bits(&shape)
     );
     debug_assert_eq!(body_len, bitpos.div_ceil(8));
+    // The body allocation and every bit written into it — §12.1 item 7.
+    stage!("pack");
 
     hash.into_boxed_slice()
 }
@@ -1997,5 +2008,192 @@ mod tests {
         #[rustfmt::skip]
         let expected = [72, 128, 71, 174, 20, 0, 192, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 109, 219, 134, 109, 219, 180, 109, 219, 182, 109, 219, 182, 13];
         assert_eq!(encode(w, h, &rgba, Gamut::Srgb).as_ref(), &expected);
+    }
+
+    // ── PERFORMANCE.md §12.1's byte-identical levers ─────────────────────
+    //
+    // `tests/accel_levers.rs` holds every lever to the spec vectors and a wider
+    // sweep, but it reads the sibling `spec/` dir, so the mutation sweep cannot
+    // run it. These are its in-crate half: every encoder lever against the
+    // shipped path, on inputs chosen to reach each lever's own code — two
+    // fused-pass tiles, translucent pixels, a tiered-width luma job, the
+    // refinement the early exit lives in.
+
+    /// Each encoder-side lever's flag.
+    const ENCODE_LEVERS: [fn(&mut Tunables); 5] = [
+        |t| t.accel_quant_table = true,
+        |t| t.accel_dct_lanes = true,
+        |t| t.accel_sse_early_exit = true,
+        |t| t.accel_fused_pixels = true,
+        |t| t.accel_bytewise_bitpack = true,
+    ];
+
+    /// Deterministic noise over a gradient, optionally with an alpha ramp that
+    /// includes fully transparent pixels.
+    fn lever_image(w: u32, h: u32, alpha: bool, seed: u32) -> Vec<u8> {
+        let mut s = seed.wrapping_mul(0x9e37_79b9) | 1;
+        let (w, h) = (w as usize, h as usize);
+        let mut rgba = vec![0u8; w * h * 4];
+        for y in 0..h {
+            for x in 0..w {
+                s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let n = (s >> 26) as usize;
+                let i = (y * w + x) * 4;
+                rgba[i] = ((x * 255 / w.max(2)) + n) as u8;
+                rgba[i + 1] = ((y * 255 / h.max(2)) + n * 2) as u8;
+                rgba[i + 2] = (s >> 20) as u8;
+                rgba[i + 3] = if !alpha {
+                    255
+                } else if (x + y) % 5 == 0 {
+                    0
+                } else {
+                    ((x + 2 * y) * 255 / (w + 2 * h)) as u8
+                };
+            }
+        }
+        rgba
+    }
+
+    /// Every encoder lever alone and all together must give `base`'s bytes.
+    fn assert_levers_reproduce(base: Tunables, w: u32, h: u32, rgba: &[u8], tier: u8) {
+        let reference = encode_with(w, h, rgba, Gamut::Srgb, &base, tier);
+        let mut all = base;
+        for (k, set) in ENCODE_LEVERS.iter().enumerate() {
+            let mut t = base;
+            set(&mut t);
+            set(&mut all);
+            assert_eq!(
+                encode_with(w, h, rgba, Gamut::Srgb, &t, tier),
+                reference,
+                "lever {k}, {w}x{h} tier {tier}, base {base:?}"
+            );
+        }
+        assert_eq!(
+            encode_with(w, h, rgba, Gamut::Srgb, &all, tier),
+            reference,
+            "all levers, {w}x{h} tier {tier}"
+        );
+    }
+
+    #[test]
+    fn encoder_levers_reproduce_the_shipped_bytes() {
+        let d = Tunables::DEFAULT;
+        let bases = [
+            d,
+            // Two bit widths in one luma job from tier 2 up (§12.1 item 1).
+            Tunables {
+                layout_upper: crate::constants::LAYOUT_C,
+                ..d
+            },
+            Tunables {
+                alpha_ac_fit: true,
+                ..d
+            },
+            Tunables {
+                cfl_bits: 5,
+                b_scale_from_a: true,
+                ..d
+            },
+        ];
+        // 40×30 and 35×33 are more than one `FUSED_TILE`; 1×19 is a strip.
+        let images = [
+            (7u32, 5u32, false, 0u8..=2u8),
+            (6, 6, true, 0..=2),
+            (1, 19, true, 0..=1),
+            (40, 30, false, 0..=1),
+            (35, 33, true, 0..=1),
+        ];
+        for (bi, base) in bases.into_iter().enumerate() {
+            for (ii, (w, h, alpha, tiers)) in images.iter().cloned().enumerate() {
+                let rgba = lever_image(w, h, alpha, (bi * 7 + ii) as u32);
+                for tier in tiers {
+                    assert_levers_reproduce(base, w, h, &rgba, tier);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn early_exit_reproduces_the_refined_bytes() {
+        // §12.1 item 5 changes nothing unless the refinement runs.
+        let base = Tunables {
+            refine_passes: 2,
+            refine_delta: 2,
+            refine_dc: true,
+            refine_scale: true,
+            ..Tunables::DEFAULT
+        };
+        for (w, h, alpha) in [(9u32, 7u32, false), (8, 8, true), (1, 12, false)] {
+            let rgba = lever_image(w, h, alpha, w * 31 + h);
+            for tier in 0..=1 {
+                assert_levers_reproduce(base, w, h, &rgba, tier);
+            }
+        }
+    }
+
+    #[test]
+    fn early_exit_stops_only_at_the_bound() {
+        // The scorer itself: the full sum with no bound, the full sum when the
+        // bound is never reached, and a partial sum no smaller than the bound
+        // when it is.
+        let (w, h) = (6usize, 5usize);
+        let l: Vec<f64> = (0..w * h).map(|p| (p % 7) as f64 / 7.0).collect();
+        let a: Vec<f64> = (0..w * h).map(|p| (p % 3) as f64 * 0.02 - 0.02).collect();
+        let b: Vec<f64> = (0..w * h).map(|p| (p % 4) as f64 * -0.01).collect();
+        let obj = PixelObjective::new(0, 1.0, 1.0, &l, &a, &b);
+        let cos_x = precompute_cos_table(w, 3);
+        let cos_y = precompute_cos_table(h, 3);
+        let score = |stop: Option<f64>| {
+            sse_with_delta(&obj, &l, &a, &b, 0, w, h, 2, 1, 0.3, &cos_x, &cos_y, stop)
+        };
+        let full = score(None);
+        assert!(full > 0.0);
+        assert_eq!(score(Some(f64::INFINITY)), full);
+        assert_eq!(score(Some(full * 2.0)), full);
+        let partial = score(Some(full / 4.0));
+        assert!(partial >= full / 4.0, "{partial} stopped below its bound");
+        assert!(partial < full, "{partial} did not stop early");
+    }
+
+    #[test]
+    fn quant_table_attaches_only_when_on_and_agrees_per_width() {
+        // A tiered job: indices 0..8 at 6 bits, 8..22 at 5 — LAYOUT_C's L row.
+        let values: Vec<f64> = (0..22).map(|i| (i as f64 * 0.37).sin() * 0.2).collect();
+        let tiers = [(8usize, 6u32), (14, 5)];
+        let job = |on: bool| {
+            AcQuantJob {
+                values: &values,
+                tiers: &tiers,
+                split: 11,
+                band_gain: 1.0,
+                max_scale: 0.5,
+                code_max: 63,
+                scale_bits: 6,
+                scale_mu: 0.0,
+                family: crate::constants::Companding::MuLaw,
+                mu: 5.0,
+                table: &crate::constants::QuantTable::EMPTY,
+                deadzone: 0.0,
+                accel: None,
+            }
+            .accelerated(on)
+        };
+        let (plain, fast) = (job(false), job(true));
+        assert!(plain.accel.is_none());
+        assert!(fast.accel.is_some());
+        for i in 0..values.len() {
+            let bits = plain.bits_at(i);
+            assert_eq!(fast.width(i), bits, "index {i}");
+            for q in 0..(1u32 << bits) - 1 {
+                assert_eq!(
+                    fast.deq(i, q).to_bits(),
+                    plain.deq(i, q).to_bits(),
+                    "index {i} code {q}"
+                );
+            }
+            for v in [-1.0, -0.4, -0.01, 0.0, 0.03, 0.5, 1.0] {
+                assert_eq!(fast.quant(i, v), plain.quant(i, v), "index {i} value {v}");
+            }
+        }
     }
 }

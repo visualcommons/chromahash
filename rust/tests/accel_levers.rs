@@ -293,15 +293,22 @@ const GAMUTS: [Gamut; 5] = [
     Gamut::ProPhotoRgb,
 ];
 
-/// Sizes, and the highest tier each is swept to. Big tiers over big images are
-/// minutes in a debug build and add no path the small ones miss.
+/// Sizes, and the highest tier each is swept to.
+///
+/// Tier 2 is the top of the sweep on purpose. It is the first tier where
+/// `LAYOUT_C` puts two bit widths in one luma job, so it reaches every path
+/// tiers 3 and 4 do; what those add is cost, and it is the cost that does not
+/// depend on the image — `scale_fit = 2` searches every scale code over every
+/// selected coefficient, some 40 ms per tier-4 encode of a 1×1 image in a
+/// release build, times eight arms, times every case. The spec vectors above
+/// carry tiers 3 and 4 under every lever.
 const SIZES: [((u32, u32), u8); 7] = [
-    ((1, 1), 4),
-    ((1, 23), 4),
-    ((29, 1), 4),
-    ((5, 3), 4),
-    ((16, 9), 3),
-    ((33, 17), 2),
+    ((1, 1), 2),
+    ((1, 23), 2),
+    ((29, 1), 2),
+    ((5, 3), 2),
+    ((16, 9), 2),
+    ((33, 17), 1),
     ((64, 48), 1),
 ];
 
@@ -313,6 +320,9 @@ fn every_lever_matches_the_shipped_path_off_the_default_tunables() {
         for (si, &((w, h), max_tier)) in SIZES.iter().enumerate() {
             // Refinement is O(passes·K·W·H) per candidate: keep it to the
             // sizes and tiers where a debug build finishes it in seconds.
+            if refining && w * h > 33 * 17 {
+                continue;
+            }
             let max_tier = if refining { max_tier.min(1) } else { max_tier };
             for kind in 0..4u32 {
                 let rgba = image(w, h, kind, (bi * 131 + si * 17) as u32 + kind);
@@ -321,7 +331,10 @@ fn every_lever_matches_the_shipped_path_off_the_default_tunables() {
                     let reference =
                         ChromaHash::encode_tuned_quality(w, h, &rgba, gamut, &base, tier);
                     let out = GAMUTS[(si + tier as usize) % 3];
-                    let ref_px = reference.decode_to_tuned(out, &base);
+                    // A natural decode above tier 1 renders up to 256×256
+                    // over hundreds of coefficients, per arm; the capped
+                    // decode below reaches the same code at every tier.
+                    let ref_px = (tier <= 1).then(|| reference.decode_to_tuned(out, &base));
                     let ref_cap = reference.decode_capped_tuned(7, 5, &base);
                     for (arm, t) in arms(base) {
                         let what = format!(
@@ -329,11 +342,13 @@ fn every_lever_matches_the_shipped_path_off_the_default_tunables() {
                         );
                         let hash = ChromaHash::encode_tuned_quality(w, h, &rgba, gamut, &t, tier);
                         assert_eq!(hash.as_bytes(), reference.as_bytes(), "{what}: hash moved");
-                        assert_eq!(
-                            reference.decode_to_tuned(out, &t),
-                            ref_px,
-                            "{what}: decode to {out:?} moved"
-                        );
+                        if let Some(ref_px) = &ref_px {
+                            assert_eq!(
+                                &reference.decode_to_tuned(out, &t),
+                                ref_px,
+                                "{what}: decode to {out:?} moved"
+                            );
+                        }
                         assert_eq!(
                             reference.decode_capped_tuned(7, 5, &t),
                             ref_cap,
