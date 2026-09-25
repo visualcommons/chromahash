@@ -1,13 +1,24 @@
-# Alpha Fixture Licenses
+# Alpha corpus — sources and licences
 
-This directory caches the alpha corpus: images with meaningful transparency, used to measure the alpha-mode layout.
-Downloads are on-demand (`src/alpha-images.ts`), content-pinned by
-SHA-256, and are **not committed**.
+Images with meaningful transparency, used to measure the alpha-mode layout.
+Every image is from Wikimedia Commons. Every one still in use is under a free
+licence, and attribution below is per image, as the licences require. An entry
+marked **withdrawn** is no longer available from its source and is never
+fetched; its pin stays so the results that scored it still say what they
+measured, and no licence is presented as holding for it.
 
-Every image is from Wikimedia Commons under a free licence. Attribution
-below is per image, as the licences require.
+These files are **not committed** — they are fetched on demand and content-pinned
+by SHA-256 (`src/alpha-images.ts`, `src/corpus-pin.ts`). A pin mismatch is
+fatal: the corpus a number was measured on is part of what the number means.
 
-## Images
+The holdout split is retired (#83): see `ALPHA_HOLDOUT_RETIRED` in
+`src/alpha-images.ts`. Its images keep their declared split below.
+
+**This file is generated.** Edit the table in `src/alpha-images.ts` and run
+`mise run corpus:licenses`; `--check` fails when the two disagree.
+
+
+24 images — 16 tune, 8 holdout; 1 withdrawn.
 
 ### `cutout-3d-star-greek`
 
@@ -16,6 +27,7 @@ below is per image, as the licences require.
 - Author: Andrikkos
 - License: CC BY-SA 3.0
 - Dimensions: 827x852
+- Split: tune
 - Alpha: 74.0% non-opaque, 24.4% soft-edged
 - Notes: 3D glossy star render with soft shading and mostly-transparent canvas.
 
@@ -26,6 +38,7 @@ below is per image, as the licences require.
 - Author: Andrikkos
 - License: CC BY-SA 3.0
 - Dimensions: 608x579
+- Split: tune
 - Alpha: 65.6% non-opaque, 0.0% soft-edged
 - Notes: Small saturated 3D star; simple shape, high proportion of transparency.
 
@@ -36,6 +49,7 @@ below is per image, as the licences require.
 - Author: Aptoide
 - License: Public domain
 - Dimensions: 601x600
+- Split: holdout
 - Alpha: 11.8% non-opaque, 0.5% soft-edged
 - Notes: Modern app icon; flat colour, rounded-square alpha mask.
 
@@ -46,6 +60,7 @@ below is per image, as the licences require.
 - Author: Courtesy of NIAID Ryan Kissinger
 - License: Public domain
 - Dimensions: 1609x1395
+- Split: tune
 - Alpha: 88.5% non-opaque, 0.9% soft-edged
 - Notes: Scientific illustration on transparency; thin branching structure, mostly transparent.
 
@@ -56,6 +71,7 @@ below is per image, as the licences require.
 - Author: Tiia Monto
 - License: CC BY-SA 3.0
 - Dimensions: 2261x1833
+- Split: tune
 - Alpha: 48.2% non-opaque, 1.3% soft-edged
 - Notes: Highly fractal organic edge, the hardest kind of alpha boundary to approximate.
 
@@ -66,6 +82,7 @@ below is per image, as the licences require.
 - Author: Defense Logistics Agency
 - License: Public domain
 - Dimensions: 726x816
+- Split: holdout
 - Alpha: 45.3% non-opaque, 0.0% soft-edged
 - Notes: Medal with ribbon: metallic detail plus fabric texture, narrow mostly-transparent frame.
 
@@ -76,6 +93,7 @@ below is per image, as the licences require.
 - Author: Renee Comet (photographer) - edited for transparent background by -download | sign!
 - License: Public domain
 - Dimensions: 2700x1800
+- Split: tune
 - Alpha: 44.9% non-opaque, 0.0% soft-edged
 - Notes: Detailed food cutout; highly textured, colourful, large opaque area.
 
@@ -86,6 +104,7 @@ below is per image, as the licences require.
 - Author: DOD
 - License: Public domain
 - Dimensions: 600x599
+- Split: tune
 - Alpha: 21.8% non-opaque, 0.6% soft-edged
 - Notes: Circular seal: fine radial text and detail, hard circular alpha boundary.
 
@@ -96,6 +115,7 @@ below is per image, as the licences require.
 - Author: Zacke82
 - License: Public domain
 - Dimensions: 800x719
+- Split: holdout
 - Alpha: 52.3% non-opaque, 0.6% soft-edged
 - Notes: Product photo cutout of a DSLR body; detailed dark monochrome subject with hard-ish silhouette.
 
@@ -106,6 +126,7 @@ below is per image, as the licences require.
 - Author: Danrolo
 - License: CC BY-SA 3.0
 - Dimensions: 564x538
+- Split: tune
 - Alpha: 66.1% non-opaque, 0.0% soft-edged
 - Notes: Two-colour flat emblem; mostly transparent, near-monochrome, simple shapes.
 
@@ -116,6 +137,7 @@ below is per image, as the licences require.
 - Author: Raj Joshi, Senior Producer & Studio Director for 17-BIT
 - License: CC BY-SA 3.0
 - Dimensions: 1344x708
+- Split: tune
 - Alpha: 67.9% non-opaque, 0.4% soft-edged
 - Notes: Game sprite art: pixel/vector spaceship with hard alpha and saturated colour.
 
@@ -126,6 +148,7 @@ below is per image, as the licences require.
 - Author: Pelagic
 - License: CC BY-SA 4.0
 - Dimensions: 2417x1461
+- Split: holdout
 - Alpha: 63.2% non-opaque, 9.9% soft-edged
 - Notes: Isolated fish photo with translucent fins, i.e. genuinely soft partial alpha.
 
@@ -136,6 +159,7 @@ below is per image, as the licences require.
 - Author: Unknown
 - License: CC BY-SA 2.5
 - Dimensions: 723x1748
+- Split: tune
 - Alpha: 51.8% non-opaque, 18.2% soft-edged
 - Notes: Ancient artefact cutout; fine detail, warm two-tone palette.
 
@@ -146,6 +170,7 @@ below is per image, as the licences require.
 - Author: User Piotrus; edited by user Jaybear
 - License: CC BY-SA 3.0
 - Dimensions: 2120x2760
+- Split: tune
 - Alpha: 53.6% non-opaque, 0.0% soft-edged
 - Notes: Museum object cutout with an intricate perforated silhouette.
 
@@ -156,6 +181,7 @@ below is per image, as the licences require.
 - Author: US Army
 - License: Public domain
 - Dimensions: 622x620
+- Split: holdout
 - Alpha: 46.4% non-opaque, 0.1% soft-edged
 - Notes: Flat vector-style military patch; hard binary alpha, few flat colours.
 
@@ -166,6 +192,7 @@ below is per image, as the licences require.
 - Author: Roman Dilo (Saroman)
 - License: CC BY 3.0
 - Dimensions: 1000x760
+- Split: tune
 - Alpha: 91.2% non-opaque, 29.3% soft-edged
 - Notes: Lamp with a wide translucent glow, dominated by partial (soft) alpha rather than binary.
 
@@ -176,6 +203,7 @@ below is per image, as the licences require.
 - Author: Pearson Scott Foresman
 - License: Public domain
 - Dimensions: 2749x2483
+- Split: tune
 - Alpha: 72.9% non-opaque, 1.1% soft-edged
 - Notes: Public-domain pen line art of a man hoeing a field; monochrome greyscale+alpha (LA), sparse strokes, ~73% transparent.
 
@@ -186,6 +214,7 @@ below is per image, as the licences require.
 - Author: Pearson Scott Foresman
 - License: Public domain
 - Dimensions: 1255x2048
+- Split: holdout
 - Alpha: 43.0% non-opaque, 0.3% soft-edged
 - Notes: Line-art vessel drawing; hatched shading, monochrome, mostly transparent.
 
@@ -196,6 +225,7 @@ below is per image, as the licences require.
 - Author: A Member of the United States Armed Forces
 - License: Public domain
 - Dimensions: 892x1134
+- Split: tune
 - Alpha: 17.3% non-opaque, 0.0% soft-edged
 - Notes: Heraldic crest, detailed multi-colour flat art with hard alpha.
 
@@ -206,6 +236,7 @@ below is per image, as the licences require.
 - Author: Erik Baas
 - License: CC BY-SA 3.0
 - Dimensions: 732x1554
+- Split: tune
 - Alpha: 22.4% non-opaque, 6.8% soft-edged
 - Notes: Phone cutout that keeps a soft drop shadow, so a large area is partial alpha rather than binary.
 
@@ -216,6 +247,7 @@ below is per image, as the licences require.
 - Author: unnamed
 - License: CC0
 - Dimensions: 4000x4000
+- Split: holdout
 - Alpha: 43.0% non-opaque, 18.0% soft-edged
 - Notes: Banded gas giant render; smooth low-detail interior, soft alpha rim.
 
@@ -226,6 +258,7 @@ below is per image, as the licences require.
 - Author: Max
 - License: CC BY-SA 3.0
 - Dimensions: 2300x2300
+- Split: tune
 - Alpha: 39.1% non-opaque, 6.2% soft-edged
 - Notes: Rendered planet with glowing soft-alpha atmosphere; dark body, high contrast.
 
@@ -236,6 +269,7 @@ below is per image, as the licences require.
 - Author: State of Maryland, Maryland SHWA
 - License: Public domain
 - Dimensions: 1332x1509
+- Split: tune
 - Alpha: 15.3% non-opaque, 0.2% soft-edged
 - Notes: Text-heavy road sign on transparency; flat colour, hard rectangular-ish alpha.
 
@@ -244,7 +278,9 @@ below is per image, as the licences require.
 - Source: <https://commons.wikimedia.org/wiki/File:Aflac_logo.png>
 - File: <https://upload.wikimedia.org/wikipedia/commons/8/81/Aflac_logo.png>
 - Author: Aflac
-- License: CC BY 4.0
+- Status: **withdrawn** — deleted from Wikimedia Commons on 2026-08-25 as a copyright violation (COM:CSD#F1); no archived copy (#83)
+- License: none that holds. The upload claimed CC BY 4.0; the image is withdrawn, so that claim is not relied on, and the image is neither fetched nor redistributed.
 - Dimensions: 3840x1227
+- Split: holdout
 - Alpha: 59.7% non-opaque, 0.8% soft-edged
 - Notes: Wide wordmark logo: extreme aspect, monochrome, overwhelmingly transparent canvas.

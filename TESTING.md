@@ -120,7 +120,7 @@ mise run rd:gate            # encoder quality regression gate
 mise run verify:experiments # every number in spec/EXPERIMENTS.md vs the sweep output
 mise run verify:claims      # every figure the OTHER docs quote from EXPERIMENTS.md
 mise run verify:sweep-labels # every enforceable sweep arm sets the constants its label names
-mise run corpus:licenses -- --check   # corpus attribution vs the pin table
+mise run corpus:licenses -- --check   # corpus attribution vs the pin tables
 mise run verify:benchmark   # every number in spec/PERFORMANCE.md vs the committed runs
 mise run mutants:rust       # full mutation sweep of the core (slow)
 mise run benchmark          # the perf sweep behind spec/PERFORMANCE.md

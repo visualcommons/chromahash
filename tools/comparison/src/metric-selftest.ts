@@ -2386,6 +2386,10 @@ console.log("\nverify:experiments — the table register and result shape\n");
     nonOpaqueFraction: 0,
     softAlphaFraction: 0,
     sha256: "0".repeat(64),
+    source: "https://example.invalid/kept",
+    author: "fixture",
+    licence: "CC0",
+    notes: "fixture",
   };
   const fixture: AlphaImageSpec[] = [
     base,

@@ -1,13 +1,18 @@
-# Graphic Fixture Licenses
+# Graphics corpus — sources and licences
 
-This directory caches the graphic corpus: non-photographic content (screenshots, charts, diagrams, line art).
-Downloads are on-demand (`src/graphic-images.ts`), content-pinned by
-SHA-256, and are **not committed**.
+Non-photographic content: screenshots, charts, diagrams, maps, line art and
+text-heavy graphics. Every image is from Wikimedia Commons under a free
+licence. Attribution below is per image, as the licences require.
 
-Every image is from Wikimedia Commons under a free licence. Attribution
-below is per image, as the licences require.
+These files are **not committed** — they are fetched on demand and content-pinned
+by SHA-256 (`src/graphic-images.ts`, `src/corpus-pin.ts`). A pin mismatch is
+fatal: the corpus a number was measured on is part of what the number means.
 
-## Images
+**This file is generated.** Edit the table in `src/graphic-images.ts` and run
+`mise run corpus:licenses`; `--check` fails when the two disagree.
+
+
+24 images — 16 tune, 8 holdout.
 
 ### `graphic-alphaplot-app`
 
@@ -16,6 +21,7 @@ below is per image, as the licences require.
 - Author: N.arun.lifescience
 - License: CC BY-SA 4.0
 - Dimensions: 1280x751
+- Split: tune
 - Notes: Scientific plotting application window: toolbars, spreadsheet grid and a plot.
 
 ### `graphic-bar-chart-waymo`
@@ -25,6 +31,7 @@ below is per image, as the licences require.
 - Author: WikiEwout
 - License: CC BY-SA 4.0
 - Dimensions: 3600x1800
+- Split: tune
 - Notes: Clean modern bar chart: large flat areas, thin axis rules, small text.
 
 ### `graphic-block-diagram-arch`
@@ -34,6 +41,7 @@ below is per image, as the licences require.
 - Author: Amila Ruwan 20
 - License: CC BY-SA 4.0
 - Dimensions: 5052x4540
+- Split: holdout
 - Notes: Large block diagram: boxes, arrows, flat fills and labels on white.
 
 ### `graphic-circuit-schematic`
@@ -43,6 +51,7 @@ below is per image, as the licences require.
 - Author: Robert.Baruch
 - License: CC BY-SA 4.0
 - Dimensions: 3508x2480
+- Split: tune
 - Notes: Monochrome circuit schematic: thin black lines on white, extremely sparse.
 
 ### `graphic-comic-strip-1940`
@@ -52,6 +61,7 @@ below is per image, as the licences require.
 - Author: Syd Miller
 - License: Public domain
 - Dimensions: 2612x985
+- Split: tune
 - Notes: Newspaper comic strip scan: panelled ink line art with halftone and text.
 
 ### `graphic-comic-wiggle-much`
@@ -61,6 +71,7 @@ below is per image, as the licences require.
 - Author: Herbert Crowley
 - License: CC0
 - Dimensions: 3637x2263
+- Split: holdout
 - Notes: 1910 colour Sunday comic page: flat printed colour, ink outlines, lettering.
 
 ### `graphic-flat-design-desk`
@@ -70,6 +81,7 @@ below is per image, as the licences require.
 - Author: Zombkid
 - License: CC BY-SA 4.0
 - Dimensions: 3002x2002
+- Split: tune
 - Notes: Flat-design vector illustration: large uniform colour fields, no gradients.
 
 ### `graphic-geonames-map`
@@ -79,6 +91,7 @@ below is per image, as the licences require.
 - Author: Charlie Loyd from 94606, USA
 - License: CC BY 2.0
 - Dimensions: 7200x3600
+- Split: tune
 - Notes: Dot-density world map: fine stippled detail on a dark ground.
 
 ### `graphic-gnome-desktop`
@@ -88,6 +101,7 @@ below is per image, as the licences require.
 - Author: The GNOME Project and Nyarch Linux Developers
 - License: CC BY 4.0
 - Dimensions: 1920x1080
+- Split: holdout
 - Notes: Linux desktop screenshot: window chrome, icons and a photographic wallpaper.
 
 ### `graphic-infographic-timeline`
@@ -97,6 +111,7 @@ below is per image, as the licences require.
 - Author: Andrea Bauling
 - License: CC BY-SA 4.0
 - Dimensions: 788x865
+- Split: tune
 - Notes: Infographic timeline: flat colour blocks, icons and body text.
 
 ### `graphic-lineart-pictographs`
@@ -106,6 +121,7 @@ below is per image, as the licences require.
 - Author: Pearson Scott Foresman
 - License: Public domain
 - Dimensions: 3676x618
+- Split: tune
 - Notes: Row of monochrome pictograms; flat black shapes on white, extreme aspect.
 
 ### `graphic-lineart-scarecrow`
@@ -115,6 +131,7 @@ below is per image, as the licences require.
 - Author: Pearson Scott Foresman
 - License: Public domain
 - Dimensions: 1817x2061
+- Split: holdout
 - Notes: Dense engraving-style hatched line art, monochrome, high spatial frequency.
 
 ### `graphic-logo-solid-blue`
@@ -124,6 +141,7 @@ below is per image, as the licences require.
 - Author: Raymond Loewy
 - License: Public domain
 - Dimensions: 6600x4400
+- Split: tune
 - Notes: Logo on a solid blue field: two flat colours, huge uniform background area.
 
 ### `graphic-periodic-table-nist`
@@ -133,6 +151,7 @@ below is per image, as the licences require.
 - Author: R.A. Dragoset, A. Musgrove, C.W. Clark, and W.C. Martin — NIST, Physical Measurement Laboratory
 - License: Public domain
 - Dimensions: 3300x2550
+- Split: tune
 - Notes: Reference table: coloured cells, dense small numerals and text.
 
 ### `graphic-playfair-piecharts`
@@ -142,6 +161,7 @@ below is per image, as the licences require.
 - Author: William Playfair
 - License: Public domain
 - Dimensions: 6306x3456
+- Split: holdout
 - Notes: Historic hand-engraved statistical pie charts; aged paper, JPEG scan.
 
 ### `graphic-scientific-plot`
@@ -151,6 +171,7 @@ below is per image, as the licences require.
 - Author: Chamaemelum
 - License: Public domain
 - Dimensions: 3200x1600
+- Split: tune
 - Notes: Horizontal seaborn-style bar chart: ten saturated category bars, grid lines and small axis text on white.
 
 ### `graphic-sheet-music-dense`
@@ -160,6 +181,7 @@ below is per image, as the licences require.
 - Author: Antonio Bazzini
 - License: Public domain
 - Dimensions: 1781x2363
+- Split: tune
 - Notes: Dense engraved violin score: very high stroke density, monochrome.
 
 ### `graphic-smps-schematic`
@@ -169,6 +191,7 @@ below is per image, as the licences require.
 - Author: Amila Ruwan 20
 - License: CC BY-SA 4.0
 - Dimensions: 7016x4961
+- Split: holdout
 - Notes: Detailed power-supply schematic as a JPEG; thin lines, ringing-prone content.
 
 ### `graphic-tiling-wm`
@@ -178,6 +201,7 @@ below is per image, as the licences require.
 - Author: blowback
 - License: CC BY-SA 3.0
 - Dimensions: 1280x1024
+- Split: tune
 - Notes: Tiling window manager screenshot: dense monospace terminal text, high frequency detail.
 
 ### `graphic-timechart-six-nations`
@@ -187,6 +211,7 @@ below is per image, as the licences require.
 - Author: Blackcat
 - License: CC0
 - Dimensions: 1529x999
+- Split: tune
 - Notes: Dense categorical time chart, many small coloured cells and labels.
 
 ### `graphic-transit-diagram`
@@ -196,6 +221,7 @@ below is per image, as the licences require.
 - Author: Footy2000
 - License: CC BY 4.0
 - Dimensions: 9983x13113
+- Split: holdout
 - Notes: Schematic transit map: pure flat colour, straight strokes, dense small text.
 
 ### `graphic-web-app-screenshot`
@@ -205,6 +231,7 @@ below is per image, as the licences require.
 - Author: FramaKa
 - License: CC BY-SA 4.0
 - Dimensions: 1920x1080
+- Split: tune
 - Notes: Website screenshot: flat cards, text blocks and a large colour field.
 
 ### `graphic-wikipedia-text-page`
@@ -214,6 +241,7 @@ below is per image, as the licences require.
 - Author: Stefan Kühn
 - License: CC0
 - Dimensions: 1646x1975
+- Split: tune
 - Notes: Text-heavy page screenshot: dense body text, links and headings, near-monochrome.
 
 ### `graphic-world-map-colour`
@@ -223,4 +251,5 @@ below is per image, as the licences require.
 - Author: Colomet
 - License: Public domain
 - Dimensions: 4572x2500
+- Split: holdout
 - Notes: Flat colour-coded world map: large uniform regions, hard borders.

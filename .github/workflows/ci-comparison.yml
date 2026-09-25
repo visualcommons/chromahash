@@ -165,12 +165,35 @@ jobs:
       - name: Every sweep arm sets the constants its label names
         run: node tools/comparison/dist/verify-sweep-labels.js
 
-      # The corpus attribution file against the pin table that generates it.
-      # 39 Wikimedia Commons images under free licences require per-image
-      # attribution, and the generated file is the only place it is recorded.
-      # Reads two files: no corpus download, no network.
-      - name: The corpus attribution file is current
+      # The photographic, alpha and graphics attribution files against the pin
+      # tables that generate them. The Wikimedia Commons images under free
+      # licences require per-image attribution, and the generated files are
+      # the only place it is recorded. Reads committed files only: no corpus
+      # download, no network.
+      - name: The corpus attribution files are current
         run: node tools/comparison/dist/corpus-licenses.js --check
+
+      # The failure path of the step above: with one file stale and another
+      # missing, `--check` must exit 1 and name both, not stop at the first,
+      # and must still report the untouched file as current. The fixtures are
+      # restored from git afterwards, whatever the outcome.
+      - name: The attribution check reports every stale or missing file
+        shell: bash
+        run: |
+          set -u
+          trap 'git checkout -- tools/comparison/fixtures' EXIT
+          alpha=tools/comparison/fixtures/alpha/LICENSES.md
+          graphic=tools/comparison/fixtures/graphic/LICENSES.md
+          echo "stale" >> "$alpha"
+          rm "$graphic"
+          status=0
+          out=$(node tools/comparison/dist/corpus-licenses.js --check 2>&1) || status=$?
+          echo "$out"
+          test "$status" -eq 1 || { echo "expected exit 1, got $status"; exit 1; }
+          # The tool prints absolute paths, so match on the repository-relative suffix.
+          grep -qF "$alpha does not match" <<<"$out" || { echo "stale $alpha not reported"; exit 1; }
+          grep -qF "$graphic is missing" <<<"$out" || { echo "missing $graphic not reported"; exit 1; }
+          grep -qF "natural/LICENSES.md is up to date" <<<"$out" || { echo "natural file not reported current"; exit 1; }
 
       # Reads spec/PERFORMANCE.md and the committed runs under baselines/ only —
       # no harness, no toolchain.
