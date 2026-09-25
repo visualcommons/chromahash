@@ -1,5 +1,5 @@
 use crate::aspect::encode_aspect;
-use crate::bitpack::{write_bits, write_bits_bytewise};
+use crate::bitpack::{write_bits, write_bits_word};
 use crate::color::{linear_rgb_to_oklab, oklab_to_linear_srgb};
 use crate::constants::{
     ALPHA_FLAG_BIT, DEFAULT_TIER, FORMAT_VERSION, Gamut, MAX_TIER, Tunables, VERSION_BITS,
@@ -259,8 +259,9 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
         let mut tr = [0.0f64; FUSED_TILE];
         let mut tg = [0.0f64; FUSED_TILE];
         let mut tb = [0.0f64; FUSED_TILE];
-        let mut start = 0;
-        while start < pixel_count {
+        // A bounded `for`, not a `while` on `start`: a mutated bound in the
+        // mutation sweep must fail a test, not hang it.
+        for start in (0..pixel_count).step_by(FUSED_TILE) {
             let end = (start + FUSED_TILE).min(pixel_count);
             let n = end - start;
             for k in 0..n {
@@ -283,7 +284,6 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
                 avg_b += alpha * lab[2];
                 avg_alpha += alpha;
             }
-            start = end;
         }
         alpha_pixels = Vec::new();
         stage!("fused_pixels");
@@ -1529,10 +1529,10 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     //    reserved (bit 7, 0). Byte 1: aspect. (v1, spec §3.1)
     let body_len = body_len_bytes(t, has_alpha, tier);
     let mut hash = vec![0u8; body_len];
-    // §12.1 item 7 (`accel_bytewise_bitpack`): the same bits, a byte-span at
-    // a time. Both writers only OR into a zeroed buffer.
-    let put: fn(&mut [u8], usize, u32, u32) = if t.accel_bytewise_bitpack {
-        write_bits_bytewise
+    // §12.1 item 7 (`accel_word_bitpack`): the same bits, a word at a time.
+    // Both writers only OR into a zeroed buffer.
+    let put: fn(&mut [u8], usize, u32, u32) = if t.accel_word_bitpack {
+        write_bits_word
     } else {
         write_bits
     };
@@ -2025,7 +2025,7 @@ mod tests {
         |t| t.accel_dct_lanes = true,
         |t| t.accel_sse_early_exit = true,
         |t| t.accel_fused_pixels = true,
-        |t| t.accel_bytewise_bitpack = true,
+        |t| t.accel_word_bitpack = true,
     ];
 
     /// Deterministic noise over a gradient, optionally with an alpha ramp that

@@ -85,7 +85,7 @@ export const ACCEL_ALL = [
   "accel_flat_cos=1",
   "accel_sse_early_exit=1",
   "accel_fused_pixels=1",
-  "accel_bytewise_bitpack=1",
+  "accel_word_bitpack=1",
 ].join(" ");
 
 /**
@@ -118,7 +118,7 @@ export const TUNE_ARMS: ReadonlyArray<{ label: string; tune: string | null }> =
     { label: "accel_quant_table", tune: "accel_quant_table=1" },
     { label: "accel_dct_lanes", tune: "accel_dct_lanes=1" },
     { label: "accel_fused_pixels", tune: "accel_fused_pixels=1" },
-    { label: "accel_bytewise_bitpack", tune: "accel_bytewise_bitpack=1" },
+    { label: "accel_word_bitpack", tune: "accel_word_bitpack=1" },
     { label: "accel all", tune: ACCEL_ALL },
     {
       label: "refine_passes=1 accel_sse_early_exit",

@@ -48,9 +48,7 @@ const LEVERS: [Lever; 7] = [
     ("accel_flat_cos", |t| t.accel_flat_cos = true),
     ("accel_sse_early_exit", |t| t.accel_sse_early_exit = true),
     ("accel_fused_pixels", |t| t.accel_fused_pixels = true),
-    ("accel_bytewise_bitpack", |t| {
-        t.accel_bytewise_bitpack = true
-    }),
+    ("accel_word_bitpack", |t| t.accel_word_bitpack = true),
 ];
 
 /// Each lever alone on top of `base`, then all of them together.
@@ -92,7 +90,7 @@ fn every_lever_is_off_in_the_shipped_defaults() {
     assert!(!d.accel_flat_cos);
     assert!(!d.accel_sse_early_exit);
     assert!(!d.accel_fused_pixels);
-    assert!(!d.accel_bytewise_bitpack);
+    assert!(!d.accel_word_bitpack);
 }
 
 fn gamut_from_str(s: &str) -> Gamut {

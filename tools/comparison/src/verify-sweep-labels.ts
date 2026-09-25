@@ -149,7 +149,7 @@ const TUNE_KEYS = [
   "accel_flat_cos",
   "accel_sse_early_exit",
   "accel_fused_pixels",
-  "accel_bytewise_bitpack",
+  "accel_word_bitpack",
   "scale_fit",
   "refine_passes",
   "refine_delta",

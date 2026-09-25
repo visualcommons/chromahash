@@ -10,30 +10,32 @@ pub fn write_bits(hash: &mut [u8], bitpos: usize, count: u32, value: u32) {
     }
 }
 
-/// [`write_bits`], a byte-span at a time: each byte the field touches is
-/// OR-ed once with the run of the field's bits that lands in it, instead of
-/// once per bit — `spec/PERFORMANCE.md` §12.1 item 7.
+/// [`write_bits`], a word at a time: the field is masked and shifted into
+/// place in one 64-bit word, and each byte it touches is OR-ed once, instead
+/// of once per bit — `spec/PERFORMANCE.md` §12.1 item 7.
 ///
 /// The same bits reach the same positions. `write_bits` sets bit `i` of
-/// `value` (for `i < count`) at stream position `bitpos + i`, byte
-/// `(bitpos + i) / 8`, bit `(bitpos + i) % 8`, and never clears a bit; this
-/// takes the bits of `value` in the same order, masks off everything at and
-/// above `count` exactly as the per-bit loop never looks there, and ORs each
-/// byte's run in at the same offset.
-pub fn write_bits_bytewise(hash: &mut [u8], bitpos: usize, count: u32, value: u32) {
+/// `value` (for `i < count`) at stream position `bitpos + i` — byte
+/// `(bitpos + i) / 8`, bit `(bitpos + i) % 8` — and never clears a bit. Here
+/// bit `i` of the masked value is bit `bitpos % 8 + i` of the shifted word,
+/// which is bit `(bitpos + i) % 8` of word byte `k = (bitpos % 8 + i) / 8`,
+/// written to `hash[bitpos / 8 + k]`: the same byte. The mask drops every bit
+/// at and above `count`, which the per-bit loop never reads. A field is at
+/// most 32 bits and its offset in a byte at most 7, so the word never
+/// overflows its 64 bits.
+///
+/// Every loop here is a bounded `for`: a mutated bound cannot turn it into one
+/// that never ends.
+pub fn write_bits_word(hash: &mut [u8], bitpos: usize, count: u32, value: u32) {
     debug_assert!(count <= 32, "a field is at most 32 bits wide");
-    // In u64 the mask is well-defined at every width up to and including 32.
-    let mut v = (value as u64) & ((1u64 << count) - 1);
-    let mut pos = bitpos;
-    let mut remaining = count as usize;
-    while remaining > 0 {
-        let off = pos % 8;
-        let take = (8 - off).min(remaining);
-        let run = (v & ((1u64 << take) - 1)) as u8;
-        hash[pos / 8] |= run << off;
-        v >>= take;
-        pos += take;
-        remaining -= take;
+    if count == 0 {
+        return;
+    }
+    let word = ((value as u64) & ((1u64 << count) - 1)) << (bitpos % 8);
+    let first = bitpos / 8;
+    let last = (bitpos + count as usize - 1) / 8;
+    for (k, byte) in hash[first..=last].iter_mut().enumerate() {
+        *byte |= (word >> (8 * k)) as u8;
     }
 }
 
@@ -101,7 +103,7 @@ mod tests {
     }
 
     #[test]
-    fn bytewise_writes_the_same_bits() {
+    fn word_writer_writes_the_same_bits() {
         // Every start offset across three bytes, every width, and values with
         // bits set above `count` (which both writers must ignore), written into
         // buffers that already hold bits (both writers only ever OR).
@@ -122,7 +124,7 @@ mod tests {
                     }
                     let mut b = a;
                     write_bits(&mut a, bitpos, count, value);
-                    write_bits_bytewise(&mut b, bitpos, count, value);
+                    write_bits_word(&mut b, bitpos, count, value);
                     assert_eq!(a, b, "bitpos={bitpos} count={count} value={value:#x}");
                 }
             }

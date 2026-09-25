@@ -497,9 +497,9 @@ pub struct Tunables {
     /// one tiled pass, and the per-pixel alpha buffer is built only when the
     /// image has alpha to transform.
     pub accel_fused_pixels: bool,
-    /// §12.1 item 7: bit fields are written a byte-span at a time instead of
-    /// one bit at a time.
-    pub accel_bytewise_bitpack: bool,
+    /// §12.1 item 7: each bit field is shifted into place as one word and
+    /// OR-ed a byte at a time, instead of one bit at a time.
+    pub accel_word_bitpack: bool,
     /// Encoder-only pixel-domain refinement passes (0 = off, the shipped
     /// behaviour). Each pass is a coordinate descent over the AC codes —
     /// optionally the DC and scale codes too — scored by the error of the
@@ -692,7 +692,7 @@ impl Tunables {
         accel_flat_cos: false,
         accel_sse_early_exit: false,
         accel_fused_pixels: false,
-        accel_bytewise_bitpack: false,
+        accel_word_bitpack: false,
         refine_passes: 0,
         refine_delta: 1,
         refine_obj: 0,
