@@ -85,8 +85,9 @@ const { values } = parseArgs({
     "skip-harnesses": { type: "boolean", default: false },
     "generate-fixtures": { type: "boolean", default: true },
     "skip-natural": { type: "boolean", default: false },
-    // Skip downloading the Kodak holdout suite (mirrors --skip-natural; the
-    // holdout images live in fixtures/holdout/ and are cached the same way).
+    // Skip downloading the Kodak suite (mirrors --skip-natural; the images live
+    // in fixtures/holdout/ and are cached the same way). The flag and directory
+    // keep their names, but Kodak is the tune2 split since #76.
     "skip-holdout": { type: "boolean", default: false },
     // Preview-only escape hatch: metrics degrade to N/A instead of failing the
     // run when iqa-cli is unavailable. Never use for published comparisons.
@@ -289,11 +290,12 @@ async function main(): Promise<void> {
     console.log(`${naturalPaths.length} natural image(s) available.`);
   }
 
-  // Fetch the Kodak holdout suite (on-demand with local cache)
+  // Fetch the Kodak suite (on-demand with local cache). It is the tune2 split
+  // since #76 retired the photographic holdout; the flag keeps its old name.
   if (!skipHoldout) {
-    console.log("Ensuring holdout images are cached...");
-    const holdoutPaths = await ensureHoldoutImages();
-    console.log(`${holdoutPaths.length} holdout image(s) available.`);
+    console.log("Ensuring Kodak (tune2) images are cached...");
+    const kodakPaths = await ensureHoldoutImages();
+    console.log(`${kodakPaths.length} Kodak (tune2) image(s) available.`);
   }
 
   // Find all image files
