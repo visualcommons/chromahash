@@ -177,7 +177,7 @@ jobs:
       #
       # `continue-on-error` because six of PERFORMANCE.md's cells are still
       # placeholders — §2's tier-3/4 encode and §3's 128/1024 rows, which the
-      # `bounded` matrix does not produce. A baseline IS now committed and 180
+      # `bounded` matrix does not produce. A baseline IS now committed and 216
       # values are checked against it, so this is six cells from green rather
       # than the whole document — plus §12.4's 34 lever cells, whose arms the
       # bounded matrix gained after that baseline was taken; the next bounded

@@ -291,10 +291,40 @@ const PROSE_CLAIMS: ProseClaim[] = [
     stages: ["oklab_forward"],
   },
   {
-    what: "§1: `quantize_and_pack`'s share at 100x100 t1, quoted in prose",
-    pattern: /At 100×100, `quantize_and_pack` is ([\d.]+)%\*\*/,
+    what: "§1: `ac_quantize`'s share at 100x100 t1, quoted in prose",
+    pattern: /At 100×100, `ac_quantize` is ([\d.]+)%\*\*/,
     cell: "100x100-t1",
-    stages: ["quantize_and_pack"],
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§1: `unmarked`'s share at 512x512 t1, quoted in prose",
+    pattern: /negligible at 100×100, and ([\d.]+)% at 512×512/,
+    cell: "512x512-t1",
+    stages: ["unmarked"],
+  },
+  {
+    what: "§12 summary: the searches' share of the old residual at 100x100 t1",
+    pattern: /the searches are\s+([\d.]+) of its old/,
+    cell: "100x100-t1",
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§12.1: `ac_quantize` at 100x100 t1, after the table",
+    pattern: /`ac_quantize`, which is ([\d.]+)% of a thumbnail encode/,
+    cell: "100x100-t1",
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§12.1: `ac_quantize` at 512x512 t1, after the table",
+    pattern: /of a thumbnail encode\nand ([\d.]+)% of a photograph/,
+    cell: "512x512-t1",
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§12.1: `dc_search` at 100x100 t1",
+    pattern: /is `dc_search` at ([\d.]+)%/,
+    cell: "100x100-t1",
+    stages: ["dc_search"],
   },
   {
     what: "§1: `dct_forward`'s share at 100x100 t1, quoted in prose",
@@ -315,10 +345,10 @@ const PROSE_CLAIMS: ProseClaim[] = [
     stages: ["linearize", "oklab_forward", "composite"],
   },
   {
-    what: "§12 summary: `quantize_and_pack`, restated",
-    pattern: /`quantize_and_pack` is \*\*([\d.]+)%\*\* of a 100×100 one/,
+    what: "§12 summary: `ac_quantize`, restated",
+    pattern: /`ac_quantize` is \*\*([\d.]+)%\*\* of a 100×100 one/,
     cell: "100x100-t1",
-    stages: ["quantize_and_pack"],
+    stages: ["ac_quantize"],
   },
   {
     what: "§12 summary: `dct_forward` at tier 4, restated",

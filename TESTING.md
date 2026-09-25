@@ -173,7 +173,7 @@ it can run where the sweeps cannot.
 > bound or listed in `UNBOUND_COLUMN_NOTES` with the reason.
 
 > **`verify:benchmark` fails on six cells, and its CI job is still red.** A
-> baseline is now committed and **180 values are checked against it**; what is
+> baseline is now committed and **216 values are checked against it**; what is
 > left is §2's tier-3/4 encode and §3's 128/1024 rows, which the `bounded`
 > matrix does not produce — `mise run benchmark:full` is what closes them. It
 > also fails on §12.4's 34 lever cells, which the bounded matrix records but
