@@ -2479,8 +2479,9 @@ unchanged; the reason it is rejected is now over-determined.
 > can check them now. The `tune` column is bound and reproducible from
 > `tools/comparison/results/v07-holdout-alpha.json`. The four decisions this
 > table records keep their tune evidence (that column, and §11.3 for the alpha
-> row and `alpha_ac_fit`) and have lost their out-of-sample evidence. They get it back only from a new alpha split,
-> curated on covariates and sealed before anything reads it.
+> row and `alpha_ac_fit`) and have lost their out-of-sample evidence. They get
+> it back only from a new alpha split, curated on covariates and sealed before
+> anything reads it.
 >
 > **The last row is measured against the 21-byte shipped shape**, not against
 > the 32-byte incumbent the three rows above it use — a 21 B candidate against a
@@ -2524,7 +2525,7 @@ Beaten on all four metrics, out of sample, at ThumbHash's own size — the claim
 
 | Change | Evidence |
 |---|---|
-| Alpha row → `L 22 @ 4, a/b 3 @ 3, A 28 @ 3` at tier 0 and the tier-1..3 base (the compact tier takes its own, below) | −17.10% tune (§11.3, §11.11); −16.19% holdout, all guards, on the retired alpha split, which can no longer be reproduced (§11.12) |
+| Alpha row → `L 22 @ 4, a/b 3 @ 3, A 28 @ 3` at tier 0 and the tier-1..3 base (the compact tier takes its own, below) | −17.10% on tune (§11.3), −11.95% on tune at tier 1 (§11.11); −16.19% holdout, all guards, on the retired alpha split, which can no longer be reproduced (§11.12) |
 | Compact tier, code 4, 21 B, `L 19 @ 4 / a/b 6 @ 3` (alpha `L 12 @ 4 / a/b 1 @ 3 / A 16 @ 3`) | Beats ThumbHash on all four on holdout (§11.10, §11.12) |
 | Deadzone made reachable again | It was byte-identical at every value (§11.7) |
 
