@@ -373,7 +373,7 @@ async function loadCorpus(corpus: CorpusSet): Promise<ImageInput[]> {
   }
   // Only fetch a corpus a run will actually score: the alpha and graphics sets
   // are ~40 MB the photographic sweeps would never look at.
-  if (corpus === "alpha" || corpus === "all") await ensureAlphaImages();
+  if (corpus === "alpha" || corpus === "all") await ensureAlphaImages(split);
   if (corpus === "graphic" || corpus === "all") await ensureGraphicImages();
 
   const paths: string[] = [];
