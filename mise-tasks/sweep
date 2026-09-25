@@ -6,8 +6,10 @@
 #
 # <config> is a name under tools/comparison/sweeps/, e.g.
 #   mise run sweep companding-family
-# Results land in output/sweeps/<name>.json. Pass `--split holdout` only to
-# validate a finished winner against the pre-registered rule — never to tune.
+# Results land in tools/comparison/results/<name>[-holdout].json, which is
+# committed (a --max-images run is scratch and goes to output/sweeps/ instead).
+# Pass `--split holdout` only to validate a finished winner against the
+# pre-registered rule — never to tune.
 set -euo pipefail
 
 config="${1:?usage: mise run sweep <config> [args...]}"

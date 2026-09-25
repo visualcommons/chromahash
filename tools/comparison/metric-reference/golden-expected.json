@@ -1,0 +1,10 @@
+{
+  "iqaCli": "iqa-cli 1.2.1",
+  "note": "Recorded from the iqa-cli named above by `node dist/metric-reference-test.js --update`. A regression pin, not a reference value: see metric-reference-test.ts.",
+  "scores": {
+    "butteraugli": 4.398121280466522,
+    "ciede2000": 4.225127793864698,
+    "dssim": 0.0854265131258855,
+    "ssimulacra2": 48.46249349188268
+  }
+}

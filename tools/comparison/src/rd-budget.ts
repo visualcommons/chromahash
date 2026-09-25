@@ -12,13 +12,19 @@
  * Every run also emits the guard-aware summary (roadmap U16): a winner per
  * metric inside each byte neighbourhood, flagging where ChromaHash wins ΔE00
  * and loses SSIMULACRA2 / Butteraugli / DSSIM to the format it is beating.
- * `--summarize` recomputes that section from an already-written JSON, so the
+ * `--summarize` recomputes that section from an already-written result, so the
  * cross-format scoring can be revisited without re-running the metrics.
+ *
+ * A full run writes `tools/comparison/results/<out>-<split>.json`, which is
+ * committed: per-image scores and provenance, nothing derived (`results.ts`).
+ * The summary is derived, so it is printed rather than stored. A run narrowed
+ * by `--max-images` or `--formats` is not a result and goes to `output/sweeps/`.
  *
  * Usage:
  *   node dist/rd-budget.js [--split tune|holdout|all] [--budgets 16,21,24,32,...]
  *                          [--max-images N] [--out <name>] [--formats a,b,c]
- *   node dist/rd-budget.js --summarize output/sweeps/rd-budget-tune.json
+ *                          [--out-dir DIR]
+ *   node dist/rd-budget.js --summarize results/rd-budget-holdout.json
  *                          [--budgets 16,21,24,32,...]
  */
 
@@ -26,13 +32,18 @@ import fs from "node:fs/promises";
 import { glob } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import sharp from "sharp";
 import { BlurHashAdapter } from "./adapters/blurhash.ts";
 import {
   RUST_CLI,
   decodeViaRust,
   encodeViaRust,
 } from "./adapters/chromahash.ts";
-import { CodecThumbAdapter, isJxlAvailable } from "./adapters/codec-thumb.ts";
+import {
+  CodecThumbAdapter,
+  isJxlAvailable,
+  jxlToolPaths,
+} from "./adapters/codec-thumb.ts";
 import { LqipModernAdapter } from "./adapters/lqip-modern.ts";
 import { RawPixelsAdapter } from "./adapters/raw-pixels.ts";
 import { ThumbHashAdapter } from "./adapters/thumbhash.ts";
@@ -42,8 +53,25 @@ import { generateFixtures } from "./generate-fixtures.ts";
 import { ensureHoldoutImages } from "./holdout-images.ts";
 import { loadImage } from "./image-loader.ts";
 import { computeAllMetrics, setScoringConfig } from "./metrics.ts";
-import { ensureIqaAvailable } from "./metrics/iqa.ts";
+import { ensureIqaAvailable, iqaVersionBanner } from "./metrics/iqa.ts";
 import { ensureNaturalImages } from "./natural-images.ts";
+import {
+  type PerImage,
+  RESULTS_DIR,
+  RESULT_SCHEMA,
+  type ResultFile,
+  SCRATCH_DIR,
+  captureProvenance,
+  fileSha256,
+  mean,
+  perImageOf,
+  readResult,
+  repoRelative,
+  resultPath,
+  serializeResult,
+  sha256,
+  summarize,
+} from "./results.ts";
 import type { FormatAdapter, ImageInput } from "./types.ts";
 
 /** Fixed bit prefix before the AC payload (descriptor+aspect+DC+scales). */
@@ -126,12 +154,21 @@ interface Row {
   family: string;
   variant: string;
   targetBytes: number | null;
+  /** CHROMAHASH_TUNE of a ChromaHash row; null for the shipped constants and other formats. */
+  tune: string | null;
+  /** Quality tier code of a ChromaHash row; null for other formats. */
+  tier: number | null;
   images: number;
   bytes: number;
   ciede2000: number | null;
   ssimulacra2: number | null;
   butteraugli: number | null;
   dssim: number | null;
+  /**
+   * The per-image series, aligned with the corpus: null where this format could
+   * not represent the budget on that image. What the committed result keeps.
+   */
+  perImage: PerImage;
 }
 
 const { values } = parseArgs({
@@ -141,6 +178,7 @@ const { values } = parseArgs({
     formats: { type: "string" },
     "max-images": { type: "string" },
     out: { type: "string" },
+    "out-dir": { type: "string" },
     summarize: { type: "string" },
   },
 });
@@ -200,12 +238,6 @@ async function loadCorpus(): Promise<ImageInput[]> {
   return inputs;
 }
 
-/** Mean of the finite values, or null. */
-function mean(xs: (number | null)[]): number | null {
-  const v = xs.filter((x): x is number => x !== null && Number.isFinite(x));
-  return v.length > 0 ? v.reduce((s, x) => s + x, 0) / v.length : null;
-}
-
 /** Score one ChromaHash layout (encode + capped decode + metrics) per image. */
 async function scoreChromaHash(
   label: string,
@@ -219,6 +251,7 @@ async function scoreChromaHash(
   const ssim2: (number | null)[] = [];
   const butter: (number | null)[] = [];
   const dssim: (number | null)[] = [];
+  const bytes: number[] = [];
   let bytesSum = 0;
   for (const input of inputs) {
     const { smallWidth: w, smallHeight: h, smallRgba: rgba } = input;
@@ -232,6 +265,7 @@ async function scoreChromaHash(
       tune ?? undefined,
     );
     bytesSum += hash.length;
+    bytes.push(hash.length);
     const dec = decodeViaRust(RUST_CLI, hash, "srgb", w, h, tune ?? undefined);
     const { metrics } = await computeAllMetrics(
       input.metricReferenceRgba ?? input.referenceRgba,
@@ -250,12 +284,21 @@ async function scoreChromaHash(
     family: "ChromaHash",
     variant: label,
     targetBytes,
+    tune,
+    tier,
     images: inputs.length,
     bytes: bytesSum / (inputs.length || 1),
     ciede2000: mean(ciede),
     ssimulacra2: mean(ssim2),
     butteraugli: mean(butter),
     dssim: mean(dssim),
+    perImage: perImageOf({
+      bytes,
+      ciede2000: ciede,
+      ssimulacra2: ssim2,
+      butteraugli: butter,
+      dssim,
+    }),
   };
 }
 
@@ -270,19 +313,24 @@ async function scoreAdapter(
   const ssim2: (number | null)[] = [];
   const butter: (number | null)[] = [];
   const dssim: (number | null)[] = [];
+  const bytes: (number | null)[] = [];
   let bytesSum = 0;
   let scored = 0;
   for (const input of inputs) {
     try {
       const r = await adapter.process(input);
       bytesSum += r.encodedSizeBytes;
+      bytes.push(r.encodedSizeBytes);
       ciede.push(r.metrics.ciede2000);
       ssim2.push(r.metrics.ssimulacra2);
       butter.push(r.metrics.butteraugli);
       dssim.push(r.metrics.dssim);
       scored++;
     } catch {
-      // Budget unrepresentable for this codec on this image — skip it.
+      // Budget unrepresentable for this codec on this image — skip it. The
+      // per-image series keep a null in its place, so they stay aligned with
+      // the corpus and the result shows which images a mean is over.
+      for (const s of [bytes, ciede, ssim2, butter, dssim]) s.push(null);
     }
   }
   if (scored === 0) return null;
@@ -290,6 +338,15 @@ async function scoreAdapter(
     family,
     variant: adapter.name,
     targetBytes,
+    tune: null,
+    tier: null,
+    perImage: perImageOf({
+      bytes,
+      ciede2000: ciede,
+      ssimulacra2: ssim2,
+      butteraugli: butter,
+      dssim,
+    }),
     images: scored,
     bytes: bytesSum / scored,
     ciede2000: mean(ciede),
@@ -531,27 +588,47 @@ function printGuardSummary(summary: Neighbourhood[]): void {
   }
 }
 
-/** Re-score an already-written rd-budget JSON, adding the guard summary. */
-async function summarizeExisting(jsonPath: string): Promise<void> {
-  const raw = JSON.parse(await fs.readFile(jsonPath, "utf8")) as {
-    split: string;
-    images: number;
-    budgets: number[];
-    rows: Row[];
-    summary?: Neighbourhood[];
-  };
-  const anchors = values.budgets !== undefined ? budgets : raw.budgets;
-  const summary = summarizeGuards(raw.rows, anchors);
-  printGuardSummary(summary);
-  raw.summary = summary;
-  await fs.writeFile(jsonPath, `${JSON.stringify(raw, null, 2)}\n`);
-  console.log(`\n→ ${jsonPath}`);
+/**
+ * Re-derive the guard summary from an already-written result.
+ *
+ * Printed, not written back: the summary is a function of the per-image
+ * series, and a result stores nothing derived (`results.ts`).
+ */
+function summarizeExisting(jsonPath: string): void {
+  const file = readResult(
+    path.dirname(jsonPath),
+    path.basename(jsonPath, ".json"),
+  );
+  if (!file) throw new Error(`no result at ${jsonPath}`);
+  if (file.tool !== "rd-budget") {
+    throw new Error(`${jsonPath} is a ${file.tool} result, not rd-budget's`);
+  }
+  const rows: Row[] = file.rows.map((r) => {
+    const s = summarize(r, file.imageNames);
+    return {
+      family: r.family ?? "ChromaHash",
+      variant: r.label,
+      targetBytes: r.targetBytes ?? null,
+      tune: r.tune,
+      tier: r.tier,
+      images: s.images,
+      bytes: s.bytes ?? 0,
+      ciede2000: s.meanCiede,
+      ssimulacra2: s.meanSsimulacra2,
+      butteraugli: s.meanButteraugli,
+      dssim: s.meanDssim,
+      perImage: r.perImage,
+    };
+  });
+  const recorded = file.settings.budgets as number[];
+  const anchors = values.budgets !== undefined ? budgets : recorded;
+  printGuardSummary(summarizeGuards(rows, anchors));
 }
 
 async function main(): Promise<void> {
   const summarizePath = values.summarize;
   if (summarizePath !== undefined) {
-    await summarizeExisting(path.resolve(summarizePath));
+    summarizeExisting(path.resolve(summarizePath));
     return;
   }
   ensureIqaAvailable();
@@ -559,6 +636,37 @@ async function main(): Promise<void> {
 
   let inputs = await loadCorpus();
   if (maxImages !== null) inputs = inputs.slice(0, maxImages);
+
+  // rd-budget has no config file; what decides its rows is its arguments, so
+  // those are what the config digest covers. Taken before the first encode.
+  const effectiveArgs = {
+    split: splitArg,
+    budgets,
+    formats: formatFilter ? [...formatFilter].sort() : null,
+    maxImages,
+    jxl: isJxlAvailable(),
+  };
+  // cjxl/djxl come from PATH, not the tree, so the rev does not pin them: hash
+  // the binaries themselves whenever the JXL baseline will run.
+  const runsJxl =
+    effectiveArgs.jxl && (formatFilter === null || formatFilter.has("jxl"));
+  const provenance = {
+    ...captureProvenance({
+      config: "tools/comparison/src/rd-budget.ts",
+      configSha256: sha256(JSON.stringify(effectiveArgs)),
+      iqaCli: iqaVersionBanner(),
+      binaries: [RUST_CLI, ...(runsJxl ? jxlToolPaths() : [])],
+      codecs: Object.fromEntries(
+        Object.entries(sharp.versions).filter(
+          (e): e is [string, string] => typeof e[1] === "string",
+        ),
+      ),
+    }),
+    corpus: inputs.map((i) => ({
+      name: path.basename(i.filePath).replace(/\.[^.]+$/, ""),
+      sha256: fileSha256(i.filePath) ?? "missing",
+    })),
+  };
   console.log(
     `rd-budget: ${inputs.length} ${splitArg}-split photos × budgets [${budgets.join(", ")}]`,
   );
@@ -653,7 +761,14 @@ async function main(): Promise<void> {
       await push(scoreAdapter("RawRGB565", new RawPixelsAdapter(b), b, inputs));
     }
   }
-  const codecs = ["webp", "jpeg", "avif", ...(isJxlAvailable() ? ["jxl"] : [])];
+  // The availability the provenance was taken under, so the binaries it hashed
+  // are the ones that run.
+  const codecs = [
+    "webp",
+    "jpeg",
+    "avif",
+    ...(effectiveArgs.jxl ? ["jxl"] : []),
+  ];
   for (const codec of codecs) {
     if (!want(codec)) continue;
     for (const b of budgets) {
@@ -668,18 +783,46 @@ async function main(): Promise<void> {
     }
   }
 
-  const toolRoot = path.resolve(import.meta.dirname, "..");
-  const outDir = path.join(toolRoot, "output/sweeps");
+  // A run narrowed to some images or some formats is not the cross-format
+  // result, so it never lands where the committed one lives.
+  const outDir =
+    values["out-dir"] !== undefined
+      ? path.resolve(values["out-dir"])
+      : maxImages !== null || formatFilter !== null
+        ? SCRATCH_DIR
+        : RESULTS_DIR;
   await fs.mkdir(outDir, { recursive: true });
-  const outPath = path.join(
-    outDir,
-    `${values.out ?? "rd-budget"}-${splitArg}.json`,
-  );
+  const name = `${values.out ?? "rd-budget"}-${splitArg}`;
+  const outPath = resultPath(outDir, name);
   const summary = summarizeGuards(rows, budgets);
-  await fs.writeFile(
-    outPath,
-    `${JSON.stringify({ split: splitArg, images: inputs.length, budgets, rows, summary }, null, 2)}\n`,
-  );
+  const result: ResultFile = {
+    schema: RESULT_SCHEMA,
+    tool: "rd-budget",
+    name,
+    split: splitArg,
+    settings: {
+      budgets,
+      formats: effectiveArgs.formats,
+      jxl: effectiveArgs.jxl,
+    },
+    provenance,
+    imageNames: provenance.corpus.map((c) => c.name),
+    rows: rows.map((r) => ({
+      label: r.variant,
+      family: r.family,
+      targetBytes: r.targetBytes,
+      tune: r.tune,
+      tier: r.tier,
+      version: null,
+      perImage: r.perImage,
+    })),
+  };
+  await fs.writeFile(outPath, serializeResult(result));
+  if (provenance.dirty) {
+    console.warn(
+      `\n  !! The tree was dirty when this run started (${provenance.dirtyPaths.length} path(s)); the result records it, and verify:experiments --strict refuses it.`,
+    );
+  }
 
   console.log(`\nR-D by byte budget (${splitArg} split) → ${outPath}`);
   console.log(

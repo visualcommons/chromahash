@@ -679,18 +679,37 @@ run = "node tools/comparison/dist/metric-selftest.js"
 
 # Asserts that fanning the image loop across cores does not move a published
 # number. Runs the real orchestrator twice over the generated synthetic corpus —
-# once at --jobs 1, once wide — and diffs the reports. Generated fixtures mean no
-# network, no pinned corpus and no iqa-cli-free excuse to skip it in CI.
+# once at --jobs 1, once wide — and diffs the reports. Then runs one small sweep
+# (synthesis-window, two images) twice with the metric cache off, requires the
+# two results to be identical, and requires them to reproduce the committed
+# tools/comparison/results/synthesis-window.json within 1e-5 relative. That half
+# needs the release encoder, iqa-cli and the two pinned corpus photos it scores.
 [tasks."selftest:determinism"]
-description = "Assert a concurrent run scores identically to a serial one"
+description = "Assert a concurrent run scores identically to a serial one, and a sweep reproduces its committed result"
 depends = ["build:compare"]
-run = "node tools/comparison/dist/determinism-check.js"
+run = [
+  "cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin",
+  "node tools/comparison/dist/determinism-check.js",
+]
 
-# Check every table in spec/EXPERIMENTS.md against the sweep results in
-# tools/comparison/output/sweeps/. The document is transcribed by hand, so a
+# Pin iqa-cli against reference data: its CIEDE2000 against the 34 Sharma, Wu &
+# Dalal (2005) pairs through an implementation of the paper, and a committed
+# golden image pair's SSIMULACRA2 / Butteraugli / DSSIM / ΔE00 against the
+# scores recorded from the pinned version. Also asserts the installed version is
+# the pinned one. Needs iqa-cli; no corpus, no network.
+#   --update   re-record the golden pair from the installed iqa-cli (an
+#              intended metric change only; say why in the commit)
+[tasks."selftest:iqa"]
+description = "Pin iqa-cli against the Sharma CIEDE2000 pairs and a committed golden pair"
+depends = ["build:compare"]
+run = "node tools/comparison/dist/metric-reference-test.js"
+
+# Check every table in spec/EXPERIMENTS.md against the committed sweep results
+# in tools/comparison/results/ (per-image scores plus provenance, written by
+# `mise run sweep` and rd-budget). The document is transcribed by hand, so a
 # re-run of a sweep silently invalidates it; this is the only thing that
-# notices. Needs the sweep outputs on disk (they are gitignored), so it reports
-# what it could not check rather than failing on a missing file.
+# notices. Every table is either bound or listed with a reason, and each bound
+# table is held to a declared cell count. ci-comparison.yml runs it --strict.
 #   --list-unbound   tables with no binding, and why
 #   --list-unbound-columns
 #                    per bound table, which of its columns are checked and which
@@ -700,13 +719,15 @@ run = "node tools/comparison/dist/determinism-check.js"
 #                    The normal run prints a PARTIAL line for each.
 #   --section 11.5   just one section
 #   --fix            rewrite disagreeing cells from the measured values
-#   --strict         treat a SKIP as a failure. A missing sweep output is
-#                    normally reported and tolerated, which means a table whose
-#                    sweep nobody ran passes silently -- three of EXPERIMENTS.md's
-#                    tables sat that way until the 2026-09 re-baseline (§9.5).
-#                    Use it after a full §6 run.
+#   --strict         treat a SKIP as a failure, and refuse a result recorded
+#                    from a dirty tree, by an unpinned iqa-cli or on unpinned
+#                    corpus bytes, and a run that checked nothing. Without it a
+#                    missing result is reported and tolerated, which is how
+#                    three of EXPERIMENTS.md's tables sat unreproducible behind
+#                    a green run until the 2026-09 re-baseline (§9.5).
+#   --results-dir D  read results from D instead (a scratch re-run, say)
 [tasks."verify:experiments"]
-description = "Check every table in spec/EXPERIMENTS.md against the sweep output"
+description = "Check every table in spec/EXPERIMENTS.md against the committed sweep results"
 depends = ["build:compare"]
 run = "node tools/comparison/dist/verify-experiments.js"
 
@@ -758,9 +779,8 @@ run = "node tools/comparison/dist/verify-sweep-labels.js"
 # rust/src/constants.rs, which restate its numbers by hand and had never been
 # checked. The 2026-09 re-baseline left six of them wrong, two citing a section
 # that had never held the figure. Deliberately checks against the *document*,
-# not the sweeps: that chain is already gated, so this needs no sweep output on
-# disk and can therefore run in CI on every push, which verify:experiments
-# cannot.
+# not the sweeps: that chain is gated by verify:experiments against the
+# committed results, so the two together hold every quoted figure to a run.
 #   --list   print the register and exit
 [tasks."verify:claims"]
 description = "Check the figures other files quote from spec/EXPERIMENTS.md"

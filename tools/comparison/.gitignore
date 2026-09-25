@@ -7,8 +7,13 @@ dist/
 npm-debug.log*
 pnpm-debug.log*
 
-# Generated report + downloaded comparison fixtures.
+# Generated report + downloaded comparison fixtures. Scratch sweep runs
+# (--max-images) land in output/sweeps/ and stay local.
 output/
+# Full sweep and rd-budget results are the evidence spec/EXPERIMENTS.md is
+# checked against, and are committed (src/results.ts). Kept explicit so no
+# broader pattern added above can swallow them.
+!results/
 fixtures/synthetic/
 fixtures/natural/*.jpg
 fixtures/natural/*.png

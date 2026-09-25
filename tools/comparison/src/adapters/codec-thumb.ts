@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
@@ -74,6 +82,28 @@ export function isJxlAvailable(): boolean {
     }
   }
   return true;
+}
+
+/**
+ * The absolute paths `cjxl` and `djxl` resolve to on PATH, in the order
+ * `execFileSync` searches it, so a run's provenance can hash the binaries it
+ * will execute. A tool that does not resolve is returned by bare name, which
+ * the provenance records as `missing`.
+ */
+export function jxlToolPaths(): string[] {
+  const dirs = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+  return ["cjxl", "djxl"].map((tool) => {
+    for (const dir of dirs) {
+      const candidate = path.resolve(dir, tool);
+      try {
+        accessSync(candidate, constants.X_OK);
+        if (statSync(candidate).isFile()) return candidate;
+      } catch {
+        // Not here; keep searching.
+      }
+    }
+    return tool;
+  });
 }
 
 /** Run cjxl on a PNG buffer, returning the encoded JXL bytes. */

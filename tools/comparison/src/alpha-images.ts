@@ -311,12 +311,22 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
 /**
  * Ensure every alpha fixture is present and content-pinned. A fetch failure or
  * digest mismatch throws — see `ensureNaturalImages` for why.
+ *
+ * @param split Fetch only this split's images. A tune sweep never reads the
+ *   holdout images, and requiring them made every alpha sweep depend on the
+ *   one holdout file Wikimedia Commons has since deleted
+ *   (`cutout-wordmark-aflac`, removed 2026-08-25 as a copyright violation):
+ *   the tune split stays reproducible, and a holdout run still fails loudly
+ *   rather than scoring a smaller corpus.
  */
-export async function ensureAlphaImages(): Promise<string[]> {
+export async function ensureAlphaImages(
+  split?: CorpusSplit,
+): Promise<string[]> {
   await fs.mkdir(ALPHA_DIR, { recursive: true });
   const paths: string[] = [];
   let downloaded = 0;
   for (const spec of ALPHA_IMAGES) {
+    if (split !== undefined && spec.split !== split) continue;
     const filePath = path.join(ALPHA_DIR, `${spec.label}${spec.ext}`);
     if (
       await ensurePinnedFixture({

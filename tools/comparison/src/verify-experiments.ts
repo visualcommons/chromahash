@@ -41,16 +41,28 @@
  * `note` says so. What the count buys is that the next shape nobody anticipated
  * is loud rather than silent.
  *
+ * The evidence is the committed results under `tools/comparison/results/`
+ * (`results.ts`): per-image series and provenance, nothing derived. Every mean,
+ * Δ%, interval and guard verdict is recomputed here from those series. The
+ * sweeps used to be read from the gitignored `output/sweeps/`, so no table
+ * could be checked anywhere but on the machine that ran it, and CI could not
+ * run this at all.
+ *
  * Usage:
  *   node dist/verify-experiments.js              # every bound table
  *   node dist/verify-experiments.js --section 11.5
  *   node dist/verify-experiments.js --list-unbound
  *   node dist/verify-experiments.js --list-unbound-columns
  *   node dist/verify-experiments.js --list-unparsed # name the unreadable cells
- *   node dist/verify-experiments.js --strict        # a SKIP is a failure
+ *   node dist/verify-experiments.js --strict        # a SKIP, a result without
+ *                                                   # clean provenance, or an
+ *                                                   # empty run is a failure
+ *   node dist/verify-experiments.js --results-dir output/sweeps  # a scratch set
  *
- * Exit status is non-zero on any disagreement, so `mise run verify:experiments`
- * gates a documentation change the way `mise run rd:gate` gates a quality change.
+ * Exit status is non-zero on any disagreement, on a register problem (a table
+ * or column neither bound nor explained, or a table checking a different number
+ * of cells than `EXPECTED_CELLS` asserts), and under `--strict` on the above.
+ * `ci-comparison.yml` runs it with `--strict`.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -63,187 +75,148 @@ import {
   parseCell,
   parseTables,
 } from "./doc-tables.ts";
+import { tableRegisterProblems } from "./experiments-register.ts";
+// A result from another iqa-cli is a different instrument, not a reproduction.
+import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
+import {
+  RESULTS_DIR,
+  type ResultFile,
+  type SummarizedRow,
+  corpusPins,
+  guardsHold,
+  readResult,
+  summarize,
+} from "./results.ts";
 import { bootstrapCI } from "./stats.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const DOC = path.join(REPO_ROOT, "spec/EXPERIMENTS.md");
-const SWEEP_DIR = path.join(REPO_ROOT, "tools/comparison/output/sweeps");
 
 // ─── Sweep results ──────────────────────────────────────────────────────────
 
-export interface SweepRow {
-  label: string;
-  bytes: number | null;
-  meanCiede: number | null;
-  medianCiede: number | null;
-  meanSsimulacra2: number | null;
-  meanButteraugli: number | null;
-  meanDssim: number | null;
-  meanAlphaMae: number | null;
-  meanRinging: number | null;
-  meanSpurious: number | null;
-  meanDeficit: number | null;
+/**
+ * A result row with its aggregates derived (`results.ts`), plus the two
+ * columns that are computed against the incumbent rather than per row.
+ */
+export interface SweepRow extends SummarizedRow {
   ciedeDeltaPct: number | null;
   guardsOk: boolean | null;
-  perImageCiede: (number | null)[];
-  imageNames: string[];
 }
 
 interface SweepFile {
   name: string;
   split: string;
-  images: number;
   rows: SweepRow[];
   /** The tolerances the run itself applied, written into its own output. */
   guardTolerances?: { ssimulacra2Drop: number; relativeRise: number };
   artifactGuardRise?: number | null;
-}
-
-/** A row as `rd-budget` writes it — one format at one byte budget. */
-interface RdRow {
-  family: string;
-  variant: string;
-  bytes: number;
-  ciede2000: number;
-  ssimulacra2: number;
-  butteraugli: number;
-  dssim: number;
-}
-
-/** rd-budget reports aggregates only, so its rows arrive without per-image data. */
-function fromRdRow(r: RdRow): SweepRow {
-  return {
-    label: r.variant,
-    bytes: r.bytes,
-    meanCiede: r.ciede2000,
-    medianCiede: null,
-    meanSsimulacra2: r.ssimulacra2,
-    meanButteraugli: r.butteraugli,
-    meanDssim: r.dssim,
-    meanAlphaMae: null,
-    // rd-budget scores no artifact metrics: it is a cross-format R-D run, and
-    // the two locally-computed metrics are opt-in per entry point.
-    meanRinging: null,
-    meanSpurious: null,
-    meanDeficit: null,
-    ciedeDeltaPct: null,
-    guardsOk: null,
-    perImageCiede: [],
-    imageNames: [],
-  };
+  result: ResultFile;
 }
 
 /**
- * `sweep.ts`'s zero-base allowance, in metric levels. Duplicated rather than
- * imported because that module runs the encoder at import time; a drift
- * between the two is caught by the recomputation below disagreeing with every
- * stored `guardsOk` at once, which is the loudest failure this file has.
+ * Where a committed result cannot be trusted as the record of a run: it was
+ * scored from a dirty tree, by an unpinned `iqa-cli`, or on corpus bytes that
+ * are not the pinned ones. Reported on every run; fatal under `--strict`.
  */
-const ARTIFACT_ZERO_BASE_ALLOWANCE = 1.0;
+const provenanceProblems: string[] = [];
 
-/** `sweep.ts`'s `roseNoMoreThan`, on the same terms. */
-function roseNoMoreThan(
-  value: number | null,
-  base: number | null,
-  rise: number,
-): boolean {
-  if (value === null || base === null) return true;
-  if (base === 0) return value <= ARTIFACT_ZERO_BASE_ALLOWANCE;
-  return value <= base * (1 + rise);
+function auditProvenance(file: ResultFile): void {
+  const where = `results/${file.name}.json`;
+  const p = file.provenance;
+  if (p.rev === null) provenanceProblems.push(`${where}: no git revision`);
+  if (p.dirty !== false) {
+    provenanceProblems.push(
+      `${where}: scored from a ${p.dirty === null ? "tree git could not inspect" : `dirty tree (${p.dirtyPaths.join(", ")})`}`,
+    );
+  }
+  if (p.iqaCli !== PINNED_IQA_CLI) {
+    provenanceProblems.push(
+      `${where}: scored by "${p.iqaCli}", not the pinned "${PINNED_IQA_CLI}"`,
+    );
+  }
+  for (const [bin, digest] of Object.entries(p.binaries)) {
+    if (digest === "missing") {
+      provenanceProblems.push(`${where}: binary ${bin} was missing`);
+    }
+  }
+  const pins = corpusPins();
+  const off = p.corpus.filter((c) => {
+    const pin = pins.get(c.name);
+    return pin !== undefined && pin !== c.sha256;
+  });
+  if (off.length > 0) {
+    provenanceProblems.push(
+      `${where}: ${off.length} image(s) scored on bytes that are not the pinned ones (${off
+        .map((c) => c.name)
+        .join(", ")})`,
+    );
+  }
 }
 
 /**
- * Where a stored `guardsOk` disagrees with the metrics stored beside it.
+ * Derive every row's `guardsOk` from the means derived beside it.
  *
- * This file's premise, stated at the top, is that a claimed value is
- * recomputed rather than read back from a summary field -- and `guardsOk` was
- * the one bound column read back. A document cell reading `ok` was therefore
- * checked against the sweep's own boolean, so the gate confirmed the
- * transcription and said nothing about the guard: a hand-edited output, a
- * tolerance changed after a run, or a bug in `applyGuards` would all pass, and
- * §12.2 and §12.3 turn their verdicts on that column.
+ * `guardsOk` was once the one bound column read back from a stored field, so a
+ * document cell reading `ok` was checked against the sweep's own boolean and
+ * the gate confirmed the transcription rather than the guard -- and §12.2 and
+ * §12.3 turn their verdicts on that column. A result stores nothing derived
+ * now, so the verdict is computed here from the per-image series, through the
+ * same `guardsHold` `sweep.ts` prints with, at the tolerances the run recorded
+ * in its own settings rather than any re-declared here.
  *
- * It is recomputed here from the row's own metrics, against the incumbent, at
- * the tolerances the run recorded in its own header. A disagreement is
- * reported rather than quietly corrected: the output contradicting itself is a
- * finding about the sweep, not about the document, and the two have different
- * fixes.
- */
-const guardDrift: string[] = [];
-
-/**
- * Recompute every row's `guardsOk` from the metrics stored beside it.
- *
- * Mirrors `applyGuards` in `sweep.ts`, reading the tolerances out of the
- * output's own `guardTolerances` and `artifactGuardRise` rather than
- * re-declaring them, so a run taken under different tolerances is still judged
- * by the ones it actually used. An output written before those fields existed
- * carries no tolerances; its rows are left as they are and reported, because
- * inventing a tolerance for them would be the read-back this exists to remove.
+ * A result without recorded tolerances has no guard verdict to give; the
+ * column then asserts nothing (`compare` skips a null), and that table's check
+ * of it is empty rather than invented.
  */
 function recomputeGuards(file: SweepFile): void {
   const tol = file.guardTolerances;
   const base = file.rows[0];
-  if (!base) return;
-  if (!tol) {
-    if (file.rows.some((r) => r.guardsOk !== null)) {
-      guardDrift.push(
-        `${file.name}: rows carry guardsOk but the output records no guardTolerances, so the column cannot be recomputed — re-run the sweep`,
-      );
-    }
-    return;
-  }
+  if (!base || !tol) return;
   const artifactRise = file.artifactGuardRise ?? undefined;
   for (const row of file.rows.slice(1)) {
-    const ssim2Ok =
-      row.meanSsimulacra2 === null ||
-      base.meanSsimulacra2 === null ||
-      row.meanSsimulacra2 >= base.meanSsimulacra2 - tol.ssimulacra2Drop;
-    const butterOk =
-      row.meanButteraugli === null ||
-      base.meanButteraugli === null ||
-      row.meanButteraugli <= base.meanButteraugli * (1 + tol.relativeRise);
-    const dssimOk =
-      row.meanDssim === null ||
-      base.meanDssim === null ||
-      row.meanDssim <= base.meanDssim * (1 + tol.relativeRise);
-    const artifactOk =
-      artifactRise === undefined ||
-      (roseNoMoreThan(row.meanRinging, base.meanRinging, artifactRise) &&
-        roseNoMoreThan(row.meanSpurious, base.meanSpurious, artifactRise));
-    const computed = ssim2Ok && butterOk && dssimOk && artifactOk;
-    if (row.guardsOk !== null && row.guardsOk !== computed) {
-      guardDrift.push(
-        `${file.name} "${row.label}": output stores guardsOk=${row.guardsOk}, ` +
-          `its own metrics give ${computed}`,
-      );
-    }
-    row.guardsOk = computed;
+    row.guardsOk = guardsHold(row, base, tol, artifactRise);
   }
 }
 
 const sweepCache = new Map<string, SweepFile | null>();
 
+/** The SKIP reason for a binding whose result is not committed. */
+const missingResult = (name: string): string =>
+  `no ${path.relative(REPO_ROOT, path.join(resultsDir, `${name}.json`))} — run the sweep`;
+
+/**
+ * Load a committed result and derive every aggregate from its per-image
+ * series. Null when there is no such result; a malformed one throws, because
+ * a file that exists and cannot be read is not the same finding as a sweep
+ * nobody ran.
+ */
 function loadSweep(name: string): SweepFile | null {
   const cached = sweepCache.get(name);
   if (cached !== undefined) return cached;
+  const result = readResult(resultsDir, name);
   let parsed: SweepFile | null = null;
-  try {
-    const raw = JSON.parse(
-      readFileSync(path.join(SWEEP_DIR, `${name}.json`), "utf8"),
-    ) as Omit<SweepFile, "rows"> & { rows: unknown[] };
+  if (result) {
+    auditProvenance(result);
+    const tol = result.settings.guardTolerances as
+      | SweepFile["guardTolerances"]
+      | undefined;
+    const rise = result.settings.artifactGuardRise as number | null | undefined;
     parsed = {
-      ...raw,
-      rows: raw.rows.map((r) =>
-        typeof r === "object" && r !== null && "variant" in r
-          ? fromRdRow(r as RdRow)
-          : (r as SweepRow),
-      ),
+      name: result.name,
+      split: result.split,
+      rows: result.rows.map((r) => ({
+        ...summarize(r, result.imageNames),
+        ciedeDeltaPct: null,
+        guardsOk: null,
+      })),
+      ...(tol ? { guardTolerances: tol } : {}),
+      ...(rise !== undefined ? { artifactGuardRise: rise } : {}),
+      result,
     };
-  } catch {
-    parsed = null;
+    // rd-budget rows are formats at budgets, not arms against an incumbent:
+    // there is no guard to recompute, and row 0 is not a baseline.
+    if (result.tool === "sweep") recomputeGuards(parsed);
   }
-  if (parsed) recomputeGuards(parsed);
   sweepCache.set(name, parsed);
   return parsed;
 }
@@ -433,6 +406,20 @@ interface Stats {
    * between a column with a gap and a column that checked nothing.
    */
   reached: Map<string, number>;
+  /**
+   * Cells actually compared, keyed `section#table`. Held against
+   * `EXPECTED_CELLS`: a cell that stops being compared -- its measure turned
+   * null, its row stopped matching, its text stopped parsing -- otherwise just
+   * makes the total smaller behind a green run.
+   */
+  byTable: Map<string, number>;
+}
+
+/** Count one compared cell toward its table. */
+function counted(stats: Stats, section: string, table: number): void {
+  stats.cells++;
+  const key = `${section}#${table}`;
+  stats.byTable.set(key, (stats.byTable.get(key) ?? 0) + 1);
 }
 
 /** Recompute one metric from the raw per-image data wherever possible. */
@@ -520,7 +507,7 @@ function compare(
   const where = { section: ctx.section, row: ctx.row, column: ctx.column };
 
   if (typeof measured === "string") {
-    stats.cells++;
+    counted(stats, ctx.section, ctx.table);
     const claimed = raw.replace(/[*`]/g, "").trim();
     // Some intervals are stated as the conclusion rather than the numbers.
     // That is still a checkable claim about where the interval sits.
@@ -564,7 +551,7 @@ function compare(
     });
     return;
   }
-  stats.cells++;
+  counted(stats, ctx.section, ctx.table);
   const tol = 0.5 * 10 ** -decimals(raw) + 1e-9;
   if (Math.abs(claimed - measured) > tol) {
     const rounded = measured.toFixed(decimals(raw));
@@ -620,7 +607,7 @@ function checkRowTable(
   stats: Stats,
 ): string | null {
   const sweep = loadSweep(b.sweep);
-  if (!sweep) return `no output/sweeps/${b.sweep}.json — run the sweep`;
+  if (!sweep) return missingResult(b.sweep);
   const baseline = b.baseline ? findRow(sweep, b.baseline) : sweep.rows[0];
 
   for (const row of table.rows) {
@@ -701,7 +688,7 @@ function checkRatioTable(
   }
 
   const sweep = loadSweep(b.sweep);
-  if (!sweep) return `no output/sweeps/${b.sweep}.json — run the sweep`;
+  if (!sweep) return missingResult(b.sweep);
 
   for (const [rowIndex, row] of table.rows.entries()) {
     const label = (row[0] ?? "").trim();
@@ -764,9 +751,15 @@ function checkColumnTable(
   const measured = new Map<string, Map<number, number>>();
 
   for (const series of b.series) {
+    // A slope row reads its own sweep. Without this a missing one made the
+    // row check nothing while the table still counted as checked, which is a
+    // SKIP that `--strict` never saw.
+    if ("slopeFrom" in series && !loadSweep(series.slopeFrom)) {
+      return missingResult(series.slopeFrom);
+    }
     if ("pctFrom" in series || "slopeFrom" in series) continue;
     const sweep = loadSweep(series.sweep);
-    if (!sweep) return `no output/sweeps/${series.sweep}.json — run the sweep`;
+    if (!sweep) return missingResult(series.sweep);
     const baseline = series.baseline
       ? findRow(sweep, series.baseline)
       : sweep.rows[0];
@@ -1554,15 +1547,9 @@ const BINDINGS: Binding[] = [
     skipRows: ["A28@3 + `alpha_ac_fit`"],
     rowBaselines: ALPHA_HOLDOUT_ROW_BASELINES,
   },
-  {
-    kind: "rows",
-    section: "11.12",
-    table: 1,
-    sweep: "v07-holdout-alpha-holdout",
-    columns: { holdout: "ciedeDeltaPct" },
-    aliases: ALPHA_HOLDOUT_ALIASES,
-    rowBaselines: ALPHA_HOLDOUT_ROW_BASELINES,
-  },
+  // The `holdout` column was bound to v07-holdout-alpha-holdout. That run can
+  // no longer be recorded -- see UNBOUND_COLUMN_NOTES["11.12#1"] -- so the
+  // binding would be a SKIP forever. It is disclosed there instead.
 
   // §12 — the synthesis window, with the artifact columns that decide it. These
   // are the first bindings to check `meanRinging`/`meanSpurious`, which is the
@@ -1737,10 +1724,66 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
   "11.10#1":
     "ranks, derived by ordering two other sweeps' results rather than read from either",
   "11.12#1":
-    "`verdict` is the section's conclusion in words, not a measurement",
+    "`verdict` is the section's conclusion in words, not a measurement. `holdout` is UNREPRODUCIBLE: one of the alpha holdout images, cutout-wordmark-aflac, was deleted from Wikimedia Commons on 2026-08-25 as a copyright violation and has no archived copy, so v07-holdout-alpha --split holdout cannot be re-run and has no committed result (#83)",
   "13.1#1":
     "`Spur / Deficit` is the ratio of two columns in the same row, both of which are bound; it is the reading, not a measurement",
 };
+
+/**
+ * How many cells each bound table compares, keyed `section#table`.
+ *
+ * Every other number this run prints is a count of what it happened to do. A
+ * binding whose resolver stops matching a row, a metric that turns null, a
+ * cell that stops parsing -- each makes the total smaller and the run no less
+ * green, which is the class of defect this file exists to catch, one level up.
+ * Holding each table to a declared count turns "checked fewer" into a failure
+ * that names the table. When a table legitimately gains or loses a checked
+ * cell, change its entry here in the same commit, and say why.
+ *
+ * Recorded from the first run over the committed results, so each entry says
+ * what the table checks today, not what it ought to: a column that compares
+ * fewer cells than its rows is a finding for the table's binding, and this
+ * register only guarantees it cannot get worse unnoticed.
+ */
+const EXPECTED_CELLS: Record<string, number> = {
+  "1#0": 26,
+  "1#1": 22,
+  "1#2": 6,
+  "4.1#0": 12,
+  "4.3#0": 25,
+  "4.3#1": 25,
+  "4.5#0": 54,
+  "4.5#1": 22,
+  "7.1#1": 9,
+  "7.5#0": 14,
+  "7.8#0": 18,
+  "7.10#0": 14,
+  "7.11#0": 15,
+  "7.12#0": 82,
+  "7.12#1": 28,
+  "10.3#0": 27,
+  "11.1#0": 17,
+  "11.3#0": 26,
+  "11.3#1": 37,
+  "11.4#0": 10,
+  "11.4#1": 13,
+  "11.5#0": 33,
+  "11.6#0": 13,
+  "11.7#0": 7,
+  "11.10#0": 25,
+  "11.10#1": 6,
+  "11.11#0": 34,
+  "11.12#1": 3,
+  "11.12#2": 10,
+  "11.14#0": 85,
+  "12.2#0": 53,
+  "12.3#0": 45,
+  "13.1#0": 35,
+  "13.1#1": 20,
+};
+
+/** The run's asserted total: what a complete run over every table compares. */
+const expectedTotal = Object.values(EXPECTED_CELLS).reduce((a, b) => a + b, 0);
 
 // ─── Entry point ────────────────────────────────────────────────────────────
 
@@ -1758,18 +1801,66 @@ const { values } = parseArgs({
     "list-unparsed": { type: "boolean", default: false },
     fix: { type: "boolean", default: false },
     strict: { type: "boolean", default: false },
+    // Read results from somewhere other than the committed directory -- a
+    // scratch re-run under output/, say -- to see what it would change.
+    "results-dir": { type: "string" },
   },
 });
+
+const resultsDir =
+  values["results-dir"] !== undefined
+    ? path.resolve(values["results-dir"])
+    : RESULTS_DIR;
 
 const tables = parseTables(readFileSync(DOC, "utf8"));
 const bound = new Set(BINDINGS.map((b) => `${b.section}#${b.table ?? 0}`));
 
 /**
- * Why a table carries no binding. A table absent from here is simply not bound
- * yet; a table listed here is verified by hand on purpose, and the reason is
- * the audit trail.
+ * Why a table carries no binding. Same contract as `UNBOUND_COLUMN_NOTES` one
+ * level down, and enforced the same way by the register audit below: every
+ * table in the document is either bound or listed here with the reason, and a
+ * table that is neither fails the run. Until that audit existed, "absent means
+ * not bound yet" was the rule, and a numeric table nobody had looked at was
+ * indistinguishable from one deliberately left alone -- §8.3 and §12.4 carried
+ * measured figures that way, unchecked and unexplained.
+ *
+ * A note is a disclosure, not an excuse: several below say plainly that the
+ * table's numbers are unchecked, and why.
  */
 const UNBOUND_NOTES: Record<string, string> = {
+  "0#0": "prose: the tooling changes behind round 1, no measurement",
+  "3#0":
+    "prose: byte regions described in words, superseded with §2 by §11.14 (bound)",
+  "5#0": "the round-1 idea register, prose sizing only",
+  "5#1":
+    "the round-1 idea register; its measured sizings quote §4.2, §4.10 and §4.3 and are unchecked here",
+  "5#2":
+    "the round-1 idea register; its measured sizings quote §4.3, §4.8, §4.9 and §7.13 and are unchecked here",
+  "5#3": "the round-1 idea register, prose only",
+  "8.1#0":
+    "a layout table -- constants and the bit arithmetic under them, not a measurement; the tier-0 row is what LAYOUT_T0 ships (§10.1), which validate:spec checks",
+  "8.2#0":
+    "encoder knobs and their rationale; the percentages in `Why` quote §4.4 and are unchecked here",
+  "8.3#0":
+    "UNCHECKED: four of its five rows restate §10.3's holdout rows, which are bound there against adopted-defaults-holdout; its `+ optional refinement` row comes from final-candidates-holdout and is bound nowhere",
+  "8.4#0":
+    "prose verdicts; the figures in them quote §7.1, §7.5, §7.8, §7.9 and §7.10 and are unchecked here",
+  "9.1#0":
+    "prose: what the pre-§9 corpus lacked, and that corpus no longer exists (§9.5)",
+  "9.2#0":
+    "the §9 Picsum additions by label and axis, not a measurement; superseded by the Wikimedia re-source (§9.5)",
+  "10.1#0": "what shipped and where, not a measurement",
+  "11#0": "prose: the tooling changes behind round 3, no measurement",
+  "11.13#0":
+    "a summary of changes; the figures in `Evidence` quote §11.3, §11.10, §11.11 and §11.12 and are unchecked here",
+  "11.13#1":
+    "a summary of what was kept; the figures in `Why` quote §11.4-§11.12 and are unchecked here",
+  "12.1#0":
+    "UNCHECKED: per-format orientation split from one report run (`main.js --images` on one photograph, read from report.json's `local` block), which no sweep aggregates; the section calls it illustrative",
+  "12.4#0":
+    "UNCHECKED: one photograph, one report run, read from report.json; no sweep produces it",
+  "12.4#1":
+    "UNCHECKED: a two-cell probe of the ringing metric's radius, recorded in metrics/local.ts's header; no committed command reproduces it",
   "2#0":
     "superseded by §11.14 — the record of a round whose run is gone; its ChromaHash rows used a synthesized layout that no longer exists, and its competitor rows predate the cached rd-budget run",
   "8.6#0": "superseded by §11.14, same reason as §2",
@@ -1849,18 +1940,27 @@ if (values["list-unbound-columns"]) {
 }
 
 const failures: Failure[] = [];
-const stats: Stats = { cells: 0, unparsed: [], reached: new Map() };
+const stats: Stats = {
+  cells: 0,
+  unparsed: [],
+  reached: new Map(),
+  byTable: new Map(),
+};
 const skipped: string[] = [];
+/** Tables at least one of whose bindings was skipped, keyed `section#table`. */
+const skippedTables = new Set<string>();
 const coverage: Coverage[] = [];
 let checked = 0;
 
 for (const binding of BINDINGS) {
   if (values.section && binding.section !== values.section) continue;
+  const key = `${binding.section}#${binding.table ?? 0}`;
   const table = tables.find(
     (t) => t.section === binding.section && t.index === (binding.table ?? 0),
   );
   if (!table) {
     skipped.push(`§${binding.section} table ${binding.table ?? 0}: not found`);
+    skippedTables.add(key);
     continue;
   }
   const problem =
@@ -1871,6 +1971,7 @@ for (const binding of BINDINGS) {
         : checkColumnTable(binding, table, failures, stats);
   if (problem) {
     skipped.push(`§${binding.section} table ${binding.table ?? 0}: ${problem}`);
+    skippedTables.add(key);
     continue;
   }
   coverage.push(coverageOf(binding, table));
@@ -1897,7 +1998,7 @@ const unparsedNote =
     ? `, and read past ${stats.unparsed.length} cell(s) no parser could interpret, which are therefore unchecked.`
     : ".";
 console.log(
-  `Checked ${stats.cells} cells across ${checked} tables (${BINDINGS.length} bound of ${tables.length} in the document; ${coveredAxes} of ${totalAxes} value columns within them)${unparsedNote}`,
+  `Checked ${stats.cells} cells (EXPECTED_CELLS asserts ${expectedTotal}) across ${checked} tables (${BINDINGS.length} bound of ${tables.length} in the document; ${coveredAxes} of ${totalAxes} value columns within them)${unparsedNote}`,
 );
 for (const s of skipped) console.log(`  SKIP  ${s}`);
 
@@ -2016,29 +2117,34 @@ if (!values.section) {
       `UNBOUND_COLUMN_NOTES["${key}"] explains nothing: ${why}`,
     );
   }
-  for (const key of Object.keys(UNBOUND_NOTES)) {
-    if (!bound.has(key)) continue;
-    registerProblems.push(
-      `UNBOUND_NOTES["${key}"] explains nothing: that table is bound, so an unchecked column of it belongs in UNBOUND_COLUMN_NOTES`,
-    );
-  }
+  // The table-level registers (stale UNBOUND_NOTES, a table with neither a
+  // binding nor a note, and the EXPECTED_CELLS count) live in
+  // `experiments-register.ts`, where `selftest:metrics` reaches each branch.
+  registerProblems.push(
+    ...tableRegisterProblems({
+      tables,
+      bound,
+      unboundNotes: UNBOUND_NOTES,
+      expectedCells: EXPECTED_CELLS,
+      checkedByTable: stats.byTable,
+      skippedTables,
+    }),
+  );
 }
 
-const reportGuardDrift = () => {
+const reportProvenance = () => {
   console.error(
-    `\n${guardDrift.length} sweep output(s) disagree with their own metrics on
-\`guardsOk\`. The document is checked against the recomputed value, so a green
-run below does not make these agree — re-run the sweep, or find what edited
-its output:\n`,
+    `\n${provenanceProblems.length} result(s) cannot be trusted as the record of a run${values.strict ? "" : " (fatal under --strict)"}:\n`,
   );
-  for (const g of guardDrift) console.error(`  ${g}`);
+  for (const p of provenanceProblems) console.error(`  ${p}`);
 };
 
 const reportRegister = () => {
   console.error(
-    `\n${registerProblems.length} register problem(s) — an unchecked column is
-either bound or listed with its reason, and a reason is listed only against
-something it explains:\n`,
+    `\n${registerProblems.length} register problem(s) — every table and every
+unchecked column is either bound or listed with its reason, a reason is listed
+only against something it explains, and every bound table checks exactly the
+cells EXPECTED_CELLS asserts:\n`,
   );
   for (const r of registerProblems) console.error(`  ${r}`);
 };
@@ -2050,10 +2156,15 @@ something it explains:\n`,
 // (section 9.5), because section 6 never listed the holdout runs they bind to.
 // `--strict` is for the case where every sweep is supposed to be on disk, and
 // a SKIP means the document has drifted out of reach of its own evidence.
-const strictFailed = values.strict && skipped.length > 0;
+//
+// `--strict` also refuses a result whose provenance does not hold (dirty tree,
+// unpinned iqa-cli, unpinned corpus bytes), and a run that checked nothing.
+const strictFailed =
+  values.strict &&
+  (skipped.length > 0 || provenanceProblems.length > 0 || stats.cells === 0);
 const reportStrict = () =>
   console.log(
-    `\n--strict: ${skipped.length} table(s) could not be checked. Run the sweeps named above, or drop the binding.`,
+    `\n--strict: ${skipped.length} table(s) could not be checked, ${provenanceProblems.length} result(s) failed provenance, ${stats.cells} cell(s) checked. Run the sweeps named above from a clean tree, or drop the binding.`,
   );
 
 if (failures.length > 0) {
@@ -2090,16 +2201,20 @@ Re-run without --fix to confirm, and read the diff: a corrected number can
 invalidate the sentence beneath its table.`,
     );
   }
-  if (guardDrift.length > 0) reportGuardDrift();
+  if (provenanceProblems.length > 0) reportProvenance();
   if (registerProblems.length > 0) reportRegister();
   if (strictFailed) reportStrict();
   process.exit(1);
 }
 
-if (guardDrift.length > 0 || registerProblems.length > 0 || strictFailed) {
-  if (guardDrift.length > 0) reportGuardDrift();
+if (provenanceProblems.length > 0) reportProvenance();
+if (registerProblems.length > 0 || strictFailed) {
   if (registerProblems.length > 0) reportRegister();
   if (strictFailed) reportStrict();
   process.exit(1);
 }
-console.log("\nEvery bound table agrees with its sweep output.");
+console.log(
+  skipped.length > 0
+    ? `\nNo disagreement in the ${stats.cells} cells that could be checked, but ${skipped.length} binding(s) were SKIPPED. That is not a pass; --strict fails it.`
+    : `\nEvery bound table agrees with its committed result (${stats.cells} cells; EXPECTED_CELLS asserts ${expectedTotal}).`,
+);
