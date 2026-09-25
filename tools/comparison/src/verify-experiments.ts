@@ -1546,15 +1546,9 @@ const BINDINGS: Binding[] = [
     skipRows: ["A28@3 + `alpha_ac_fit`"],
     rowBaselines: ALPHA_HOLDOUT_ROW_BASELINES,
   },
-  {
-    kind: "rows",
-    section: "11.12",
-    table: 1,
-    sweep: "v07-holdout-alpha-holdout",
-    columns: { holdout: "ciedeDeltaPct" },
-    aliases: ALPHA_HOLDOUT_ALIASES,
-    rowBaselines: ALPHA_HOLDOUT_ROW_BASELINES,
-  },
+  // The `holdout` column was bound to v07-holdout-alpha-holdout. That run can
+  // no longer be recorded -- see UNBOUND_COLUMN_NOTES["11.12#1"] -- so the
+  // binding would be a SKIP forever. It is disclosed there instead.
 
   // §12 — the synthesis window, with the artifact columns that decide it. These
   // are the first bindings to check `meanRinging`/`meanSpurious`, which is the
@@ -1729,7 +1723,7 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
   "11.10#1":
     "ranks, derived by ordering two other sweeps' results rather than read from either",
   "11.12#1":
-    "`verdict` is the section's conclusion in words, not a measurement",
+    "`verdict` is the section's conclusion in words, not a measurement. `holdout` is UNREPRODUCIBLE: one of the alpha holdout images, cutout-wordmark-aflac, was deleted from Wikimedia Commons on 2026-08-25 as a copyright violation and has no archived copy, so v07-holdout-alpha --split holdout cannot be re-run and has no committed result (#83)",
   "13.1#1":
     "`Spur / Deficit` is the ratio of two columns in the same row, both of which are bound; it is the reading, not a measurement",
 };
@@ -1744,8 +1738,48 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
  * Holding each table to a declared count turns "checked fewer" into a failure
  * that names the table. When a table legitimately gains or loses a checked
  * cell, change its entry here in the same commit, and say why.
+ *
+ * Recorded from the first run over the committed results, so each entry says
+ * what the table checks today, not what it ought to: a column that compares
+ * fewer cells than its rows is a finding for the table's binding, and this
+ * register only guarantees it cannot get worse unnoticed.
  */
-const EXPECTED_CELLS: Record<string, number> = {};
+const EXPECTED_CELLS: Record<string, number> = {
+  "1#0": 26,
+  "1#1": 22,
+  "1#2": 6,
+  "4.1#0": 12,
+  "4.3#0": 25,
+  "4.3#1": 25,
+  "4.5#0": 54,
+  "4.5#1": 22,
+  "7.1#1": 9,
+  "7.5#0": 14,
+  "7.8#0": 18,
+  "7.10#0": 14,
+  "7.11#0": 15,
+  "7.12#0": 82,
+  "7.12#1": 28,
+  "10.3#0": 27,
+  "11.1#0": 17,
+  "11.3#0": 26,
+  "11.3#1": 37,
+  "11.4#0": 10,
+  "11.4#1": 13,
+  "11.5#0": 33,
+  "11.6#0": 13,
+  "11.7#0": 7,
+  "11.10#0": 25,
+  "11.10#1": 6,
+  "11.11#0": 34,
+  "11.12#1": 3,
+  "11.12#2": 10,
+  "11.14#0": 85,
+  "12.2#0": 53,
+  "12.3#0": 45,
+  "13.1#0": 35,
+  "13.1#1": 20,
+};
 
 /** The run's asserted total: what a complete run over every table compares. */
 const expectedTotal = Object.values(EXPECTED_CELLS).reduce((a, b) => a + b, 0);
