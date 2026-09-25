@@ -436,7 +436,7 @@ run = "pnpm --prefix tools/comparison run lint:fix"
 # The original cross-language performance harness, superseded by the unified perf
 # sweep in tools/comparison/src/perf/ that `benchmark` now runs. No task here
 # executes it — the first four tasks below only lint and format the directory
-# (test:benchmark tests record_stages.py, the §1 recorder beside it), to the
+# (test:benchmark tests record_stages.py, the §1/§1.1 recorder beside it), to the
 # same contract as the `python/` package (see tools/benchmark/pyproject.toml).
 # It survives as a local investigation tool and as the only harness that carries
 # the ThumbHash timing baselines; nothing it prints is published.
@@ -459,12 +459,14 @@ description = "Auto-fix benchmark driver lint findings (Ruff)"
 run = "uvx ruff check --fix tools/benchmark"
 
 # record_stages.py is the one module here whose output is published: it writes
-# baselines/perf-stages.json, which verify:benchmark gates PERFORMANCE.md §1
-# against. Its tests run it in a throwaway git repo under tools/benchmark/output/
-# (ignored): per-cell merging, refusal of another schema, and a dirty probe that
-# excludes only its own output. Standard library only.
+# baselines/perf-stages.json and baselines/perf-decode-stages.json, which
+# verify:benchmark gates PERFORMANCE.md §1 and §1.1 against. Its tests run it in
+# a throwaway git repo under tools/benchmark/output/ (ignored): per-cell merging,
+# refusal of another schema, a decode cell refused without its spec-vector
+# check, and a dirty probe that excludes only the recorder's own two outputs.
+# Standard library only.
 [tasks."test:benchmark"]
-description = "Test the §1 stages recorder (tools/benchmark/record_stages.py)"
+description = "Test the §1/§1.1 stages recorder (tools/benchmark/record_stages.py)"
 run = "python3 -m unittest discover -s tools/benchmark -p 'test_*.py'"
 
 # ─── ThumbHash baseline (native Rust) ─────────────────────────────────────────
@@ -731,16 +733,23 @@ description = "Check every table in spec/EXPERIMENTS.md against the committed sw
 depends = ["build:compare"]
 run = "node tools/comparison/dist/verify-experiments.js"
 
-# Regenerate fixtures/natural/LICENSES.md from the pin table in
-# src/natural-images.ts, so the attribution 39 Wikimedia Commons images require
-# cannot drift from the table that names them. `--check` fails when the two
-# disagree and is what ci-comparison.yml runs. Three source files and the
-# generated file itself have referenced this task by name since it was written;
-# it did not exist until now, so the generator was reachable only as a bare
-# `node dist/corpus-licenses.js` and nothing ran `--check` anywhere.
-#   --check   fail if LICENSES.md is stale rather than rewriting it
+# Regenerate the attribution files of the three Wikimedia Commons corpora from
+# the pin tables that fetch them: fixtures/natural/LICENSES.md from
+# src/natural-images.ts, fixtures/alpha/LICENSES.md from src/alpha-images.ts,
+# and fixtures/graphic/LICENSES.md from src/graphic-images.ts. The attribution
+# 87 images require cannot drift from the tables that name them, and an image
+# marked withdrawn renders as withdrawn rather than as freely licensed (#92).
+# `--check` fails when any file and its table disagree, and is what
+# ci-comparison.yml runs.
+#   --check   fail if any LICENSES.md is stale rather than rewriting it
+#   --probe   ask Wikimedia Commons whether every pinned photographic, alpha and
+#             graphics source still exists at its pinned URL, and whether each
+#             recorded licence is still the one Commons records. Exit 1 when
+#             one no longer holds, 2 when Commons could not be asked. It needs
+#             the network, so CI does not run it (#83: a holdout image was
+#             deleted as a copyright violation, and --check could not notice).
 [tasks."corpus:licenses"]
-description = "Regenerate the curated corpus attribution file from the pin table"
+description = "Regenerate the three Commons corpus attribution files from their pin tables (--check: fail if stale), or --probe the pinned sources"
 depends = ["build:compare"]
 run = "node tools/comparison/dist/corpus-licenses.js"
 

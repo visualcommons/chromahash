@@ -1,5 +1,5 @@
 use crate::aspect::encode_aspect;
-use crate::bitpack::write_bits;
+use crate::bitpack::{write_bits, write_bits_word};
 use crate::color::{linear_rgb_to_oklab, oklab_to_linear_srgb};
 use crate::constants::{
     ALPHA_FLAG_BIT, DEFAULT_TIER, FORMAT_VERSION, Gamut, MAX_TIER, Tunables, VERSION_BITS,
@@ -129,11 +129,9 @@ struct Analysis {
     cos_y: Vec<Vec<f64>>,
 }
 
-/// Signal-path front half of the encoder (spec §10 steps 1–7): color
-/// conversion, alpha handling, coefficient selection, and the forward DCT.
-/// Shared by [`encode_with`] and the sweep-only coefficient dump.
-/// Stage timing for `mise run benchmark:stages`, compiled only under the
-/// off-by-default `bench-internals` feature.
+/// Stage timing for `mise run benchmark:stages` and
+/// `mise run benchmark:decode-stages`, compiled only under the off-by-default
+/// `bench-internals` feature.
 ///
 /// Answering "where does encode time actually go" needs per-stage numbers, and
 /// this crate has no dependencies to profile with. Everything here is behind the
@@ -141,6 +139,13 @@ struct Analysis {
 /// `stage!` marks below expand to nothing at all. It is also invisible to the
 /// mutation sweep, which builds with `no_default_features` (see
 /// rust/.cargo/mutants.toml), so it adds no mutants to the hot path.
+///
+/// The decoder marks its own stages through the same recorder (`decode.rs`
+/// imports `stage!` from here). One recorder serves both because a mark is
+/// "time since the previous mark on this thread", so the two only stay
+/// separable while neither calls the other: the encoder calls no decode entry
+/// point outside its tests, and each example resets the recorder around the one
+/// operation it times.
 #[cfg(feature = "bench-internals")]
 pub mod stage_timing {
     use std::cell::RefCell;
@@ -190,6 +195,17 @@ macro_rules! stage {
     ($name:literal) => {};
 }
 
+// Crate-visible so the decoder marks its stages with the same macro, and so
+// with the same guarantee: nothing at all in a build without the feature.
+pub(crate) use stage;
+
+/// Pixels per tile of the fused colour pass (`Tunables::accel_fused_pixels`).
+/// A multiple of every SIMD lane count `simd/` uses (1, 2 and 4).
+const FUSED_TILE: usize = 1024;
+
+/// Signal-path front half of the encoder (spec §10 steps 1–7): color
+/// conversion, alpha handling, coefficient selection, and the forward DCT.
+/// Shared by [`encode_with`] and the sweep-only coefficient dump.
 fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) -> Analysis {
     assert!(w >= 1, "width must be >= 1");
     assert!(h >= 1, "height must be >= 1");
@@ -217,35 +233,108 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     // byte-identical to per-pixel `linear_rgb_to_oklab`. The alpha-weighted
     // average is a reduction, so it stays a scalar pass in pixel order to keep
     // the floating-point summation bit-exact.
-    let mut lin_r = vec![0.0f64; pixel_count];
-    let mut lin_g = vec![0.0f64; pixel_count];
-    let mut lin_b = vec![0.0f64; pixel_count];
-    let mut alpha_pixels = vec![0.0f64; pixel_count];
-    for i in 0..pixel_count {
-        lin_r[i] = eotf_lut[rgba[i * 4] as usize];
-        lin_g[i] = eotf_lut[rgba[i * 4 + 1] as usize];
-        lin_b[i] = eotf_lut[rgba[i * 4 + 2] as usize];
-        alpha_pixels[i] = rgba[i * 4 + 3] as f64 / 255.0;
+    //
+    // The shipped path allocates, fills and frees these buffers exactly as it
+    // always has — the three linear-RGB planes and the alpha plane first, all
+    // four living to the end of this function — because it is the reference
+    // every lever is timed against, and the allocator is part of what a timing
+    // measures. Shortening one lifetime or moving one allocation lets a later
+    // buffer reuse freed, already-faulted memory, and that alone moved a
+    // 512×512 encode by more than 10% while this was being written. The fused
+    // path (`accel_fused_pixels`) allocates none of the four; the alpha plane
+    // is rebuilt below only when the image has alpha to transform.
+    let fused = t.accel_fused_pixels;
+    let unfused = if fused { 0 } else { pixel_count };
+    let mut lin_r = vec![0.0f64; unfused];
+    let mut lin_g = vec![0.0f64; unfused];
+    let mut lin_b = vec![0.0f64; unfused];
+    let mut alpha_pixels = vec![0.0f64; unfused];
+    if !fused {
+        // Sliced to `pixel_count` for the reason given at `alpha_average`.
+        let (r, g, b) = (
+            &mut lin_r[..pixel_count],
+            &mut lin_g[..pixel_count],
+            &mut lin_b[..pixel_count],
+        );
+        let a = &mut alpha_pixels[..pixel_count];
+        for i in 0..pixel_count {
+            r[i] = eotf_lut[rgba[i * 4] as usize];
+            g[i] = eotf_lut[rgba[i * 4 + 1] as usize];
+            b[i] = eotf_lut[rgba[i * 4 + 2] as usize];
+            a[i] = rgba[i * 4 + 3] as f64 / 255.0;
+        }
+        stage!("linearize");
     }
-    stage!("linearize");
 
     let mut oklab_pixels = vec![[0.0f64; 3]; pixel_count];
-    crate::simd::oklab_forward_batch(&lin_r, &lin_g, &lin_b, gamut, &mut oklab_pixels);
-    stage!("oklab_forward");
-
     let mut avg_l = 0.0;
     let mut avg_a = 0.0;
     let mut avg_b = 0.0;
     let mut avg_alpha = 0.0;
-    for i in 0..pixel_count {
-        let alpha = alpha_pixels[i];
-        let lab = oklab_pixels[i];
-        avg_l += alpha * lab[0];
-        avg_a += alpha * lab[1];
-        avg_b += alpha * lab[2];
-        avg_alpha += alpha;
+
+    if fused {
+        // §12.1 item 6: linearize, OKLAB and the alpha-weighted reduction in
+        // one pass over tiles of `FUSED_TILE` pixels, with no full-size
+        // linear-RGB or alpha buffer. Byte-identical because (a) each pixel's
+        // linear RGB and OKLAB are the same per-pixel functions of the same
+        // bytes, and (b) the reduction still visits pixels in flat index
+        // order, with the same `alpha` expression. `FUSED_TILE` is a multiple
+        // of every SIMD lane count (1, 2, 4), so the pixels
+        // `oklab_forward_batch` sends to its scalar tail are the same ones as
+        // in one whole-image call — not that it matters to the bytes, which
+        // `simd/`'s contract makes lane-count independent.
+        //
+        // `oklab_pixels` stays full-size: `composite` reads it after the
+        // reduction has *finished*, and that barrier cannot be tiled away.
+        let mut tr = [0.0f64; FUSED_TILE];
+        let mut tg = [0.0f64; FUSED_TILE];
+        let mut tb = [0.0f64; FUSED_TILE];
+        // A bounded `for`, not a `while` on `start`: a mutated bound in the
+        // mutation sweep must fail a test, not hang it.
+        for start in (0..pixel_count).step_by(FUSED_TILE) {
+            let end = (start + FUSED_TILE).min(pixel_count);
+            let n = end - start;
+            for k in 0..n {
+                let i = start + k;
+                tr[k] = eotf_lut[rgba[i * 4] as usize];
+                tg[k] = eotf_lut[rgba[i * 4 + 1] as usize];
+                tb[k] = eotf_lut[rgba[i * 4 + 2] as usize];
+            }
+            crate::simd::oklab_forward_batch(
+                &tr[..n],
+                &tg[..n],
+                &tb[..n],
+                gamut,
+                &mut oklab_pixels[start..end],
+            );
+            for (i, lab) in oklab_pixels.iter().enumerate().take(end).skip(start) {
+                let alpha = rgba[i * 4 + 3] as f64 / 255.0;
+                avg_l += alpha * lab[0];
+                avg_a += alpha * lab[1];
+                avg_b += alpha * lab[2];
+                avg_alpha += alpha;
+            }
+        }
+        stage!("fused_pixels");
+    } else {
+        crate::simd::oklab_forward_batch(&lin_r, &lin_g, &lin_b, gamut, &mut oklab_pixels);
+        stage!("oklab_forward");
+
+        // Re-slice to `pixel_count`: the plane's length is now `unfused`, a
+        // runtime value, and without the one check here the compiler cannot
+        // drop the per-element bounds checks it could when the plane was
+        // allocated at `pixel_count` in plain sight — which cost this loop 3×.
+        let alpha_plane = &alpha_pixels[..pixel_count];
+        for i in 0..pixel_count {
+            let alpha = alpha_plane[i];
+            let lab = oklab_pixels[i];
+            avg_l += alpha * lab[0];
+            avg_a += alpha * lab[1];
+            avg_b += alpha * lab[2];
+            avg_alpha += alpha;
+        }
+        stage!("alpha_average");
     }
-    stage!("alpha_average");
 
     // 3. Compute alpha-weighted average color
     if avg_alpha > 0.0 {
@@ -260,11 +349,29 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     let mut a_chan = vec![0.0f64; pixel_count];
     let mut b_chan = vec![0.0f64; pixel_count];
 
-    for i in 0..pixel_count {
-        let alpha = alpha_pixels[i];
-        l_chan[i] = avg_l * (1.0 - alpha) + alpha * oklab_pixels[i][0];
-        a_chan[i] = avg_a * (1.0 - alpha) + alpha * oklab_pixels[i][1];
-        b_chan[i] = avg_b * (1.0 - alpha) + alpha * oklab_pixels[i][2];
+    if t.accel_fused_pixels {
+        // The fused path kept no alpha buffer: re-derive each pixel's alpha
+        // with the identical expression, and build the buffer only for an
+        // image whose alpha plane the forward DCT below will transform.
+        if has_alpha {
+            alpha_pixels = Vec::with_capacity(pixel_count);
+        }
+        for i in 0..pixel_count {
+            let alpha = rgba[i * 4 + 3] as f64 / 255.0;
+            l_chan[i] = avg_l * (1.0 - alpha) + alpha * oklab_pixels[i][0];
+            a_chan[i] = avg_a * (1.0 - alpha) + alpha * oklab_pixels[i][1];
+            b_chan[i] = avg_b * (1.0 - alpha) + alpha * oklab_pixels[i][2];
+            if has_alpha {
+                alpha_pixels.push(alpha);
+            }
+        }
+    } else {
+        for i in 0..pixel_count {
+            let alpha = alpha_pixels[i];
+            l_chan[i] = avg_l * (1.0 - alpha) + alpha * oklab_pixels[i][0];
+            a_chan[i] = avg_a * (1.0 - alpha) + alpha * oklab_pixels[i][1];
+            b_chan[i] = avg_b * (1.0 - alpha) + alpha * oklab_pixels[i][2];
+        }
     }
     stage!("composite");
 
@@ -317,8 +424,13 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     // `dct_separable` selects the prototype separable transform. It is not
     // byte-identical — see `dct::dct_encode_selected_separable` — and is false
     // in `Tunables::DEFAULT`, so the shipped path is always the direct sum.
+    // `accel_dct_lanes` is §12.1 item 3, which *is* byte-identical
+    // (`dct::dct_encode_lanes`); the separable prototype wins if both
+    // are set, since it is the one that changes what is computed.
     let forward = if t.dct_separable {
         crate::dct::dct_encode_selected_separable
+    } else if t.accel_dct_lanes {
+        crate::dct::dct_encode_lanes
     } else {
         dct_encode_selected
     };
@@ -462,9 +574,110 @@ struct AcQuantJob<'a> {
     mu: f64,
     table: &'a crate::constants::QuantTable,
     deadzone: f64,
+    /// `Tunables::accel_quant_table`'s precomputation, or `None` for the
+    /// shipped per-call path. Set by [`AcQuantJob::accelerated`].
+    accel: Option<AcAccel>,
+}
+
+/// What `spec/PERFORMANCE.md` §12.1 items 1 and 2 compute once per job instead
+/// of once per call. Every field is a pure function of the job's widths and
+/// companding parameters, which no caller changes after construction — the
+/// CfL rebind (`AcQuantJob { values, ..job }`) replaces the values and keeps
+/// the tiers, so the table it carries over still describes it.
+struct AcAccel {
+    /// `bits_at(i)` for every selection index the job holds.
+    bits: Vec<u32>,
+    /// Offset of index `i`'s width's block in `deq`.
+    base: Vec<usize>,
+    /// One `dequantize_table` block per distinct width, concatenated. Keyed on
+    /// `(bits, index)` through `base`, never on the index alone: a tiered job
+    /// (`LAYOUT_C`'s 6-bit and 5-bit L bands) has two grids.
+    deq: Vec<f64>,
+    /// `portable_ln(1 + mu)`, the µ-law denominator.
+    ln_1p_mu: f64,
 }
 
 impl AcQuantJob<'_> {
+    /// Attach the §12.1 items 1–2 precomputation when `on`. The values it
+    /// returns are the ones the per-call path computes; only when they are
+    /// computed moves.
+    fn accelerated(mut self, on: bool) -> Self {
+        if !on {
+            self.accel = None;
+            return self;
+        }
+        let bits: Vec<u32> = (0..self.values.len()).map(|i| self.bits_at(i)).collect();
+        let mut widths: Vec<(u32, usize)> = Vec::new();
+        let mut deq = Vec::new();
+        let base = bits
+            .iter()
+            .map(|&b| match widths.iter().find(|&&(w, _)| w == b) {
+                Some(&(_, off)) => off,
+                None => {
+                    let off = deq.len();
+                    deq.extend(crate::mulaw::dequantize_table(
+                        b,
+                        self.family,
+                        self.mu,
+                        self.table,
+                    ));
+                    widths.push((b, off));
+                    off
+                }
+            })
+            .collect();
+        self.accel = Some(AcAccel {
+            bits,
+            base,
+            deq,
+            ln_1p_mu: crate::math_utils::portable_ln(1.0 + self.mu),
+        });
+        self
+    }
+
+    /// Bit width at selection index `i`: the precomputed one where there is
+    /// one, the tier walk otherwise. Every caller indexes within the job's
+    /// values, which is the range the precomputation covers.
+    fn width(&self, i: usize) -> u32 {
+        match &self.accel {
+            Some(a) => a.bits[i],
+            None => self.bits_at(i),
+        }
+    }
+
+    /// `compand_dequantize(q, bits_at(i), …)`, from the table when there is one.
+    fn deq(&self, i: usize, q: u32) -> f64 {
+        match &self.accel {
+            Some(a) => a.deq[a.base[i] + q as usize],
+            None => compand_dequantize(q, self.bits_at(i), self.family, self.mu, self.table),
+        }
+    }
+
+    /// `compand_quantize(normalized, bits_at(i), …)`, with `ln(1 + mu)`
+    /// hoisted when the job is accelerated.
+    fn quant(&self, i: usize, normalized: f64) -> u32 {
+        let bits = self.width(i);
+        match &self.accel {
+            Some(a) => crate::mulaw::compand_quantize_hoisted(
+                normalized,
+                bits,
+                self.family,
+                self.mu,
+                a.ln_1p_mu,
+                self.table,
+                self.deadzone,
+            ),
+            None => compand_quantize(
+                normalized,
+                bits,
+                self.family,
+                self.mu,
+                self.table,
+                self.deadzone,
+            ),
+        }
+    }
+
     /// Bit width of the coefficient at selection index `i`.
     fn bits_at(&self, i: usize) -> u32 {
         let mut base = 0usize;
@@ -493,26 +706,19 @@ impl AcQuantJob<'_> {
 /// search run would silently undo every deadzone decision, making the knob
 /// inert rather than merely ineffective. (It was: before this, the encoder
 /// produced byte-identical output at every deadzone value.)
-fn quantize_one(job: &AcQuantJob, value: f64, scale: f64, bits: u32, nearest: bool) -> u32 {
+fn quantize_one(job: &AcQuantJob, i: usize, value: f64, scale: f64, nearest: bool) -> u32 {
     let normalized = if scale == 0.0 { 0.0 } else { value / scale };
-    let q = compand_quantize(
-        normalized,
-        bits,
-        job.family,
-        job.mu,
-        job.table,
-        job.deadzone,
-    );
+    let q = job.quant(i, normalized);
     let deadzoned = job.deadzone > 0.0 && normalized.abs() < job.deadzone;
     if !nearest || scale == 0.0 || deadzoned {
         return q;
     }
-    let max_idx = (1u32 << bits) - 2;
+    let max_idx = (1u32 << job.width(i)) - 2;
     let mut best = q;
     let mut best_err = f64::INFINITY;
     for d in [0i64, -1, 1, -2, 2] {
         let cand = (q as i64 + d).clamp(0, max_idx as i64) as u32;
-        let rec = compand_dequantize(cand, bits, job.family, job.mu, job.table) * scale;
+        let rec = job.deq(i, cand) * scale;
         let err = (rec - value).abs();
         // Strict improvement keeps the shipped code on ties (d = 0 is first).
         if err < best_err {
@@ -527,10 +733,9 @@ fn quantize_one(job: &AcQuantJob, value: f64, scale: f64, bits: u32, nearest: bo
 fn channel_sse(job: &AcQuantJob, scale: f64, nearest: bool) -> f64 {
     let mut sse = 0.0;
     for (i, &v) in job.values.iter().enumerate() {
-        let bits = job.bits_at(i);
         let s = scale * job.gain_at(i);
-        let q = quantize_one(job, v, s, bits, nearest);
-        let rec = compand_dequantize(q, bits, job.family, job.mu, job.table) * s;
+        let q = quantize_one(job, i, v, s, nearest);
+        let rec = job.deq(i, q) * s;
         let d = rec - v;
         sse += d * d;
     }
@@ -572,12 +777,11 @@ fn quantize_ac_channel(job: &AcQuantJob, raw_scale: f64, t: &Tunables) -> (u32, 
 
     let mut codes = Vec::with_capacity(job.values.len());
     for (i, &v) in job.values.iter().enumerate() {
-        let bits = job.bits_at(i);
         codes.push(quantize_one(
             job,
+            i,
             v,
             norm_scale * job.gain_at(i),
-            bits,
             t.ac_nearest,
         ));
     }
@@ -715,6 +919,17 @@ fn add_basis(
 
 /// SSE of the reconstruction with one channel perturbed by `dval · basis`,
 /// without materializing the perturbed channel.
+///
+/// `stop_at` is §12.1 item 5 (`Tunables::accel_sse_early_exit`): with
+/// `Some(bound)`, the sum is abandoned at the end of the first row where it
+/// has reached `bound`, and that partial sum is returned. Every caller asks
+/// only "is this strictly below `bound`?", and the answer cannot change once
+/// the partial sum has reached it: each term is a sum of squares, so it is
+/// `>= 0` or NaN, and adding a non-negative number never decreases an IEEE
+/// sum under round-to-nearest. A partial sum `>= bound` therefore means the
+/// full one is `>= bound` too, or NaN — and NaN is not below `bound` either.
+/// A candidate that could win is never cut short, so the value a caller keeps
+/// is always a complete sum.
 #[allow(clippy::too_many_arguments, clippy::needless_range_loop)]
 fn sse_with_delta(
     obj: &PixelObjective,
@@ -729,6 +944,7 @@ fn sse_with_delta(
     dval: f64,
     cos_x: &[Vec<f64>],
     cos_y: &[Vec<f64>],
+    stop_at: Option<f64>,
 ) -> f64 {
     let fx = if cx > 0 { 2.0 } else { 1.0 };
     let fy = if cy > 0 { 2.0 } else { 1.0 };
@@ -751,6 +967,11 @@ fn sse_with_delta(
             let d2 = m[2] - t[2];
             acc += d0 * d0 + d1 * d1 + d2 * d2;
         }
+        if let Some(bound) = stop_at {
+            if acc >= bound {
+                return acc;
+            }
+        }
     }
     acc
 }
@@ -763,11 +984,7 @@ fn decoded_luma_ac(job: &AcQuantJob, scale_code: u32, codes: &[u32]) -> Vec<f64>
     codes
         .iter()
         .enumerate()
-        .map(|(i, &q)| {
-            compand_dequantize(q, job.bits_at(i), job.family, job.mu, job.table)
-                * scale
-                * job.gain_at(i)
-        })
+        .map(|(i, &q)| job.deq(i, q) * scale * job.gain_at(i))
         .collect()
 }
 
@@ -879,10 +1096,7 @@ fn refine_codes(
         |ch: usize, q: u32| -> f64 { q as f64 / jobs[ch].code_max as f64 * jobs[ch].max_scale };
     let ac_val = |ch: usize, i: usize, code: u32, scale: f64| -> f64 {
         let j = jobs[ch];
-        compand_dequantize(code, j.bits_at(i), j.family, j.mu, j.table)
-            * scale
-            * j.gain_at(i)
-            * windows[ch][i]
+        j.deq(i, code) * scale * j.gain_at(i) * windows[ch][i]
     };
     // A selected frequency the encoder input cannot represent was emitted as an
     // exact zero; refining it would invent energy the source does not have (and
@@ -941,9 +1155,9 @@ fn refine_codes(
                         .map(|i| {
                             quantize_one(
                                 jobs[ch],
+                                i,
                                 jobs[ch].values[i],
                                 s * jobs[ch].gain_at(i),
-                                jobs[ch].bits_at(i),
                                 t.ac_nearest,
                             )
                         })
@@ -976,8 +1190,12 @@ fn refine_codes(
                         continue;
                     }
                     let delta = dc_val(ch, cand) - dc_val(ch, cur);
+                    let stop_at = t
+                        .accel_sse_early_exit
+                        .then(|| chosen.as_ref().map_or(best, |&(_, be)| be));
                     let e = sse_with_delta(
                         &obj, &recon[0], &recon[1], &recon[2], ch, w, h, 0, 0, delta, cos_x, cos_y,
+                        stop_at,
                     );
                     let better = chosen.as_ref().map_or(e < best, |&(_, be)| e < be);
                     if better {
@@ -1001,7 +1219,7 @@ fn refine_codes(
                     continue;
                 }
                 let cur = codes[ch][i];
-                let bits = jobs[ch].bits_at(i);
+                let bits = jobs[ch].width(i);
                 let max_idx = (1u32 << bits) - 2;
                 let base = ac_val(ch, i, cur, scale);
                 let (cx, cy) = sels[ch].coeffs[i];
@@ -1013,9 +1231,12 @@ fn refine_codes(
                             continue;
                         }
                         let dval = ac_val(ch, i, cand, scale) - base;
+                        let stop_at = t
+                            .accel_sse_early_exit
+                            .then(|| chosen.as_ref().map_or(best, |&(_, be)| be));
                         let e = sse_with_delta(
                             &obj, &recon[0], &recon[1], &recon[2], ch, w, h, cx, cy, dval, cos_x,
-                            cos_y,
+                            cos_y, stop_at,
                         );
                         let better = chosen.as_ref().map_or(e < best, |&(_, be)| e < be);
                         if better {
@@ -1064,6 +1285,7 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
 
     // 8. Quantize header values (decode-aware DC code search, v0.6)
     let (l_dc_q, a_dc_q, b_dc_q) = select_dc_codes(l_dc, a_dc, b_dc, t);
+    stage!("dc_search");
 
     // Scalefactor-band split points (index >= split uses scale*band_gain).
     let l_split = band_split_index(shape.l_count(), t.band_split);
@@ -1085,7 +1307,9 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
         mu: t.mu_l,
         table: &t.table_l,
         deadzone: t.deadzone_l,
-    };
+        accel: None,
+    }
+    .accelerated(t.accel_quant_table);
     let a_job = AcQuantJob {
         values: &a_ac,
         tiers: &c_tiers,
@@ -1099,7 +1323,9 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
         mu: t.mu_c,
         table: &t.table_c,
         deadzone: t.deadzone_c,
-    };
+        accel: None,
+    }
+    .accelerated(t.accel_quant_table);
     let b_job = AcQuantJob {
         values: &b_ac,
         tiers: &c_tiers,
@@ -1129,7 +1355,9 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
         mu: t.mu_c,
         table: &t.table_c,
         deadzone: t.deadzone_c,
-    };
+        accel: None,
+    }
+    .accelerated(t.accel_quant_table);
     let (l_scl_q, l_codes) = quantize_ac_channel(&l_job, l_scale, t);
 
     // Alpha AC. `alpha_ac_fit` routes it through the same channel quantizer as
@@ -1150,7 +1378,9 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
         mu: t.mu_alpha,
         table: &t.table_alpha,
         deadzone: t.deadzone_alpha,
-    };
+        accel: None,
+    }
+    .accelerated(t.accel_quant_table);
     let (alpha_scl_q, alpha_codes) = if !has_alpha {
         (0, Vec::new())
     } else if t.alpha_ac_fit {
@@ -1232,9 +1462,9 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
             .map(|i| {
                 quantize_one(
                     &b_job,
+                    i,
                     b_job.values[i],
                     shared * b_job.gain_at(i),
-                    b_job.bits_at(i),
                     t.ac_nearest,
                 )
             })
@@ -1243,6 +1473,10 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     } else {
         quantize_ac_channel(&b_job, b_scale, t)
     };
+    // Every AC scale and code search: the jobs, `scale_fit`'s scale search and
+    // `ac_nearest`'s neighbourhood, the alpha plane, and CfL when it is on —
+    // where §12.1 items 1 and 2 act.
+    stage!("ac_quantize");
 
     // Encoder-only pixel-domain refinement (off by default). Rebinds the header
     // and AC codes; the decoder is untouched and the byte length is unchanged.
@@ -1308,37 +1542,47 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     let [l_dc_q, a_dc_q, b_dc_q] = dc_codes;
     let [l_scl_q, a_scl_q, b_scl_q] = scale_codes;
     let [l_codes, a_codes, b_codes] = ac_codes;
+    // Near zero in the shipped build, where `refine_passes` is 0; §12.1 item 5
+    // acts here when it is not.
+    stage!("refine");
 
     // 9. Allocate the variable-length body and write the descriptor bytes.
     //    Byte 0: version (bits 0..3) | tier (bits 3..6) | hasAlpha (bit 6) |
     //    reserved (bit 7, 0). Byte 1: aspect. (v1, spec §3.1)
     let body_len = body_len_bytes(t, has_alpha, tier);
     let mut hash = vec![0u8; body_len];
+    // §12.1 item 7 (`accel_word_bitpack`): the same bits, a word at a time.
+    // Both writers only OR into a zeroed buffer.
+    let put: fn(&mut [u8], usize, u32, u32) = if t.accel_word_bitpack {
+        write_bits_word
+    } else {
+        write_bits
+    };
     hash[0] = FORMAT_VERSION | (tier << VERSION_BITS) | ((has_alpha as u8) << ALPHA_FLAG_BIT);
 
     // 10. Aspect + DC + scale prefix. With the shipped widths this is byte 1 =
     //     aspect followed by bits 16..54, byte-for-byte the v1 layout.
     let mut bitpos = 8usize;
-    write_bits(&mut hash, bitpos, t.aspect_bits, aspect_code);
+    put(&mut hash, bitpos, t.aspect_bits, aspect_code);
     bitpos += t.aspect_bits as usize;
-    write_bits(&mut hash, bitpos, t.l_dc_bits, l_dc_q);
+    put(&mut hash, bitpos, t.l_dc_bits, l_dc_q);
     bitpos += t.l_dc_bits as usize;
-    write_bits(&mut hash, bitpos, t.a_dc_bits, a_dc_q);
+    put(&mut hash, bitpos, t.a_dc_bits, a_dc_q);
     bitpos += t.a_dc_bits as usize;
-    write_bits(&mut hash, bitpos, t.b_dc_bits, b_dc_q);
+    put(&mut hash, bitpos, t.b_dc_bits, b_dc_q);
     bitpos += t.b_dc_bits as usize;
-    write_bits(&mut hash, bitpos, t.l_scale_bits, l_scl_q);
+    put(&mut hash, bitpos, t.l_scale_bits, l_scl_q);
     bitpos += t.l_scale_bits as usize;
-    write_bits(&mut hash, bitpos, t.a_scale_bits, a_scl_q);
+    put(&mut hash, bitpos, t.a_scale_bits, a_scl_q);
     bitpos += t.a_scale_bits as usize;
     if !t.b_scale_from_a {
-        write_bits(&mut hash, bitpos, t.b_scale_bits, b_scl_q);
+        put(&mut hash, bitpos, t.b_scale_bits, b_scl_q);
         bitpos += t.b_scale_bits as usize;
     }
     if t.cfl_bits > 0 {
-        write_bits(&mut hash, bitpos, t.cfl_bits, cfl_a_code);
+        put(&mut hash, bitpos, t.cfl_bits, cfl_a_code);
         bitpos += t.cfl_bits as usize;
-        write_bits(&mut hash, bitpos, t.cfl_bits, cfl_b_code);
+        put(&mut hash, bitpos, t.cfl_bits, cfl_b_code);
         bitpos += t.cfl_bits as usize;
     }
     debug_assert_eq!(bitpos, prefix_bits(t) as usize);
@@ -1348,9 +1592,9 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     if has_alpha {
         let alpha_dc_max = ((1u32 << t.alpha_dc_bits) - 1) as f64;
         let alpha_dc_q = round_half_away_from_zero(alpha_dc_max * clamp01(alpha_dc)) as u32;
-        write_bits(&mut hash, bitpos, t.alpha_dc_bits, alpha_dc_q);
+        put(&mut hash, bitpos, t.alpha_dc_bits, alpha_dc_q);
         bitpos += t.alpha_dc_bits as usize;
-        write_bits(&mut hash, bitpos, t.alpha_scale_bits, alpha_scl_q);
+        put(&mut hash, bitpos, t.alpha_scale_bits, alpha_scl_q);
         bitpos += t.alpha_scale_bits as usize;
     }
 
@@ -1364,7 +1608,7 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
                 1 => (c_bits, a_codes[i]),
                 _ => (c_bits, b_codes[i]),
             };
-            write_bits(&mut hash, bitpos, bits, q);
+            put(&mut hash, bitpos, bits, q);
             bitpos += bits as usize;
         }
     } else {
@@ -1372,7 +1616,7 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
         let mut l_idx = 0usize;
         for &(count, bits) in &shape.l_tiers {
             for _ in 0..count {
-                write_bits(&mut hash, bitpos, bits, l_codes[l_idx]);
+                put(&mut hash, bitpos, bits, l_codes[l_idx]);
                 bitpos += bits as usize;
                 l_idx += 1;
             }
@@ -1380,18 +1624,18 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
 
         // Chroma AC
         for &q in &a_codes {
-            write_bits(&mut hash, bitpos, c_bits, q);
+            put(&mut hash, bitpos, c_bits, q);
             bitpos += c_bits as usize;
         }
         for &q in &b_codes {
-            write_bits(&mut hash, bitpos, c_bits, q);
+            put(&mut hash, bitpos, c_bits, q);
             bitpos += c_bits as usize;
         }
     }
 
     if has_alpha {
         for &q in &alpha_codes {
-            write_bits(&mut hash, bitpos, shape.alpha_ac_bits, q);
+            put(&mut hash, bitpos, shape.alpha_ac_bits, q);
             bitpos += shape.alpha_ac_bits as usize;
         }
     }
@@ -1407,6 +1651,8 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
         prefix_bits(t) as usize + alpha_prefix + ac_payload_bits(&shape)
     );
     debug_assert_eq!(body_len, bitpos.div_ceil(8));
+    // The body allocation and every bit written into it — §12.1 item 7.
+    stage!("pack");
 
     hash.into_boxed_slice()
 }
@@ -1784,5 +2030,293 @@ mod tests {
         #[rustfmt::skip]
         let expected = [72, 128, 71, 174, 20, 0, 192, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 109, 219, 134, 109, 219, 180, 109, 219, 182, 109, 219, 182, 13];
         assert_eq!(encode(w, h, &rgba, Gamut::Srgb).as_ref(), &expected);
+    }
+
+    // ── PERFORMANCE.md §12.1's byte-identical levers ─────────────────────
+    //
+    // `tests/accel_levers.rs` holds every lever to the spec vectors and a wider
+    // sweep, but it reads the sibling `spec/` dir, so the mutation sweep cannot
+    // run it. These are its in-crate half: every encoder lever against the
+    // shipped path, on inputs chosen to reach each lever's own code — two
+    // fused-pass tiles, translucent pixels, a tiered-width luma job, the
+    // refinement the early exit lives in.
+
+    /// Each encoder-side lever's flag.
+    const ENCODE_LEVERS: [fn(&mut Tunables); 5] = [
+        |t| t.accel_quant_table = true,
+        |t| t.accel_dct_lanes = true,
+        |t| t.accel_sse_early_exit = true,
+        |t| t.accel_fused_pixels = true,
+        |t| t.accel_word_bitpack = true,
+    ];
+
+    /// Deterministic noise over a gradient, optionally with an alpha ramp that
+    /// includes fully transparent pixels.
+    fn lever_image(w: u32, h: u32, alpha: bool, seed: u32) -> Vec<u8> {
+        let mut s = seed.wrapping_mul(0x9e37_79b9) | 1;
+        let (w, h) = (w as usize, h as usize);
+        let mut rgba = vec![0u8; w * h * 4];
+        for y in 0..h {
+            for x in 0..w {
+                s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let n = (s >> 26) as usize;
+                let i = (y * w + x) * 4;
+                rgba[i] = ((x * 255 / w.max(2)) + n) as u8;
+                rgba[i + 1] = ((y * 255 / h.max(2)) + n * 2) as u8;
+                rgba[i + 2] = (s >> 20) as u8;
+                rgba[i + 3] = if !alpha {
+                    255
+                } else if (x + y) % 5 == 0 {
+                    0
+                } else {
+                    ((x + 2 * y) * 255 / (w + 2 * h)) as u8
+                };
+            }
+        }
+        rgba
+    }
+
+    /// Every encoder lever alone and all together must give `base`'s bytes.
+    fn assert_levers_reproduce(base: Tunables, w: u32, h: u32, rgba: &[u8], tier: u8) {
+        let reference = encode_with(w, h, rgba, Gamut::Srgb, &base, tier);
+        let mut all = base;
+        for (k, set) in ENCODE_LEVERS.iter().enumerate() {
+            let mut t = base;
+            set(&mut t);
+            set(&mut all);
+            assert_eq!(
+                encode_with(w, h, rgba, Gamut::Srgb, &t, tier),
+                reference,
+                "lever {k}, {w}x{h} tier {tier}, base {base:?}"
+            );
+        }
+        assert_eq!(
+            encode_with(w, h, rgba, Gamut::Srgb, &all, tier),
+            reference,
+            "all levers, {w}x{h} tier {tier}"
+        );
+    }
+
+    #[test]
+    fn encoder_levers_reproduce_the_shipped_bytes() {
+        let d = Tunables::DEFAULT;
+        let bases = [
+            d,
+            // Two bit widths in one luma job from tier 2 up (§12.1 item 1).
+            Tunables {
+                layout_upper: crate::constants::LAYOUT_C,
+                ..d
+            },
+            Tunables {
+                alpha_ac_fit: true,
+                ..d
+            },
+            Tunables {
+                cfl_bits: 5,
+                b_scale_from_a: true,
+                ..d
+            },
+        ];
+        // 40×30 and 35×33 are more than one `FUSED_TILE`; 1×19 is a strip.
+        let images = [
+            (7u32, 5u32, false, 0u8..=2u8),
+            (6, 6, true, 0..=2),
+            (1, 19, true, 0..=1),
+            (40, 30, false, 0..=1),
+            (35, 33, true, 0..=1),
+        ];
+        for (bi, base) in bases.into_iter().enumerate() {
+            for (ii, (w, h, alpha, tiers)) in images.iter().cloned().enumerate() {
+                let rgba = lever_image(w, h, alpha, (bi * 7 + ii) as u32);
+                for tier in tiers {
+                    assert_levers_reproduce(base, w, h, &rgba, tier);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn early_exit_reproduces_the_refined_bytes() {
+        // §12.1 item 5 changes nothing unless the refinement runs.
+        let base = Tunables {
+            refine_passes: 2,
+            refine_delta: 2,
+            refine_dc: true,
+            refine_scale: true,
+            ..Tunables::DEFAULT
+        };
+        for (w, h, alpha) in [(9u32, 7u32, false), (8, 8, true), (1, 12, false)] {
+            let rgba = lever_image(w, h, alpha, w * 31 + h);
+            for tier in 0..=1 {
+                assert_levers_reproduce(base, w, h, &rgba, tier);
+            }
+        }
+    }
+
+    #[test]
+    fn early_exit_stops_only_at_the_bound() {
+        // The scorer itself: the full sum with no bound, the full sum when the
+        // bound is never reached, and a partial sum no smaller than the bound
+        // when it is.
+        let (w, h) = (6usize, 5usize);
+        let l: Vec<f64> = (0..w * h).map(|p| (p % 7) as f64 / 7.0).collect();
+        let a: Vec<f64> = (0..w * h).map(|p| (p % 3) as f64 * 0.02 - 0.02).collect();
+        let b: Vec<f64> = (0..w * h).map(|p| (p % 4) as f64 * -0.01).collect();
+        let obj = PixelObjective::new(0, 1.0, 1.0, &l, &a, &b);
+        let cos_x = precompute_cos_table(w, 3);
+        let cos_y = precompute_cos_table(h, 3);
+        let score = |stop: Option<f64>| {
+            sse_with_delta(&obj, &l, &a, &b, 0, w, h, 2, 1, 0.3, &cos_x, &cos_y, stop)
+        };
+        let full = score(None);
+        assert!(full > 0.0);
+        assert_eq!(score(Some(f64::INFINITY)), full);
+        assert_eq!(score(Some(full * 2.0)), full);
+        let partial = score(Some(full / 4.0));
+        assert!(partial >= full / 4.0, "{partial} stopped below its bound");
+        assert!(partial < full, "{partial} did not stop early");
+    }
+
+    #[test]
+    fn quant_table_attaches_only_when_on_and_agrees_per_width() {
+        // A tiered job: indices 0..8 at 6 bits, 8..22 at 5 — LAYOUT_C's L row.
+        let values: Vec<f64> = (0..22).map(|i| (i as f64 * 0.37).sin() * 0.2).collect();
+        let tiers = [(8usize, 6u32), (14, 5)];
+        let job = |on: bool| {
+            AcQuantJob {
+                values: &values,
+                tiers: &tiers,
+                split: 11,
+                band_gain: 1.0,
+                max_scale: 0.5,
+                code_max: 63,
+                scale_bits: 6,
+                scale_mu: 0.0,
+                family: crate::constants::Companding::MuLaw,
+                mu: 5.0,
+                table: &crate::constants::QuantTable::EMPTY,
+                deadzone: 0.0,
+                accel: None,
+            }
+            .accelerated(on)
+        };
+        let (plain, fast) = (job(false), job(true));
+        assert!(plain.accel.is_none());
+        assert!(fast.accel.is_some());
+        for i in 0..values.len() {
+            let bits = plain.bits_at(i);
+            assert_eq!(fast.width(i), bits, "index {i}");
+            for q in 0..(1u32 << bits) - 1 {
+                assert_eq!(
+                    fast.deq(i, q).to_bits(),
+                    plain.deq(i, q).to_bits(),
+                    "index {i} code {q}"
+                );
+            }
+            for v in [-1.0, -0.4, -0.01, 0.0, 0.03, 0.5, 1.0] {
+                assert_eq!(fast.quant(i, v), plain.quant(i, v), "index {i} value {v}");
+            }
+        }
+    }
+
+    #[test]
+    fn band_gain_refine_cfl_and_shared_scale_goldens() {
+        // The lever tests above compare two paths through the same lines, so a
+        // defect on a line both share passes them. These pin the bytes of the
+        // lines the levers re-plumbed — every `· gain_at(i)`, the refinement's
+        // dequantized value and window, the CfL predictor, the shared chroma
+        // scale — under Tunables where each one matters (every shipped gain
+        // and window is 1.0, where `·` and `/` agree). The bytes were produced
+        // by `master`'s encoder before any lever existed, and this branch's
+        // reproduces them.
+        let (w, h) = (11u32, 9u32);
+        let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h as usize {
+            for x in 0..w as usize {
+                rgba.extend_from_slice(&[
+                    ((x * 37 + y * 11) % 256) as u8,
+                    ((x * x * 3 + y * 29) % 256) as u8,
+                    ((x * y * 5 + 17) % 256) as u8,
+                    255,
+                ]);
+            }
+        }
+        let banded = Tunables {
+            band_gain_l: 1.4,
+            band_gain_c: 0.7,
+            ..Tunables::DEFAULT
+        };
+        let cases: [(Tunables, u8, &[u8]); 5] = [
+            (
+                banded,
+                1,
+                &[
+                    8, 137, 77, 94, 50, 121, 210, 196, 144, 20, 9, 90, 110, 233, 217, 217, 225, 25,
+                    26, 97, 157, 26, 182, 96, 88, 53, 43, 217, 68, 152, 198, 148,
+                ],
+            ),
+            (
+                banded,
+                2,
+                &[
+                    16, 137, 77, 94, 242, 152, 140, 1, 228, 140, 101, 70, 108, 53, 171, 235, 216,
+                    107, 112, 58, 38, 87, 137, 8, 178, 248, 108, 148, 145, 54, 246, 152, 106, 49,
+                    66, 249, 166, 107, 80, 193, 245, 92, 115, 111, 58, 249, 158, 123, 241, 173,
+                    215, 222, 123, 239, 193, 247, 232, 123, 242, 185, 7, 223, 123, 111, 61, 246,
+                    218, 123, 242, 189, 247, 30, 177, 228, 106, 36, 229, 150, 210, 233, 25, 13,
+                    206, 217, 38, 15, 22, 14, 209, 82, 175, 178, 196, 0, 22, 234, 176, 234, 169,
+                    50, 209, 32, 36, 92, 105, 237, 34, 50,
+                ],
+            ),
+            (
+                // A low band split, so the luma gain reaches the indices the
+                // CfL predictor reads (chroma is the shorter set).
+                Tunables {
+                    cfl_bits: 5,
+                    band_split: 0.1,
+                    ..banded
+                },
+                1,
+                &[
+                    8, 137, 77, 94, 242, 184, 74, 155, 3, 67, 98, 36, 104, 185, 165, 103, 103, 135,
+                    103, 104, 131, 116, 106, 72, 98, 98, 71, 205, 174, 131, 128, 26, 211, 2,
+                ],
+            ),
+            (
+                Tunables {
+                    refine_passes: 1,
+                    refine_scale: true,
+                    refine_dc: true,
+                    w_min_l: 0.6,
+                    w_exp_l: 2,
+                    ..banded
+                },
+                1,
+                &[
+                    8, 137, 76, 30, 82, 137, 16, 197, 144, 216, 8, 158, 46, 173, 221, 217, 221, 25,
+                    86, 157, 157, 152, 149, 96, 216, 52, 43, 201, 68, 168, 198, 148,
+                ],
+            ),
+            (
+                Tunables {
+                    b_scale_from_a: true,
+                    ..banded
+                },
+                1,
+                &[
+                    8, 137, 77, 94, 50, 121, 38, 134, 164, 72, 208, 114, 75, 207, 206, 14, 207,
+                    208, 8, 235, 212, 176, 5, 195, 170, 89, 201, 38, 2, 181, 166, 4,
+                ],
+            ),
+        ];
+        for (k, (t, tier, expected)) in cases.iter().enumerate() {
+            assert_eq!(
+                encode_with(w, h, &rgba, Gamut::Srgb, t, *tier).as_ref(),
+                *expected,
+                "case {k}"
+            );
+            // And every lever on reproduces them too.
+            assert_levers_reproduce(*t, w, h, &rgba, *tier);
+        }
     }
 }

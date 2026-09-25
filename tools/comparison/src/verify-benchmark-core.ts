@@ -220,11 +220,19 @@ const PER_US: Record<string, number> = { us: 1, ms: 1e3, s: 1e6 };
 export const SCHEMA = "chromahash-perf/2";
 
 /**
- * Two runs of the same cell agree to about this much on a quiet machine. Used
- * only to flag disagreement *between* the committed runs, never to accept a
- * documented number — those are checked exactly.
+ * Two runs of the same cell agree to within this much on a host fit to publish
+ * from — §0's bar. Applied only *between* the committed runs, never to accept a
+ * documented number: those are checked exactly. Any shared cell further apart
+ * than this fails the gate.
  */
 export const CROSS_RUN_TOLERANCE = 0.1;
+
+/**
+ * The sweep mode §0's stability claim is about: two independent `bounded`
+ * sweeps at one commit. A `--full` sweep is compared with them for spread like
+ * any other run, but it is not one of the pair.
+ */
+export const STABILITY_MODE = "bounded";
 
 interface Cell {
   id: string;
@@ -286,8 +294,15 @@ export class Runs {
     string,
     { us: number; cell: Cell; from: string }
   >();
+  /** Every loaded run's own value for each of its cells, by file. */
+  private readonly perRun = new Map<string, Map<string, number>>();
   readonly loaded: RunDoc[] = [];
-  /** Same id, two runs, materially different: a property of the host. */
+  /**
+   * Same id, two runs, further apart than `CROSS_RUN_TOLERANCE`: the host did
+   * not hold its clock still across them. Compared across every pair of loaded
+   * runs, not against whichever run happened to be read first — with three
+   * runs, the second and third were otherwise never compared with each other.
+   */
   readonly crossRunSpread: string[] = [];
   /** Same id twice inside one run: an integrity bug in the driver. */
   readonly duplicates: string[] = [];
@@ -342,27 +357,30 @@ export class Runs {
         }
       }
 
-      const seen = new Set<string>();
+      const own = new Map<string, number>();
       for (const c of doc.cells) {
-        if (seen.has(c.id)) {
+        if (own.has(c.id)) {
           this.duplicates.push(`${file}: duplicate cell id ${c.id}`);
           continue;
         }
-        seen.add(c.id);
         const us = (c.nsPerOp ?? c.medianNsPerOp) / 1000;
-        const prior = this.byId.get(c.id);
-        if (!prior) {
-          this.byId.set(c.id, { us, cell: c, from: file });
-          continue;
+        own.set(c.id, us);
+        for (const [other, cellsOf] of this.perRun) {
+          const theirs = cellsOf.get(c.id);
+          if (theirs === undefined) continue;
+          const delta = spread(theirs, us);
+          if (delta > CROSS_RUN_TOLERANCE) {
+            this.crossRunSpread.push(
+              `${c.id}: ${other} says ${theirs.toFixed(1)} us, ` +
+                `${file} says ${us.toFixed(1)} us (${(delta * 100).toFixed(1)}% apart)`,
+            );
+          }
         }
-        const delta = Math.abs(prior.us - us) / Math.min(prior.us, us);
-        if (delta > CROSS_RUN_TOLERANCE) {
-          this.crossRunSpread.push(
-            `${c.id}: ${prior.from} says ${prior.us.toFixed(1)} us, ` +
-              `${file} says ${us.toFixed(1)} us (${(delta * 100).toFixed(1)}% apart)`,
-          );
+        if (!this.byId.has(c.id)) {
+          this.byId.set(c.id, { us, cell: c, from: file });
         }
       }
+      this.perRun.set(file, own);
     }
 
     // "The union of what was measured wins over any single run's gap" — as a
@@ -408,12 +426,212 @@ export class Runs {
   get ids(): string[] {
     return [...this.byId.keys()].sort();
   }
+
+  /** One loaded run's own cells, microseconds by id; undefined if not loaded. */
+  cellsOf(file: string): ReadonlyMap<string, number> | undefined {
+    return this.perRun.get(file);
+  }
 }
 
 export class MissingCell extends Error {
   constructor(readonly id: string) {
     super(`no cell "${id}" in any committed run`);
   }
+}
+
+/** Relative distance between two timings of one cell, against the faster. */
+export function spread(a: number, b: number): number {
+  return Math.abs(a - b) / Math.min(a, b);
+}
+
+// ─── §0's host-stability claim ──────────────────────────────────────────────
+//
+// §0 publishes a host only after two independent bounded sweeps at one commit
+// agreed within `CROSS_RUN_TOLERANCE` on every shared cell. That claim used to
+// stand on the maintainer's word: one sweep was committed, the gate had no slot
+// for a second, and the spread it computed was printed as a warning. It is now
+// a result with three outcomes, and §0's own table row is held to it.
+
+export interface Stability {
+  /**
+   * `pass` — two bounded runs, one commit, one CPU, at least one shared cell,
+   *          none further apart than the tolerance.
+   * `skip` — fewer than two bounded runs committed: nothing to compare, and the
+   *          gate says so rather than reporting agreement.
+   * `fail` — two are committed and they do not substantiate the claim.
+   */
+  status: "pass" | "skip" | "fail";
+  /** The bounded runs compared, by file. */
+  runs: string[];
+  /** Cells every compared run holds. */
+  shared: number;
+  /** Widest spread over the shared cells, as a fraction; null if none. */
+  widest: number | null;
+  /** Why the status is not `pass`. */
+  problems: string[];
+}
+
+export function checkStability(R: Runs): Stability {
+  const bounded = R.loaded.filter((d) => d.config?.mode === STABILITY_MODE);
+  const runs = bounded.map((d) => d.file);
+  if (bounded.length < 2) {
+    return {
+      status: "skip",
+      runs,
+      shared: 0,
+      widest: null,
+      problems: [
+        `${bounded.length} ${STABILITY_MODE} run(s) committed; the check needs two`,
+      ],
+    };
+  }
+
+  const problems: string[] = [];
+  const commits = new Set(bounded.map((d) => d.git?.commit));
+  if (commits.size > 1) {
+    const list = [...commits].join(", ");
+    problems.push(
+      `the ${STABILITY_MODE} runs are at different commits (${list}); the claim is about one commit measured twice`,
+    );
+  }
+  const cpus = new Set(bounded.map((d) => d.environment?.cpuModel));
+  if (cpus.size > 1) {
+    const list = [...cpus].join(", ");
+    problems.push(
+      `the ${STABILITY_MODE} runs are from different CPUs (${list}); the claim is about one host`,
+    );
+  }
+
+  const maps = runs.map((f) => R.cellsOf(f) ?? new Map<string, number>());
+  const [first, ...rest] = maps;
+  let shared = 0;
+  let outside = 0;
+  let widest: number | null = null;
+  for (const [id, us] of first ?? []) {
+    const all = [us];
+    for (const m of rest) {
+      const v = m.get(id);
+      if (v !== undefined) all.push(v);
+    }
+    if (all.length < maps.length) continue;
+    shared++;
+    const d = spread(Math.max(...all), Math.min(...all));
+    if (d > CROSS_RUN_TOLERANCE) outside++;
+    if (widest === null || d > widest) widest = d;
+  }
+  if (shared === 0) {
+    problems.push(`the ${STABILITY_MODE} runs share no cell`);
+  } else if (outside > 0) {
+    problems.push(
+      `${outside} of ${shared} shared cell(s) more than ` +
+        `${(CROSS_RUN_TOLERANCE * 100).toFixed(0)}% apart, the widest ` +
+        `${((widest ?? 0) * 100).toFixed(1)}%`,
+    );
+  }
+
+  return {
+    status: problems.length > 0 ? "fail" : "pass",
+    runs,
+    shared,
+    widest,
+    problems,
+  };
+}
+
+/** How §0 names the row, and what the gate requires it to quote on "Yes". */
+export const STABILITY_ROW =
+  /^[>\s]*\|\s*This host's [^|]*agreement\s*\|([^|]*)\|/;
+
+/**
+ * §0's table says whether the host-stability claim is reproducible from the
+ * tree. Hold that row to the check, in both directions: "Yes" needs a passing
+ * check and must quote its shared-cell count and widest spread, so the prose
+ * cannot drift from the runs; "No" while the check passes understates the
+ * tree, and is failed so the row is updated in the change that lands the run.
+ */
+export function checkStabilityClaim(doc: string, s: Stability): Failure[] {
+  const where = "§0 — reproducibility table";
+  const column = "Reproducible from the tree?";
+  const row = "This host's cross-run agreement";
+  const hit = doc
+    .split("\n")
+    .map((line) => STABILITY_ROW.exec(line))
+    .find((m) => m !== null);
+  if (!hit) {
+    return [
+      {
+        where,
+        column,
+        row,
+        documented: "(row not found)",
+        measured: s.status,
+        detail: `§0 must state whether its host-stability claim is reproducible; no line matched ${STABILITY_ROW}`,
+      },
+    ];
+  }
+
+  const cell = clean(hit[1] ?? "");
+  const says = /^yes\b/i.test(cell) ? "Yes" : /^no\b/i.test(cell) ? "No" : "";
+  const documented = cell.slice(0, 60);
+  if (says === "") {
+    return [
+      {
+        where,
+        column,
+        row,
+        documented,
+        measured: s.status,
+        detail: 'the cell must begin with "Yes" or "No"',
+      },
+    ];
+  }
+  if (says === "Yes" && s.status !== "pass") {
+    return [
+      {
+        where,
+        column,
+        row,
+        documented,
+        measured: s.status,
+        detail: `the check did not pass: ${s.problems.join("; ")}`,
+      },
+    ];
+  }
+  if (says === "No" && s.status === "pass") {
+    return [
+      {
+        where,
+        column,
+        row,
+        documented,
+        measured: s.status,
+        detail: `${s.runs.join(" and ")} agree on ${s.shared} shared cells; the row understates the tree — change it to "Yes"`,
+      },
+    ];
+  }
+  if (says === "Yes") {
+    const widest = `${((s.widest ?? 0) * 100).toFixed(1)}%`;
+    // Bounded on the left, so "2 shared cells" is not found inside "12 shared
+    // cells".
+    const quoted = (q: string): boolean =>
+      new RegExp(`(^|[^0-9.])${q.replace(/[.%]/g, "\\$&")}`).test(cell);
+    const missing = [`${s.shared} shared cells`, `widest ${widest}`].filter(
+      (q) => !quoted(q),
+    );
+    if (missing.length > 0) {
+      return [
+        {
+          where,
+          column,
+          row,
+          documented,
+          measured: `${s.shared} shared cells, widest ${widest}`,
+          detail: `the row must quote the check's figures: missing ${missing.map((m) => `"${m}"`).join(", ")}`,
+        },
+      ];
+    }
+  }
+  return [];
 }
 
 // ─── Bindings ───────────────────────────────────────────────────────────────
@@ -468,14 +686,25 @@ export function parseStages(text: string | null): {
   cells: Record<string, StageCell> | null;
   error: string | null;
 } {
-  const where = `tools/comparison/baselines/${STAGES_BASELINE}`;
+  return parseStageFile<StageCell>(text, {
+    baseline: STAGES_BASELINE,
+    schema: STAGES_SCHEMA,
+    absent:
+      "record §1's three columns with `mise run benchmark:stages 100 100 1`, `… 512 512 1`, `… 512 512 4`",
+    rerecord: "re-record §1's three columns with `mise run benchmark:stages`",
+  });
+}
+
+/** What `parseStages` and `parseDecodeStages` share: every way of not having a file. */
+function parseStageFile<C>(
+  text: string | null,
+  o: { baseline: string; schema: string; absent: string; rerecord: string },
+): { cells: Record<string, C> | null; error: string | null } {
+  const where = `tools/comparison/baselines/${o.baseline}`;
   if (text === null) {
-    return {
-      cells: null,
-      error: `${where} does not exist — record §1's three columns with \`mise run benchmark:stages 100 100 1\`, \`… 512 512 1\`, \`… 512 512 4\``,
-    };
+    return { cells: null, error: `${where} does not exist — ${o.absent}` };
   }
-  let doc: { schema?: string; cells?: Record<string, StageCell> };
+  let doc: { schema?: string; cells?: Record<string, C> };
   try {
     doc = JSON.parse(text) as typeof doc;
   } catch (e) {
@@ -484,10 +713,10 @@ export function parseStages(text: string | null): {
       error: `${where} is not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
     };
   }
-  if (doc.schema !== STAGES_SCHEMA) {
+  if (doc.schema !== o.schema) {
     return {
       cells: null,
-      error: `${where}: schema ${doc.schema ?? "(none)"}, expected ${STAGES_SCHEMA} — re-record §1's three columns with \`mise run benchmark:stages\``,
+      error: `${where}: schema ${doc.schema ?? "(none)"}, expected ${o.schema} — ${o.rerecord}`,
     };
   }
   if (!doc.cells || Object.keys(doc.cells).length === 0) {
@@ -495,6 +724,52 @@ export function parseStages(text: string | null): {
   }
   return { cells: doc.cells, error: null };
 }
+
+// ─── §1.1's decode-stages baseline ──────────────────────────────────────────
+
+export const DECODE_STAGES_BASELINE = "perf-decode-stages.json";
+export const DECODE_STAGES_SCHEMA = "chromahash-perf-decode-stages/1";
+
+/** The commands that record §1.1, one per column. */
+export const DECODE_STAGES_COMMANDS = [
+  "mise run benchmark:decode-stages 100 100 1 2000",
+  "mise run benchmark:decode-stages 100 100 4 20",
+  "mise run benchmark:decode-stages 100 100 4 200 32x32",
+] as const;
+
+/**
+ * One column of §1.1: a gradient of `width`×`height` encoded at `tier`, then
+ * decoded at its natural raster (`cap: null`) or capped, stage by stage.
+ */
+export interface DecodeStageCell extends StageCell {
+  width: number;
+  height: number;
+  tier: number;
+  iters: number;
+  cap: { width: number; height: number } | null;
+  render: { width: number; height: number };
+  hashBytes: number;
+  /** Spec decode vectors the instrumented build reproduced before timing. */
+  vectorsChecked: number;
+}
+
+/** §1.1's baseline, refused on exactly the terms §1's is. */
+export function parseDecodeStages(text: string | null): {
+  cells: Record<string, DecodeStageCell> | null;
+  error: string | null;
+} {
+  return parseStageFile<DecodeStageCell>(text, {
+    baseline: DECODE_STAGES_BASELINE,
+    schema: DECODE_STAGES_SCHEMA,
+    absent: `record §1.1's three columns with ${DECODE_STAGES_COMMANDS.map((c) => `\`${c}\``).join(", ")}`,
+    rerecord:
+      "re-record §1.1's three columns with `mise run benchmark:decode-stages`",
+  });
+}
+
+/** The key the recorder files a decode cell under, derived from its fields. */
+export const decodeCellKey = (c: DecodeStageCell): string =>
+  `${c.width}x${c.height}-t${c.tier}-${c.cap ? `cap${c.cap.width}x${c.cap.height}` : "natural"}`;
 
 /**
  * Figures the prose derives from §1's table, bound to the same baseline.
@@ -786,19 +1061,27 @@ export function checkTable(
 export function checkStagesProvenance(
   stages: Record<string, StageCell>,
 ): Failure[] {
+  return checkOneCleanCommit(stages, STAGES_BASELINE, "§1", "benchmark:stages");
+}
+
+function checkOneCleanCommit(
+  stages: Record<string, StageCell>,
+  baseline: string,
+  section: string,
+  task: string,
+): Failure[] {
   const failures: Failure[] = [];
   const dirty = Object.entries(stages)
     .filter(([, c]) => c.git?.dirty)
     .map(([k]) => k);
   if (dirty.length > 0) {
     failures.push({
-      where: STAGES_BASELINE,
+      where: baseline,
       column: "git.dirty",
       row: dirty.join(", "),
       documented: "—",
       measured: "dirty",
-      detail:
-        "recorded from a working tree with uncommitted changes, so these shares cannot be traced to a source state — re-run benchmark:stages from a clean tree",
+      detail: `recorded from a working tree with uncommitted changes, so these shares cannot be traced to a source state — re-run ${task} from a clean tree`,
     });
   }
   const revs = new Map<string, string[]>();
@@ -808,13 +1091,168 @@ export function checkStagesProvenance(
   }
   if (revs.size > 1) {
     failures.push({
-      where: STAGES_BASELINE,
+      where: baseline,
       column: "git.rev",
       row: [...revs.keys()].join(" vs "),
       documented: "one commit",
       measured: `${revs.size} commits`,
-      detail: `§1 reads as one measurement across its three columns, and these cells are from different builds: ${[...revs.entries()].map(([r, ks]) => `${r} (${ks.join(", ")})`).join("; ")}`,
+      detail: `${section} reads as one measurement across its columns, and these cells are from different builds: ${[...revs.entries()].map(([r, ks]) => `${r} (${ks.join(", ")})`).join("; ")}`,
     });
+  }
+  return failures;
+}
+
+/**
+ * §1.1's provenance: §1's one-clean-commit rule, plus what a decode cell must
+ * carry to mean what §1.1 says it means.
+ *
+ * - `vectorsChecked` ≥ 1. §1.1 says the instrumented build reproduced the
+ *   spec's decode vectors before timing; this is the field that says it did.
+ * - The key matches the fields, so a column header cannot be bound to a cell
+ *   that measured something else.
+ * - `iters` ≥ 1, `whole_decode` > 0, and `whole_decode` ≥ `stage_sum`.
+ * - Every share is its own `ns` over `whole_decode`, and together they cover
+ *   every recorded stage — so the file cannot be hand-edited in one field and
+ *   not the other, which is exactly how §1's shares could drift from its ns.
+ */
+export function checkDecodeStagesProvenance(
+  stages: Record<string, DecodeStageCell>,
+): Failure[] {
+  const failures = checkOneCleanCommit(
+    stages,
+    DECODE_STAGES_BASELINE,
+    "§1.1",
+    "benchmark:decode-stages",
+  );
+  const fail = (
+    row: string,
+    column: string,
+    measured: string,
+    detail: string,
+  ) =>
+    failures.push({
+      where: DECODE_STAGES_BASELINE,
+      column,
+      row,
+      documented: "—",
+      measured,
+      detail,
+    });
+  for (const [key, c] of Object.entries(stages)) {
+    if (!Number.isInteger(c.vectorsChecked) || c.vectorsChecked < 1) {
+      fail(
+        key,
+        "vectorsChecked",
+        String(c.vectorsChecked),
+        "no record that the instrumented build reproduced the spec's decode vectors before timing — re-record with benchmark:decode-stages",
+      );
+    }
+    const derived = decodeCellKey(c);
+    if (derived !== key) {
+      fail(
+        key,
+        "key",
+        derived,
+        "the cell's fields describe a different measurement from the key it is filed under",
+      );
+    }
+    if (!Number.isInteger(c.iters) || c.iters < 1) {
+      fail(
+        key,
+        "iters",
+        String(c.iters),
+        "a cell must average at least one decode",
+      );
+    }
+    const ns = c.ns ?? {};
+    const whole = ns.whole_decode;
+    const sum = ns.stage_sum;
+    if (
+      whole === undefined ||
+      !(whole > 0) ||
+      sum === undefined ||
+      sum > whole
+    ) {
+      fail(
+        key,
+        "ns",
+        `whole_decode=${whole} stage_sum=${sum}`,
+        "whole_decode must be positive and no smaller than the sum of its stages",
+      );
+      continue;
+    }
+    const stageKeys = Object.keys(ns)
+      .filter((k) => k !== "whole_decode" && k !== "stage_sum")
+      .sort();
+    const shareKeys = Object.keys(c.sharePct ?? {}).sort();
+    if (stageKeys.join(",") !== shareKeys.join(",")) {
+      fail(
+        key,
+        "sharePct",
+        shareKeys.join(", "),
+        `shares must cover exactly the recorded stages (${stageKeys.join(", ")})`,
+      );
+      continue;
+    }
+    // Written as "not within", so a share that is not a number fails too:
+    // every comparison with NaN is false.
+    const off = stageKeys.filter(
+      (k) =>
+        !(
+          Math.abs(
+            (c.sharePct[k] ?? Number.NaN) -
+              ((ns[k] ?? Number.NaN) * 100) / whole,
+          ) <= 1e-9
+        ),
+    );
+    if (off.length > 0) {
+      fail(
+        key,
+        "sharePct",
+        off.join(", "),
+        "a share disagrees with its own ns over whole_decode",
+      );
+    }
+  }
+  return failures;
+}
+
+/**
+ * The rows of a stage table against the stages its baseline records. A stage
+ * the table omits is time the table silently leaves out, and a row naming no
+ * recorded stage is a figure nothing backs; both fail. `labels` are the
+ * table's row labels, cleaned.
+ */
+export function checkStageRowCoverage(
+  labels: readonly string[],
+  stages: Record<string, StageCell>,
+  where: string,
+): Failure[] {
+  const failures: Failure[] = [];
+  const rows = new Set(labels);
+  for (const [key, cell] of Object.entries(stages)) {
+    const recorded = Object.keys(cell.sharePct ?? {});
+    const omitted = recorded.filter((s) => !rows.has(s));
+    const unbacked = [...rows].filter((r) => !recorded.includes(r));
+    if (omitted.length > 0 || unbacked.length > 0) {
+      failures.push({
+        where,
+        column: key,
+        row: [...omitted, ...unbacked].join(", "),
+        documented: [...rows].join(", "),
+        measured: recorded.join(", "),
+        detail: [
+          omitted.length > 0
+            ? `recorded but not in the table: ${omitted.join(", ")}`
+            : "",
+          unbacked.length > 0
+            ? `in the table but not recorded: ${unbacked.join(", ")}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("; "),
+      });
+    }
   }
   return failures;
 }
@@ -829,6 +1267,7 @@ export function checkProseClaims(
   doc: string,
   stages: Record<string, StageCell>,
   claims: readonly ProseClaim[],
+  baseline: string = STAGES_BASELINE,
 ): { failures: Failure[]; checked: number } {
   const failures: Failure[] = [];
   let checked = 0;
@@ -849,8 +1288,27 @@ export function checkProseClaims(
       continue;
     }
     const quotedRaw = all[0]?.[1];
+    if (quotedRaw === undefined) continue;
+    // A claim bound to a cell or stage the baseline does not hold is a figure
+    // nothing checks, and it used to be skipped without a word — so a claim
+    // could never fail by pointing at the wrong cell.
     const cell = stages[claim.cell];
-    if (quotedRaw === undefined || !cell) continue;
+    const absent = cell
+      ? claim.stages.filter((st) => cell.sharePct[st] === undefined)
+      : [];
+    if (!cell || absent.length > 0) {
+      failures.push({
+        where: "PERFORMANCE.md prose",
+        column: claim.what,
+        row: claim.stages.join(" + "),
+        documented: `${quotedRaw}%`,
+        measured: "—",
+        detail: cell
+          ? `${claim.cell} in ${baseline} records no ${absent.join(", ")}`
+          : `${baseline} has no cell ${claim.cell}`,
+      });
+      continue;
+    }
     const quoted = Number(quotedRaw);
     if (!Number.isFinite(quoted)) {
       failures.push({
@@ -864,16 +1322,7 @@ export function checkProseClaims(
       continue;
     }
     let expected = 0;
-    let missing = false;
-    for (const st of claim.stages) {
-      const v = cell.sharePct[st];
-      if (v === undefined) {
-        missing = true;
-        break;
-      }
-      expected += v;
-    }
-    if (missing) continue;
+    for (const st of claim.stages) expected += cell.sharePct[st] ?? 0;
     const dot = quotedRaw.indexOf(".");
     const places = dot < 0 ? 0 : quotedRaw.length - dot - 1;
     const tol = 0.5 * 10 ** -places;
@@ -885,7 +1334,7 @@ export function checkProseClaims(
         row: claim.stages.join(" + "),
         documented: `${quotedRaw}%`,
         measured: `${expected.toFixed(Math.max(places, 2))}%`,
-        detail: `from ${claim.cell} in ${STAGES_BASELINE}`,
+        detail: `from ${claim.cell} in ${baseline}`,
       });
     }
   }

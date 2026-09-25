@@ -175,8 +175,11 @@ pub const LAYOUT_B: AcLayout = AcLayout {
 /// [`LAYOUT_B`]'s alpha row because that sweep measured the two essentially tied.
 /// The alpha channel had five AC coefficients, inherited from v0.6 and never
 /// measured, and five cannot describe a silhouette. Raising it to 28 and paying
-/// out of chroma — which transparent regions composite away — is worth −16.2% mean
-/// ΔE00 on the never-tuned alpha holdout with every guard improving:
+/// out of chroma — which transparent regions composite away — is worth −17.10% mean
+/// ΔE00 on the alpha tune corpus, where every one of its 16 images improves. That
+/// is in-sample evidence. The never-tuned alpha holdout that put it at −16.2% mean
+/// ΔE00 has been retired (one of its images was deleted from Wikimedia Commons), so
+/// that figure can no longer be reproduced (§11.12). The alpha row's budget:
 /// alpha = 54 + 9 + 22·4 L + 2·3·3 chroma + 28·3 alpha = 253 bits.
 pub const LAYOUT_T0: AcLayout = AcLayout {
     l_tiers: [(28, 4), (0, 4)],
@@ -467,6 +470,39 @@ pub struct Tunables {
     /// transform, never a shipped setting. `false` here and in every binding
     /// (none of which expose `Tunables` at all).
     pub dct_separable: bool,
+    /// `spec/PERFORMANCE.md` §12.1's byte-identical acceleration levers, one
+    /// flag per lever so each can be timed as its own arm.
+    ///
+    /// Unlike [`Tunables::dct_separable`], every one of these produces the
+    /// same bytes as the path it replaces — the unit tests beside each one and
+    /// `tests/accel_levers.rs` hold them to that over the spec vectors and a
+    /// randomized input set. They are `false` in [`Tunables::DEFAULT`] only so
+    /// the shipped path stays the reference each lever is measured against;
+    /// turning one on changes the time an operation takes and nothing else.
+    ///
+    /// §12.1 items 1 and 2: a per-job dequantization table keyed on
+    /// `(bit width, index)`, the per-index bit widths computed once, and the
+    /// µ-law denominator `ln(1 + µ)` hoisted out of every quantize call.
+    pub accel_quant_table: bool,
+    /// §12.1 item 3: the forward DCT computes four coefficients per pass over
+    /// the channel, one lane each, with each lane's sum in the scalar order.
+    pub accel_dct_lanes: bool,
+    /// §12.1 item 4(a): the decoder's 4096-entry gamma table is built once
+    /// per output transfer curve and reused, not rebuilt on every decode.
+    pub accel_gamma_lut_cache: bool,
+    /// §12.1 item 4(b), the layout half: the decoder's cosine tables are one
+    /// contiguous row-major array per axis rather than a `Vec` per frequency.
+    pub accel_flat_cos: bool,
+    /// §12.1 item 5: the refinement's candidate scorer stops summing once its
+    /// partial error can no longer beat the best candidate so far.
+    pub accel_sse_early_exit: bool,
+    /// §12.1 item 6: `linearize`, `oklab_forward` and `alpha_average` run as
+    /// one tiled pass, and the per-pixel alpha buffer is built only when the
+    /// image has alpha to transform.
+    pub accel_fused_pixels: bool,
+    /// §12.1 item 7: each bit field is shifted into place as one word and
+    /// OR-ed a byte at a time, instead of one bit at a time.
+    pub accel_word_bitpack: bool,
     /// Encoder-only pixel-domain refinement passes (0 = off, the shipped
     /// behaviour). Each pass is a coordinate descent over the AC codes —
     /// optionally the DC and scale codes too — scored by the error of the
@@ -653,6 +689,13 @@ impl Tunables {
         ac_nearest: true,
         scale_fit: 2,
         dct_separable: false,
+        accel_quant_table: false,
+        accel_dct_lanes: false,
+        accel_gamma_lut_cache: false,
+        accel_flat_cos: false,
+        accel_sse_early_exit: false,
+        accel_fused_pixels: false,
+        accel_word_bitpack: false,
         refine_passes: 0,
         refine_delta: 1,
         refine_obj: 0,

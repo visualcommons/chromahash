@@ -195,6 +195,15 @@ fn tunables_from_env() -> Tunables {
             // Prototype separable forward DCT. NOT byte-identical — see
             // dct::dct_encode_selected_separable; a measurement knob only.
             "dct_separable" => t.dct_separable = value == "1" || value == "true",
+            // PERFORMANCE.md §12.1's byte-identical levers: time knobs only,
+            // held to the shipped bytes by tests/accel_levers.rs.
+            "accel_quant_table" => t.accel_quant_table = value == "1" || value == "true",
+            "accel_dct_lanes" => t.accel_dct_lanes = value == "1" || value == "true",
+            "accel_gamma_lut_cache" => t.accel_gamma_lut_cache = value == "1" || value == "true",
+            "accel_flat_cos" => t.accel_flat_cos = value == "1" || value == "true",
+            "accel_sse_early_exit" => t.accel_sse_early_exit = value == "1" || value == "true",
+            "accel_fused_pixels" => t.accel_fused_pixels = value == "1" || value == "true",
+            "accel_word_bitpack" => t.accel_word_bitpack = value == "1" || value == "true",
             "scale_fit" => t.scale_fit = parse_u32(),
             "refine_passes" => t.refine_passes = parse_u32(),
             "refine_delta" => t.refine_delta = parse_u32(),

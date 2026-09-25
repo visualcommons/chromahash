@@ -37,19 +37,28 @@ import { parseArgs } from "node:util";
 import {
   type Binding,
   CROSS_RUN_TOLERANCE,
+  DECODE_STAGES_BASELINE,
   type Edit,
   type Failure,
   type ProseClaim,
   type Resolve,
   type RunDoc,
   Runs,
+  STABILITY_MODE,
   STAGES_BASELINE,
+  type StageCell,
   bare,
+  MissingCell,
   cells,
+  checkDecodeStagesProvenance,
   checkProseClaims,
+  checkStability,
+  checkStabilityClaim,
+  checkStageRowCoverage,
   checkStagesProvenance,
   checkTable,
   clean,
+  parseDecodeStages,
   parseStages,
   parseTables,
 } from "./verify-benchmark-core.ts";
@@ -58,8 +67,17 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const DOC = path.join(REPO_ROOT, "spec/PERFORMANCE.md");
 const BASELINE_DIR = path.join(REPO_ROOT, "tools/comparison/baselines");
 
-/** The committed runs, in the order a lookup prefers them. */
-const BASELINES = ["perf-report-full.json", "perf-report.json"] as const;
+/**
+ * The committed runs, in the order a lookup prefers them. `perf-report-2.json`
+ * is the second independent bounded sweep §0's stability claim needs: no
+ * documented figure is read from it (every cell it holds, `perf-report.json`
+ * holds first), but every shared cell is compared against the other runs.
+ */
+const BASELINES = [
+  "perf-report-full.json",
+  "perf-report.json",
+  "perf-report-2.json",
+] as const;
 
 // ─── Bindings ───────────────────────────────────────────────────────────────
 //
@@ -143,8 +161,98 @@ const STAGE_ROWS: Record<string, string> = {
   selection: "selection",
   cos_tables: "cos_tables",
   dct_forward: "dct_forward",
-  quantize_and_pack: "quantize_and_pack",
+  // What was one residual, `quantize_and_pack`, until these four had marks.
+  dc_search: "dc_search",
+  ac_quantize: "ac_quantize",
+  refine: "refine",
+  pack: "pack",
+  unmarked: "unmarked",
 };
+
+/**
+ * §1.1's source: `benchmark:decode-stages`, the decode half of §1, bound the
+ * same way and refused on the same terms by `parseDecodeStages`.
+ */
+const DECODE_STAGES_PATH = path.join(BASELINE_DIR, DECODE_STAGES_BASELINE);
+const { cells: DECODE_STAGES, error: DECODE_STAGES_ERROR } = parseDecodeStages(
+  existsSync(DECODE_STAGES_PATH)
+    ? readFileSync(DECODE_STAGES_PATH, "utf8")
+    : null,
+);
+
+/** §1.1's column headers -> the recorded cell key. */
+const DECODE_STAGE_COLUMNS: Record<string, string> = {
+  "t1 natural": "100x100-t1-natural",
+  "t4 natural": "100x100-t4-natural",
+  "t4 capped 32×32": "100x100-t4-cap32x32",
+};
+
+/**
+ * Figures the prose derives from §1.1's table: the §1.1 sentences under it,
+ * and their restatements in §12.1 item 4 and §12.3.
+ */
+const DECODE_PROSE_CLAIMS: ProseClaim[] = [
+  {
+    what: "§1.1: `gamma_lut`'s share of a tier-1 decode",
+    pattern: /`gamma_lut` is\s+\*\*(\d+)%\*\*\s+of a tier-1 decode/,
+    cell: "100x100-t1-natural",
+    stages: ["gamma_lut"],
+  },
+  {
+    what: "§1.1: `render`'s share of a tier-1 decode",
+    pattern: /\(`render` is\s+\*\*(\d+)%\*\*\)/,
+    cell: "100x100-t1-natural",
+    stages: ["render"],
+  },
+  {
+    what: "§1.1: the render loop's share of a natural tier-4 decode",
+    pattern: /\*\*(\d+)%\*\*\s+of a natural tier-4 decode,\s+everything else/,
+    cell: "100x100-t4-natural",
+    stages: ["render"],
+  },
+  {
+    what: "§1.1: `selection`'s share of a capped tier-4 decode",
+    pattern: /is\s+\*\*(\d+)%\*\*\s+of what remains/,
+    cell: "100x100-t4-cap32x32",
+    stages: ["selection"],
+  },
+  {
+    what: "§12.1 item 4(a): the gamma LUT, restated",
+    pattern: /measures it at \*\*(\d+)%\*\* of a default-tier decode/,
+    cell: "100x100-t1-natural",
+    stages: ["gamma_lut"],
+  },
+  {
+    what: "§12.1 item 4(b): the tier-4 render loop, restated",
+    pattern: /puts that loop at \*\*(\d+)%\*\* of a natural tier-4 decode/,
+    cell: "100x100-t4-natural",
+    stages: ["render"],
+  },
+  {
+    what: "§12.1 item 4(b): the tier-4 bound",
+    pattern: /is bounded by (\d+)% there/,
+    cell: "100x100-t4-natural",
+    stages: ["render"],
+  },
+  {
+    what: "§12.1 item 4(b): the tier-1 bound",
+    pattern: /and by (\d+)% at tier 1/,
+    cell: "100x100-t1-natural",
+    stages: ["render"],
+  },
+  {
+    what: "§12.3: the gamma LUT, restated",
+    pattern: /the gamma LUT is \*\*(\d+)%\*\* of a default-tier decode/,
+    cell: "100x100-t1-natural",
+    stages: ["gamma_lut"],
+  },
+  {
+    what: "§12.3: the tier-4 render loop, restated",
+    pattern: /the render\s+loop \*\*(\d+)%\*\* of a tier-4 one/,
+    cell: "100x100-t4-natural",
+    stages: ["render"],
+  },
+];
 
 /**
  * Figures the prose derives from §1's table, bound to the same baseline. Why
@@ -183,10 +291,40 @@ const PROSE_CLAIMS: ProseClaim[] = [
     stages: ["oklab_forward"],
   },
   {
-    what: "§1: `quantize_and_pack`'s share at 100x100 t1, quoted in prose",
-    pattern: /At 100×100, `quantize_and_pack` is ([\d.]+)%\*\*/,
+    what: "§1: `ac_quantize`'s share at 100x100 t1, quoted in prose",
+    pattern: /At 100×100, `ac_quantize` is ([\d.]+)%\*\*/,
     cell: "100x100-t1",
-    stages: ["quantize_and_pack"],
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§1: `unmarked`'s share at 512x512 t1, quoted in prose",
+    pattern: /negligible at 100×100, and ([\d.]+)% at 512×512/,
+    cell: "512x512-t1",
+    stages: ["unmarked"],
+  },
+  {
+    what: "§12 summary: the searches' share of the old residual at 100x100 t1",
+    pattern: /the searches are\s+([\d.]+) of its old/,
+    cell: "100x100-t1",
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§12.1: `ac_quantize` at 100x100 t1, after the table",
+    pattern: /`ac_quantize`, which is ([\d.]+)% of a thumbnail encode/,
+    cell: "100x100-t1",
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§12.1: `ac_quantize` at 512x512 t1, after the table",
+    pattern: /of a thumbnail encode\nand ([\d.]+)% of a photograph/,
+    cell: "512x512-t1",
+    stages: ["ac_quantize"],
+  },
+  {
+    what: "§12.1: `dc_search` at 100x100 t1",
+    pattern: /is `dc_search` at ([\d.]+)%/,
+    cell: "100x100-t1",
+    stages: ["dc_search"],
   },
   {
     what: "§1: `dct_forward`'s share at 100x100 t1, quoted in prose",
@@ -207,10 +345,10 @@ const PROSE_CLAIMS: ProseClaim[] = [
     stages: ["linearize", "oklab_forward", "composite"],
   },
   {
-    what: "§12 summary: `quantize_and_pack`, restated",
-    pattern: /`quantize_and_pack` is \*\*([\d.]+)%\*\* of a 100×100 one/,
+    what: "§12 summary: `ac_quantize`, restated",
+    pattern: /`ac_quantize` is \*\*([\d.]+)%\*\* of a 100×100 one/,
     cell: "100x100-t1",
-    stages: ["quantize_and_pack"],
+    stages: ["ac_quantize"],
   },
   {
     what: "§12 summary: `dct_forward` at tier 4, restated",
@@ -253,6 +391,27 @@ const BINDINGS: Binding[] = [
           }
           const stage = STAGE_ROWS[label];
           return stage === undefined ? null : (cell.sharePct[stage] ?? null);
+        },
+      ]),
+    ) as Record<string, Resolve>,
+  },
+  {
+    section: "1.1",
+    index: 0,
+    title: "Where decode time goes (shares of one decode)",
+    // Unlike §1, a row or column that resolves to nothing fails rather than
+    // counting as deliberately unbound: every cell in this table is a share,
+    // so there is no cell here that could legitimately be unbound.
+    columns: Object.fromEntries(
+      Object.entries(DECODE_STAGE_COLUMNS).map(([header, key]) => [
+        header,
+        (row: (h: string) => string) => {
+          const label = clean(row("stage"));
+          const share = DECODE_STAGES?.[key]?.sharePct[label];
+          if (share === undefined) {
+            throw new MissingCell(`${DECODE_STAGES_BASELINE} ${key} ${label}`);
+          }
+          return share;
         },
       ]),
     ) as Record<string, Resolve>,
@@ -401,6 +560,66 @@ const BINDINGS: Binding[] = [
     },
   },
   {
+    section: "12.4",
+    index: 1,
+    title: "§12.1's encode levers, built: speedup at tier 1",
+    // `R.us`, not `timeOr`: a lever cell no committed run holds is a missing
+    // measurement, and must fail as one rather than count as deliberately
+    // unbound — these rows exist only to carry a number.
+    columns: Object.fromEntries(
+      [100, 256, 512].map((n) => [
+        `${n}×${n}`,
+        (row: (h: string) => string, R: Runs) => {
+          const arm = clean(row("lever"));
+          // The early exit acts only inside refinement, so its baseline is
+          // the refinement arm, not the shipped encode.
+          const base = arm.startsWith("refine_passes=1 ")
+            ? "refine_passes=1"
+            : "shipped";
+          return ratio(R.us(armId(n, base)), R.us(armId(n, arm)));
+        },
+      ]),
+    ) as Record<string, Resolve>,
+  },
+  {
+    section: "12.4",
+    index: 2,
+    title: "§12.1's encode levers, built: tier 4 at 100x100",
+    columns: {
+      encode: (row, R) =>
+        R.us(`encode/Rust/t4/100x100/gradient/${clean(row("lever"))}`),
+      speedup: (row, R) => {
+        const arm = clean(row("lever"));
+        if (arm === "shipped") return null;
+        return ratio(
+          R.us("encode/Rust/t4/100x100/gradient/shipped"),
+          R.us(`encode/Rust/t4/100x100/gradient/${arm}`),
+        );
+      },
+    },
+  },
+  {
+    section: "12.4",
+    index: 3,
+    title: "§12.1's decode levers, built: speedup",
+    columns: Object.fromEntries(
+      (
+        [
+          ["t1 natural", "t1/natural"],
+          ["t4 natural", "t4/natural"],
+          ["t4 capped 32×32", "t4/capped32"],
+        ] as const
+      ).map(([header, raster]) => [
+        header,
+        (row: (h: string) => string, R: Runs) =>
+          ratio(
+            R.us(`decode/Rust/${raster}/shipped`),
+            R.us(`decode/Rust/${raster}/${clean(row("lever"))}`),
+          ),
+      ]),
+    ) as Record<string, Resolve>,
+  },
+  {
     section: "7",
     index: 0,
     title: "Cross-language, startup excluded",
@@ -540,6 +759,22 @@ if (stagesBound && !STAGES) {
   );
   process.exit(1);
 }
+// §1.1 on the same terms: bound means required.
+const decodeStagesBound = BINDINGS.some(
+  (b) =>
+    b.section === "1.1" && (!values.section || values.section === b.section),
+);
+if (decodeStagesBound && !DECODE_STAGES) {
+  console.error(
+    [
+      `No committed decode-stages run for PERFORMANCE.md §1.1: ${DECODE_STAGES_ERROR ?? "unavailable"}`,
+      "",
+      "§1.1 sizes §12.1 item 4 and is bound cell by cell to this artifact,",
+      "together with the figures §1.1, §12.1 and §12.3 derive from it.",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
 
 for (const binding of BINDINGS) {
   if (values.section && binding.section !== values.section) continue;
@@ -552,7 +787,28 @@ for (const binding of BINDINGS) {
     );
     continue;
   }
+  const before = counters.checked + counters.placeholders;
   checkTable(binding, table, runs, failures, counters, edits);
+  // §1.1 has no cell that may be skipped: every row is a recorded stage and
+  // every column a recorded cell. `checkTable` passes over a cell whose text
+  // is not a number, so count what it actually checked and hold it to the
+  // table's size — otherwise "n/a" in a cell would be a silent pass.
+  if (binding.section === "1.1") {
+    const expected =
+      table.rows.length * Object.keys(DECODE_STAGE_COLUMNS).length;
+    const got = counters.checked + counters.placeholders - before;
+    if (got !== expected) {
+      failures.push({
+        where: `§1.1 ${binding.title} (line ${table.line})`,
+        column: "cells checked",
+        row: "—",
+        documented: `${expected} cells`,
+        measured: `${got} checked`,
+        detail:
+          "every cell of this table is a bound share; one that is not a number, or a column the table lacks, was not checked",
+      });
+    }
+  }
 }
 
 // A dirty tree means the numbers cannot be traced back to a source state, which
@@ -578,23 +834,50 @@ for (const c of runs.duplicates) {
   });
 }
 
-// Two runs of the same cell disagreeing is a fact about the measuring host, not
-// about the document, so it is reported rather than failed on — but loudly:
-// it is the ceiling on how much any number here can be trusted.
-if (runs.crossRunSpread.length > 0) {
-  const pct = (CROSS_RUN_TOLERANCE * 100).toFixed(0);
-  console.log(
-    [
-      "",
-      `WARNING: ${runs.crossRunSpread.length} cell(s) disagree by more than ${pct}% between`,
-      "the committed runs. That is the measuring host's reproducibility floor,",
-      "and no figure in the document is tighter than it.",
-    ].join("\n"),
-  );
-  for (const c of runs.crossRunSpread.slice(0, 10)) console.log(`  ${c}`);
-  if (runs.crossRunSpread.length > 10) {
-    console.log(`  ... and ${runs.crossRunSpread.length - 10} more`);
-  }
+// Two committed runs of the same cell disagreeing by more than §0's bar means
+// the host did not hold its clock still, and every figure drawn from either run
+// is no tighter than that. This used to be a printed warning, which left §0's
+// stability claim resting on the maintainer's word; it now fails the gate.
+const spreadPct = (CROSS_RUN_TOLERANCE * 100).toFixed(0);
+for (const c of runs.crossRunSpread) {
+  failures.push({
+    where: "committed runs",
+    column: "cross-run spread",
+    row: c.split(":")[0] ?? "—",
+    documented: `within ${spreadPct}% across runs`,
+    measured: "outside",
+    detail: c,
+  });
+}
+
+// §0's host-stability claim: two bounded sweeps at one commit. With fewer than
+// two committed the check is skipped and said to be; with two it must pass,
+// and §0's table row must say what the check says.
+const stability = checkStability(runs);
+const stabilityWidest =
+  stability.widest === null
+    ? ""
+    : `, widest ${(stability.widest * 100).toFixed(1)}%`;
+const stabilityDetail =
+  stability.status === "skip"
+    ? stability.problems.join("; ")
+    : `${stability.runs.join(" vs ")}: ${stability.shared} shared cells${stabilityWidest}`;
+console.log(
+  `Host stability (§0): ${stability.status.toUpperCase()} — ${stabilityDetail}`,
+);
+console.log();
+if (stability.status === "fail") {
+  failures.push({
+    where: "committed runs",
+    column: "host stability",
+    row: stability.runs.join(" vs "),
+    documented: `two ${STABILITY_MODE} runs, one commit, within ${spreadPct}%`,
+    measured: "fail",
+    detail: stability.problems.join("; "),
+  });
+}
+if (!values.section || values.section === "0") {
+  failures.push(...checkStabilityClaim(doc, stability));
 }
 
 if (values.fix) {
@@ -638,6 +921,75 @@ if (STAGES) {
   proseChecked = prose.checked;
 }
 
+// §1.1: provenance (one clean commit, each cell reproduced the spec vectors,
+// shares agree with ns), a table that has every column and exactly the
+// recorded stages as rows, and the prose figures derived from it.
+let decodeProseChecked = 0;
+if (decodeStagesBound && DECODE_STAGES) {
+  failures.push(...checkDecodeStagesProvenance(DECODE_STAGES));
+  const table = tables.find((t) => t.section === "1.1" && t.index === 0);
+  if (table) {
+    const where = `§1.1 Where decode time goes (line ${table.line})`;
+    const headers = table.header.map((h) => clean(h));
+    for (const [header, key] of Object.entries(DECODE_STAGE_COLUMNS)) {
+      if (!headers.includes(header)) {
+        failures.push({
+          where,
+          column: header,
+          row: "—",
+          documented: "(column missing)",
+          measured: key,
+          detail:
+            "a bound column the table no longer has is a cell nothing checks",
+        });
+      }
+      const cell = DECODE_STAGES[key];
+      if (!cell) {
+        failures.push({
+          where: DECODE_STAGES_BASELINE,
+          column: header,
+          row: "—",
+          documented: key,
+          measured: "(no cell)",
+          detail: "record it with `mise run benchmark:decode-stages`",
+        });
+      }
+    }
+    const bound: Record<string, StageCell> = {};
+    for (const key of Object.values(DECODE_STAGE_COLUMNS)) {
+      const cell = DECODE_STAGES[key];
+      if (cell) bound[key] = cell;
+    }
+    failures.push(
+      ...checkStageRowCoverage(
+        table.rows.map((r) => clean(r[0] ?? "")),
+        bound,
+        where,
+      ),
+    );
+  } else {
+    // `checkTable`'s loop only lists a missing table as SKIP; for a table
+    // whose baseline is committed, losing the table is losing every check.
+    failures.push({
+      where: "PERFORMANCE.md §1.1",
+      column: "table",
+      row: "—",
+      documented: "(not found)",
+      measured: DECODE_STAGES_BASELINE,
+      detail:
+        "the decode-stages table is gone while its baseline is committed, so none of its cells is checked",
+    });
+  }
+  const prose = checkProseClaims(
+    doc,
+    DECODE_STAGES,
+    DECODE_PROSE_CLAIMS,
+    DECODE_STAGES_BASELINE,
+  );
+  failures.push(...prose.failures);
+  decodeProseChecked = prose.checked;
+}
+
 console.log(
   `Checked ${counters.checked} documented value(s) against the committed runs` +
     `; ${counters.unbound} deliberately unbound` +
@@ -646,6 +998,9 @@ console.log(
 );
 console.log(
   `Checked ${proseChecked} figure(s) the prose derives from §1's table.`,
+);
+console.log(
+  `Checked ${decodeProseChecked} figure(s) the prose derives from §1.1's table.`,
 );
 const UNAVAILABLE_NOTE =
   '               a cell marked "<host> only" is skipped, not failed — a target no\n' +

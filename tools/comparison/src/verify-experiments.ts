@@ -2096,8 +2096,10 @@ const BINDINGS: Binding[] = [
     rowBaselines: ALPHA_HOLDOUT_ROW_BASELINES,
   },
   // The `holdout` column was bound to v07-holdout-alpha-holdout. That run can
-  // no longer be recorded -- see UNBOUND_COLUMN_NOTES["11.12#1"] -- so the
-  // binding would be a SKIP forever. It is disclosed there instead.
+  // no longer be recorded: the alpha holdout split is retired
+  // (ALPHA_HOLDOUT_RETIRED in alpha-images.ts), so the binding would be a SKIP
+  // forever. It is disclosed in UNBOUND_COLUMN_NOTES["11.12#1"] instead, and
+  // §11.12 marks the column in the document itself.
 
   // §12 — the synthesis window, with the artifact columns that decide it. These
   // are the first bindings to check `meanRinging`/`meanSpurious`, which is the
@@ -2318,7 +2320,7 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
   "11.12#0":
     "`verdict` is the section's conclusion in words, not a measurement",
   "11.12#1":
-    "`verdict` is the section's conclusion in words, not a measurement. `holdout` is UNREPRODUCIBLE: one of the alpha holdout images, cutout-wordmark-aflac, was deleted from Wikimedia Commons on 2026-08-25 as a copyright violation and has no archived copy, so v07-holdout-alpha --split holdout cannot be re-run and has no committed result (#83)",
+    "`verdict` is the section's conclusion in words, not a measurement. `holdout` is UNREPRODUCIBLE: one of the alpha holdout images, cutout-wordmark-aflac, was deleted from Wikimedia Commons on 2026-08-25 as a copyright violation and has no archived copy, so the alpha holdout split is retired, v07-holdout-alpha --split holdout refuses to run, and the column has no committed result. It stays unbound until a new sealed alpha split replaces it (#83)",
   "13.1#1":
     "`Spur / Deficit` is the ratio of two columns in the same row, both of which are bound; it is the reading, not a measurement",
 };

@@ -31,11 +31,49 @@ export interface AlphaImageSpec {
   softAlphaFraction: number;
   /** SHA-256 of the exact bytes (see corpus-pin.ts). */
   sha256: string;
+  /** Commons file page, for attribution. */
+  source: string;
+  /** Author, as Commons records them. */
+  author: string;
+  /**
+   * Licence short name, as Commons records it. For a withdrawn entry, the
+   * licence the upload claimed: the attribution file renders it as a claim
+   * that no longer holds, never as the image's licence.
+   */
+  licence: string;
+  /** What this image is here to cover. */
+  notes: string;
+  /**
+   * Set when the upstream source no longer exists: when and why it went. A
+   * withdrawn image is never fetched. Its entry stays so the pin still says
+   * what the results that scored it measured. It also keeps the image's
+   * declared split: a cached copy with no entry would fall through `splitFor`
+   * to "tune" and join every alpha tune sweep.
+   */
+  withdrawn?: string;
 }
 
 /**
- * Curated alpha corpus, sourced from Wikimedia Commons under free licences
- * (see `fixtures/alpha/LICENSES.md` for per-image attribution).
+ * Why the alpha holdout split is closed. `ensureAlphaImages("holdout")` throws
+ * this rather than fetching a split that no longer exists as pinned.
+ *
+ * The split was eight images. One is gone, so scoring the other seven would be
+ * a different experiment reported under the old one's name. It has also been
+ * spent: §11.12 read it to adopt the alpha row, and to adopt the compact alpha
+ * row, and to reject `alpha_ac_fit`. A replacement is a new split, curated on
+ * covariates and sealed before it is read, not a re-run of this one.
+ */
+export const ALPHA_HOLDOUT_RETIRED =
+  "the alpha holdout split is retired (#83): cutout-wordmark-aflac, one of its eight images, " +
+  "was deleted from Wikimedia Commons on 2026-08-25 as a copyright violation and has no archived copy, " +
+  "and the split has already informed the decisions spec/EXPERIMENTS.md §11.12 records. " +
+  "Scoring the remaining seven is a new experiment, not a reproduction; a replacement needs a new, sealed split.";
+
+/**
+ * Curated alpha corpus, sourced from Wikimedia Commons under free licences.
+ * Every entry carries its own attribution, and `fixtures/alpha/LICENSES.md` is
+ * generated from this table (`mise run corpus:licenses`) so the two cannot
+ * drift.
  *
  * Curated along the axes alpha coding is sensitive to rather than by subject:
  * hard binary masks vs anti-aliased edges, mostly-opaque vs mostly-transparent,
@@ -52,6 +90,11 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.7403,
     softAlphaFraction: 0.2443,
     sha256: "28b9e4888cdcbfa13cafbb1b56d0ee1f515756b99b8f7ecc00a544ecaa85dc7c",
+    source: "https://commons.wikimedia.org/wiki/File:3D_greek_star.png",
+    author: "Andrikkos",
+    licence: "CC BY-SA 3.0",
+    notes:
+      "3D glossy star render with soft shading and mostly-transparent canvas.",
   },
   {
     label: "cutout-3d-star-soviet",
@@ -63,6 +106,12 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.656,
     softAlphaFraction: 0.0,
     sha256: "89e2d3f669b448c56e47a9c29de65121c60a3d9e9910c95499f0233817074d94",
+    source:
+      "https://commons.wikimedia.org/wiki/File:3D_plastic_soviet_star.png",
+    author: "Andrikkos",
+    licence: "CC BY-SA 3.0",
+    notes:
+      "Small saturated 3D star; simple shape, high proportion of transparency.",
   },
   {
     label: "cutout-app-icon-aptoide",
@@ -74,6 +123,10 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.1179,
     softAlphaFraction: 0.0053,
     sha256: "40ae89a4816df285936235cf877f7c69cf9ca000e27eeea3ac4709dce0e7982a",
+    source: "https://commons.wikimedia.org/wiki/File:Aptoide_icon_2025.png",
+    author: "Aptoide",
+    licence: "Public domain",
+    notes: "Modern app icon; flat colour, rounded-square alpha mask.",
   },
   {
     label: "cutout-bioart-astrocyte",
@@ -85,6 +138,12 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.8847,
     softAlphaFraction: 0.0093,
     sha256: "559304d1f8226cfafa4de7685601a3d5dd0673e93365b7b8dc9093a2112849a9",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Astrocyte_(NIH_BioArt_40_-_627569).png",
+    author: "Courtesy of NIAID Ryan Kissinger",
+    licence: "Public domain",
+    notes:
+      "Scientific illustration on transparency; thin branching structure, mostly transparent.",
   },
   {
     label: "cutout-broccoli",
@@ -96,6 +155,11 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.4821,
     softAlphaFraction: 0.0132,
     sha256: "e7f19280e60b7f164bd53e68134040fa97c3efb539ff44edf2d985ccb3a48f8f",
+    source: "https://commons.wikimedia.org/wiki/File:Broccoli.png",
+    author: "Tiia Monto",
+    licence: "CC BY-SA 3.0",
+    notes:
+      "Highly fractal organic edge, the hardest kind of alpha boundary to approximate.",
   },
   {
     label: "cutout-campaign-medal",
@@ -107,6 +171,12 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.4527,
     softAlphaFraction: 0.0004,
     sha256: "1d49ac031e3ae558d3a46cbb3aec5b12c64e31363f01705a9b49852f458f29f8",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Afghanistan_Campaign_Medal.png",
+    author: "Defense Logistics Agency",
+    licence: "Public domain",
+    notes:
+      "Medal with ribbon: metallic detail plus fabric texture, narrow mostly-transparent frame.",
   },
   {
     label: "cutout-cheeseburger",
@@ -118,6 +188,12 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.449,
     softAlphaFraction: 0.0,
     sha256: "cff8d8ac543defb51454a96a1513dafb43457a569f487030380128b76cfa760a",
+    source: "https://commons.wikimedia.org/wiki/File:Cheeseburger.png",
+    author:
+      "Renee Comet (photographer) - edited for transparent background by -download | sign!",
+    licence: "Public domain",
+    notes:
+      "Detailed food cutout; highly textured, colourful, large opaque area.",
   },
   {
     label: "cutout-dod-seal",
@@ -129,6 +205,12 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.2175,
     softAlphaFraction: 0.0062,
     sha256: "8a67df69e07c9e342bd9d7ac677e6a962ac0a39507881b531bdf88e9baabbaa9",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Seal_of_the_United_States_Department_of_Defense_(2001%E2%80%932022).png",
+    author: "DOD",
+    licence: "Public domain",
+    notes:
+      "Circular seal: fine radial text and detail, hard circular alpha boundary.",
   },
   {
     label: "cutout-dslr-camera",
@@ -140,6 +222,11 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.5228,
     softAlphaFraction: 0.006,
     sha256: "b52e726f129bfc656763ac5d2c8c98f4ee96ce1b6cea95010fa90cb8564bffc5",
+    source: "https://commons.wikimedia.org/wiki/File:Nikon_D90.png",
+    author: "Zacke82",
+    licence: "Public domain",
+    notes:
+      "Product photo cutout of a DSLR body; detailed dark monochrome subject with hard-ish silhouette.",
   },
   {
     label: "cutout-emblem-kscz",
@@ -151,6 +238,12 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.6614,
     softAlphaFraction: 0.0,
     sha256: "c8095953b20fd2e8b0a2db22902f3353c5c7196ac35302e00dee221842afad43",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Emblem_of_the_Communist_Party_of_Czechoslovakia_1948-1990.png",
+    author: "Danrolo",
+    licence: "CC BY-SA 3.0",
+    notes:
+      "Two-colour flat emblem; mostly transparent, near-monochrome, simple shapes.",
   },
   {
     label: "cutout-game-sprite-ship",
@@ -162,6 +255,12 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.6794,
     softAlphaFraction: 0.0041,
     sha256: "0e731563527cb737e4f0ff4cff0fbb723fa3dced9d48ec8f72f0ad63945519ca",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Galak-Z_art_-_ship_BULLDOZER.png",
+    author: "Raj Joshi, Senior Producer & Studio Director for 17-BIT",
+    licence: "CC BY-SA 3.0",
+    notes:
+      "Game sprite art: pixel/vector spaceship with hard alpha and saturated colour.",
   },
   {
     label: "cutout-glassfish",
@@ -173,6 +272,12 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.6323,
     softAlphaFraction: 0.099,
     sha256: "122c8a89f44ddd023cb0c581e565cd027c4013261e06a11d54ceef379d85305c",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Agassiz%27s_glassfish_(Ambassis_agassizii)_isolated_2023-03-08.png",
+    author: "Pelagic",
+    licence: "CC BY-SA 4.0",
+    notes:
+      "Isolated fish photo with translucent fins, i.e. genuinely soft partial alpha.",
   },
   {
     label: "cutout-greek-vase-figure",
@@ -184,6 +289,11 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.518,
     softAlphaFraction: 0.1824,
     sha256: "ff3e45df88805a10348a8fd92d1212a9410ebe6cce22d52e02ab1188d05a89f8",
+    source:
+      "https://commons.wikimedia.org/wiki/File:NAMA_Th%C3%A9s%C3%A9e_%26_taureau.png",
+    author: "Unknown",
+    licence: "CC BY-SA 2.5",
+    notes: "Ancient artefact cutout; fine detail, warm two-tone palette.",
   },
   {
     label: "cutout-green-dragon",
@@ -195,6 +305,11 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.5364,
     softAlphaFraction: 0.0,
     sha256: "4d02f29aec4e6de647874836130026e8c413b820b122af3bbddb56a61d097ea6",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Little_Green_Dragon_-_looking_left_-_Museum_of_Asian_Art_of_Corfu.png",
+    author: "User Piotrus; edited by user Jaybear",
+    licence: "CC BY-SA 3.0",
+    notes: "Museum object cutout with an intricate perforated silhouette.",
   },
   {
     label: "cutout-insignia-4id",
@@ -206,6 +321,12 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.4635,
     softAlphaFraction: 0.0011,
     sha256: "8fb32f6350082d5b90019b4fdd2070bea4e0d8fb48e934a0f50b4c2d85f08924",
+    source:
+      "https://commons.wikimedia.org/wiki/File:4th_Infantry_Division_SSI.png",
+    author: "US Army",
+    licence: "Public domain",
+    notes:
+      "Flat vector-style military patch; hard binary alpha, few flat colours.",
   },
   {
     label: "cutout-lamp-glow",
@@ -217,6 +338,11 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.9119,
     softAlphaFraction: 0.2928,
     sha256: "857ef6d2b9fd450be843429cca5f49353705c52000647791bb7530de81de840f",
+    source: "https://commons.wikimedia.org/wiki/File:LampOnGlow.png",
+    author: "Roman Dilo (Saroman)",
+    licence: "CC BY 3.0",
+    notes:
+      "Lamp with a wide translucent glow, dominated by partial (soft) alpha rather than binary.",
   },
   {
     label: "cutout-lineart-hoe",
@@ -228,6 +354,11 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.7286,
     softAlphaFraction: 0.0108,
     sha256: "fd3ad52a4a82f4c685d05981ce3e54ddc35403e23945a3be62fb7b2986e6f142",
+    source: "https://commons.wikimedia.org/wiki/File:Hoe_(PSF).png",
+    author: "Pearson Scott Foresman",
+    licence: "Public domain",
+    notes:
+      "Public-domain pen line art of a man hoeing a field; monochrome greyscale+alpha (LA), sparse strokes, ~73% transparent.",
   },
   {
     label: "cutout-lineart-oinochoe",
@@ -239,6 +370,11 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.4301,
     softAlphaFraction: 0.0028,
     sha256: "3bfbc282601a585c17938950b8cba766faeaf4d423bf8a36b87e716c4c42d5ff",
+    source: "https://commons.wikimedia.org/wiki/File:Oinochoe_(PSF).png",
+    author: "Pearson Scott Foresman",
+    licence: "Public domain",
+    notes:
+      "Line-art vessel drawing; hatched shading, monochrome, mostly transparent.",
   },
   {
     label: "cutout-navy-crest",
@@ -250,6 +386,10 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.1729,
     softAlphaFraction: 0.0,
     sha256: "61eab4c1618ddbc8de9cbf78135492bee775be50d15a6eebd7335bf3be370643",
+    source: "https://commons.wikimedia.org/wiki/File:USS_Cole_DDG-67_Crest.png",
+    author: "A Member of the United States Armed Forces",
+    licence: "Public domain",
+    notes: "Heraldic crest, detailed multi-colour flat art with hard alpha.",
   },
   {
     label: "cutout-nokia-soft-shadow",
@@ -261,6 +401,12 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.2236,
     softAlphaFraction: 0.0675,
     sha256: "75951d906cb08acc1a643554dde538d739d3f814a5f5231a7971a96550ada98a",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Nokia_3410_(cutout_transparent_background_and_shadow).png",
+    author: "Erik Baas",
+    licence: "CC BY-SA 3.0",
+    notes:
+      "Phone cutout that keeps a soft drop shadow, so a large area is partial alpha rather than binary.",
   },
   {
     label: "cutout-planet-gas-giant",
@@ -272,6 +418,11 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.4301,
     softAlphaFraction: 0.1796,
     sha256: "16d9563712b9d7b42c548b64821d7f17f2913c5ed62c62086967394d5540183d",
+    source: "https://commons.wikimedia.org/wiki/File:Blue_gas_giant.png",
+    author: "unnamed",
+    licence: "CC0",
+    notes:
+      "Banded gas giant render; smooth low-detail interior, soft alpha rim.",
   },
   {
     label: "cutout-planet-lava",
@@ -283,6 +434,11 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.391,
     softAlphaFraction: 0.0618,
     sha256: "74b6ae59cbfef2fa11e59d29d51ed326b3c26a10ac40604eec9ccd94883ea9cc",
+    source: "https://commons.wikimedia.org/wiki/File:Lava_planet.png",
+    author: "Max",
+    licence: "CC BY-SA 3.0",
+    notes:
+      "Rendered planet with glowing soft-alpha atmosphere; dark body, high contrast.",
   },
   {
     label: "cutout-road-sign",
@@ -294,6 +450,12 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.1533,
     softAlphaFraction: 0.0018,
     sha256: "56297cb398e82ca506d2057a4402218a1113f7acb38ac92e2c1b3f5e6d460122",
+    source:
+      "https://commons.wikimedia.org/wiki/File:%22Maryland_Welcomes_You_-_Enjoy_Your_Visit!%22_road_sign,_c._1999.png",
+    author: "State of Maryland, Maryland SHWA",
+    licence: "Public domain",
+    notes:
+      "Text-heavy road sign on transparency; flat colour, hard rectangular-ish alpha.",
   },
   {
     label: "cutout-wordmark-aflac",
@@ -305,8 +467,33 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     nonOpaqueFraction: 0.5971,
     softAlphaFraction: 0.0077,
     sha256: "3e0ddc1b3b6856b16b48ac2003f343e0e8cfaff02f022e8b2c21fbf24de2e302",
+    source: "https://commons.wikimedia.org/wiki/File:Aflac_logo.png",
+    author: "Aflac",
+    licence: "CC BY 4.0",
+    notes:
+      "Wide wordmark logo: extreme aspect, monochrome, overwhelmingly transparent canvas.",
+    withdrawn:
+      "deleted from Wikimedia Commons on 2026-08-25 as a copyright violation (COM:CSD#F1); no archived copy (#83)",
   },
 ];
+
+/**
+ * The pins {@link ensureAlphaImages} fetches for `split`: withdrawn entries
+ * are skipped, and the retired holdout split throws
+ * {@link ALPHA_HOLDOUT_RETIRED}. Separate from the fetch so the self-test
+ * (`metric-selftest.ts`) can assert both without the network.
+ */
+export function alphaImagesToFetch(
+  split?: CorpusSplit,
+  images: readonly AlphaImageSpec[] = ALPHA_IMAGES,
+): AlphaImageSpec[] {
+  if (split === "holdout") throw new Error(ALPHA_HOLDOUT_RETIRED);
+  return images.filter(
+    (spec) =>
+      spec.withdrawn === undefined &&
+      (split === undefined || spec.split === split),
+  );
+}
 
 /**
  * Ensure every alpha fixture is present and content-pinned. A fetch failure or
@@ -315,18 +502,20 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
  * @param split Fetch only this split's images. A tune sweep never reads the
  *   holdout images, and requiring them made every alpha sweep depend on the
  *   one holdout file Wikimedia Commons has since deleted
- *   (`cutout-wordmark-aflac`, removed 2026-08-25 as a copyright violation):
- *   the tune split stays reproducible, and a holdout run still fails loudly
- *   rather than scoring a smaller corpus.
+ *   (`cutout-wordmark-aflac`, removed 2026-08-25 as a copyright violation).
+ *   The holdout split is retired, so asking for it throws
+ *   {@link ALPHA_HOLDOUT_RETIRED} before anything is fetched, rather than
+ *   failing on the missing file or scoring a smaller corpus.
+ *   With no split, every image that has not been withdrawn is fetched.
  */
 export async function ensureAlphaImages(
   split?: CorpusSplit,
 ): Promise<string[]> {
+  const specs = alphaImagesToFetch(split);
   await fs.mkdir(ALPHA_DIR, { recursive: true });
   const paths: string[] = [];
   let downloaded = 0;
-  for (const spec of ALPHA_IMAGES) {
-    if (split !== undefined && spec.split !== split) continue;
+  for (const spec of specs) {
     const filePath = path.join(ALPHA_DIR, `${spec.label}${spec.ext}`);
     if (
       await ensurePinnedFixture({

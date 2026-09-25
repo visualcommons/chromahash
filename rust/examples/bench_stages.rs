@@ -81,10 +81,11 @@ fn main() {
     }
     println!("stage_sum={}", stage_sum / n);
     println!("whole_encode={}", whole_ns / n);
-    // Everything encode does after analyze(): the scale/AC quantizer searches,
-    // the decode-aware DC search, and the bit packing.
-    println!(
-        "quantize_and_pack={}",
-        whole_ns.saturating_sub(stage_sum) / n
-    );
+    // The marks cover `encode_with` end to end — the quantizer searches, the
+    // refinement and the bit packing have their own marks (`dc_search`,
+    // `ac_quantize`, `refine`, `pack`) — so what is left names no work: the
+    // return from `encode_with`, the `ChromaHash` wrapper, and the timers' own
+    // overhead. It was `quantize_and_pack` while those four were one unmarked
+    // span, which made it an upper bound on work it could not attribute.
+    println!("unmarked={}", whole_ns.saturating_sub(stage_sum) / n);
 }

@@ -50,9 +50,19 @@
  * register (`experiments-register.ts`) and the result reader's shape check
  * (`results.ts`) fail a run only on a state the committed document and results
  * are never in, so each failure branch is driven from a fixture instead.
+ *
+ * The alpha corpus block covers the retired alpha holdout split and withdrawn
+ * pins (`alpha-images.ts`, #83), whose refusal and skip no sweep CI runs ever
+ * reaches.
  */
 
 import { spawnSync } from "node:child_process";
+import {
+  ALPHA_HOLDOUT_RETIRED,
+  type AlphaImageSpec,
+  alphaImagesToFetch,
+} from "./alpha-images.ts";
+import { splitFor } from "./corpus.ts";
 import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
@@ -79,16 +89,22 @@ import {
 import {
   type Binding,
   type Counters,
+  type DecodeStageCell,
   type Edit,
   type Failure,
   type ProseClaim,
   type RunDoc,
   Runs,
   type StageCell,
+  checkDecodeStagesProvenance,
   checkProseClaims,
+  checkStability,
+  checkStabilityClaim,
+  checkStageRowCoverage,
   checkStagesProvenance,
   checkTable,
   clean,
+  parseDecodeStages,
   parseStages,
   parseTables,
   parseUnavailableMarker,
@@ -1519,6 +1535,213 @@ for (const order of ["measured first", "absent first"] as const) {
   );
 }
 
+// S1–S7. §0's host-stability claim: two bounded sweeps at one commit, every
+//        shared cell within CROSS_RUN_TOLERANCE, and §0's table row saying
+//        what the check says. The committed tree holds one bounded run, so
+//        only the skip path runs there; pass and every fail path are driven
+//        from fixtures.
+
+/** A run whose cells take the given microseconds. */
+function timedRun(
+  file: string,
+  us: Record<string, number>,
+  overrides: Partial<RunDoc> = {},
+): RunDoc {
+  const run = fixtureRun(file, Object.keys(us), undefined, overrides);
+  return {
+    ...run,
+    cells: run.cells.map((c) => ({
+      ...c,
+      nsPerOp: (us[c.id] ?? 0) * 1000,
+      medianNsPerOp: (us[c.id] ?? 0) * 1000,
+    })),
+  };
+}
+
+/** §0's reproducibility table, holding the stability row with this cell. */
+const stabilityDoc = (cell: string): string =>
+  [
+    "> | Claim | Reproducible from the tree? |",
+    "> |---|---|",
+    "> | Every table below equals a cell | **Yes** |",
+    `> | This host's cross-run agreement | ${cell} |`,
+  ].join("\n");
+
+// S1. One bounded run: the check is skipped and says why. "No" is the honest
+//     row; "Yes" fails, because nothing was compared.
+{
+  const s = checkStability(
+    new Runs([timedRun("perf-report.json", { "encode/Rust/t1": 1000 })]),
+  );
+  const no = checkStabilityClaim(stabilityDoc("**No.** one sweep"), s);
+  const yes = checkStabilityClaim(stabilityDoc("**Yes**"), s);
+  check(
+    "one bounded run skips the stability check; §0 may say No and may not say Yes",
+    s.status === "skip" &&
+      (s.problems[0] ?? "").includes("1 bounded run(s)") &&
+      no.length === 0 &&
+      yes.length === 1 &&
+      (yes[0]?.detail ?? "").includes("did not pass"),
+    `status=${s.status} no=${details(no)} yes=${details(yes)}`,
+  );
+}
+
+// S2. Two bounded runs at one commit, within the bar: pass. "No" now
+//     understates the tree and fails; "Yes" must quote the check's figures.
+{
+  const R = new Runs([
+    timedRun("perf-report.json", {
+      "encode/Rust/t1": 1000,
+      "decode/Rust": 200,
+    }),
+    timedRun("perf-report-2.json", {
+      "encode/Rust/t1": 1050,
+      "decode/Rust": 204,
+    }),
+  ]);
+  const s = checkStability(R);
+  const no = checkStabilityClaim(stabilityDoc("**No.**"), s);
+  const plain = checkStabilityClaim(stabilityDoc("**Yes**"), s);
+  const quoted = checkStabilityClaim(
+    stabilityDoc("**Yes** — 2 shared cells, widest 5.0%"),
+    s,
+  );
+  const stale = checkStabilityClaim(
+    stabilityDoc("**Yes** — 12 shared cells, widest 5.5%"),
+    s,
+  );
+  check(
+    "two agreeing bounded runs pass, and §0 must say Yes with their figures",
+    s.status === "pass" &&
+      s.shared === 2 &&
+      Math.abs((s.widest ?? 0) - 0.05) < 1e-9 &&
+      R.crossRunSpread.length === 0 &&
+      no.length === 1 &&
+      (no[0]?.detail ?? "").includes("understates") &&
+      plain.length === 1 &&
+      quoted.length === 0 &&
+      stale.length === 1 &&
+      (stale[0]?.detail ?? "").includes('"2 shared cells", "widest 5.0%"'),
+    `status=${s.status} shared=${s.shared} widest=${s.widest} no=${details(no)} plain=${details(plain)} quoted=${details(quoted)} stale=${details(stale)}`,
+  );
+}
+
+// S3. A shared cell outside the bar fails the check and is itself listed as a
+//     spread — the gate turns each into a failure, not a warning.
+{
+  const R = new Runs([
+    timedRun("perf-report.json", {
+      "encode/Rust/t1": 1000,
+      "decode/Rust": 200,
+    }),
+    timedRun("perf-report-2.json", {
+      "encode/Rust/t1": 1200,
+      "decode/Rust": 201,
+    }),
+  ]);
+  const s = checkStability(R);
+  check(
+    "a bounded pair more than the tolerance apart on one cell fails",
+    s.status === "fail" &&
+      (s.problems[0] ?? "").includes("1 of 2 shared cell(s)") &&
+      (s.problems[0] ?? "").includes("widest 20.0%") &&
+      R.crossRunSpread.length === 1 &&
+      (R.crossRunSpread[0] ?? "").startsWith("encode/Rust/t1:"),
+    `status=${s.status} problems=${JSON.stringify(s.problems)} spread=${JSON.stringify(R.crossRunSpread)}`,
+  );
+}
+
+// S4. Spread is pairwise. With the full sweep read first, the two bounded runs
+//     were each compared with it and never with each other, so a pair 18.5%
+//     apart — each under 10% from the full sweep — passed unnoticed.
+{
+  const R = new Runs([
+    timedRun(
+      "perf-report-full.json",
+      { "encode/Rust/t1": 1000 },
+      {
+        config: { mode: "full", reps: 1 },
+      },
+    ),
+    timedRun("perf-report.json", { "encode/Rust/t1": 1090 }),
+    timedRun("perf-report-2.json", { "encode/Rust/t1": 920 }),
+  ]);
+  const s = checkStability(R);
+  check(
+    "the two bounded runs are compared with each other, not only with the first run read",
+    R.crossRunSpread.length === 1 &&
+      (R.crossRunSpread[0] ?? "").includes("perf-report.json says 1090.0") &&
+      (R.crossRunSpread[0] ?? "").includes("perf-report-2.json says 920.0") &&
+      s.status === "fail" &&
+      s.runs.join() === "perf-report.json,perf-report-2.json" &&
+      R.us("encode/Rust/t1") === 1000,
+    `spread=${JSON.stringify(R.crossRunSpread)} status=${s.status} runs=${s.runs.join()}`,
+  );
+}
+
+// S5. The claim is one commit on one host measured twice. Agreeing runs from
+//     two commits, or two CPUs, do not substantiate it.
+for (const [label, overrides, needle] of [
+  [
+    "different commits",
+    { git: { commit: "def5678", dirty: false } },
+    "different commits",
+  ],
+  [
+    "different CPUs",
+    { environment: { cpuModel: "other", arch: "x64", cores: 1 } },
+    "different CPUs",
+  ],
+] as const) {
+  const s = checkStability(
+    new Runs([
+      timedRun("perf-report.json", { "encode/Rust/t1": 1000 }),
+      timedRun("perf-report-2.json", { "encode/Rust/t1": 1000 }, overrides),
+    ]),
+  );
+  check(
+    `an agreeing bounded pair from ${label} fails`,
+    s.status === "fail" && s.problems.some((p) => p.includes(needle)),
+    `status=${s.status} problems=${JSON.stringify(s.problems)}`,
+  );
+}
+
+// S6. Two bounded runs that share no cell compared nothing, and fail rather
+//     than passing vacuously.
+{
+  const s = checkStability(
+    new Runs([
+      timedRun("perf-report.json", { "encode/Rust/t1": 1000 }),
+      timedRun("perf-report-2.json", { "decode/Rust": 200 }),
+    ]),
+  );
+  check(
+    "a bounded pair with no shared cell fails instead of passing vacuously",
+    s.status === "fail" &&
+      s.shared === 0 &&
+      s.problems.some((p) => p.includes("share no cell")),
+    `status=${s.status} shared=${s.shared} problems=${JSON.stringify(s.problems)}`,
+  );
+}
+
+// S7. §0 must carry the row, and it must answer Yes or No: a missing or
+//     reworded row fails rather than exempting the claim from the check.
+{
+  const s = checkStability(
+    new Runs([timedRun("perf-report.json", { "encode/Rust/t1": 1000 })]),
+  );
+  const missing = checkStabilityClaim("> | Claim | Reproducible? |", s);
+  const vague = checkStabilityClaim(stabilityDoc("Partly"), s);
+  check(
+    "a missing or non-Yes/No stability row fails",
+    missing.length === 1 &&
+      (missing[0]?.detail ?? "").includes("must state") &&
+      vague.length === 1 &&
+      (vague[0]?.detail ?? "").includes('"Yes" or "No"'),
+    `missing=${details(missing)} vague=${details(vague)}`,
+  );
+}
+
 // B11. §1's baseline: every way of not having one is an error with a reason,
 //      never a null that `checkTable` would count as deliberately unbound.
 {
@@ -1655,6 +1878,215 @@ for (const order of ["measured first", "absent first"] as const) {
       twice.failures.length === 1 &&
       (twice.failures[0]?.detail ?? "").includes("must name one figure"),
     `right=${right.failures.length} wrong=${details(wrong.failures)} finer=${finer.failures.length} gone=${gone.failures.length} twice=${twice.failures.length}`,
+  );
+}
+
+// B14. A prose claim bound to a cell or stage the baseline lacks fails. It
+//      used to be skipped, so a claim pointing at the wrong cell never failed.
+{
+  const stages: Record<string, StageCell> = {
+    "512x512-t1": {
+      ns: {},
+      sharePct: { linearize: 5.43 },
+      git: { rev: "e53e6cd", dirty: false },
+    },
+  };
+  const claim = (cell: string, stage: string): ProseClaim => ({
+    what: "x",
+    pattern: /is ([\d.]+)%/,
+    cell,
+    stages: [stage],
+  });
+  const noCell = checkProseClaims("is 5.4%", stages, [
+    claim("100x100-t1", "linearize"),
+  ]);
+  const noStage = checkProseClaims(
+    "is 5.4%",
+    stages,
+    [claim("512x512-t1", "composite")],
+    "perf-decode-stages.json",
+  );
+  check(
+    "a prose claim bound to a missing cell or stage fails, naming the baseline",
+    noCell.failures.length === 1 &&
+      noCell.checked === 0 &&
+      (noCell.failures[0]?.detail ?? "").includes("has no cell 100x100-t1") &&
+      noStage.failures.length === 1 &&
+      (noStage.failures[0]?.detail ?? "").includes(
+        "perf-decode-stages.json records no composite",
+      ),
+    `noCell=${details(noCell.failures)} noStage=${details(noStage.failures)}`,
+  );
+}
+
+// B15. §1.1's baseline: refused on §1's terms, under its own schema.
+{
+  const cases: [string, string | null, string][] = [
+    ["no file", null, "benchmark:decode-stages 100 100 4 20"],
+    [
+      "§1's schema",
+      JSON.stringify({ schema: "chromahash-perf-stages/1", cells: { a: {} } }),
+      "expected chromahash-perf-decode-stages/1",
+    ],
+    [
+      "no cells",
+      JSON.stringify({ schema: "chromahash-perf-decode-stages/1", cells: {} }),
+      "holds no cells",
+    ],
+  ];
+  const wrong = cases.filter(([, text, needle]) => {
+    const r = parseDecodeStages(text);
+    return r.cells !== null || !(r.error ?? "").includes(needle);
+  });
+  check(
+    "a missing, wrong-schema or empty decode-stages file is an error",
+    wrong.length === 0,
+    wrong.length === 0
+      ? "3 refused"
+      : `not refused: ${wrong.map(([n]) => n).join(", ")}`,
+  );
+}
+
+// B16. §1.1's provenance: a decode cell must say it reproduced the spec
+//      vectors, be filed under the key its fields describe, and carry shares
+//      that are its own ns over whole_decode.
+{
+  const good = (): DecodeStageCell => ({
+    width: 100,
+    height: 100,
+    tier: 4,
+    iters: 20,
+    cap: { width: 32, height: 32 },
+    render: { width: 32, height: 32 },
+    hashBytes: 1623,
+    vectorsChecked: 19,
+    ns: {
+      selection: 400,
+      render: 590,
+      unmarked: 10,
+      stage_sum: 990,
+      whole_decode: 1000,
+    },
+    sharePct: { selection: 40, render: 59, unmarked: 1 },
+    git: { rev: "e68291e", dirty: false },
+  });
+  const run = (
+    mut: (c: DecodeStageCell) => void,
+    key = "100x100-t4-cap32x32",
+  ) => {
+    const c = good();
+    mut(c);
+    return checkDecodeStagesProvenance({ [key]: c }).map((f) => f.column);
+  };
+  const cases: [string, string[], string][] = [
+    ["clean", run(() => {}), ""],
+    [
+      "no vector check",
+      run((c) => {
+        c.vectorsChecked = 0;
+      }),
+      "vectorsChecked",
+    ],
+    [
+      "vector check absent",
+      run((c) => {
+        (c as { vectorsChecked: number | undefined }).vectorsChecked =
+          undefined;
+      }),
+      "vectorsChecked",
+    ],
+    ["wrong key", run(() => {}, "100x100-t4-natural"), "key"],
+    [
+      "zero iters",
+      run((c) => {
+        c.iters = 0;
+      }),
+      "iters",
+    ],
+    [
+      "share edited",
+      run((c) => {
+        c.sharePct.render = 60;
+      }),
+      "sharePct",
+    ],
+    [
+      "share missing",
+      run((c) => {
+        c.sharePct = { selection: 40, render: 59 };
+      }),
+      "sharePct",
+    ],
+    [
+      // A key present with no number: `NaN > tol` is false, so a check
+      // written as "fail when off by more than tol" would wave it through.
+      "share not a number",
+      run((c) => {
+        c.sharePct.render = undefined as unknown as number;
+      }),
+      "sharePct",
+    ],
+    [
+      "sum exceeds whole",
+      run((c) => {
+        c.ns.stage_sum = 2000;
+      }),
+      "ns",
+    ],
+    [
+      "dirty",
+      run((c) => {
+        c.git.dirty = true;
+      }),
+      "git.dirty",
+    ],
+  ];
+  const wrong = cases.filter(([, cols, want]) =>
+    want === "" ? cols.length !== 0 : !(cols.length === 1 && cols[0] === want),
+  );
+  check(
+    "a decode cell without its vector check, under the wrong key, or with shares off its ns fails",
+    wrong.length === 0,
+    wrong.length === 0
+      ? `${cases.length} cases`
+      : wrong
+          .map(([n, cols]) => `${n}: ${cols.join(",") || "(none)"}`)
+          .join("; "),
+  );
+}
+
+// B17. A stage table's rows must be exactly the stages its baseline records.
+{
+  const cell: StageCell = {
+    ns: {},
+    sharePct: { selection: 40, render: 59, unmarked: 1 },
+    git: { rev: "e68291e", dirty: false },
+  };
+  const ok = checkStageRowCoverage(
+    ["selection", "render", "unmarked"],
+    { k: cell },
+    "t",
+  );
+  const omits = checkStageRowCoverage(
+    ["selection", "render"],
+    { k: cell },
+    "t",
+  );
+  const extra = checkStageRowCoverage(
+    ["selection", "render", "unmarked", "idct"],
+    { k: cell },
+    "t",
+  );
+  check(
+    "a stage table that omits a recorded stage or names an unrecorded one fails",
+    ok.length === 0 &&
+      omits.length === 1 &&
+      (omits[0]?.detail ?? "").includes(
+        "recorded but not in the table: unmarked",
+      ) &&
+      extra.length === 1 &&
+      (extra[0]?.detail ?? "").includes("in the table but not recorded: idct"),
+    `ok=${ok.length} omits=${details(omits)} extra=${details(extra)}`,
   );
 }
 
@@ -1921,6 +2353,76 @@ console.log("\nverify:experiments — the table register and result shape\n");
     "a series shorter than the image list is refused",
     only(fs5, 'row "arm" bytes has 1 values for 2 images'),
     JSON.stringify(fs5),
+  );
+}
+
+// --- Alpha corpus: the retired holdout and withdrawn pins (#83) ------------
+//
+// `ensureAlphaImages` refuses the retired holdout split and never fetches a
+// withdrawn pin. Neither branch runs in any sweep CI executes, so both are
+// driven here through the selection it delegates to, without the network.
+{
+  console.log("\nalpha corpus selection:");
+
+  let thrown = "";
+  try {
+    alphaImagesToFetch("holdout");
+  } catch (e) {
+    thrown = e instanceof Error ? e.message : String(e);
+  }
+  check(
+    "the retired alpha holdout split is refused",
+    thrown === ALPHA_HOLDOUT_RETIRED,
+    thrown === "" ? "no error thrown" : thrown,
+  );
+
+  const base: AlphaImageSpec = {
+    label: "fixture-kept",
+    url: "https://example.invalid/kept.png",
+    ext: ".png",
+    width: 1,
+    height: 1,
+    split: "tune",
+    nonOpaqueFraction: 0,
+    softAlphaFraction: 0,
+    sha256: "0".repeat(64),
+    source: "https://example.invalid/kept",
+    author: "fixture",
+    licence: "CC0",
+    notes: "fixture",
+  };
+  const fixture: AlphaImageSpec[] = [
+    base,
+    { ...base, label: "fixture-withdrawn", withdrawn: "gone" },
+    { ...base, label: "fixture-holdout", split: "holdout" },
+  ];
+  const labels = (specs: AlphaImageSpec[]): string =>
+    specs.map((s) => s.label).join(",");
+  const tune = labels(alphaImagesToFetch("tune", fixture));
+  check(
+    "a withdrawn tune pin is not fetched for the tune split",
+    tune === "fixture-kept",
+    tune,
+  );
+  const all = labels(alphaImagesToFetch(undefined, fixture));
+  check(
+    "a withdrawn pin is not fetched with no split",
+    all === "fixture-kept,fixture-holdout",
+    all,
+  );
+
+  const shipped = alphaImagesToFetch().filter(
+    (s) => s.withdrawn !== undefined || s.label === "cutout-wordmark-aflac",
+  );
+  check(
+    "the deleted cutout-wordmark-aflac pin is never fetched",
+    shipped.length === 0,
+    labels(shipped),
+  );
+  check(
+    "the withdrawn pin keeps its holdout split, so a cached copy cannot join tune",
+    splitFor("cutout-wordmark-aflac") === "holdout",
+    splitFor("cutout-wordmark-aflac"),
   );
 }
 

@@ -5,11 +5,12 @@ use crate::constants::{
     ALPHA_FLAG_BIT, Gamut, TIER_BITS, Tunables, VERSION_BITS, ac_shape, prefix_bits,
 };
 use crate::dct::{
-    SelectionOrder, dct_decode_pixel_separable, precompute_cos_table, window_weights,
+    SelectionOrder, dct_decode_pixel_flat, dct_decode_pixel_separable, precompute_cos_table,
+    precompute_cos_table_flat, window_weights,
 };
 use crate::encode::{
     band_split_index, dequantize_aspect, dequantize_c_dc, dequantize_cfl_gain, dequantize_l_dc,
-    dequantize_scale,
+    dequantize_scale, stage,
 };
 use crate::math_utils::{clamp01, round_half_away_from_zero};
 use crate::mulaw::compand_dequantize;
@@ -30,6 +31,24 @@ fn build_gamma_lut(output: Gamut) -> [u8; 4096] {
         *entry = round_half_away_from_zero(g.clamp(0.0, 1.0) * 255.0) as u8;
     }
     lut
+}
+
+/// [`build_gamma_lut`]'s table for `output`, built once per process and
+/// shared — `spec/PERFORMANCE.md` §12.1 item 4(a), behind
+/// `Tunables::accel_gamma_lut_cache`. The table depends on the output gamut
+/// only through [`Gamut::output_uses_adobe_gamma`], which is also all that
+/// `build_gamma_lut` reads, so there are exactly two tables and each is the
+/// same 4096 bytes whether it is built once or on every call.
+fn cached_gamma_lut(output: Gamut) -> &'static [u8; 4096] {
+    use std::sync::OnceLock;
+    static SRGB_CURVE: OnceLock<[u8; 4096]> = OnceLock::new();
+    static ADOBE_CURVE: OnceLock<[u8; 4096]> = OnceLock::new();
+    let slot = if output.output_uses_adobe_gamma() {
+        &ADOBE_CURVE
+    } else {
+        &SRGB_CURVE
+    };
+    slot.get_or_init(|| build_gamma_lut(output))
 }
 
 /// Map linear [0,1] to gamma-encoded u8 via the output-gamut LUT. Per spec §12.6.
@@ -136,6 +155,14 @@ fn synthesize_detail(
 
 /// Render a ChromaHash at the given pixel dimensions, into the given output
 /// gamut (sRGB / Display P3 / Adobe RGB). Per spec §11 (v0.6).
+///
+/// The `stage!` marks are `mise run benchmark:decode-stages`' breakdown
+/// (spec/PERFORMANCE.md §1.1); they expand to nothing without the
+/// `bench-internals` feature. Each one closes the span since the previous mark,
+/// so together they cover the function end to end. The render loop is one mark
+/// and deliberately not split: separating its inverse DCT from its colour
+/// conversion would need a timer per pixel, or a second loop, and either would
+/// measure a decoder this crate does not ship.
 fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) -> Vec<u8> {
     // 1. Header fields: byte-0 descriptor + byte-1 aspect, then DC/scale prefix
     //    (bits 16..54). Per spec §3.1 (v1).
@@ -187,6 +214,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
         (t.max_b_scale, t.b_scale_bits)
     };
     let b_scale = dequantize_scale(b_scl_q, b_range, b_bits, t.scale_mu);
+    stage!("header");
 
     // 3. Coefficient selection (mirrors the encoder; counts scaled by tier)
     let shape = ac_shape(t, has_alpha, tier);
@@ -197,6 +225,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     let order = SelectionOrder::new(aspect, tier, t.aniso_oblique, t.sel_hv);
     let l_sel = order.take(l_count);
     let c_sel = order.take(c_count);
+    stage!("selection");
 
     // 4. Read AC payload (alpha DC/scale first in alpha mode)
     let (alpha_dc_val, alpha_scale_val) = if has_alpha {
@@ -320,6 +349,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     } else {
         (vec![], None)
     };
+    stage!("ac_dequant");
 
     // 4b. Decoder-side detail synthesis (zero bytes). Everything the format
     //     codes is a handful of global low frequencies, so the render is far
@@ -346,6 +376,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     } else {
         (vec![], vec![])
     };
+    stage!("window_filter");
 
     // 6. Cosine tables sized to the surviving frequencies
     let max_cx = l_scan
@@ -362,45 +393,137 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
         .map(|&(_, cy)| cy)
         .max()
         .unwrap_or(0);
-    let cos_x = precompute_cos_table(w, max_cx + 1);
-    let cos_y = precompute_cos_table(h, max_cy + 1);
+    // `accel_flat_cos` (§12.1 item 4(b)) builds the same entries in one
+    // contiguous array per axis; exactly one of the two layouts is built.
+    let (cos_x, cos_y, flat_x, flat_y) = if t.accel_flat_cos {
+        (
+            Vec::new(),
+            Vec::new(),
+            precompute_cos_table_flat(w, max_cx + 1),
+            precompute_cos_table_flat(h, max_cy + 1),
+        )
+    } else {
+        (
+            precompute_cos_table(w, max_cx + 1),
+            precompute_cos_table(h, max_cy + 1),
+            Vec::new(),
+            Vec::new(),
+        )
+    };
+    stage!("cos_tables");
 
     // 7. Build gamma LUT and render
-    let gamma_lut = build_gamma_lut(output);
+    let built_lut;
+    let gamma_lut: &[u8; 4096] = if t.accel_gamma_lut_cache {
+        cached_gamma_lut(output)
+    } else {
+        built_lut = build_gamma_lut(output);
+        &built_lut
+    };
+    stage!("gamma_lut");
     let mut rgba_out = vec![0u8; w * h * 4];
 
+    // The flat-table loop lives in its own never-inlined function. With both
+    // loops in this one, the shipped loop below rendered a tier-4 decode ~12%
+    // slower than it did before `accel_flat_cos` existed — the second loop
+    // changed what the compiler inlined into the first — and the shipped loop
+    // is the reference every decode lever is timed against.
+    if t.accel_flat_cos {
+        render_flat(
+            &mut rgba_out,
+            (w, h),
+            (&flat_x, &flat_y),
+            [
+                (l_dc, &l_vals, &l_scan),
+                (a_dc, &a_vals, &a_scan),
+                (b_dc, &b_vals, &b_scan),
+                (alpha_dc_val, &alpha_vals, &alpha_scan),
+            ],
+            has_alpha,
+            gamma_lut,
+            output,
+        );
+    } else {
+        for y in 0..h {
+            for x in 0..w {
+                let l = dct_decode_pixel_separable(l_dc, &l_vals, &l_scan, x, y, &cos_x, &cos_y);
+                let a = dct_decode_pixel_separable(a_dc, &a_vals, &a_scan, x, y, &cos_x, &cos_y);
+                let b = dct_decode_pixel_separable(b_dc, &b_vals, &b_scan, x, y, &cos_x, &cos_y);
+                let alpha = if has_alpha {
+                    dct_decode_pixel_separable(
+                        alpha_dc_val,
+                        &alpha_vals,
+                        &alpha_scan,
+                        x,
+                        y,
+                        &cos_x,
+                        &cos_y,
+                    )
+                } else {
+                    1.0
+                };
+
+                // Clamp L from DCT ringing; out-of-gamut chroma is handled by the
+                // per-channel clamp01 below (relative-colorimetric clip, §12.6).
+                let l_clamped = clamp01(l);
+                let rgb_linear = oklab_to_linear_output([l_clamped, a, b], output);
+                let idx = (y * w + x) * 4;
+                rgba_out[idx] = linear_to_gamma8(clamp01(rgb_linear[0]), gamma_lut);
+                rgba_out[idx + 1] = linear_to_gamma8(clamp01(rgb_linear[1]), gamma_lut);
+                rgba_out[idx + 2] = linear_to_gamma8(clamp01(rgb_linear[2]), gamma_lut);
+                rgba_out[idx + 3] = round_half_away_from_zero(255.0 * clamp01(alpha)) as u8;
+            }
+        }
+    }
+    stage!("render");
+
+    rgba_out
+}
+
+/// One channel's render input: DC, windowed AC values, and their `(cx, cy)`.
+type RenderChannel<'a> = (f64, &'a [f64], &'a [(usize, usize)]);
+
+/// `render_at_size`'s pixel loop over [`precompute_cos_table_flat`]'s layout
+/// (`Tunables::accel_flat_cos`, `spec/PERFORMANCE.md` §12.1 item 4(b)): the
+/// same per-pixel expressions in the same order, with each cosine read from
+/// one contiguous array per axis. `channels` is L, a, b, alpha; alpha is read
+/// only when `has_alpha`.
+#[inline(never)]
+fn render_flat(
+    rgba_out: &mut [u8],
+    (w, h): (usize, usize),
+    (cos_x, cos_y): (&[f64], &[f64]),
+    channels: [RenderChannel<'_>; 4],
+    has_alpha: bool,
+    gamma_lut: &[u8; 4096],
+    output: Gamut,
+) {
+    let [
+        (l_dc, l_vals, l_scan),
+        (a_dc, a_vals, a_scan),
+        (b_dc, b_vals, b_scan),
+        alpha_ch,
+    ] = channels;
     for y in 0..h {
         for x in 0..w {
-            let l = dct_decode_pixel_separable(l_dc, &l_vals, &l_scan, x, y, &cos_x, &cos_y);
-            let a = dct_decode_pixel_separable(a_dc, &a_vals, &a_scan, x, y, &cos_x, &cos_y);
-            let b = dct_decode_pixel_separable(b_dc, &b_vals, &b_scan, x, y, &cos_x, &cos_y);
+            let l = dct_decode_pixel_flat(l_dc, l_vals, l_scan, x, y, cos_x, w, cos_y, h);
+            let a = dct_decode_pixel_flat(a_dc, a_vals, a_scan, x, y, cos_x, w, cos_y, h);
+            let b = dct_decode_pixel_flat(b_dc, b_vals, b_scan, x, y, cos_x, w, cos_y, h);
             let alpha = if has_alpha {
-                dct_decode_pixel_separable(
-                    alpha_dc_val,
-                    &alpha_vals,
-                    &alpha_scan,
-                    x,
-                    y,
-                    &cos_x,
-                    &cos_y,
-                )
+                let (dc, vals, scan) = alpha_ch;
+                dct_decode_pixel_flat(dc, vals, scan, x, y, cos_x, w, cos_y, h)
             } else {
                 1.0
             };
-
-            // Clamp L from DCT ringing; out-of-gamut chroma is handled by the
-            // per-channel clamp01 below (relative-colorimetric clip, §12.6).
             let l_clamped = clamp01(l);
             let rgb_linear = oklab_to_linear_output([l_clamped, a, b], output);
             let idx = (y * w + x) * 4;
-            rgba_out[idx] = linear_to_gamma8(clamp01(rgb_linear[0]), &gamma_lut);
-            rgba_out[idx + 1] = linear_to_gamma8(clamp01(rgb_linear[1]), &gamma_lut);
-            rgba_out[idx + 2] = linear_to_gamma8(clamp01(rgb_linear[2]), &gamma_lut);
+            rgba_out[idx] = linear_to_gamma8(clamp01(rgb_linear[0]), gamma_lut);
+            rgba_out[idx + 1] = linear_to_gamma8(clamp01(rgb_linear[1]), gamma_lut);
+            rgba_out[idx + 2] = linear_to_gamma8(clamp01(rgb_linear[2]), gamma_lut);
             rgba_out[idx + 3] = round_half_away_from_zero(255.0 * clamp01(alpha)) as u8;
         }
     }
-
-    rgba_out
 }
 
 /// Decode a ChromaHash into RGBA pixel data in the given output gamut, with
@@ -528,7 +651,15 @@ pub fn average_color_with(hash: &[u8], t: &Tunables) -> [u8; 4] {
 
     let l_clamped = clamp01(l_dc);
     let rgb_linear = oklab_to_linear_srgb([l_clamped, a_dc, b_dc]);
-    let gamma_lut = build_gamma_lut(Gamut::Srgb);
+    // Three table lookups need no 4096-entry table at all, but the shipped
+    // path builds one, so the lever that caches it reaches here too.
+    let built_lut;
+    let gamma_lut: &[u8; 4096] = if t.accel_gamma_lut_cache {
+        cached_gamma_lut(Gamut::Srgb)
+    } else {
+        built_lut = build_gamma_lut(Gamut::Srgb);
+        &built_lut
+    };
 
     // Alpha DC is the first field after the header prefix, in alpha mode.
     let alpha = if has_alpha {
@@ -539,9 +670,9 @@ pub fn average_color_with(hash: &[u8], t: &Tunables) -> [u8; 4] {
     };
 
     [
-        linear_to_gamma8(clamp01(rgb_linear[0]), &gamma_lut),
-        linear_to_gamma8(clamp01(rgb_linear[1]), &gamma_lut),
-        linear_to_gamma8(clamp01(rgb_linear[2]), &gamma_lut),
+        linear_to_gamma8(clamp01(rgb_linear[0]), gamma_lut),
+        linear_to_gamma8(clamp01(rgb_linear[1]), gamma_lut),
+        linear_to_gamma8(clamp01(rgb_linear[2]), gamma_lut),
         round_half_away_from_zero(255.0 * clamp01(alpha)) as u8,
     ]
 }
@@ -630,6 +761,84 @@ mod tests {
             rgba[i * 4 + 3] = 255;
         }
         rgba
+    }
+
+    #[test]
+    fn cached_gamma_lut_is_the_built_one_for_every_output() {
+        // §12.1 item 4(a): two cached tables serve five gamuts, which holds
+        // only because `build_gamma_lut` reads nothing but the transfer curve.
+        for g in [
+            Gamut::Srgb,
+            Gamut::DisplayP3,
+            Gamut::AdobeRgb,
+            Gamut::Bt2020,
+            Gamut::ProPhotoRgb,
+        ] {
+            assert_eq!(cached_gamma_lut(g), &build_gamma_lut(g), "{g:?}");
+            // And a second call returns the same table, not a rebuilt one.
+            assert!(std::ptr::eq(cached_gamma_lut(g), cached_gamma_lut(g)));
+        }
+    }
+
+    #[test]
+    fn decoder_levers_reproduce_the_shipped_pixels() {
+        // §12.1 item 4, both halves, alone and together, over opaque and
+        // translucent hashes at three tiers, natural and capped, into both
+        // transfer curves.
+        let levers: [fn(&mut Tunables); 2] = [
+            |t| t.accel_gamma_lut_cache = true,
+            |t| t.accel_flat_cos = true,
+        ];
+        let d = Tunables::DEFAULT;
+        let mut all = d;
+        let mut arms = Vec::new();
+        for set in levers {
+            let mut t = d;
+            set(&mut t);
+            set(&mut all);
+            arms.push(t);
+        }
+        arms.push(all);
+        for (rgba, w, h) in [
+            (gradient_image(9, 7), 9, 7),
+            (checkerboard_alpha(8, 8), 8, 8),
+            (alpha_gradient(6, 10), 6, 10),
+        ] {
+            for tier in 0..=2u8 {
+                let hash = crate::encode::encode_with(w, h, &rgba, Gamut::Srgb, &d, tier);
+                for out in [Gamut::Srgb, Gamut::DisplayP3, Gamut::AdobeRgb] {
+                    let natural = decode_to_with(&hash, &d, out);
+                    let capped = decode_capped_to_with(&hash, 11, 5, &d, out);
+                    for t in &arms {
+                        assert_eq!(decode_to_with(&hash, t, out), natural, "t{tier} {out:?}");
+                        assert_eq!(
+                            decode_capped_to_with(&hash, 11, 5, t, out),
+                            capped,
+                            "capped t{tier} {out:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn average_color_is_unmoved_by_the_cached_gamma_lut() {
+        let t = Tunables {
+            accel_gamma_lut_cache: true,
+            ..Tunables::DEFAULT
+        };
+        for (rgba, w, h) in [
+            (gradient_image(9, 7), 9, 7),
+            (checkerboard_alpha(8, 8), 8, 8),
+            (solid(3, 3, 12, 250, 99, 200), 3, 3),
+        ] {
+            let hash = crate::ChromaHash::encode(w, h, &rgba, Gamut::Srgb);
+            assert_eq!(
+                average_color_with(hash.as_bytes(), &t),
+                average_color_with(hash.as_bytes(), &Tunables::DEFAULT)
+            );
+        }
     }
 
     #[test]
