@@ -54,15 +54,38 @@
  * The alpha corpus block covers the retired alpha holdout split and withdrawn
  * pins (`alpha-images.ts`, #83), whose refusal and skip no sweep CI runs ever
  * reaches.
+ *
+ * The photographic splits block covers the same for the photographic holdout
+ * #76 retired into tune2, and for the gate that keeps holdout2 sealed until
+ * `spec/V0.8-DECISIONS.md` records a decision as frozen (`holdout-images.ts`).
  */
 
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   ALPHA_HOLDOUT_RETIRED,
   type AlphaImageSpec,
   alphaImagesToFetch,
 } from "./alpha-images.ts";
-import { splitFor } from "./corpus.ts";
+import {
+  HOLDOUT2_PREFIX,
+  PHOTO_HOLDOUT_RETIRED,
+  inCorpus,
+  inSplit,
+  parseScratchPhotoSplit,
+  parseSplit,
+  splitFor,
+} from "./corpus.ts";
+import {
+  assertHoldout2Unread,
+  ensureHoldout2Images,
+  holdout2Specs,
+  openHoldout2,
+  registerStatus,
+} from "./holdout-images.ts";
+import { CURATED_IMAGES, type NaturalImageSpec } from "./natural-images.ts";
 import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
@@ -2436,6 +2459,249 @@ console.log("\nverify:experiments — the table register and result shape\n");
     splitFor("cutout-wordmark-aflac") === "holdout",
     splitFor("cutout-wordmark-aflac"),
   );
+}
+
+// --- Photographic splits: tune2 retired, holdout2 sealed (#76) --------------
+//
+// The gate that opens holdout2 fails a run only on register states the
+// repository is not in, and no sweep CI runs ever asks for holdout2, so every
+// branch is driven here from fixtures, without the network.
+{
+  console.log("\nphotographic splits and the holdout2 gate:");
+
+  const thrown = (f: () => unknown): string => {
+    try {
+      f();
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    return "";
+  };
+  const rejected = async (f: () => Promise<unknown>): Promise<string> => {
+    try {
+      await f();
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    return "";
+  };
+
+  // The retired split: every photograph that was holdout is tune2 now.
+  const kodak = splitFor("kodak07");
+  check("Kodak24 is tune2", kodak === "tune2", kodak);
+  const former = CURATED_IMAGES.filter((s) => s.split === "tune2");
+  check(
+    "the eight curated photographs of the spent holdout are tune2",
+    former.length === 8 && former.every((s) => splitFor(s.label) === "tune2"),
+    former.map((s) => s.label).join(","),
+  );
+  const stillHoldout = CURATED_IMAGES.filter((s) => s.split === "holdout");
+  check(
+    "no photograph is left in the retired holdout split",
+    stillHoldout.length === 0,
+    stillHoldout.map((s) => s.label).join(","),
+  );
+  check(
+    "--split holdout is refused for photographs, naming tune2",
+    thrown(() => parseScratchPhotoSplit("holdout")) === PHOTO_HOLDOUT_RETIRED,
+    thrown(() => parseScratchPhotoSplit("holdout")),
+  );
+  check(
+    "an unknown --split is refused, not defaulted",
+    thrown(() => parseSplit("holdout3", true)).startsWith("unknown --split"),
+    thrown(() => parseSplit("holdout3", true)),
+  );
+
+  // The seal: by prefix, out of "all", out of every scratch tool.
+  check(
+    "a sealed- image is holdout2 whatever the tables say",
+    splitFor(`${HOLDOUT2_PREFIX}fixture`) === "holdout2",
+    splitFor(`${HOLDOUT2_PREFIX}fixture`),
+  );
+  check(
+    "a sealed- image is photographic, so a photo sweep can read it once opened",
+    inCorpus(`${HOLDOUT2_PREFIX}fixture`, "photo"),
+    "",
+  );
+  check(
+    '"all" excludes the sealed split and keeps tune2',
+    !inSplit(`${HOLDOUT2_PREFIX}fixture`, "all") &&
+      inSplit("kodak07", "all") &&
+      inSplit("kodak07", "tune2"),
+    "",
+  );
+  check(
+    "a scratch tool refuses holdout2",
+    thrown(() => parseScratchPhotoSplit("holdout2")).includes(
+      "does not read holdout2",
+    ),
+    thrown(() => parseScratchPhotoSplit("holdout2")),
+  );
+
+  // The register's contract, one branch at a time.
+  const register = [
+    "# v0.8 decisions",
+    "",
+    "## D1. Entropy-coded AC",
+    "",
+    "**Status:** frozen",
+    "",
+    "### Evidence",
+    "",
+    "Status notes live here and are part of D1.",
+    "",
+    "## D1.1 A sub-question",
+    "",
+    "Status: open",
+    "",
+    "## D2 — Separable DCT",
+    "",
+    "```",
+    "Status: frozen",
+    "```",
+    "- Status: decided",
+    "",
+    "## D3: Alpha at tiers 2-3",
+    "",
+    "Status: open",
+    "Status: frozen",
+    "",
+    "## D4) No status",
+    "",
+    "## D5 twice",
+    "Status: frozen",
+    "## D5 again",
+    "Status: frozen",
+    "",
+  ].join("\n");
+  const status = (id: string): string => {
+    const r = registerStatus(register, id);
+    return "status" in r ? r.status : `error: ${r.error}`;
+  };
+  check(
+    "a bold status line under its heading is read",
+    status("D1") === "frozen",
+    status("D1"),
+  );
+  check(
+    "D1 does not match D1.1's heading, and D1.1 has its own status",
+    status("D1.1") === "open",
+    status("D1.1"),
+  );
+  check(
+    "a status inside a fenced block is ignored; the list-item one is read",
+    status("D2") === "decided",
+    status("D2"),
+  );
+  check(
+    "two status lines in one section are refused",
+    status("D3").startsWith("error:") && status("D3").includes("2 status"),
+    status("D3"),
+  );
+  check(
+    "a section with no status line is refused",
+    status("D4").includes("0 status"),
+    status("D4"),
+  );
+  check(
+    "a decision headed twice is refused",
+    status("D5").includes("2 times"),
+    status("D5"),
+  );
+  check(
+    "an absent decision is refused",
+    status("D9").includes("no decision headed"),
+    status("D9"),
+  );
+
+  // The gate itself, against a fixture register on disk.
+  const dir = mkdtempSync(path.join(tmpdir(), "holdout2-gate-"));
+  const fixturePath = path.join(dir, "V0.8-DECISIONS.md");
+  writeFileSync(fixturePath, register);
+  const opened = (() => {
+    try {
+      return openHoldout2("D1", fixturePath);
+    } catch {
+      return null;
+    }
+  })();
+  check(
+    "a frozen decision opens holdout2 and records the register's digest",
+    opened !== null &&
+      opened.decision === "D1" &&
+      /^[0-9a-f]{64}$/.test(opened.registerSha256),
+    opened === null ? "refused" : opened.registerSha256.slice(0, 12),
+  );
+  const refusals: [string, string | undefined, string, string][] = [
+    ["no --decision", undefined, fixturePath, "needs --decision"],
+    ["a malformed ID", "../D1", fixturePath, "is not a decision ID"],
+    ["an open decision", "D1.1", fixturePath, 'as "open"'],
+    ["a decided decision", "D2", fixturePath, 'as "decided"'],
+    ["an ambiguous register", "D3", fixturePath, "2 status lines"],
+    ["a missing register", "D1", path.join(dir, "absent.md"), "does not exist"],
+  ];
+  for (const [what, id, at, expect] of refusals) {
+    const message = thrown(() => openHoldout2(id, at));
+    check(`the gate refuses ${what}`, message.includes(expect), message);
+  }
+
+  // One reading per question, and a pin table that agrees with the prefix.
+  const existing = path.join(dir, "fixture-holdout2.json");
+  writeFileSync(existing, "{}");
+  check(
+    "a committed holdout2 result is never overwritten",
+    thrown(() => assertHoldout2Unread(existing)).includes(
+      "already holds a holdout2 reading",
+    ),
+    thrown(() => assertHoldout2Unread(existing)),
+  );
+  check(
+    "an unread holdout2 result path passes",
+    thrown(() => assertHoldout2Unread(path.join(dir, "unread.json"))) === "",
+    "",
+  );
+  const spec: NaturalImageSpec = {
+    label: `${HOLDOUT2_PREFIX}fixture`,
+    urls: ["https://example.invalid/sealed.jpg"],
+    ext: ".jpg",
+    width: 1,
+    height: 1,
+    split: "holdout2",
+    sha256: "0".repeat(64),
+    source: "https://example.invalid/sealed",
+    author: "fixture",
+    licence: "CC0",
+    axis: "fixture",
+    notes: "fixture",
+  };
+  check(
+    "holdout2 pins are the sealed- ones",
+    holdout2Specs([spec, { ...spec, label: "natural-open", split: "tune" }])
+      .length === 1,
+    "",
+  );
+  for (const [what, bad] of [
+    ["a holdout2 pin without the prefix", { ...spec, label: "natural-x" }],
+    ["a sealed- pin on another split", { ...spec, split: "tune" as const }],
+  ] as const) {
+    const message = thrown(() => holdout2Specs([bad]));
+    check(`${what} is refused`, message.includes("is labelled"), message);
+  }
+  if (opened !== null) {
+    const empty = await rejected(() => ensureHoldout2Images(opened, []));
+    check(
+      "an opened holdout2 with no pins refuses rather than scoring nothing",
+      empty.includes("no pinned images"),
+      empty,
+    );
+  }
+  const shipped = thrown(() => holdout2Specs());
+  check(
+    "the shipped pin table's prefixes and splits agree",
+    shipped === "",
+    shipped || `${holdout2Specs().length} holdout2 pin(s)`,
+  );
+  rmSync(dir, { recursive: true, force: true });
 }
 
 console.log(

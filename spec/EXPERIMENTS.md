@@ -28,6 +28,20 @@ tune and validated on holdout, per the pre-registered rule in `RATIONALE.md`.
 > transcriptions of them** — read it before quoting a figure from this file.
 > The alpha and graphic corpora were untouched by the re-source.
 
+> **The holdout is spent (2026-09, #76).** Every "holdout" figure in this file
+> was measured on the 32-image split named above, and that split had informed
+> a decision in every round (§11.12 lists them), so none of its figures is the
+> clean out-of-sample test the pre-registered rule assumes. It is retired: its
+> 32 images are now the **`tune2`** split, which is tuning data, and
+> `--split holdout` refuses a photographic corpus. The figures stay as what
+> was measured, and their committed `*-holdout.json` results still bind them.
+> The out-of-sample split for v0.8 is **`holdout2`**: new Commons photographs
+> selected on covariates alone, with no encoder run on them, and pinned only
+> once their list is approved. Until then it holds no image, and every tool
+> that is asked for it says so. It is sealed: no tool reads it until
+> `spec/V0.8-DECISIONS.md` records the decision being answered as frozen,
+> and then only once. §6 and §11.12 give the mechanics.
+
 > **Tier numbering.** Every section below was written before the tier codes
 > were reordered by quality, and uses the *old* numbering, where code 0 was the
 > 32-byte default. The shipped codes are `0` = compact (21 B), `1` = default
@@ -734,6 +748,18 @@ mise run verify:experiments
 mise run verify:experiments --list-unbound
 ```
 
+**The photographic `--split holdout` lines above no longer run** (#76). They
+are the commands that produced the committed `*-holdout.json` results, which
+record `"split": "holdout"`, the split's name when they were scored. That split
+is retired as spent (§11.12), so asking for it refuses and names the
+replacement. Its 32 images are `--split tune2` now, which scores the same
+pinned bytes and writes `<name>-tune2.json` instead; `verify:experiments`
+reads the `-holdout` results, not those. The alpha line was already retired
+(#83). The out-of-sample split is `holdout2`: `sweep` and `rd-budget` read it
+only with `--split holdout2 --decision <ID>`, only when
+`spec/V0.8-DECISIONS.md` records that decision as frozen, only whole, and only
+once. A second reading under the same result name is refused.
+
 The three `--split holdout` lines marked §4.5, §7.6 and §11.14 were **missing
 until the §9.5 re-run**, and each is the only source for a table this file
 already carried — §11.14's is the current cross-format record. Nothing said so:
@@ -743,7 +769,7 @@ so the block could not reproduce three of its own tables and still exited 0.
 turns one into a failure.
 
 Every `sweep` and `rd-budget` line above writes its result to
-`tools/comparison/results/<name>[-holdout].json`, which is committed, and every
+`tools/comparison/results/<name>[-<split>].json`, which is committed, and every
 one of them that can still run was re-run from a clean tree at one commit,
 `e310475`, for the 2026-09 re-measure: 54 results, per-image scores and
 provenance only. The one that cannot is the alpha holdout run (#83).
@@ -2632,6 +2658,31 @@ steered the candidates towards, so none of them is the clean one-shot test the
 pre-registered rule assumes. A result in this file that says "never-tuned
 holdout" is describing how the split was meant to be used. The fix is a fresh
 split read once, not a rewording (#76).
+
+**What #76 did with it.** The split is retired, not re-labelled in place:
+
+- **Its 32 images are `tune2`.** Kodak24 and the eight curated photographs keep
+  their pins and their bytes; `splitFor` now puts them in `tune2`, a split of
+  its own rather than a merge into `tune`, so every committed tune result
+  still means what it measured and the split's history stays in its name. It
+  is tuning data. A figure read from it is in-sample for every decision the
+  list above names, and says nothing out of sample about any other.
+- **`--split holdout` refuses a photographic corpus**, naming `tune2`. The
+  committed `*-holdout.json` results are left as they were scored, and the
+  tables below keep reading them. The graphics corpus keeps its own
+  three-image holdout, which no committed result or recorded decision has
+  read.
+- **The replacement is `holdout2`**, sealed. Its images are chosen on
+  covariates alone — the §9.1 axes plus the smartphone snapshots §9.4 lists as
+  missing — with no encoder run on a candidate, and nothing is pinned until
+  the list is approved. Once pinned, `sweep` and `rd-budget` read it only with
+  `--split holdout2 --decision <ID>`, only when `spec/V0.8-DECISIONS.md`
+  records that decision as frozen (its criterion approved, and not yet
+  answered), only whole, and only once: a second run under the same result
+  name refuses, and the result records the decision and the digest of the
+  register it was opened against. The report and the scratch probes never
+  read it. The self-test drives every refusal from fixtures
+  (`mise run selftest:metrics`).
 
 **Photographic holdout (32 images):**
 

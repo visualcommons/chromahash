@@ -35,8 +35,13 @@
  * into a ΔE00 the R-D ladder can be read against.
  *
  * Usage:
- *   node dist/entropy-budget.js [--split tune|holdout|all] [--max-images N]
+ *   node dist/entropy-budget.js [--split tune|tune2|all] [--max-images N]
  *                               [--skip-score] [--out <name>]
+ *
+ * `all` is every split that is not sealed. `holdout` is refused because the
+ * photographic holdout is spent and is `tune2` now (#76); `holdout2` is
+ * refused because this tool writes no committed result a sealed reading could
+ * be recorded in.
  */
 
 import { execFileSync } from "node:child_process";
@@ -49,7 +54,12 @@ import {
   decodeViaRust,
   encodeViaRust,
 } from "./adapters/chromahash.ts";
-import { type CorpusSplit, inCorpus, splitFor } from "./corpus.ts";
+import {
+  type CorpusSplit,
+  inCorpus,
+  inSplit,
+  parseScratchPhotoSplit,
+} from "./corpus.ts";
 import { gamutToSrgbReference } from "./gamut.ts";
 import { ensureHoldoutImages } from "./holdout-images.ts";
 import { loadImage } from "./image-loader.ts";
@@ -126,9 +136,11 @@ const { values } = parseArgs({
     out: { type: "string" },
   },
 });
-const splitArg = values.split ?? "tune";
-if (splitArg !== "tune" && splitArg !== "holdout" && splitArg !== "all") {
-  console.error(`invalid --split: ${splitArg}`);
+let splitArg: CorpusSplit | "all" = "tune";
+try {
+  splitArg = parseScratchPhotoSplit(values.split ?? "tune");
+} catch (e) {
+  console.error(e instanceof Error ? e.message : String(e));
   process.exit(1);
 }
 const maxImages = values["max-images"]
@@ -551,7 +563,7 @@ function candidateLayouts(budgetBytes: number, tier: number): Layout[] {
 async function loadCorpus(): Promise<ImageInput[]> {
   const toolRoot = path.resolve(import.meta.dirname, "..");
   await ensureNaturalImages();
-  if (splitArg !== "tune") await ensureHoldoutImages();
+  if (splitArg === "tune2" || splitArg === "all") await ensureHoldoutImages();
 
   const paths: string[] = [];
   for await (const entry of glob(
@@ -565,8 +577,7 @@ async function loadCorpus(): Promise<ImageInput[]> {
   for (const filePath of paths) {
     const name = path.basename(filePath).replace(/\.[^.]+$/, "");
     if (!inCorpus(name, "photo")) continue;
-    if (splitArg !== "all" && splitFor(name) !== (splitArg as CorpusSplit))
-      continue;
+    if (!inSplit(name, splitArg)) continue;
     const input = await loadImage(filePath);
     input.gamut = "srgb";
     input.metricReferenceRgba = gamutToSrgbReference(
@@ -614,6 +625,11 @@ async function main(): Promise<void> {
 
   let inputs = await loadCorpus();
   if (maxImages !== null) inputs = inputs.slice(0, maxImages);
+  if (inputs.length === 0) {
+    throw new Error(
+      `entropy-budget selects no photograph on --split ${splitArg}`,
+    );
+  }
   console.log(`entropy-budget: ${inputs.length} ${splitArg}-split photos`);
 
   const rows: Row[] = [];

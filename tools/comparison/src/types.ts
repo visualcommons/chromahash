@@ -489,12 +489,15 @@ export interface ComparisonJson {
   languages: string[];
   /**
    * Summary statistics: photographic images (primary), all images, and the
-   * tune/holdout corpus splits (see corpus.ts).
+   * corpus splits (see corpus.ts). `tune2` is the spent photographic holdout
+   * #76 retired; `holdout` is the graphics one, and holds no photograph. The
+   * sealed holdout2 is never scored by the report.
    */
   summary: {
     naturalAndRealistic: FormatStat[];
     all: FormatStat[];
     tune: FormatStat[];
+    tune2: FormatStat[];
     holdout: FormatStat[];
   };
   /** Cross-language pass/fail; pass is null when harnesses were skipped. */
@@ -518,5 +521,8 @@ export interface PairedJson {
   naturalAndRealistic: PairedComparison[];
   all: PairedComparison[];
   tune: PairedComparison[];
+  /** The spent photographic holdout #76 retired (see corpus.ts). */
+  tune2: PairedComparison[];
+  /** The graphics holdout: no photograph is in `holdout` since #76. */
   holdout: PairedComparison[];
 }

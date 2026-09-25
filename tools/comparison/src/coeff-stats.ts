@@ -14,7 +14,10 @@
  *    candidates — corpus-fixed (a trainable, zero-signaling reorder) and
  *    per-image (the unreachable oracle a signaled selection would chase).
  *
- * Usage: node dist/coeff-stats.js [--split tune] [--k 26] [--big 200]
+ * Usage: node dist/coeff-stats.js [--split tune|tune2|all] [--k 26] [--big 200]
+ *
+ * Reads only the images already cached under `fixtures/`, and never a sealed
+ * one (`corpus.ts` `parseScratchPhotoSplit`).
  */
 
 import { execFileSync } from "node:child_process";
@@ -23,7 +26,12 @@ import { glob } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { RUST_CLI } from "./adapters/chromahash.ts";
-import { inCorpus, splitFor } from "./corpus.ts";
+import {
+  type CorpusSplit,
+  inCorpus,
+  inSplit,
+  parseScratchPhotoSplit,
+} from "./corpus.ts";
 import { loadImage } from "./image-loader.ts";
 
 const { values } = parseArgs({
@@ -33,7 +41,13 @@ const { values } = parseArgs({
     big: { type: "string", default: "200" },
   },
 });
-const split = values.split ?? "tune";
+let split: CorpusSplit | "all" = "tune";
+try {
+  split = parseScratchPhotoSplit(values.split ?? "tune");
+} catch (e) {
+  console.error(e instanceof Error ? e.message : String(e));
+  process.exit(1);
+}
 const K = Number.parseInt(values.k ?? "26", 10);
 const BIG = Number.parseInt(values.big ?? "200", 10);
 
@@ -100,7 +114,7 @@ async function main(): Promise<void> {
   for await (const e of glob(path.join(toolRoot, "fixtures/**/*.{png,jpg}"))) {
     const name = path.basename(e).replace(/\.[^.]+$/, "");
     if (!inCorpus(name, "photo")) continue;
-    if (split !== "all" && splitFor(name) !== split) continue;
+    if (!inSplit(name, split)) continue;
     paths.push(e);
   }
   paths.sort();
