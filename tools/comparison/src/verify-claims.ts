@@ -218,15 +218,34 @@ const REGISTER: Claim[] = [
   },
 
   // ── The alpha allocation ─────────────────────────────────────────────────
-  // Quoted in three files. Its source table, §11.12's alpha holdout, was
-  // unbound until the 2026-09 audit, and its sweep had drifted so far it no
-  // longer reproduced the figure: the incumbent labelled `SHIPPED A5@4` set no
-  // alpha AC knobs, inherited the adopted A28@3, and encoded to 40 bytes.
+  // Quoted in five files, each now with two figures. The headline is §11.3's
+  // tune figure, the one that can still be re-run: its source table is bound
+  // in `verify-experiments.ts` to a committed result. The second is §11.12's
+  // alpha holdout, quoted only to say it can no longer be reproduced — the
+  // split is retired (#83) because one of its eight images was deleted from
+  // Wikimedia Commons, and `v07-holdout-alpha --split holdout` refuses to run.
+  // That figure stays registered anyway: the cell it cites still stands in
+  // §11.12 as what was measured, and a quote of it that drifted from the cell
+  // would be misreporting the record, reproducible or not.
+  //
+  // §11.12's table was unbound until the 2026-09 audit, and its sweep had
+  // drifted so far it no longer reproduced the figure: the incumbent labelled
+  // `SHIPPED A5@4` set no alpha AC knobs, inherited the adopted A28@3, and
+  // encoded to 40 bytes.
   {
     file: "README.md",
-    what: "the alpha allocation on holdout",
-    pattern:
-      /Worth \*\*−([\d.]+)% mean ΔE00\*\* on a never-tuned alpha holdout/,
+    what: "the alpha allocation on tune",
+    pattern: /Worth \*\*−([\d.]+)% mean ΔE00\*\* on the alpha tune corpus/,
+    section: "11.3",
+    table: 1,
+    row: "**A28@3 L22@4 C3@3**",
+    column: "Δ%",
+    transform: abs,
+  },
+  {
+    file: "README.md",
+    what: "the alpha allocation on the retired holdout",
+    pattern: /alpha holdout that put it at −([\d.]+)% mean ΔE00/,
     section: "11.12",
     table: 1,
     row: "**A28@3 L22@4 C3@3**",
@@ -235,8 +254,18 @@ const REGISTER: Claim[] = [
   },
   {
     file: "spec/README.md",
-    what: "the alpha allocation on holdout",
-    pattern: /Worth \*\*−([\d.]+)% mean ΔE00\*\* on a never-tuned/,
+    what: "the alpha allocation on tune",
+    pattern: /Worth \*\*−([\d.]+)% mean ΔE00\*\* on the alpha\n\s*tune corpus/,
+    section: "11.3",
+    table: 1,
+    row: "**A28@3 L22@4 C3@3**",
+    column: "Δ%",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "the alpha allocation on the retired holdout",
+    pattern: /alpha holdout that put it at −([\d.]+)% mean ΔE00/,
     section: "11.12",
     table: 1,
     row: "**A28@3 L22@4 C3@3**",
@@ -245,8 +274,18 @@ const REGISTER: Claim[] = [
   },
   {
     file: "spec/RATIONALE.md",
-    what: "the alpha allocation on holdout",
-    pattern: /−([\d.]+)% mean ΔE00 on a never-tuned alpha holdout/,
+    what: "the alpha allocation on tune",
+    pattern: /−([\d.]+)% mean ΔE00 on the alpha tune corpus/,
+    section: "11.3",
+    table: 1,
+    row: "**A28@3 L22@4 C3@3**",
+    column: "Δ%",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the alpha allocation on the retired holdout",
+    pattern: /alpha holdout\n\s*that put it at −([\d.]+)% mean ΔE00/,
     section: "11.12",
     table: 1,
     row: "**A28@3 L22@4 C3@3**",
@@ -254,15 +293,25 @@ const REGISTER: Claim[] = [
     transform: abs,
   },
 
-  // The same alpha figure, in the two hand-maintained constant tables. Both
+  // The same alpha figures, in the two hand-maintained constant tables. Both
   // restate LAYOUT_T0's alpha row in a comment, so both drift independently of
   // the Rust doc comment above and of each other; `validate:spec` compares the
   // constants those files declare, never the prose around them.
   {
     file: "rust/src/constants.rs",
-    what: "the alpha allocation on holdout",
+    what: "the alpha allocation on tune",
     pattern:
-      /is worth −([\d.]+)% mean\n\/\/\/ ΔE00 on the never-tuned alpha holdout/,
+      /is worth −([\d.]+)% mean\n\/\/\/ ΔE00 on the alpha tune corpus/,
+    section: "11.3",
+    table: 1,
+    row: "**A28@3 L22@4 C3@3**",
+    column: "Δ%",
+    transform: abs,
+  },
+  {
+    file: "rust/src/constants.rs",
+    what: "the alpha allocation on the retired holdout",
+    pattern: /alpha holdout that put it at −([\d.]+)% mean\n\/\/\/ ΔE00/,
     section: "11.12",
     table: 1,
     row: "**A28@3 L22@4 C3@3**",
@@ -271,9 +320,18 @@ const REGISTER: Claim[] = [
   },
   {
     file: "spec/constants.py",
-    what: "the alpha allocation on holdout",
-    pattern:
-      /is worth −([\d.]+)% mean ΔE00 on the never-tuned alpha\n# holdout/,
+    what: "the alpha allocation on tune",
+    pattern: /is worth −([\d.]+)% mean ΔE00 on the alpha tune corpus/,
+    section: "11.3",
+    table: 1,
+    row: "**A28@3 L22@4 C3@3**",
+    column: "Δ%",
+    transform: abs,
+  },
+  {
+    file: "spec/constants.py",
+    what: "the alpha allocation on the retired holdout",
+    pattern: /alpha holdout that put it at −([\d.]+)% mean ΔE00/,
     section: "11.12",
     table: 1,
     row: "**A28@3 L22@4 C3@3**",

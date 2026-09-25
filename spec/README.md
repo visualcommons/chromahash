@@ -1490,9 +1490,12 @@ compatibility** with the v0.6 bitstream. The framing changes are:
   AC coefficients, inherited from v0.6 and never measured — five cannot describe a
   silhouette, which is most of what a cut-out placeholder communicates. It now takes 28 at
   code 1, paid for out of chroma (which transparent regions composite away) rather than
-  luma, and alpha AC is 3 bits at every tier. Worth **−16.2% mean ΔE00** on a never-tuned
-  alpha holdout with every guard improving. Alpha-mode byte lengths above code 1 change
-  slightly as a result (code 2: 104 → 103 B).
+  luma, and alpha AC is 3 bits at every tier. Worth **−17.10% mean ΔE00** on the alpha
+  tune corpus, where every one of its 16 images improves (`EXPERIMENTS.md` §11.3). That is
+  in-sample evidence. The never-tuned alpha holdout that put it at −16.2% mean ΔE00 with
+  every guard improving has been retired — one of its images was deleted from Wikimedia
+  Commons — so that figure can no longer be reproduced (`EXPERIMENTS.md` §11.12).
+  Alpha-mode byte lengths above code 1 change slightly as a result (code 2: 104 → 103 B).
 - **Weighted selection order (§6.2).** The transmission order is the priority order scaled
   by `(1 + 1.2·sin²2θ)(1 + 0.15·cos2θ)` — a perceptual reordering that spends the budget
   on axis-aligned detail first. It is evaluated as an exact integer key, so it stays

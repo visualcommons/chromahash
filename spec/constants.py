@@ -177,8 +177,11 @@ LAYOUT_B = AcLayout(
 # The alpha row is the §11.3 allocation. The alpha channel had five AC
 # coefficients, inherited from v0.6 and never measured, and five cannot describe
 # a silhouette. Raising it to 28 and paying out of chroma — which transparent
-# regions composite away — is worth −16.2% mean ΔE00 on the never-tuned alpha
-# holdout with every guard improving.
+# regions composite away — is worth −17.10% mean ΔE00 on the alpha tune corpus,
+# where every one of its 16 images improves. That is in-sample evidence. The
+# never-tuned alpha holdout that put it at −16.2% mean ΔE00 has been retired (one
+# of its images was deleted from Wikimedia Commons), so that figure can no longer
+# be reproduced (spec/EXPERIMENTS.md §11.12).
 LAYOUT_T0 = AcLayout(
     l_tiers=((28, 4), (0, 4)),
     c_count=15,

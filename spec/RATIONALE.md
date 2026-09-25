@@ -480,7 +480,12 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
    luma/chroma split at all: the *alpha channel* had five AC coefficients,
    inherited from v0.6 and never measured, and five cannot describe a
    silhouette. Code 1 now carries `L 22 @ 4, a/b 3 @ 3, A 28 @ 3`, worth
-   −16.2% mean ΔE00 on a never-tuned alpha holdout with every guard improving.
+   −17.10% mean ΔE00 on the alpha tune corpus, where every one of its 16
+   images improves. That is in-sample evidence. The never-tuned alpha holdout
+   that put it at −16.2% mean ΔE00 with every guard improving has been retired
+   (one of its images was deleted from Wikimedia Commons), so that figure can
+   no longer be reproduced (`EXPERIMENTS.md` §11.12); the allocation's
+   out-of-sample evidence returns only with a new sealed alpha split.
    Still open: codes 3–4 alpha, inherited from the code-2 measurement rather
    than measured directly.
 3. ~~**Code 3–4 positioning**~~ — **resolved in v0.7 by repositioning them**
