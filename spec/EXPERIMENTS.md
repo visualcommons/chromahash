@@ -1199,12 +1199,28 @@ optimized recipe beats the pre-adoption format at every budget on holdout, by
 6.5% at 12 B and 1.2–4.6% from 16 to 108 B; above that the raster caveat under
 §4.5's table applies.
 
-**The equal-quality byte saving, restated.** The adopted 32-byte recipe
-(`L28C15 stack`, 11.298 on holdout, the table above) scores better than the
-pre-adoption format at **40 bytes** (11.31), so it matches that format with 20%
-fewer bytes — the figure round 2 reported, now measured on this corpus and in
-one run. On tune it does not reach that far: 11.473 against 11.29 at 40 B, so
-there the saving is less than 20%, and the holdout figure is the one to quote.
+**The equal-quality byte saving, restated.** Round 2 reported that the adopted
+32-byte recipe matches the pre-adoption format at **40 bytes**, a 20% saving.
+Paired per image over the same split (adopted minus pre-adoption 40 B, ΔE00,
+`bootstrapCI`'s default seed and resamples), the two splits disagree:
+
+- **Holdout:** 11.298 against 11.307, a difference of −0.009 with CI
+  [−0.098, +0.082]; the adopted recipe wins on 15 of 32 images. The two are
+  **not separable**. That is consistent with "matches at 40 B", and it does not
+  support "better than".
+- **Tune:** 11.473 against 11.291, a difference of +0.182 with CI
+  [+0.066, +0.308]; the adopted recipe wins on 9 of 31. Here the 40-byte
+  pre-adoption format is **better**, so the saving on tune is less than 20%.
+  The adopted recipe does separate from the pre-adoption format at 32 B on tune
+  (−0.182, CI [−0.282, −0.085]), so the tune saving lies strictly between 0 and
+  20%. The ladder has no arm between 32 and 40 B to place it more precisely.
+
+So the evidence bounds the saving at no more than 20%, and reaches 20% only on
+the split where the two arms cannot be told apart. Neither split's figure is the
+one to quote alone; a statement of the saving carries both. (The holdout pairing
+uses `final-candidates-holdout`'s `32B L28C15 stack` against
+`budget-ladder-tuned-holdout`'s `40B pre-adoption L34/C12`; the same run's
+`32B SHIPPED (ref)` arm gives identical per-image scores.)
 
 
 ### 7.13 U11 — entropy-coded AC, with a real coder instead of an entropy
@@ -1442,10 +1458,13 @@ now that §10 has made the optimized recipe the default.
 > the optimized 32-byte encode matching the pre-adoption format at 40 bytes —
 > and this section withdrew it, because no sweep produced a pre-adoption ladder
 > on this corpus. `budget-ladder-tuned` now does, and §7.12 restates it: on
-> holdout the adopted recipe at 32 B (11.298) is better than the pre-adoption
-> format at 40 B (11.31), so the 20% holds there. On tune it does not reach
-> 40 B, so the saving there is smaller. The −3.72% above remains the figure the
-> pre-registered rule is judged on.
+> holdout the adopted recipe at 32 B (11.298) and the pre-adoption format at
+> 40 B (11.307) are not separable (paired CI [−0.098, +0.082]), so the 20% is an
+> equal-quality match there and no better. On tune the 40-byte pre-adoption
+> format is separably better (paired CI [+0.066, +0.308]), so the saving there is
+> less than 20%. The saving is therefore at most 20%, and no single split's
+> figure stands for it. The −3.72% above remains the figure the pre-registered
+> rule is judged on.
 
 At the proposed 21-byte compact tier the format beats ThumbHash on **all four
 metrics** on holdout (§7.6), which the shipped constants do not.

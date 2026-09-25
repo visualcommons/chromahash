@@ -1511,8 +1511,9 @@ Together the four constants-level and encoder-side changes above are worth **−
 all improving. `spec/EXPERIMENTS.md` §8 records the measurements and what was rejected.
 The equal-quality byte saving this paragraph used to quote (the optimized 32-byte encode
 matching the v0.6 constants at 40 bytes) was withdrawn for want of a pre-adoption ladder on
-the current corpus, and has since been re-measured in `EXPERIMENTS.md` §7.12: it holds on
-the holdout split and falls short of 40 bytes on the tune split.
+the current corpus, and has since been re-measured in `EXPERIMENTS.md` §7.12: on the
+holdout split the two are indistinguishable (a match, not an improvement), and on the tune
+split the 40-byte v0.6 encode is measurably better, so the saving is at most that figure.
 
 The DCT, OKLAB color pipeline, ℓ2-ball candidate set, µ-law quantizer, decode-aware DC
 search, and gamut handling are **inherited from the v0.6 algorithm** (now parameterized by
