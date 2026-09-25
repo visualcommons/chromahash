@@ -72,7 +72,9 @@ export async function ensureHoldoutImages(): Promise<string[]> {
       filePath,
       // HTTPS first: r0k.us is the canonical home of the suite but is one
       // hobby server, and this was the only plain-HTTP fetch in the corpus.
-      // The Wikimedia mirror is the fallback; the digest makes it safe.
+      // The plain-HTTP URL is the only fallback, and the pinned digest is what
+      // makes it safe; there is no second host, so r0k.us being down fails
+      // the holdout split loudly rather than silently shrinking it.
       urls: [
         `https://r0k.us/graphics/kodak/kodak/kodim${num}.png`,
         `http://r0k.us/graphics/kodak/kodak/kodim${num}.png`,

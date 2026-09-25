@@ -1,6 +1,6 @@
 {
   "name": "holdout-candidates",
-  "description": "Pre-registered validation of the tune-split winners on the never-tuned holdout split (Kodak24 + 4 held-out curated photos). Candidate A is the reallocation alone (luma 4 b x 38, chroma 3 b x 8); the stacked rows add the two encoder-only levers and the anisotropic selection weight. The 21 B rows test whether a sub-tier-0 budget is viable at all - ThumbHash's own size. Every arm pins all four selection/encoder knobs explicitly: the incumbent is the PRE-adoption shipped format, and since §10 adopted L28@4 C15@3 + aniso + fit2 as the defaults, an arm that omitted them would measure the adopted recipe against itself. 'stack' here is the three-knob aniso+fit2+nearest form, without sel_hv; §7.12's STACK adds sel_hv=0.15.",
+  "description": "Pre-registered validation of the tune-split winners on the never-tuned holdout split (Kodak24 + 8 held-out curated photos). Candidate A is the reallocation alone (luma 4 b x 38, chroma 3 b x 8); the stacked rows add the two encoder-only levers and the anisotropic selection weight. The 21 B rows test whether a sub-tier-0 budget is viable at all - ThumbHash's own size. Every arm pins all four selection/encoder knobs explicitly: the incumbent is the PRE-adoption shipped format, and since §10 adopted L28@4 C15@3 + aniso + fit2 as the defaults, an arm that omitted them would measure the adopted recipe against itself. 'stack' here is the three-knob aniso+fit2+nearest form, without sel_hv; §7.12's STACK adds sel_hv=0.15.",
   "photoOnly": true,
   "variants": [
     {

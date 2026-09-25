@@ -1,7 +1,7 @@
 {
   "name": "v07-holdout-photo",
   "corpus": "photo",
-  "description": "SS11.12 - the single holdout validation of every tune-chosen change on the photographic split. Run once, after all tune decisions were settled; consulting holdout per-experiment would make it a second tune set. The incumbent is the constants as shipped at the start of SS11, so the deltas are what stabilizing v0.7 actually moved the format by.",
+  "description": "SS11.12 - the round-3 holdout validation of every tune-chosen change on the photographic split, run after all tune decisions were settled. It is not the split's first consultation: the same 32 images had already validated rounds 1 and 2 (SS4.5, SS7.12, SS10.3), and SS11.12 records that history. Consulting holdout per-experiment would make it a second tune set. The incumbent is the constants as shipped at the start of SS11, so the deltas are what stabilizing v0.7 actually moved the format by.",
   "variants": [
     {
       "label": "SS10 constants (incumbent)",
