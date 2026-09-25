@@ -250,7 +250,7 @@ every shared decode vector in `spec/test-vectors/` and must reproduce the
 spec's bytes, and the artifact records how many it did.
 
 > **Provenance.** Bound to `baselines/perf-decode-stages.json`, recorded at
-> **`e68291e`** from a clean tree, all three columns at that one commit; the gate
+> **`8f5f4d1`** from a clean tree, all three columns at that one commit; the gate
 > checks both, and that each cell reproduced the spec vectors. The recorded
 > iterations are 2000, 20 and 200 — inversely to the cost of one decode, so each
 > column times a comparable interval.
@@ -271,7 +271,7 @@ spec's bytes, and the artifact records how many it did.
 | `window_filter` | 0% | 0% | 0% |
 | `cos_tables` | 1% | 0% | 0% |
 | `gamma_lut` | 66% | 0% | 4% |
-| **`render`** | 29% | 99% | 56% |
+| **`render`** | 29% | 99% | 55% |
 | `unmarked` | 0% | 0% | 2% |
 
 Every row but `unmarked` is a `stage!` mark in `decode.rs`'s `render_at_size`,
