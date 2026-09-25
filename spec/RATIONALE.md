@@ -5,8 +5,10 @@ considered and rejected. Normative text lives in [`README.md`](README.md); this
 file records the *evidence*.
 
 Sweep numbers come from the decision tables produced by `mise run sweep <config>`
-(configs in `tools/comparison/sweeps/`, results in
-`tools/comparison/output/sweeps/`) on the **tune split** of the expanded corpus
+(configs in `tools/comparison/sweeps/`; results were written to the gitignored
+`tools/comparison/output/sweeps/` when this file's figures were taken, and are
+now committed under `tools/comparison/results/`, for the current corpus only)
+on the **tune split** of the expanded corpus
 (74 images: 43 synthetic + 31 curated photos; the 32-image holdout —
 Kodak24 + held-out curated photos — is reserved for validating winners, per the
 pre-registered rule below). The curated set grew from 26 to 39 photographs in
@@ -458,7 +460,13 @@ encoding.
   corpus. The split immediately quantified the damage: mean ΔE00 6.48
   (CI 4.6–8.4) on the tune split vs **11.36 (CI 10.3–12.5) on the
   never-tuned holdout**. All v1 experiments tune on `tune` and validate on
-  `holdout` under the pre-registered ≥3%-with-guards rule.
+  `holdout` under the pre-registered ≥3%-with-guards rule. (The holdout
+  figure and its interval match the **v1** row of the version table above,
+  11.364 [10.30, 12.45], rather than its v0.6 row, 11.312 [10.25, 12.39],
+  which is what this bullet describes. No record says which run produced
+  them, and the corpus both were taken on has since been replaced, so neither
+  can be re-derived; read the pair as the size of the gap, not as v0.6's
+  score. `EXPERIMENTS.md` §11.12 records how the holdout has been used since.)
 
 ## Future work / open questions
 Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
