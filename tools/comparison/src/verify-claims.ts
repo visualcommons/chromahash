@@ -300,8 +300,7 @@ const REGISTER: Claim[] = [
   {
     file: "rust/src/constants.rs",
     what: "the alpha allocation on tune",
-    pattern:
-      /is worth −([\d.]+)% mean\n\/\/\/ ΔE00 on the alpha tune corpus/,
+    pattern: /is worth −([\d.]+)% mean\n\/\/\/ ΔE00 on the alpha tune corpus/,
     section: "11.3",
     table: 1,
     row: "**A28@3 L22@4 C3@3**",
