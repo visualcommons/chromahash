@@ -275,7 +275,8 @@ jobs:
 
       # The comparison report below proves the harness still runs; it does not
       # prove the format still performs. This gate (spec/EXPERIMENTS.md U18)
-      # encodes a handful of content-pinned corpus photos at tier 0 and fails if
+      # encodes a handful of content-pinned corpus photos at the 32-byte default
+      # (tier code 1; EXPERIMENTS.md's old numbering calls it tier 0) and fails if
       # mean ΔE00 has drifted from tools/comparison/baselines/rd-gate.json, so a
       # silent rate-distortion regression cannot land unnoticed. It needs a
       # release build — the debug encoder is the same bytes but far slower.
@@ -293,7 +294,7 @@ jobs:
       - name: A concurrent run scores identically to a serial one, and a sweep reproduces its committed result
         run: node tools/comparison/dist/determinism-check.js
 
-      - name: R-D regression gate (tier 0)
+      - name: R-D regression gate (default tier, code 1)
         run: node tools/comparison/dist/rd-gate.js
 
       - uses: actions/setup-go@v5

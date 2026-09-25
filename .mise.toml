@@ -634,7 +634,7 @@ run = [
 
 # ─── Quality gate ───────────────────────────────────────────────────────────
 
-# Tier-0 R-D regression gate: encode a fixed handful of content-pinned corpus
+# Default-tier (code 1, 32 B) R-D regression gate: encode a fixed handful of content-pinned corpus
 # photos, score mean ΔE00, and compare it against the checked-in baseline
 # tools/comparison/baselines/rd-gate.json. Deliberately small — a few images, no
 # codec baselines — so CI can run it on every push; `compare:rd` and the sweeps

@@ -4,7 +4,7 @@
   "name": "holdout-candidates",
   "split": "holdout",
   "settings": {
-    "description": "Pre-registered validation of the tune-split winners on the never-tuned holdout split (Kodak24 + 4 held-out curated photos). Candidate A is the reallocation alone (luma 4 b x 38, chroma 3 b x 8); the stacked rows add the two encoder-only levers and the anisotropic selection weight. The 21 B rows test whether a sub-tier-0 budget is viable at all - ThumbHash's own size. Every arm pins all four selection/encoder knobs explicitly: the incumbent is the PRE-adoption shipped format, and since §10 adopted L28@4 C15@3 + aniso + fit2 as the defaults, an arm that omitted them would measure the adopted recipe against itself. 'stack' here is the three-knob aniso+fit2+nearest form, without sel_hv; §7.12's STACK adds sel_hv=0.15.",
+    "description": "Pre-registered validation of the tune-split winners on the never-tuned holdout split (Kodak24 + 8 held-out curated photos). Candidate A is the reallocation alone (luma 4 b x 38, chroma 3 b x 8); the stacked rows add the two encoder-only levers and the anisotropic selection weight. The 21 B rows test whether a sub-tier-0 budget is viable at all - ThumbHash's own size. Every arm pins all four selection/encoder knobs explicitly: the incumbent is the PRE-adoption shipped format, and since §10 adopted L28@4 C15@3 + aniso + fit2 as the defaults, an arm that omitted them would measure the adopted recipe against itself. 'stack' here is the three-knob aniso+fit2+nearest form, without sel_hv; §7.12's STACK adds sel_hv=0.15.",
     "corpus": "photo",
     "backdrops": "white",
     "alphaFidelity": false,
@@ -19,12 +19,12 @@
     }
   },
   "provenance": {
-    "rev": "c070e1794d867bc69f45b79ece0cb3c9bf5abc65",
+    "rev": "e3104757d19ea3b0a00f932ab3ec3e7ff937895d",
     "dirty": false,
     "dirtyPaths": [],
     "iqaCli": "iqa-cli 1.2.1",
     "config": "tools/comparison/sweeps/holdout-candidates.json",
-    "configSha256": "e1b24af4bceda4a6fe9a2addd64f16ecba635550d262d49d1a7f43cc687c111b",
+    "configSha256": "a3b6f01b03c9032bfb1f77eeed2981ac7784bd1ea5323ba4144b75689faf6e94",
     "binaries": {
       "rust/target/release/examples/encode_stdin": "4089c0fadd155363308828968b516999580bae7e53d3d275941d56cb66b14888"
     },

@@ -3,10 +3,11 @@
  *
  * `ci-comparison.yml` runs the cross-format report, which proves the harness
  * still works — it does not prove the format still performs. A change that
- * quietly cost 5% of tier-0 quality would render a perfectly healthy report and
- * pass. This gate closes that: it encodes a fixed handful of corpus images at
- * tier 0, scores mean ΔE00, and fails if the result has drifted past a
- * tolerance from a checked-in baseline.
+ * quietly cost 5% of default-tier quality would render a perfectly healthy
+ * report and pass. This gate closes that: it encodes a fixed handful of corpus
+ * images at the 32-byte default (tier code 1; the old numbering EXPERIMENTS.md
+ * uses called it "tier 0"), scores mean ΔE00, and fails if the result has
+ * drifted past a tolerance from a checked-in baseline.
  *
  * Deliberately small — a few content-pinned photos, no codec baselines, no
  * ladder — so it costs a CI job seconds and can run on every pull request.
@@ -84,7 +85,7 @@ const baselinePath = path.resolve(
   values.baseline ?? path.join(toolRoot, "baselines/rd-gate.json"),
 );
 
-/** Encode + decode + score every gated image at tier 0. */
+/** Encode + decode + score every gated image at {@link TIER}. */
 async function measure(): Promise<Baseline["images"]> {
   const paths = await ensureNaturalImages(GATE_IMAGES);
   const out: Baseline["images"] = [];
@@ -138,7 +139,7 @@ async function main(): Promise<void> {
   if (values.update === true) {
     const baseline: Baseline = {
       note:
-        "Baseline for the tier-0 R-D regression gate (src/rd-gate.ts). " +
+        "Baseline for the default-tier (code 1, 32 B) R-D regression gate (src/rd-gate.ts). " +
         "Regenerate deliberately with `mise run rd:gate:update` after an intended " +
         "encoder change, and say so in the commit message.",
       tier: TIER,

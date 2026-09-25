@@ -1,6 +1,6 @@
 {
   "name": "budget-ladder-tuned",
-  "description": "The byte ladder re-run with this round's findings applied: luma precision chosen per budget (3 b below 20 B, 4 b to 56 B, 5 b above), chroma one bit below luma, plus the two encoder-only levers and aniso=1.2 selection weighting. Compare against budget-ladder.json, which is the same ladder with the shipped constants.",
+  "description": "The byte ladder re-run with this round's findings applied: luma precision chosen per budget (3 b below 20 B, 4 b to 56 B, 5 b above), chroma one bit below luma, plus the two encoder-only levers and aniso=1.2 selection weighting. The round-1 recipe had no sel_hv, so every tuned arm pins sel_hv=0: an arm that omitted it inherited the adopted 0.15 and measured the round-2 recipe instead. The pre-adoption arms are the baseline the tuned rows are compared against (EXPERIMENTS.md SS4.5, SS7.12): the v0.6-derived format resized to each budget exactly as budget-ladder.json resizes it (26:9 at L 5 b / chroma 4 b, the upper-tier raster from 108 B), with the four selection/encoder knobs pinned off. budget-ladder.json itself resizes the layout but inherits the adopted knobs, so it is the ladder of the format that ships, not of the one round 1 compared against.",
   "photoOnly": true,
   "variants": [
     {
@@ -8,67 +8,127 @@
     },
     {
       "label": "  12B tuned L8@3 C3@3",
-      "tune": "l1=8:3 c=3:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=8:3 c=3:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "  14B tuned L11@3 C4@3",
-      "tune": "l1=11:3 c=4:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=11:3 c=4:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "  16B tuned L14@3 C5@3",
-      "tune": "l1=14:3 c=5:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=14:3 c=5:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "  18B tuned L17@3 C6@3",
-      "tune": "l1=17:3 c=6:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=17:3 c=6:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "  21B tuned L19@4 C6@3",
-      "tune": "l1=19:4 c=6:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=19:4 c=6:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "  24B tuned L22@4 C8@3",
-      "tune": "l1=22:4 c=8:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=22:4 c=8:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "  28B tuned L27@4 C10@3",
-      "tune": "l1=27:4 c=10:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=27:4 c=10:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "  32B tuned L33@4 C11@3",
-      "tune": "l1=33:4 c=11:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=33:4 c=11:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "  40B tuned L43@4 C15@3",
-      "tune": "l1=43:4 c=15:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=43:4 c=15:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "  48B tuned L54@4 C19@3",
-      "tune": "l1=54:4 c=19:3 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=54:4 c=19:3 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "  64B tuned L59@5 C20@4",
-      "tune": "l1=59:5 c=20:4 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=59:5 c=20:4 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": "  80B tuned L75@5 C26@4",
-      "tune": "l1=75:5 c=26:4 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=75:5 c=26:4 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": " 108B tuned L104@5 C36@4",
-      "tune": "l1=104:5 c=36:4 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=104:5 c=36:4 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": " 161B tuned L158@5 C55@4",
-      "tune": "l1=158:5 c=55:4 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=158:5 c=55:4 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": " 246B tuned L246@5 C85@4",
-      "tune": "l1=246:5 c=85:4 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=246:5 c=85:4 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
     },
     {
       "label": " 411B tuned L416@5 C144@4",
-      "tune": "l1=416:5 c=144:4 aniso=1.2 scale_fit=2 ac_nearest=1"
+      "tune": "l1=416:5 c=144:4 aniso=1.2 sel_hv=0 scale_fit=2 ac_nearest=1"
+    },
+    {
+      "label": "  12B pre-adoption L5/C2",
+      "tune": "l1=5:5 c=2:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "  16B pre-adoption L10/C3",
+      "tune": "l1=10:5 c=3:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "  21B pre-adoption L13/C6",
+      "tune": "l1=13:5 c=6:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "  24B pre-adoption L18/C6",
+      "tune": "l1=18:5 c=6:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "  28B pre-adoption L21/C8",
+      "tune": "l1=21:5 c=8:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "  32B pre-adoption L26/C9",
+      "tune": "l1=26:5 c=9:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "  40B pre-adoption L34/C12",
+      "tune": "l1=34:5 c=12:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "  48B pre-adoption L42/C15",
+      "tune": "l1=42:5 c=15:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "  64B pre-adoption L58/C21",
+      "tune": "l1=58:5 c=21:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "  80B pre-adoption L74/C27",
+      "tune": "l1=74:5 c=27:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": " 108B pre-adoption t2 L104/C36",
+      "tier": 2,
+      "tune": "l1=26:5 c=9:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": " 161B pre-adoption t2 L156/C56",
+      "tier": 2,
+      "tune": "l1=39:5 c=14:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": " 246B pre-adoption t2 L248/C84",
+      "tier": 2,
+      "tune": "l1=62:5 c=21:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": " 411B pre-adoption t2 L416/C144",
+      "tier": 2,
+      "tune": "l1=104:5 c=36:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
     }
   ]
 }

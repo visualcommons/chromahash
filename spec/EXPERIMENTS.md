@@ -77,20 +77,27 @@ but nothing could decode one. Four tooling changes opened that surface:
 ## 1. The rate–distortion curve of v0.7
 
 The constants that ship today (post-§10 adoption), AC layout resized to each
-budget at the shipped 26:9 luma:chroma count ratio and 5 b luma / 4 b chroma
-precision (`sweeps/budget-ladder.json`, both splits). Points ≤ 80 B render at
-the default tier's raster, ≥ 108 B at the next one up — that is the tier's
-*raster*, not its byte budget, which the layout override sets directly.
+budget at the upper tiers' 26:9 luma:chroma count ratio and 5 b luma / 4 b
+chroma precision (`sweeps/budget-ladder.json`, both splits). Points ≤ 80 B
+render at the default tier's raster, ≥ 108 B at the next one up — that is the
+tier's *raster*, not its byte budget, which the layout override sets directly.
+
+That shape is what codes 2–4 ship at 108, 411 and 1623 B. It is **not** what
+the two lower tiers ship: the default tier (32 B) is `L 28 @ 4 / C 15 @ 3` and
+the compact tier (21 B) `L 19 @ 4 / C 6 @ 3`, both off this curve and both
+better than it at their budget. So the 32 and 21 B columns below are the
+ladder's shape at those budgets, not the tiers; the last table in this section
+gives the shipped default beside it.
 
 Both splits were re-measured together for v0.7. §4.5 and §7.12 quote an
 **earlier** ladder, taken against the pre-adoption v0.6-derived constants, and
 keep those numbers: they are what the round-1 and round-2 candidates were
 measured against.
 
-| Bytes | 10 | 12 | 14 | 16 | 18 | 21 | 24 | 28 | **32** | 40 | 48 | 64 | 80 |
+| Bytes | 10 | 12 | 14 | 16 | 18 | 21 | 24 | 28 | 32 | 40 | 48 | 64 | 80 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| ΔE00 tune | 15.51 | 14.17 | 13.59 | 13.19 | 13.05 | 12.57 | 12.16 | 11.92 | **11.65** | 11.25 | 10.97 | 10.48 | 10.13 |
-| ΔE00 holdout | 14.96 | 13.88 | 13.49 | 13.00 | 12.75 | 12.49 | 12.14 | 11.85 | **11.54** | 11.17 | 10.81 | 10.36 | 9.98 |
+| ΔE00 tune | 15.51 | 14.17 | 13.59 | 13.19 | 13.05 | 12.57 | 12.16 | 11.92 | 11.65 | 11.25 | 10.97 | 10.48 | 10.13 |
+| ΔE00 holdout | 14.96 | 13.88 | 13.49 | 13.00 | 12.75 | 12.49 | 12.14 | 11.85 | 11.54 | 11.17 | 10.81 | 10.36 | 9.98 |
 
 | Bytes | **108** | 129 | 161 | 189 | 246 | 310 | **411** | 512 | 767 | 1017 | **1623** |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -103,9 +110,16 @@ Marginal value collapses far faster than 1/bytes (tune split):
 |---|---|---|---|---|---|---|
 | ΔE00 gained per byte | 0.096 | 0.037 | 0.0166 | 0.0084 | 0.0030 | 0.00118 |
 
-Each doubling of the budget buys 36–51% of what the previous one did. The five
-shipped tier anchors are five points on this one smooth curve; there is nothing
-special about 21/32/108/411/1623 B beyond ×4 arithmetic above the default.
+Each doubling of the budget buys 36–51% of what the previous one did. The three
+upper tier anchors are points on this one smooth curve, and there is nothing
+special about 108/411/1623 B beyond ×4 arithmetic above the default. The two
+lower tiers sit below the curve, because their layouts were re-derived for
+their budgets (§4.2, §11.10) and the ladder's were not:
+
+| 32 B layout | ΔE00 tune | ΔE00 holdout |
+|---|---|---|
+| ladder shape, L 26 @ 5 / C 9 @ 4 | 11.65 | 11.54 |
+| **shipped default, L 28 @ 4 / C 15 @ 3** | **11.47** | **11.30** |
 
 ## 2. Cross-format at equal bytes, same corpus, same scoring
 
@@ -179,10 +193,15 @@ Three things this says that `RATIONALE.md` does not:
 > and the figures in them are the retired set's. Claim 1 survives and §11.14
 > restates it at the shipped anchors. Claim 2's current form is in §4.3, where
 > the shipped shape still wins ΔE00 and still loses SSIMULACRA2 and Butteraugli.
-> **Claim 3 no longer holds**: measured now, tier 3 is **6.73** against RGB565's
-> **6.96**, so the coding machinery does still pay for itself at the top of the
-> ladder. What beats tier 3 at ~1.6 kB is a real codec — WebP 5.79, JPEG 5.93,
-> AVIF 5.46 — which is §11.14's finding rather than this one.
+> **Claim 3 now depends on the split.** On tune, tier 3 is **6.73** against
+> RGB565's **6.96**, so the coding machinery pays for itself at the top of the
+> ladder. On holdout it does not: RGB565 scores **6.57** against tier 3's
+> **6.77** on ΔE00, though tier 3 still takes SSIMULACRA2 and Butteraugli and
+> the two tie on DSSIM (§11.14). This note used to say the claim no longer
+> held, from the tune figures alone; `rd-budget` had only been committed for
+> holdout, and nothing compared the two. Either way the margin is about 3%, and
+> what clearly beats tier 3 at ~1.6 kB is a real codec — on tune WebP 5.79, JPEG
+> 5.93, AVIF 5.46 — which is §11.14's finding rather than this one.
 
 ## 3. The optimal budget
 
@@ -276,9 +295,9 @@ and 108 B):
 | Allocation | 32 B ΔE00 | 108 B ΔE00 |
 |---|---|---|
 | L26@5 C9@4 — **shipped** | 11.655 | **9.721** |
-| L28@4 C15@3 | 11.546 (−0.9%) | 9.913 (+2.0%) |
+| L28@4 C15@3 | 11.546 (−0.9%) | 9.912 (+2.0%) |
 | L38@4 C8@3 | **11.458** (−1.7%) | 9.927 (+2.1%) |
-| L28@4 C11@4 | 11.542 (−1.0%) | 9.767 (+0.5%) |
+| L28@4 C11@4 | 11.541 (−1.0%) | 9.767 (+0.5%) |
 | L44@3 C11@3 | 11.660 (+0.0%) | 10.721 (+10%) |
 | L29@5 C9@3 | 11.608 (−0.4%) | 9.833 (+1.2%) |
 
@@ -415,30 +434,59 @@ vector even though the decoder is untouched.
 
 Applying the findings across the whole ladder
 (`sweeps/budget-ladder-tuned.json`: per-budget luma precision from §4.2, chroma
-one bit under luma, plus the stack):
+one bit under luma, plus the three-knob stack, `sel_hv` pinned to 0). The
+`pre-adoption shipped` rows are arms of the same sweep: the v0.6-derived format
+resized to each budget as §1 resizes it, with the four selection/encoder knobs
+pinned off, so both rows of each pair are scored on the same images in the same
+run:
 
 | Bytes | 12 | 16 | 21 | 24 | 28 | 32 | 48 | 64 | 108 | 246 | 411 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| tune, pre-adoption shipped | 13.79 | 12.35 | 11.70 | 11.14 | 10.80 | 10.43 | 9.73 | 9.32 | 8.57 | 7.67 | 7.09 |
-| tune, tuned | 13.60 | 12.78 | 12.15 | 11.93 | 11.67 | 11.41 | 10.76 | 10.48 | 9.67 | 8.45 | 7.90 |
-| tune Δ | −8.4% | −4.8% | −5.8% | −4.1% | −3.7% | −2.3% | −1.5% | −1.1% | −1.9% | −2.5% | −2.4% |
-| holdout, pre-adoption shipped | 13.84 | 13.07 | 12.61 | 12.14 | 11.79 | 11.55 | 10.72 | 10.24 | 9.44 | 8.31 | 7.79 |
-| holdout, tuned | 13.40 | 12.67 | 12.15 | 11.88 | 11.55 | 11.38 | 10.67 | 10.35 | 9.51 | 8.39 | 7.82 |
-| holdout Δ | −4.0% | −3.3% | −4.0% | −2.9% | −2.7% | −2.7% | −1.9% | −1.0% | −1.9% | −1.9% | −2.1% |
+| tune, pre-adoption shipped | 14.24 | 13.20 | 12.70 | 12.23 | 11.95 | 11.65 | 10.96 | 10.51 | 9.72 | 8.63 | 7.91 |
+| tune, tuned | 13.60 | 12.72 | 12.18 | 11.98 | 11.60 | 11.43 | 10.80 | 10.49 | 9.66 | 8.48 | 7.91 |
+| tune Δ | −4.5% | −3.6% | −4.1% | −2.0% | −2.9% | −1.9% | −1.5% | −0.2% | −0.7% | −1.8% | 0.0% |
+| holdout, pre-adoption shipped | 14.23 | 13.28 | 12.73 | 12.29 | 11.97 | 11.74 | 10.94 | 10.51 | 9.70 | 8.57 | 8.00 |
+| holdout, tuned | 13.40 | 12.73 | 12.20 | 11.92 | 11.61 | 11.39 | 10.72 | 10.40 | 9.53 | 8.38 | 7.81 |
+| holdout Δ | −5.8% | −4.2% | −4.1% | −3.0% | −3.1% | −3.0% | −2.1% | −1.0% | −1.7% | −2.2% | −2.3% |
 
-The gain is largest exactly where the shipped constants were never checked. The
-compact way to say it: **the retuned encoder reaches today's tier-0 quality in
-28 bytes instead of 32** (tune 10.40 vs 10.43; holdout 11.47 vs 11.55) — a 12.5%
-byte saving at equal quality, with no wire-format change beyond the layout
-table.
+The gain is largest exactly where the shipped constants were never checked:
+−4.5% tune and −5.8% holdout at 12 B, falling to −0.2% and −1.0% at 64 B. The
+compact way to say it: **the retuned encoder reaches the pre-adoption default's
+quality in 28 bytes instead of 32** (tune 11.60 against 11.65; holdout 11.61
+against 11.74) — a 12.5% byte saving at equal quality, with no wire-format
+change beyond the layout table.
+
+> **This table was wrong on two counts until the 2026-09 re-measure.** Its
+> `pre-adoption shipped` rows were §2's ladder on the *retired* corpus, set
+> beside `tuned` rows measured on the current one, so every Δ below them
+> compared two corpora: −8.4% at 12 B was a corpus difference, and at 16–411 B
+> the printed Δs did not follow from the cells above them at all (16 B read
+> −4.8% between 12.35 and 12.78, which is +3.5%). And the `tuned` arms set every
+> round-1 knob but `sel_hv`, so they inherited the adopted 0.15 and measured the
+> round-2 recipe — at 21–411 B they equalled §7.12's `optimized` row to the
+> digit. The arms now pin `sel_hv = 0`, and the pre-adoption rows are measured
+> in the same run. The 28-byte claim survives on both splits; the figures it
+> quoted (10.40 against 10.43) were the retired corpus's.
+>
+> From 108 B up the two rows also differ in raster: the tuned arms render at the
+> default tier's 32 px and the pre-adoption ones at the upper tier's, which
+> §4.1 prices at 0.92% at 411 B. So the upper-budget Δs understate the recipe
+> by up to that much, which is consistent with tune reading 0.0% at 411 B.
 
 ### 4.6 Companding retune at the new allocation — no effect
 
 µ_L=5 / µ_C=8 were locked against a 5 b / 4 b layout. Re-swept against the 4 b /
-3 b winner (`sweeps/retune-32b.json`, tune): µ_L ∈ {3,4,6,8} spans 10.229–10.286
-against 10.238 at µ_L=5; µ_C ∈ {5,6,12,16} spans 10.246–10.275. The plateau
-`RATIONALE.md` reports survives the change of bit depth — µ-law is not the
-binding constraint at any of these depths.
+3 b winner (`sweeps/retune-32b.json`, tune, on `L38@4 C8@3`): µ_L ∈ {3,4,6,8}
+spans 11.406–11.415 against 11.408 at µ_L=5; µ_C ∈ {5,6,12,16} spans
+11.401–11.416. The plateau `RATIONALE.md` reports survives the change of bit
+depth — µ-law is not the binding constraint at any of these depths.
+
+(Re-transcribed in the 2026-09 re-measure, the first time this sweep's result
+was committed. The figures this paragraph carried until then, 10.229–10.286
+and 10.246–10.275, were the retired corpus's, which §9.5 did not re-run. The
+sweep's arms inherit today's selection and encoder knobs — it is one of §9.5's
+disclosed `unpinnedLabels` configs — so this is the plateau on top of the
+adopted stack; every arm shares that base, so the spread is still the µ effect.)
 
 ### 4.7 Per-image adaptive layout — sized, and small
 
@@ -466,23 +514,35 @@ the low budgets, where the fixed layout is furthest from right.
 `cfl-probe`, tune split, 26 coefficients per channel with L and chroma sharing
 one selection order so index *i* is the same (cx, cy) in all three channels:
 
-* mean |ρ(a, L)| = 0.457, mean |ρ(b, L)| = 0.504
+* mean |ρ(a, L)| = 0.463, mean |ρ(b, L)| = 0.579
 * after a **per-image least-squares** predictor — itself an oracle, since α
-  would have to be signaled — residual energy is **71.5%** (a) and **63.2%** (b)
-  (the one grayscale photograph in the split has an identically-zero `a` AC set,
-  for which both statistics are 0/0; the probe now excludes such a channel
-  instead of scoring it as ρ = 0, residual = 100%)
+  would have to be signaled — residual energy is **74.1%** (a) and **57.6%** (b)
+  (five photographs in the split have an identically-zero chroma AC set, for
+  which the statistics are 0/0; the probe excludes them from the means instead
+  of scoring them as ρ = 0, residual = 100%)
 
-The sign of the correlation flips between images (−0.81 on `chroma-yellow-wall`,
-+0.75 on `natural-building`), so a fixed gain is useless. A 24–38% energy
-reduction is ≈0.2–0.35 bit/coefficient; at tier 0 that is ~4–6 bits across 18
-chroma coefficients, against ~10 bits to signal two gains. **CfL does not pay at
-tier 0.** Reopen at tier 2–3, where per-image gains amortize over hundreds of
-coefficients.
+The sign of the correlation flips between images (−0.94 on
+`natural-landschaftsschutzgebiet-volkspark-rehberge`, +0.86 on
+`night-bas-lica-notre`, both for `a`), so a fixed gain is useless. A 26–42%
+energy reduction is ≈0.2–0.4 bit/coefficient; across the default tier's 2 × 15
+chroma coefficients that is ~9 bits, against ~10 bits to signal two gains. **By
+this estimate CfL does not pay at tier 0**, though by a narrower margin than
+round 1 read, and the estimate is not what decides it: §7.10 built CfL and
+measured the paid form directly. Reopen at tier 2–3, where per-image gains
+amortize over hundreds of coefficients.
+
+(Re-derived in the 2026-09 re-measure. The figures this section carried —
+mean |ρ| 0.457 / 0.504, residual 71.5% / 63.2%, and two example images that
+are not in the current corpus — were the retired corpus's, and §9.5 did not re-run the
+probe. The probe is not a sweep, so nothing binds these; `cfl-probe --split
+tune` reproduces them.)
 
 ### 4.9 Entropy headroom, measured
 
-`coeff-stats`, tune split, shipped tier-0 layout, µ-law codes:
+`coeff-stats`, tune split, µ-law codes, on the `L 26 @ 5 / C 9 @ 4` layout the
+tool calls "shipped tier-0" — the pre-adoption default row, and the base codes
+2–4 still ship, but not today's `L 28 @ 4 / C 15 @ 3` default (re-run in the
+2026-09 re-measure; every figure below reproduces):
 
 | | luma (5 b field) | chroma (4 b field) |
 |---|---|---|
@@ -575,8 +635,8 @@ decoder must understand.
 # Round 1 — the byte-budget study (§1–§4)
 mise run sweep budget-ladder                        # R-D ladder, shipped constants
 mise run sweep budget-ladder --split holdout
-mise run sweep budget-ladder-tuned                  # round-1 recipe
-mise run sweep budget-ladder-tuned --split holdout   # §4.5
+mise run sweep budget-ladder-tuned                  # §4.5, §7.12 round-1 recipe + pre-adoption ladder
+mise run sweep budget-ladder-tuned --split holdout   # §4.5, §7.12, §8.3
 mise run sweep render-raster                        # §4.1
 mise run sweep allocation-grid                      # §4.2, §4.7
 mise run sweep precision-by-budget                  # §4.2
@@ -629,10 +689,12 @@ mise run sweep quant-ranges                         # §11.8
 mise run sweep scalefactor-bands                    # §11.9
 mise run sweep compact-tier                         # §11.10
 mise run sweep compact-tier-graphics                # §11.10
-mise run sweep compact-tier-alpha                   # §11.12 compact tier, alpha corpus
+mise run sweep compact-tier-alpha                   # §11.10 compact tier, alpha row
 mise run sweep alpha-tier1                          # §11.11
+mise run sweep v07-holdout-photo                    # §11.12 tune column
 mise run sweep v07-holdout-photo --split holdout    # §11.12
-mise run sweep v07-holdout-alpha --split holdout    # §11.12
+mise run sweep v07-holdout-alpha                    # §11.12 tune column
+mise run sweep v07-holdout-alpha --split holdout    # §11.12 (cannot run: #83)
 mise run sweep adopted-defaults                     # §10.3
 mise run sweep adopted-defaults --split holdout     # §10.3
 
@@ -679,15 +741,28 @@ already carried — §11.14's is the current cross-format record. Nothing said s
 so the block could not reproduce three of its own tables and still exited 0.
 **A SKIP is not a pass** — read the skip list, or run with `--strict`, which
 turns one into a failure.
-Six configs in `tools/comparison/sweeps/` are **not** written up above, and are
+
+Every `sweep` and `rd-budget` line above writes its result to
+`tools/comparison/results/<name>[-holdout].json`, which is committed, and every
+one of them that can still run was re-run from a clean tree at one commit,
+`e310475`, for the 2026-09 re-measure: 54 results, per-image scores and
+provenance only. The one that cannot is the alpha holdout run (#83).
+`verify:experiments --strict` checks this file against them in CI. The three
+`node .../dist/*.js --split tune` probes (`cfl-probe`, `coeff-stats`,
+`entropy-budget`) and `main.js` are not sweeps, write to the gitignored
+`output/`, and are not part of that record.
+
+Five configs in `tools/comparison/sweeps/` are **not** written up above, and are
 listed here so their absence is not mistaken for a result being withheld:
 `low-budget-allocation` and `v06-vs-v1` were run and superseded before this
 file's round-3 numbers were taken, and their outputs no longer survive on disk;
-`capped-tier1-vs-tier0`, `compact-tier-alpha`, `scalefactor-bands-t1` and
-`tier-precision-vs-count` were written but never run — `compact-tier-alpha` is
-listed as a command above but has never produced an output. None of them informed an
-adopted constant. `mise run verify:experiments` checks the tables that *are* here
-against the outputs that produced them.
+`capped-tier1-vs-tier0`, `scalefactor-bands-t1` and `tier-precision-vs-count`
+were written but never run. None of them informed an adopted constant.
+`compact-tier-alpha` was listed here too, as written but never run. That was
+wrong in the way that matters: its committed result reproduces the tune figure
+§11.12 quotes for the adopted compact alpha row to the digit, so the run that
+figure came from scored these encodes, and no output of it was kept. §11.10 now
+reports the sweep.
 
 `aniso-selection` and `aniso-extended`, named in §11.5, were deleted when
 `selection-weights` replaced them; their outputs survive only in the gitignored
@@ -1019,8 +1094,8 @@ away a paradox:
    range a small gain. Quantized gains are not the problem, and were never the
    problem.
 2. **The predictor does work.** Residual *energy* after the least-squares gain
-   is 71.5% (a) / 63.2% (b) of the original (§4.8) — an amplitude ratio of
-   ≈0.85 / 0.79, so the scale field really does shrink.
+   is 74.1% (a) / 57.6% (b) of the original (§4.8) — an amplitude ratio of
+   ≈0.86 / 0.76, so the scale field really does shrink.
 3. **Coefficient error really does improve.** Simulating the µ-law path,
    RMS coefficient error falls from 0.0376 → 0.0356 (a) and 0.0375 → 0.0306 (b),
    *including* the α·(luma quantization error) the predictor imports. (Points 2
@@ -1108,21 +1183,44 @@ The whole ladder under the constants-only recipe
 
 | Bytes | 12 | 16 | 21 | 24 | 28 | 32 | 40 | 48 | 64 | 80 | 108 | 161 | 246 | 411 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| tune, pre-adoption shipped | 13.79 | 12.35 | 11.70 | 11.14 | 10.80 | 10.43 | 10.03 | 9.73 | 9.32 | 8.98 | 8.57 | 8.07 | 7.67 | 7.09 |
+| tune, pre-adoption shipped | 14.24 | 13.20 | 12.70 | 12.23 | 11.95 | 11.65 | 11.29 | 10.96 | 10.51 | 10.17 | 9.72 | 9.19 | 8.63 | 7.91 |
 | tune, optimized | 13.50 | 12.68 | 12.15 | 11.93 | 11.67 | 11.41 | 11.09 | 10.76 | 10.48 | 10.14 | 9.67 | 9.05 | 8.45 | 7.90 |
-| holdout, pre-adoption shipped | 13.84 | 13.07 | 12.61 | 12.14 | 11.79 | 11.55 | 11.14 | 10.72 | 10.24 | 9.85 | 9.44 | 8.85 | 8.31 | 7.79 |
+| holdout, pre-adoption shipped | 14.23 | 13.28 | 12.73 | 12.29 | 11.97 | 11.74 | 11.31 | 10.94 | 10.51 | 10.11 | 9.70 | 9.11 | 8.57 | 8.00 |
 | holdout, optimized | 13.30 | 12.72 | 12.15 | 11.88 | 11.55 | 11.38 | 10.98 | 10.67 | 10.35 | 9.99 | 9.51 | 8.92 | 8.39 | 7.82 |
 
 (The 32 B row of this ladder uses the ratio-derived `L33@4 C11@3`; the *measured*
 optimum `L28@4 C15@3` is better still — 11.298 on holdout, in the table above.)
 
-> **The two `pre-adoption shipped` rows are round 2's baseline and are not on
-> this corpus.** Their sweep no longer exists: `budget-ladder` resizes the
-> layout but inherits today's adopted knobs, so it is a ladder of the format
-> that ships rather than the one round 2 compared against. Read the `optimized`
-> rows against each other, not across the pair — and see §8.3, where the
-> equal-quality byte saving that used to be stated here is withdrawn for the
-> same reason.
+The `pre-adoption shipped` rows are §4.5's, the pre-adoption arms of
+`budget-ladder-tuned` on this corpus. (Until the 2026-09 re-measure they were
+the retired corpus's §2 ladder, which no run could reproduce, and this note told
+the reader not to compare across the pair. The pair is now comparable.) The
+optimized recipe beats the pre-adoption format at every budget on holdout, by
+6.5% at 12 B and 1.2–4.6% from 16 to 108 B; above that the raster caveat under
+§4.5's table applies.
+
+**The equal-quality byte saving, restated.** Round 2 reported that the adopted
+32-byte recipe matches the pre-adoption format at **40 bytes**, a 20% saving.
+Paired per image over the same split (adopted minus pre-adoption 40 B, ΔE00,
+`bootstrapCI`'s default seed and resamples), the two splits disagree:
+
+- **Holdout:** 11.298 against 11.307, a difference of −0.009 with CI
+  [−0.098, +0.082]; the adopted recipe wins on 15 of 32 images. The two are
+  **not separable**. That is consistent with "matches at 40 B", and it does not
+  support "better than".
+- **Tune:** 11.473 against 11.291, a difference of +0.182 with CI
+  [+0.066, +0.308]; the adopted recipe wins on 9 of 31. Here the 40-byte
+  pre-adoption format is **better**, so the saving on tune is less than 20%.
+  The adopted recipe does separate from the pre-adoption format at 32 B on tune
+  (−0.182, CI [−0.282, −0.085]), so the tune saving lies strictly between 0 and
+  20%. The ladder has no arm between 32 and 40 B to place it more precisely.
+
+So the evidence bounds the saving at no more than 20%, and reaches 20% only on
+the split where the two arms cannot be told apart. Neither split's figure is the
+one to quote alone; a statement of the saving carries both. (The holdout pairing
+uses `final-candidates-holdout`'s `32B L28C15 stack` against
+`budget-ladder-tuned-holdout`'s `40B pre-adoption L34/C12`; the same run's
+`32B SHIPPED (ref)` arm gives identical per-image scores.)
 
 
 ### 7.13 U11 — entropy-coded AC, with a real coder instead of an entropy
@@ -1130,7 +1228,10 @@ optimum `L28@4 C15@3` is better still — 11.298 on holdout, in the table above.
 `entropy-budget.ts` re-asks §4.9's question with two changes: the code stream is
 actually coded (sequentially, per image, against a Laplace-smoothed adaptive
 model) rather than assigned its pooled entropy, and the model is scored
-**leave-one-image-out** so the table's own fitting cost is paid.
+**leave-one-image-out** so the table's own fitting cost is paid. (As in §4.9,
+"shipped" below is the `L 26 @ 5 / C 9 @ 4` row the tool calls shipped, not
+today's `L 28 @ 4 / C 15 @ 3` default. Re-run in the 2026-09 re-measure, every
+figure in this section reproduces.)
 
 | Model | AC bits (of 202 fixed) | vs fixed | honest? |
 |---|---|---|---|
@@ -1209,7 +1310,8 @@ again once restored.
 > nothing (ThumbHash on "tune": 11.17 before, 12.04 after). Treat any future
 > addition the same way — re-run §6 in full, or do not add it.
 
-**U18 — a CI quality gate.** `mise run rd:gate` encodes 8 pinned photos at tier 0 and
+**U18 — a CI quality gate.** `mise run rd:gate` encodes 8 pinned photos at the
+32-byte default (tier 0 in this file's old numbering, code 1 as shipped) and
 compares mean ΔE00 against `tools/comparison/baselines/rd-gate.json` with a
 **two-sided** ±1% tolerance (an unexplained improvement also fails — a stale
 baseline gates nothing), and asserts every hash is exactly 32 bytes. Wired into
@@ -1260,7 +1362,10 @@ changes that, and adding two more computed metrics arguably raises the stakes.
 ## 8. The optimized algorithm and its default parameters
 
 What survived, in the form a spec revision would take. Everything below is
-validated on the never-tuned holdout split with all four metrics improving.
+validated on the holdout split with all four metrics improving. That split was
+never tuned on directly, but it was not unread either: round 1 had already
+consulted it, and `sel_hv = 0.15` was chosen on it (§11.12 records how often it
+has been read).
 
 ### 8.1 Constants-level (every implementation must adopt these together)
 
@@ -1285,9 +1390,13 @@ unchanged.
 (12.129 vs 12.146) — both beat ThumbHash on all four metrics, and the choice
 between them should be re-made against the alpha-mode layout before a compact
 tier is written down.
-**Not yet measured:** the alpha-mode layout. The arithmetic points at
-`L 22 @ 4 b, a/b 14 @ 3 b` at tier 0 (255 bits), but the photographic corpus has
-no alpha, so this needs its own sweep before it is written down.
+**Not yet measured** when this was written: the alpha-mode layout. The
+arithmetic points at `L 22 @ 4 b, a/b 14 @ 3 b` at tier 0 (255 bits), but the
+photographic corpus has no alpha, so this needs its own sweep before it is
+written down. *Measured since* in §11.1 and §11.3: that arithmetic is not among
+the layouts that beat the old alpha row after Holm (§13.5), and the row that
+shipped is `A 28 @ 3 b, L 22 @ 4 b, a/b 3 @ 3 b`, which moves the budget into
+the alpha channel instead. The compact tier's alpha row is §11.10's.
 
 **2. Selection weights** `aniso = 1.2`, `sel_hv = 0.15` — key
 `priority · (1 + 1.2·sin²2θ) · (1 + 0.15·cos2θ)`. Worth **−0.36 pp** of the
@@ -1345,13 +1454,17 @@ against `adopted-defaults`, which reconstructs the pre-adoption constants by
 hand rather than inheriting them — the only way the comparison stays meaningful
 now that §10 has made the optimized recipe the default.
 
-> **The equal-quality byte saving is not restated here.** Round 2 put it at 20%
-> — the optimized 32-byte encode matching the shipped format at 40 bytes — read
-> off a ladder of the *pre-adoption* signal path. No current sweep produces that
-> ladder: `budget-ladder` resizes the layout but inherits today's adopted
-> knobs, so it is a ladder of the format that ships, not of the one the saving
-> was measured against. The −3.72% above is what the corpus still supports; the
-> byte figure needs a pre-adoption ladder nobody has run.
+> **The equal-quality byte saving, measured again.** Round 2 put it at 20% —
+> the optimized 32-byte encode matching the pre-adoption format at 40 bytes —
+> and this section withdrew it, because no sweep produced a pre-adoption ladder
+> on this corpus. `budget-ladder-tuned` now does, and §7.12 restates it: on
+> holdout the adopted recipe at 32 B (11.298) and the pre-adoption format at
+> 40 B (11.307) are not separable (paired CI [−0.098, +0.082]), so the 20% is an
+> equal-quality match there and no better. On tune the 40-byte pre-adoption
+> format is separably better (paired CI [+0.066, +0.308]), so the saving there is
+> less than 20%. The saving is therefore at most 20%, and no single split's
+> figure stands for it. The −3.72% above remains the figure the pre-registered
+> rule is judged on.
 
 At the proposed 21-byte compact tier the format beats ThumbHash on **all four
 metrics** on holdout (§7.6), which the shipped constants do not.
@@ -1585,7 +1698,7 @@ reproduces what did not change is measuring the corpus rather than the weather.
 
 | Measurement | Curated (§9) | Wikimedia | Verdict |
 |---|---|---|---|
-| Tier 1, tune / holdout ΔE00 | 10.28 / 11.38 | 11.65 / 11.54 | Tune is 13.3% harder; **holdout only 1.4%**, being three-quarters Kodak24 |
+| §1's 32 B ladder point (`L 26 @ 5 / C 9 @ 4`, not the shipped default), tune / holdout ΔE00 | 10.28 / 11.38 | 11.65 / 11.54 | Tune is 13.3% harder; **holdout only 1.4%**, being three-quarters Kodak24 |
 | R-D gate, mean of 8 | 8.8459 | 11.1369 | +25.9%, and 0.00% drift against its own baseline |
 | §8 recipe on holdout | −3.50% | **−3.72%** | grew — still clears the pre-registered ≥3%, and this is the figure the repo quotes (§7.12, §10.3) |
 | Compact tier vs ThumbHash, holdout | wins all four | wins all four | unchanged |
@@ -1605,7 +1718,7 @@ reproduces what did not change is measuring the corpus rather than the weather.
 | Metric-targeted RDO optimum | −0.80% | **−0.07%** | **evaporated** (§7.2) |
 | `fit2+nearest` at 32 B | −0.43% | −0.30% | narrowed; mode 1 / mode 2 order reversed (§4.4) |
 | Count-vs-precision at 32 B | −2.0% | −1.7% | thesis intact, restated (§4.2) |
-| Tier 3 vs raw RGB565, ~1.6 kB | pixels win, 5.80 vs 6.26 | **ChromaHash wins, 6.73 vs 6.96** | **inverted** (§2) |
+| Tier 3 vs raw RGB565, ~1.6 kB | pixels win, 5.80 vs 6.26 | ChromaHash wins on tune, 6.73 vs 6.96; **pixels win on holdout**, 6.57 vs 6.77 | **split-dependent** (§2, §11.14; this row read "inverted" from tune alone) |
 
 **Nothing that ships changed, and two things that were concluded did.** Every
 adopted constant in §8.1 still clears its bar and every item in §8.4 is still
@@ -1744,6 +1857,13 @@ still the obvious next thing to build.
 > `compact 21B shipped shape` — name nothing readable and were found by reading
 > the config, not by running the gate. Read a passing run as a statement about
 > 481 arms.
+>
+> **The counts above are the ones this note was written against.** At the
+> 2026-09 re-measure the gate reads 831 arms in 51 configs: 481 enforceable,
+> 103 exempt, 247 unreadable. All 24 arms added since are unreadable: the ten
+> of the two §13 ladder configs, whose labels name tiers rather than constants,
+> and the 14 pre-adoption arms `budget-ladder-tuned` gained for §4.5, labelled
+> in §1's `L26/C9` form, which the gate does not read.
 
 5. **A column nobody checks, inside a table that passes.** `verify:experiments`
    binds *columns*, not tables, and a table is reported green when the columns
@@ -1793,6 +1913,10 @@ Stated so their absence is not mistaken for agreement:
   says so in place. **§11.0, §11.2 and §11.3** are the synthetic fixture and the
   alpha corpus, which the re-source did not touch.
   `verify:experiments --list-unbound` is the full list.
+* **§4.6 and §4.8 were missed by that list**, and still carried the retired
+  corpus's figures until the 2026-09 re-measure (§6), which re-ran every sweep
+  at one commit, re-ran the `cfl-probe`, `coeff-stats` and `entropy-budget`
+  probes, and re-derived both. §4.9, §4.10 and §7.13 reproduced to the digit.
 
 ## 10. Adoption: making §8 the default (2026-08)
 
@@ -1935,9 +2059,12 @@ because each of them changed what a measurement means:
 | **Alpha scored as alpha** (§11.0) | Both sides were composited over opaque white before any metric ran, so alpha error was folded into colour error against one background. |
 | **`forceOpaque` control** | The alpha corpus is cut-outs and line art — graphic-like content — and the graphics corpus independently prefers more luma. Without a control, "alpha mode wants a different layout" and "this content wants a different layout" are the same measurement. |
 
-Every decision below is taken on the **tune** split. Holdout is consulted once,
-at the end (§11.12), for the assembled candidate — repeatedly consulting it
-would make it a second tune set.
+Every decision below is taken on the **tune** split. Within this round holdout
+is consulted once, at the end (§11.12), for the assembled candidate. Across the
+file it is not: the same 32 images had already validated rounds 1 and 2, and
+§11.12 sets out every time they were read and what each reading decided.
+Repeatedly consulting a holdout makes it a second tune set, and this one has
+been consulted enough that it has partly become one.
 
 ### 11.0 What the measurements needed first
 
@@ -2255,6 +2382,29 @@ and it is the layout §8.1 chose on tune and the one that shipped.
 Read carefully, that is a tie-break rule failing and the conclusion surviving on
 other grounds — not a rule confirming itself twice.
 
+**The alpha row.** Alpha mode spends 9 more prefix bits, so the opaque 21-byte
+layouts do not fit it. `sweeps/compact-tier-alpha.json` measures 23 alpha
+allocations at exactly 21 bytes on the 16 alpha tune images, against the
+opaque row's shape resized to alpha mode. §6 used to list this sweep as never
+run. Its committed result reproduces the tune figure §11.12 quotes for the
+adopted row, −13.00%, to the digit:
+
+| alpha layout, 21 B | ΔE00 | Δ% | αMAE | more-opaque half (8) | paired CI vs the adopted row | guards (CI) |
+|---|---|---|---|---|---|---|
+| shipped shape A5@4 L9@5 C5@4 | 15.974 | — | 0.2625 | — | [−2.794, −1.361] | — |
+| A12@3 L15@4 C1@3 | 14.615 | −8.51% | 0.2144 | −7.67% | [−1.109, −0.378] | ok |
+| **A16@3 L12@4 C1@3** (adopted) | **13.898** | **−13.00%** | 0.1851 | **−9.42%** | — | ok |
+| A20@3 L9@4 C1@3 | 13.831 | −13.42% | 0.1795 | −9.03% | [−0.079, +0.221] | ok |
+| A24@3 L5@4 C2@3 | 13.738 | −14.00% | 0.1726 | −9.23% | [−0.096, +0.401] | ok |
+
+The adopted row is not the mean's best: `A24@3` is 1.0 pp ahead, and so is
+`A20@3` by 0.4 pp. But both paired intervals against the adopted row include
+zero, so on this corpus the three are a plateau, as the opaque rows above are.
+Within it the adopted row gives the more-opaque half of the images the largest
+gain of all 23 arms, which is the same rule §11.3 chose the default tier's alpha
+row by. (The paired CI is `adopted − row`, so a positive bound favours the
+row.)
+
 > **Superseded.** The paragraph below records the code-4 placement as it was
 > built. It did not ship that way: `f6417d3` reordered the tier codes by quality before
 > release, so the compact tier is code **0**, `MAX_TIER` is 4, and
@@ -2322,7 +2472,11 @@ to the point where the budget runs out. It is monotone for a long way:
 | **A28@3 L22@4 C3@3** | **13.005** | **−17.10%** | **−339.9** | 44.48 | 0.1632 |
 | A40@3 L13@4 C3@3 | 12.906 | −17.74% | −344.8 | 43.38 | 0.1515 |
 | A48@3 L7@4 C3@3 | 12.885 | −17.87% | −349.1 | 43.34 | 0.1423 |
-| A32@2 L24@4 C5@3 | 13.880 | −11.53% | −366.1 | 61.43 | **FAIL** |
+| A32@2 L24@4 C5@3 (fails Butteraugli) | 13.880 | −11.53% | −366.1 | **61.43** | 0.1901 |
+
+(The last row's αMAE cell used to read **FAIL**. That was a guard verdict in a
+measurement column: the arm's alpha error is 0.1901, and what fails is its
+Butteraugli, 61.43 against the incumbent's 57.38.)
 
 Three things fall out.
 
@@ -2340,22 +2494,37 @@ Three things fall out.
    is that chroma is nearly inert here, not that less of it is always better.
 3. **The mean hides a trade, and the trade decides the constant.**
 
-| allocation | all | mostly opaque (<35% transparent) | mostly transparent |
-|---|---|---|---|
-| A28@3 L22@4 C3@3 | −17.10% | **−7.42%** | −22.60% |
-| A32@3 L19@4 C3@3 | −17.19% | −6.79% | −23.09% |
-| A40@3 L13@4 C3@3 | −17.74% | −5.68% | −24.58% |
-| A48@3 L7@4 C3@3 | −17.87% | −3.86% | −25.82% |
+| allocation | all | <35% transparent (4 images) | ≥35% transparent (12) | more-opaque half (8) | more-transparent half (8) |
+|---|---|---|---|---|---|
+| **A28@3 L22@4 C3@3** (adopted) | −17.10% | **−7.42%** | −22.60% | **−12.28%** | −24.42% |
+| A32@3 L19@4 C3@3 | −17.19% | −6.79% | −23.09% | −11.87% | −25.27% |
+| A40@3 L13@4 C3@3 | −17.74% | −5.68% | −24.58% | −12.04% | −26.38% |
+| A48@3 L7@4 C3@3 | −17.87% | −3.86% | −25.82% | −11.28% | −27.87% |
+| A28@2 L29@4 C3@3 (fails Butteraugli) | −11.76% | −8.52% | −13.59% | −9.63% | −14.98% |
 
 Pushing the alpha count higher buys transparent images at the expense of opaque
 ones, and the mean is driven by this corpus being three-quarters transparent —
 a property of the corpus, not of the world. **`A 28 @ 3 b, L 22 @ 4 b,
 a/b 3 @ 3 b`** is adopted: it takes −17.10% overall while giving the at-risk
 opaque-ish subgroup the largest gain of any **guard-passing** arm (three 2-bit
-arms score higher there — −7.5% to −8.5% — but all three fail Butteraugli),
-posts the best SSIM2 of the whole sweep, and carries *more* luma than the layout it replaces (22 vs 20).
-Choosing the ΔE00-optimal corner instead would trade 0.8 pp of mean for 3.6 pp
-of the subgroup most exposed to a different corpus mix.
+arms score higher there on the 35% cut — −7.5% to −8.5% — but all three fail
+Butteraugli), posts the best SSIM2 of the whole sweep, and carries *more* luma
+than the layout it replaces (22 vs 20). Choosing the ΔE00-optimal corner instead
+would trade 0.8 pp of mean for 3.6 pp of the subgroup most exposed to a
+different corpus mix.
+
+> **The 35% cut was chosen after the sweep was read, and it holds four
+> images.** No record fixes it in advance, and a cut picked while looking at
+> the arms can be picked to favour one. So the table also splits the same 16
+> images at their median non-opaque fraction (0.527), a cut the corpus fixes
+> before any arm is scored. On that cut the adopted row still gives the
+> more-opaque half the largest gain of all 33 arms in `alpha-ceiling`, 2-bit
+> arms included: −12.28%, against −12.10% for the next, `A28@3 L19@4 C5@3`, and
+> −9.63% for the best 2-bit arm. The margin over the next arm is 0.18 pp on
+> eight images, and nothing here tests it, so this is a ranking and not a
+> separation. What the median cut shows is that the ranking the adoption rests
+> on does not depend on where the line was drawn. Both cuts are bound, so a
+> re-run re-derives them.
 
 Not a corpus artifact, checked two ways. **Every one of the 16 images improves**,
 including those only 15–22% transparent. And §11.2's control shows the direction
@@ -2423,12 +2592,46 @@ This is a tune measurement only. The tier-1 row was never scored on a holdout,
 and the tier-0 holdout figure it would lean on is from the retired alpha split,
 which can no longer be reproduced (§11.12).
 
-### 11.12 The holdout, consulted once
+### 11.12 The holdout, and how often it has been read
 
-Every decision above was taken on tune, with holdout untouched until they were
-all frozen. It rejected half of them.
-`sweeps/v07-holdout-photo.json` and `sweeps/v07-holdout-alpha.json`, both run
-with `--split holdout`.
+Every decision in this round was taken on tune, with holdout untouched until
+they were all frozen. It rejected half of them. `sweeps/v07-holdout-photo.json`
+and `sweeps/v07-holdout-alpha.json`, both run with `--split holdout`; the tune
+column is the same configs run on tune.
+
+That is the round's own discipline, and it is not the holdout's history. This
+section used to be titled "consulted once", and §11's introduction said the
+same. The photographic holdout had in fact been read, and had informed a
+decision, in every round before this one:
+
+1. **Round 1** (§4.3, §4.5): `thumbhash-headtohead` and `holdout-candidates`.
+   It cleared `L28@4 C15@3` + stack against the ≥3% rule, and made the compact
+   tier a candidate.
+2. **Round 2** (§7.6, §7.12): `final-candidates` and `budget-ladder-optimized`.
+   It chose `sel_hv = 0.15` over 0 and 0.30 on the holdout ordering, which is
+   the only evidence that weight has (§7.12), and priced the optional
+   refinement.
+3. **§8.1**: the compact candidates. The holdout preferred `L26@3 C6@3`, and
+   the compact layout was deferred on it.
+4. **§10.3**: `adopted-defaults`. It verified that adoption reproduced the
+   measured change, and chose nothing.
+5. **Round 3** (this section): `v07-holdout-photo` and `v07-holdout-alpha`. It
+   rejected `sel_hv = 0.30`, the isotropic weights and `alpha_ac_fit`, and
+   adopted the alpha row and the compact tier.
+6. **§11.14**: `rd-budget`. It is the cross-format positioning the spec states
+   (spec §14.1).
+
+Its composition moved under it as well. The curated part went from 4 images to
+8 in §9, and was replaced by Wikimedia photographs in §9.5; only Kodak24 has
+been in it throughout, and every holdout sweep has been re-run on each version.
+
+Two things follow. First, `sel_hv = 0.15` was **selected** on this split, so the
+split cannot also validate it: that value has no out-of-sample evidence at all.
+Second, the other readings each saw a holdout that earlier readings had already
+steered the candidates towards, so none of them is the clean one-shot test the
+pre-registered rule assumes. A result in this file that says "never-tuned
+holdout" is describing how the split was meant to be used. The fix is a fresh
+split read once, not a rewording (#76).
 
 **Photographic holdout (32 images):**
 
@@ -2437,7 +2640,18 @@ with `--split holdout`.
 | `sel_hv` 0.15 → 0.30 | +0.40%, CI straddles (§11.5) | **+0.56%** | **rejected** |
 | isotropic weights | −0.17%, CI straddles | +0.62%, guards fail | rejected |
 | pre-adoption v0.6-derived | +1.59% | +3.87% | (confirms §8 out of sample) |
-| compact 21 B `L19@4 C6@3` | −3.39% | −2.78% vs the shipped shape | adopted |
+| compact 21 B `L19@4 C6@3` | −3.39% | −2.78%, vs the shipped shape | adopted |
+
+**The compact row is adopted at −2.78%, below the ≥3% the rule asks for, and
+the rule did not apply to it.** `RATIONALE.md`'s rule governs changing a
+constant that ships. The compact tier was a new tier code with no incumbent, and
+its "shipped shape" is the 26:9 layout resized to 21 bytes, a format nobody
+shipped; the −2.78% is reported against it rather than gated on it. The
+criterion it was admitted on is the one §8.1 and §8.6 set out before this round
+ran: beat ThumbHash on all four metrics, out of sample, at 21 bytes. It does
+(the table at the end of this section). That criterion was never written into
+`RATIONALE.md` as a rule, which is a gap in the record rather than in the
+measurement.
 
 Holdout ranks the compact plateau differently from tune — `L26@3 C6@3` leads it
 at 12.129 against the adopted layout's 12.146 — which is the same tune/holdout
@@ -2591,8 +2805,13 @@ neighbourhood.
 | 271.5 | lqip-modern r48 | 8.321 | −66.3 | 15.83 | 0.2411 |
 | 404.8 | **WebP** | **7.518** | **−62.6** | **14.21** | **0.2349** |
 | 411 | ChromaHash tier 3 | 7.783 | −76.8 | 17.94 | 0.2507 |
+| 1574.0 | RawRGB565 | 6.570 | −65.5 | 16.47 | 0.2400 |
+| 1576.4 | WebP | 5.906 | −47.1 | 11.56 | 0.2165 |
+| 1576.6 | JPEG | 6.078 | −51.6 | 12.01 | 0.2225 |
+| 1595.6 | **AVIF** | **5.471** | **−47.1** | **11.53** | **0.2157** |
+| 1623 | ChromaHash tier 4 | 6.768 | −62.1 | 13.99 | 0.2400 |
 
-Four things this settles.
+Four things this settles, and a fifth about the top of the ladder.
 
 1. **The compact tier beats ThumbHash on all four metrics at its own size**,
    out of sample. That is the positioning claim §8.6 wanted and no shipped
@@ -2615,6 +2834,14 @@ Four things this settles.
    WebP does lead all four. The same ordering holds on tune
    (8.785 vs 8.944 at ~190 B). §14.1 of the spec states this rather than
    arguing around it.
+5. **At ~1.6 kB every real codec leads, and so, on ΔE00, do raw pixels.** AVIF
+   leads all four metrics, and WebP and JPEG beat code 4 on all four as well.
+   ΔE00 goes to AVIF by 19% (5.471 against 6.768). Uncoded RGB565 also beats
+   code 4 on ΔE00 here (6.570), while losing SSIMULACRA2 and Butteraugli to it
+   and tying DSSIM. That half is split-dependent: on tune code 4 beats RGB565,
+   6.726 against 6.960 (§2). These rows were added in the 2026-09 re-measure;
+   the table used to stop at 411 B, and the spec's claim about 1.6 kB (§14.1)
+   cited round 1's §2 instead.
 
 The structural weakness §2 identified is narrowed but not gone: lqip-modern
 still takes SSIMULACRA2 and Butteraugli at ~84 B, where ChromaHash wins ΔE00 by
@@ -2721,8 +2948,9 @@ Four things this settles.
    `w_min 0.85`'s interval clears zero by a margin a different bootstrap seed
    can erase, and on intervals its guards are `inconclusive` rather than
    failed.) The
-   pre-registered rule wants ≥3% ΔE00 *improvement* with all guards improving;
-   this is the opposite sign. **The v0.6 rejection stands — and now it stands on
+   pre-registered rule wants ≥3% ΔE00 *improvement* with no guard regressing
+   (the guards must hold, not improve); this is the opposite sign, and the
+   guards regress as well. **The v0.6 rejection stands — and now it stands on
    evidence rather than on an instrument that could not see the other half.**
 3. **The effect is entirely luma.** `luma only` reproduces the both-channel arm
    almost exactly (spurious 1.90 vs 1.80, ΔE00 +1.53% vs +1.51%), while
@@ -3039,13 +3267,19 @@ fixed across arms; `r` is Pearson over all 31.
 | code 3 | 3.95 | 4.50 | 4.22 | +0.03 |
 | code 4 | 3.81 | 4.79 | 4.12 | **0.00** |
 
-**The correlation does not survive the ladder.** At the low tiers the format
-invents most on the *smooth* photographs — a handful of coefficients laid across
-a near-flat field, which is the classic low-order-basis banding, and which is
-also why ringing is highest on smooth content at every tier (r = −0.13 to
-−0.30). At the upper tiers that relationship is simply gone: r reaches +0.03 and
-0.00, and the bins stop being monotone in either direction, peaking on the
-middle tercile and falling back on the most textured one.
+**No tier's correlation with detail is distinguishable from zero.** At
+n = 31, |r| must reach 0.355 to differ from zero at 0.05, and the largest here is
+−0.29 at code 0, with a 95% interval of [−0.59, +0.07]. This table used to say
+the correlation "does not survive the ladder", which reads a relationship into
+the low tiers that the sample never established: there was nothing to survive.
+What remains is descriptive, and is read as a lean rather than a finding. At
+the low tiers the bins lean towards inventing most on the *smooth* photographs
+(r = −0.29, −0.17, −0.20 at codes 0–2) — a handful of coefficients laid across a
+near-flat field would do that, as low-order-basis banding — and ringing leans
+the same way at every tier (r = −0.13 to −0.30, none significant). At the upper
+tiers even the lean is gone: r is +0.03 and 0.00, and the bins stop being
+monotone in either direction, peaking on the middle tercile and falling back on
+the most textured one.
 
 An earlier form of this table read as a clean sign change — the invention
 following the texture at codes 3 and 4 — and that reading was an artifact of the
@@ -3053,29 +3287,34 @@ instrument, not of the format. The pinned grid was double-quantizing every
 decode whose raster sat above it, which inflated the upper tiers' spurious
 scores in proportion to how far they had been pinned; `metrics/spurious.ts`
 records the defect and `selftest:metrics` now pins it shut. What is left is
-weaker and stranger than the sign change, and it is what the corpus actually
-says: whatever selects the smooth photographs at the low tiers stops operating
-by code 3, and nothing legible replaces it.
+weaker than the sign change, and at this sample size it is not a relationship
+at all: a lean at the low tiers that no test here can tell from noise, and no
+lean above them.
 
-That still leaves two different defects wearing one number, and they still want
-two different answers — but only the low-tier one has a shape this corpus can
-describe. Nothing above distinguishes them, and no aggregate could.
+Whether low-tier banding and upper-tier invention are two different defects,
+wanting two different answers, is therefore still open. This corpus cannot
+separate them by detail, and no aggregate could.
 
 Two supporting axes, same sweep:
 
-* **Chroma.** Spurious tracks mean C* strongly at the low tiers (r = +0.44,
-  +0.41, +0.53 at codes 0–2) and about half as strongly above them (+0.19,
-  +0.25). Saturated content drives invented structure hardest where the chroma
-  budget is tightest — 6 coefficients at code 0, 15 at code 1 — and this is the
-  one covariate that keeps pointing the same way all the way up the ladder.
-* **Lightness.** Spurious is lowest on high-key photographs at every tier
+* **Chroma.** This is the one axis that reaches significance. Spurious tracks
+  mean C* at the low tiers (r = +0.44, +0.41, +0.53 at codes 0–2, all three
+  past the 0.355 threshold, though only code 2's survives Holm across the five
+  tiers) and about half as strongly above them (+0.19, +0.25, neither
+  significant). Saturated content drives invented structure hardest where the
+  chroma budget is tightest — 6 coefficients at code 0, 15 at code 1 — and the
+  sign is the same all the way up the ladder.
+* **Lightness.** Spurious leans lowest on high-key photographs at every tier
   (r = −0.03 to −0.36), which is the DC-dominated case: little AC amplitude to
-  get wrong.
+  get wrong. Only code 2's −0.36 reaches the threshold, and it does not survive
+  Holm.
 
-And the fidelity side, for contrast: ΔE00's correlation with detail *strengthens*
-monotonically with tier, +0.23 at code 0 to **+0.56** at code 4. The upper tiers
-help smooth photographs far more than textured ones — so the format's error is
-becoming more content-dependent as the budget grows, not less.
+And the fidelity side, for contrast: ΔE00's correlation with detail rises with
+tier, +0.23 at code 0 to **+0.56** at code 4, and is significant only at codes 3
+and 4 (+0.44 and +0.56, both surviving Holm). There the upper tiers help smooth
+photographs more than textured ones, so the format's error becomes more
+content-dependent as the budget grows, not less. Below code 3 the sample cannot
+say.
 
 ### 13.4 What this says for v0.8, and what it does not
 
@@ -3093,16 +3332,22 @@ Stated as measurements, not as a plan. Nothing here adopts anything.
   paired interval that excludes zero. A taper judged there is judged where there
   is least invented structure for it to remove. The interesting measurement —
   the same taper at codes 3 and 4 — has not been made.
-* **Two defects, not one.** A change that suppresses low-order banding on smooth
-  content and a change that stops the basis fighting real texture are different
-  changes, and §13.3 says a single corpus mean will always report their sum.
+* **Possibly two defects, not one.** A change that suppresses low-order banding
+  on smooth content and a change that stops the basis fighting real texture
+  would be different changes, and a single corpus mean would report their sum.
+  But §13.3 does not show that both exist: at n = 31 no tier's correlation with
+  detail differs from zero. Telling them apart needs a larger or stratified
+  corpus, not this one.
 * **U19 is still the ceiling, and this round raises it again.** §12.5 said so of
   two metrics; there are now three, and §13.2's central claim — that a 1:1
-  invention-to-deficit ratio is *worse* than a 1:7 one at the same ΔE00 — is a
-  claim about human judgement that nothing in this repo has ever validated.
-  (1:1 and 1:7 are §13.1's 0.92 at code 4 and 0.14 at code 1 — the same two
-  figures the first bullet quotes, and the only ratios either table supports.)
-  It is stated as an exchange rate rather than a verdict for that reason.
+  invention-to-deficit ratio is *worse* than a 1:7 one — is a claim about human
+  judgement that nothing in this repo has ever validated. (1:1 and 1:7 are
+  §13.1's 0.92 at code 4 and 0.14 at code 1 — the same two figures the first
+  bullet quotes, and the only ratios either table supports.) Nor are the two
+  ratios at the same fidelity: code 4's ΔE00 is 6.726 and code 1's 11.473, so the
+  comparison is between two different amounts of error split two different ways,
+  not between two splits of one amount. It is stated as an exchange rate rather
+  than a verdict for both reasons.
 
 ### 13.5 The statistics behind every table, re-read (2026-09)
 
@@ -3149,7 +3394,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 504 | 391 | 354 | 282 | 114 | 108 | 48 | 66 |
+| all committed sweeps | 839 | 617 | 562 | 507 | 168 | 164 | 83 | 85 |
 | `selection-weights` | 28 | 12 | 1 | 0 | 27 | 1 | 12 | 15 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3158,6 +3403,10 @@ against its incumbent:
 | `synthesis-window` | 7 | 6 | 5 | 1 | 1 | 5 | 0 | 1 |
 | `holdout-candidates-holdout` | 13 | 13 | 13 | 8 | 0 | 5 | 0 | 0 |
 | `final-candidates-holdout` | 16 | 16 | 16 | 13 | 1 | 2 | 0 | 1 |
+
+(The first row sums every committed result, so it grew from 504 arms to 839
+when the 2026-09 re-measure committed the §6 sweeps no table had bound. The
+eight rows below it did not move: those sweeps re-ran per-image identical.)
 
 What it says:
 
@@ -3202,20 +3451,23 @@ So every arm of a sweep, all scored over one image list, is resampled with the
 *same* indices. The intervals in one table are therefore not independent Monte
 Carlo draws: their resampling errors move together rather than averaging out.
 That is deliberate, because it makes every quoted interval reproducible to the
-digit. Its cost was measured once with `mise run arms --seed-sensitivity`, which
-re-derives all 504 committed ΔE00 intervals against their incumbents under 20
-other seeds:
+digit. Its cost is measured with `mise run arms --seed-sensitivity`, which
+re-derives every committed ΔE00 interval against its incumbent under 20 other
+seeds. Over the 54 results of the 2026-09 re-measure that is 839 intervals
+(it was 504 over the 36 results this section was first written against):
 
-* The largest move of either bound is 0.164 ΔE00, which is 15.5% of that
-  interval's width.
-* 14 arms' intervals change whether they exclude zero under some seed.
-* 10 arms change their Holm verdict.
+* The largest move of either bound is 0.295 ΔE00, and the largest move relative
+  to its own interval's width is 15.5%. (These are two separate maxima; this
+  list used to print them as one interval's.)
+* 23 arms' intervals change whether they exclude zero under some seed.
+* 14 arms change their Holm verdict.
 
 Among the rows this file quotes, §12.2's `w_min 0.85` [−0.077, −0.003] is one
-of the 14, and §11.1's `L22@4 C14@3` is one of the 10. An interval whose bound sits within about a tenth of its width of
-zero is decided by the seed as much as by the data. The
-remedy is more resamples, not another seed. It would move every interval this
-file quotes, so it belongs with the next full re-measure rather than here.
+of the 23, and §11.1's `L22@4 C14@3` is one of the 14. An interval whose bound
+sits within about a tenth of its width of zero is decided by the seed as much as
+by the data. The remedy is more resamples, not another seed. It would move every
+interval this file quotes, and the 2026-09 re-measure kept the method fixed so
+that its intervals stay comparable with this section's; the change is #88.
 
 **Correlations.** `stratify` now prints a Fisher-z interval for each `r`, the
 t-test p, a Holm p across the five tiers, and the threshold for its n: at
