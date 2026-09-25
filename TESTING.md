@@ -312,6 +312,17 @@ is the worst deviation over a stride-3 sweep of the RGB cube (~636k solids), on
 saturated green, where the bounded chroma range is least precise. Widening a
 tolerance to make a test pass defeats it; if one of these fails, the number moved.
 
+**5. Acceleration levers** — `rust/tests/accel_levers.rs`, plus library tests
+in `encode.rs`, `decode.rs`, `dct.rs`, `mulaw.rs` and `bitpack.rs`.
+
+`spec/PERFORMANCE.md` §12.1's byte-identical levers are `Tunables::accel_*`
+flags, off by default. Each must reproduce the shipped path *exactly*: every
+integration vector with each flag on alone and with all on, and a
+deterministic differential sweep under non-default `Tunables` that reach what
+the vectors cannot (a tiered-width luma job, refinement, alpha, CfL). The
+library half needs no `spec/` directory, so the mutation sweep runs it. A
+failure here means a lever changed a byte, which no lever is allowed to do.
+
 ### Tolerances
 
 - **Integer outputs** (quantized values, byte arrays, pixel values): exact match, zero tolerance.
