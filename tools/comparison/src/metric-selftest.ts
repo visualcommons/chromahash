@@ -73,6 +73,8 @@ import {
   Runs,
   type StageCell,
   checkProseClaims,
+  checkStability,
+  checkStabilityClaim,
   checkStagesProvenance,
   checkTable,
   clean,
@@ -1302,6 +1304,213 @@ for (const order of ["measured first", "absent first"] as const) {
       R.loaded.length === 1 &&
       R.dirty.join() === "dirty.json",
     `rejected=${JSON.stringify(R.rejected)} dirty=${JSON.stringify(R.dirty)}`,
+  );
+}
+
+// S1–S7. §0's host-stability claim: two bounded sweeps at one commit, every
+//        shared cell within CROSS_RUN_TOLERANCE, and §0's table row saying
+//        what the check says. The committed tree holds one bounded run, so
+//        only the skip path runs there; pass and every fail path are driven
+//        from fixtures.
+
+/** A run whose cells take the given microseconds. */
+function timedRun(
+  file: string,
+  us: Record<string, number>,
+  overrides: Partial<RunDoc> = {},
+): RunDoc {
+  const run = fixtureRun(file, Object.keys(us), undefined, overrides);
+  return {
+    ...run,
+    cells: run.cells.map((c) => ({
+      ...c,
+      nsPerOp: (us[c.id] ?? 0) * 1000,
+      medianNsPerOp: (us[c.id] ?? 0) * 1000,
+    })),
+  };
+}
+
+/** §0's reproducibility table, holding the stability row with this cell. */
+const stabilityDoc = (cell: string): string =>
+  [
+    "> | Claim | Reproducible from the tree? |",
+    "> |---|---|",
+    "> | Every table below equals a cell | **Yes** |",
+    `> | This host's cross-run agreement | ${cell} |`,
+  ].join("\n");
+
+// S1. One bounded run: the check is skipped and says why. "No" is the honest
+//     row; "Yes" fails, because nothing was compared.
+{
+  const s = checkStability(
+    new Runs([timedRun("perf-report.json", { "encode/Rust/t1": 1000 })]),
+  );
+  const no = checkStabilityClaim(stabilityDoc("**No.** one sweep"), s);
+  const yes = checkStabilityClaim(stabilityDoc("**Yes**"), s);
+  check(
+    "one bounded run skips the stability check; §0 may say No and may not say Yes",
+    s.status === "skip" &&
+      (s.problems[0] ?? "").includes("1 bounded run(s)") &&
+      no.length === 0 &&
+      yes.length === 1 &&
+      (yes[0]?.detail ?? "").includes("did not pass"),
+    `status=${s.status} no=${details(no)} yes=${details(yes)}`,
+  );
+}
+
+// S2. Two bounded runs at one commit, within the bar: pass. "No" now
+//     understates the tree and fails; "Yes" must quote the check's figures.
+{
+  const R = new Runs([
+    timedRun("perf-report.json", {
+      "encode/Rust/t1": 1000,
+      "decode/Rust": 200,
+    }),
+    timedRun("perf-report-2.json", {
+      "encode/Rust/t1": 1050,
+      "decode/Rust": 204,
+    }),
+  ]);
+  const s = checkStability(R);
+  const no = checkStabilityClaim(stabilityDoc("**No.**"), s);
+  const plain = checkStabilityClaim(stabilityDoc("**Yes**"), s);
+  const quoted = checkStabilityClaim(
+    stabilityDoc("**Yes** — 2 shared cells, widest 5.0%"),
+    s,
+  );
+  const stale = checkStabilityClaim(
+    stabilityDoc("**Yes** — 12 shared cells, widest 5.5%"),
+    s,
+  );
+  check(
+    "two agreeing bounded runs pass, and §0 must say Yes with their figures",
+    s.status === "pass" &&
+      s.shared === 2 &&
+      Math.abs((s.widest ?? 0) - 0.05) < 1e-9 &&
+      R.crossRunSpread.length === 0 &&
+      no.length === 1 &&
+      (no[0]?.detail ?? "").includes("understates") &&
+      plain.length === 1 &&
+      quoted.length === 0 &&
+      stale.length === 1 &&
+      (stale[0]?.detail ?? "").includes('"2 shared cells", "widest 5.0%"'),
+    `status=${s.status} shared=${s.shared} widest=${s.widest} no=${details(no)} plain=${details(plain)} quoted=${details(quoted)} stale=${details(stale)}`,
+  );
+}
+
+// S3. A shared cell outside the bar fails the check and is itself listed as a
+//     spread — the gate turns each into a failure, not a warning.
+{
+  const R = new Runs([
+    timedRun("perf-report.json", {
+      "encode/Rust/t1": 1000,
+      "decode/Rust": 200,
+    }),
+    timedRun("perf-report-2.json", {
+      "encode/Rust/t1": 1200,
+      "decode/Rust": 201,
+    }),
+  ]);
+  const s = checkStability(R);
+  check(
+    "a bounded pair more than the tolerance apart on one cell fails",
+    s.status === "fail" &&
+      (s.problems[0] ?? "").includes("1 of 2 shared cell(s)") &&
+      (s.problems[0] ?? "").includes("widest 20.0%") &&
+      R.crossRunSpread.length === 1 &&
+      (R.crossRunSpread[0] ?? "").startsWith("encode/Rust/t1:"),
+    `status=${s.status} problems=${JSON.stringify(s.problems)} spread=${JSON.stringify(R.crossRunSpread)}`,
+  );
+}
+
+// S4. Spread is pairwise. With the full sweep read first, the two bounded runs
+//     were each compared with it and never with each other, so a pair 18.5%
+//     apart — each under 10% from the full sweep — passed unnoticed.
+{
+  const R = new Runs([
+    timedRun(
+      "perf-report-full.json",
+      { "encode/Rust/t1": 1000 },
+      {
+        config: { mode: "full", reps: 1 },
+      },
+    ),
+    timedRun("perf-report.json", { "encode/Rust/t1": 1090 }),
+    timedRun("perf-report-2.json", { "encode/Rust/t1": 920 }),
+  ]);
+  const s = checkStability(R);
+  check(
+    "the two bounded runs are compared with each other, not only with the first run read",
+    R.crossRunSpread.length === 1 &&
+      (R.crossRunSpread[0] ?? "").includes("perf-report.json says 1090.0") &&
+      (R.crossRunSpread[0] ?? "").includes("perf-report-2.json says 920.0") &&
+      s.status === "fail" &&
+      s.runs.join() === "perf-report.json,perf-report-2.json" &&
+      R.us("encode/Rust/t1") === 1000,
+    `spread=${JSON.stringify(R.crossRunSpread)} status=${s.status} runs=${s.runs.join()}`,
+  );
+}
+
+// S5. The claim is one commit on one host measured twice. Agreeing runs from
+//     two commits, or two CPUs, do not substantiate it.
+for (const [label, overrides, needle] of [
+  [
+    "different commits",
+    { git: { commit: "def5678", dirty: false } },
+    "different commits",
+  ],
+  [
+    "different CPUs",
+    { environment: { cpuModel: "other", arch: "x64", cores: 1 } },
+    "different CPUs",
+  ],
+] as const) {
+  const s = checkStability(
+    new Runs([
+      timedRun("perf-report.json", { "encode/Rust/t1": 1000 }),
+      timedRun("perf-report-2.json", { "encode/Rust/t1": 1000 }, overrides),
+    ]),
+  );
+  check(
+    `an agreeing bounded pair from ${label} fails`,
+    s.status === "fail" && s.problems.some((p) => p.includes(needle)),
+    `status=${s.status} problems=${JSON.stringify(s.problems)}`,
+  );
+}
+
+// S6. Two bounded runs that share no cell compared nothing, and fail rather
+//     than passing vacuously.
+{
+  const s = checkStability(
+    new Runs([
+      timedRun("perf-report.json", { "encode/Rust/t1": 1000 }),
+      timedRun("perf-report-2.json", { "decode/Rust": 200 }),
+    ]),
+  );
+  check(
+    "a bounded pair with no shared cell fails instead of passing vacuously",
+    s.status === "fail" &&
+      s.shared === 0 &&
+      s.problems.some((p) => p.includes("share no cell")),
+    `status=${s.status} shared=${s.shared} problems=${JSON.stringify(s.problems)}`,
+  );
+}
+
+// S7. §0 must carry the row, and it must answer Yes or No: a missing or
+//     reworded row fails rather than exempting the claim from the check.
+{
+  const s = checkStability(
+    new Runs([timedRun("perf-report.json", { "encode/Rust/t1": 1000 })]),
+  );
+  const missing = checkStabilityClaim("> | Claim | Reproducible? |", s);
+  const vague = checkStabilityClaim(stabilityDoc("Partly"), s);
+  check(
+    "a missing or non-Yes/No stability row fails",
+    missing.length === 1 &&
+      (missing[0]?.detail ?? "").includes("must state") &&
+      vague.length === 1 &&
+      (vague[0]?.detail ?? "").includes('"Yes" or "No"'),
+    `missing=${details(missing)} vague=${details(vague)}`,
   );
 }
 

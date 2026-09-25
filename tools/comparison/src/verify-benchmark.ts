@@ -43,10 +43,13 @@ import {
   type Resolve,
   type RunDoc,
   Runs,
+  STABILITY_MODE,
   STAGES_BASELINE,
   bare,
   cells,
   checkProseClaims,
+  checkStability,
+  checkStabilityClaim,
   checkStagesProvenance,
   checkTable,
   clean,
@@ -58,8 +61,17 @@ const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const DOC = path.join(REPO_ROOT, "spec/PERFORMANCE.md");
 const BASELINE_DIR = path.join(REPO_ROOT, "tools/comparison/baselines");
 
-/** The committed runs, in the order a lookup prefers them. */
-const BASELINES = ["perf-report-full.json", "perf-report.json"] as const;
+/**
+ * The committed runs, in the order a lookup prefers them. `perf-report-2.json`
+ * is the second independent bounded sweep §0's stability claim needs: no
+ * documented figure is read from it (every cell it holds, `perf-report.json`
+ * holds first), but every shared cell is compared against the other runs.
+ */
+const BASELINES = [
+  "perf-report-full.json",
+  "perf-report.json",
+  "perf-report-2.json",
+] as const;
 
 // ─── Bindings ───────────────────────────────────────────────────────────────
 //
@@ -578,23 +590,50 @@ for (const c of runs.duplicates) {
   });
 }
 
-// Two runs of the same cell disagreeing is a fact about the measuring host, not
-// about the document, so it is reported rather than failed on — but loudly:
-// it is the ceiling on how much any number here can be trusted.
-if (runs.crossRunSpread.length > 0) {
-  const pct = (CROSS_RUN_TOLERANCE * 100).toFixed(0);
-  console.log(
-    [
-      "",
-      `WARNING: ${runs.crossRunSpread.length} cell(s) disagree by more than ${pct}% between`,
-      "the committed runs. That is the measuring host's reproducibility floor,",
-      "and no figure in the document is tighter than it.",
-    ].join("\n"),
-  );
-  for (const c of runs.crossRunSpread.slice(0, 10)) console.log(`  ${c}`);
-  if (runs.crossRunSpread.length > 10) {
-    console.log(`  ... and ${runs.crossRunSpread.length - 10} more`);
-  }
+// Two committed runs of the same cell disagreeing by more than §0's bar means
+// the host did not hold its clock still, and every figure drawn from either run
+// is no tighter than that. This used to be a printed warning, which left §0's
+// stability claim resting on the maintainer's word; it now fails the gate.
+const spreadPct = (CROSS_RUN_TOLERANCE * 100).toFixed(0);
+for (const c of runs.crossRunSpread) {
+  failures.push({
+    where: "committed runs",
+    column: "cross-run spread",
+    row: c.split(":")[0] ?? "—",
+    documented: `within ${spreadPct}% across runs`,
+    measured: "outside",
+    detail: c,
+  });
+}
+
+// §0's host-stability claim: two bounded sweeps at one commit. With fewer than
+// two committed the check is skipped and said to be; with two it must pass,
+// and §0's table row must say what the check says.
+const stability = checkStability(runs);
+const stabilityWidest =
+  stability.widest === null
+    ? ""
+    : `, widest ${(stability.widest * 100).toFixed(1)}%`;
+const stabilityDetail =
+  stability.status === "skip"
+    ? stability.problems.join("; ")
+    : `${stability.runs.join(" vs ")}: ${stability.shared} shared cells${stabilityWidest}`;
+console.log(
+  `Host stability (§0): ${stability.status.toUpperCase()} — ${stabilityDetail}`,
+);
+console.log();
+if (stability.status === "fail") {
+  failures.push({
+    where: "committed runs",
+    column: "host stability",
+    row: stability.runs.join(" vs "),
+    documented: `two ${STABILITY_MODE} runs, one commit, within ${spreadPct}%`,
+    measured: "fail",
+    detail: stability.problems.join("; "),
+  });
+}
+if (!values.section || values.section === "0") {
+  failures.push(...checkStabilityClaim(doc, stability));
 }
 
 if (values.fix) {
