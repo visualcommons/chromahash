@@ -26,6 +26,11 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { CURATED_IMAGES } from "./natural-images.ts";
 import { RESULTS_DIR, readResult, summarize } from "./results.ts";
+import {
+  type CorrelationInference,
+  correlationInference,
+  holm,
+} from "./stats.ts";
 import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
 
 /** The three covariates `natural-images.ts` records, parsed out of `notes`. */
@@ -264,10 +269,19 @@ const ranges = bins.map((b) => {
 
 const header = ["arm".padEnd(26), "bytes".padStart(6)]
   .concat(ranges.map((r, i) => `bin${i + 1} ${r}`.padStart(18)))
-  .concat(["  r".padStart(7)])
+  .concat([
+    "  r".padStart(7),
+    "95% CI (Fisher z)".padStart(20),
+    "p".padStart(8),
+    "p Holm".padStart(8),
+  ])
   .join("");
 console.log(header);
 
+// Computed for every arm first, so the arms' p-values can be adjusted as the
+// family they are: a reader scans the r column for the arm where the
+// relationship is strongest, which is five tests, not one.
+const lines: { head: string; inference: CorrelationInference | null }[] = [];
 for (const { row, series } of measured) {
   const cells: string[] = [];
   for (const bin of bins) {
@@ -291,19 +305,49 @@ for (const { row, series } of measured) {
     ys.push(v);
   }
   const r = pearson(xs, ys);
-
-  console.log(
-    row.label.slice(0, 26).padEnd(26) +
+  lines.push({
+    head:
+      row.label.slice(0, 26).padEnd(26) +
       String(row.bytes ?? "—").padStart(6) +
-      cells.join("") +
-      (Number.isNaN(r) ? "     —" : r.toFixed(2).padStart(7)),
+      cells.join(""),
+    inference: correlationInference(r, xs.length),
+  });
+}
+const adjusted = holm(lines.map((l) => l.inference?.p ?? Number.NaN));
+for (const [i, { head, inference }] of lines.entries()) {
+  const signedR = (v: number) => `${v >= 0 ? "+" : ""}${v.toFixed(2)}`;
+  const ci = inference?.ci
+    ? `[${signedR(inference.ci[0])}, ${signedR(inference.ci[1])}]`
+    : "—";
+  const p = adjusted[i];
+  console.log(
+    head +
+      (inference ? signedR(inference.r).padStart(7) : "     —") +
+      ci.padStart(20) +
+      (inference ? inference.p.toFixed(4) : "—").padStart(8) +
+      (p !== undefined && Number.isFinite(p) ? p.toFixed(4) : "—").padStart(8),
   );
 }
+
+// The threshold is a property of n, so it is the same for every arm whose
+// series is complete; stated once, for the n the arms were computed over.
+const ns = [...new Set(lines.map((l) => l.inference?.n))].filter(
+  (n): n is number => n !== undefined,
+);
+const thresholds = ns
+  .map((n) => {
+    const t = correlationInference(0, n);
+    return t ? `|r| ≥ ${t.rCritical.toFixed(3)} at n = ${n}` : null;
+  })
+  .filter((t): t is string => t !== null);
 
 console.log(
   "\nBins are equal-count terciles of the tune corpus by the chosen axis, held " +
     "fixed across arms.\n`r` is Pearson over all images, reported beside the bins " +
     "rather than instead of them: with this many\nimages one coefficient is easy " +
     "to over-read, and the bin means say whether a relationship\nis monotone or " +
-    "merely present.",
+    "merely present. The interval is Fisher's z-transform, p is the t-test of",
+);
+console.log(
+  `ρ = 0, and p Holm adjusts it across the ${lines.length} arms. Significant at α = 0.05, two-sided: ${thresholds.join("; ") || "—"}.`,
 );

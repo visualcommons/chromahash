@@ -79,6 +79,14 @@ import { tableRegisterProblems } from "./experiments-register.ts";
 // A result from another iqa-cli is a different instrument, not a reproduction.
 import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
 import {
+  type ArmComparison,
+  type GuardVerdict,
+  compareArms,
+  guardVerdictOnIntervals,
+  statFor,
+} from "./arms-core.ts";
+import {
+  type PerImageKey,
   RESULTS_DIR,
   type ResultFile,
   type SummarizedRow,
@@ -100,7 +108,10 @@ const DOC = path.join(REPO_ROOT, "spec/EXPERIMENTS.md");
  */
 export interface SweepRow extends SummarizedRow {
   ciedeDeltaPct: number | null;
+  /** The point-mean guard verdict (`guardsHold`). */
   guardsOk: boolean | null;
+  /** The guard verdict on the paired intervals (`guardVerdictOnIntervals`). */
+  guardsCi: GuardVerdict | null;
 }
 
 interface SweepFile {
@@ -173,9 +184,38 @@ function recomputeGuards(file: SweepFile): void {
   const base = file.rows[0];
   if (!base || !tol) return;
   const artifactRise = file.artifactGuardRise ?? undefined;
+  const comparisons = comparisonsFor(file, base);
   for (const row of file.rows.slice(1)) {
     row.guardsOk = guardsHold(row, base, tol, artifactRise);
+    row.guardsCi = guardVerdictOnIntervals(
+      comparisons.get(row.label),
+      tol,
+      artifactRise,
+    );
   }
+}
+
+/**
+ * Every arm's paired comparison against `baseline`, Holm-adjusted across the
+ * whole sweep, keyed by arm label. The family is every arm of the committed
+ * result, not only the rows a table happens to quote: a table that shows five
+ * of 29 arms was still chosen from 29.
+ */
+const comparisonCache = new Map<string, Map<string, ArmComparison>>();
+function comparisonsFor(
+  sweep: SweepFile,
+  baseline: SweepRow,
+): Map<string, ArmComparison> {
+  const baseIndex = sweep.rows.indexOf(baseline);
+  const key = `${sweep.name}#${sweep.split}#${baseIndex}`;
+  const cached = comparisonCache.get(key);
+  if (cached) return cached;
+  const out = new Map<string, ArmComparison>();
+  for (const cmp of compareArms(sweep.result.rows, baseIndex)) {
+    out.set(cmp.label, cmp);
+  }
+  comparisonCache.set(key, out);
+  return out;
 }
 
 const sweepCache = new Map<string, SweepFile | null>();
@@ -208,6 +248,7 @@ function loadSweep(name: string): SweepFile | null {
         ...summarize(r, result.imageNames),
         ciedeDeltaPct: null,
         guardsOk: null,
+        guardsCi: null,
       })),
       ...(tol ? { guardTolerances: tol } : {}),
       ...(rise !== undefined ? { artifactGuardRise: rise } : {}),
@@ -261,8 +302,19 @@ export type Metric =
   | "ciedeDeltaPct"
   | "bytes"
   | "guardsOk"
+  | "guardsCi"
   | "ci"
-  | "winN";
+  | "winN"
+  /**
+   * The paired statistics `arms-core.ts` derives for any per-image series, all
+   * as **row − baseline** (unlike `ci`, which keeps ΔE00's older
+   * positive-means-better sign): the mean difference, its 95% interval, and
+   * its p-value Holm-adjusted across every arm of the sweep against the same
+   * baseline.
+   */
+  | `diff:${PerImageKey}`
+  | `diffCi:${PerImageKey}`
+  | `pHolm:${PerImageKey}`;
 
 /** Resolve the sweep row a doc label refers to, when a name match cannot. */
 type Resolver = (rows: SweepRow[], docCells: string[]) => SweepRow | undefined;
@@ -427,6 +479,27 @@ function measure(
   metric: Metric,
   row: SweepRow,
   baseline: SweepRow | undefined,
+  sweep: SweepFile,
+): number | string | null {
+  const paired = /^(diff|diffCi|pHolm):(.+)$/.exec(metric);
+  if (paired) {
+    if (!baseline || baseline === row) return null;
+    const stat = statFor(
+      comparisonsFor(sweep, baseline).get(row.label),
+      paired[2] as PerImageKey,
+    );
+    if (!stat) return null;
+    if (paired[1] === "diff") return stat.meanDelta;
+    if (paired[1] === "pHolm") return stat.pHolm;
+    return `[${signed(stat.ci[0])}, ${signed(stat.ci[1])}]`;
+  }
+  return measureOne(metric, row, baseline);
+}
+
+function measureOne(
+  metric: Metric,
+  row: SweepRow,
+  baseline: SweepRow | undefined,
 ): number | string | null {
   const paired = (): number[] => {
     if (!baseline) return [];
@@ -471,8 +544,23 @@ function measure(
     // already treats as "asserts nothing".
     case "guardsOk":
       return row.guardsOk === null ? null : row.guardsOk ? "ok" : "FAIL";
-    default:
+    // The same guards read off the paired intervals, in three states.
+    case "guardsCi":
+      return row.guardsCi;
+    case "medianCiede":
+    case "meanSsimulacra2":
+    case "meanButteraugli":
+    case "meanDssim":
+    case "meanAlphaMae":
+    case "meanRinging":
+    case "meanSpurious":
+    case "meanDeficit":
+    case "bytes":
       return row[metric];
+    default:
+      // The paired `diff:`/`diffCi:`/`pHolm:` family, which `measure` answers
+      // before reaching here.
+      return null;
   }
 }
 
@@ -636,6 +724,7 @@ function checkRowTable(
         metric,
         sweepRow,
         overrideBase ? findRow(sweep, overrideBase) : baseline,
+        sweep,
       );
       if (measured === null) continue;
       compare(
@@ -781,7 +870,7 @@ function checkColumnTable(
         });
         continue;
       }
-      const value = measure(series.metric, sweepRow, baseline);
+      const value = measure(series.metric, sweepRow, baseline, sweep);
       if (typeof value === "number") byColumn.set(i, value);
     }
   }

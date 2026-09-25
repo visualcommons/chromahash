@@ -673,7 +673,7 @@ run = [
 # the committed baseline is in. Pure computation plus a few `node -e` spawns: no
 # iqa-cli, no corpus, no network.
 [tasks."selftest:metrics"]
-description = "Self-check the locally-computed metrics (ringing, spurious detail, deficit, aspect), stratify's joins, and verify:benchmark's pass/skip/fail rules"
+description = "Self-check the locally-computed metrics (ringing, spurious detail, deficit, aspect), stratify's joins, the sweeps' inference (Holm, interval guards, correlation thresholds), and verify:benchmark's pass/skip/fail rules"
 depends = ["build:compare"]
 run = "node tools/comparison/dist/metric-selftest.js"
 
@@ -757,6 +757,19 @@ run = "node tools/comparison/dist/corpus-licenses.js"
 description = "Read a sweep's per-image scores against the corpus covariates"
 depends = ["build:compare"]
 run = "node tools/comparison/dist/stratify.js"
+
+# Re-derive a committed sweep's paired inference without re-scoring it: every
+# metric of every arm against a reference arm (the incumbent by default), the
+# 95% paired interval, the raw and Holm-adjusted p side by side, and the guard
+# verdict on intervals beside the point-mean one. `--seed-sensitivity`
+# re-derives every committed ΔE00 interval under other bootstrap seeds, the
+# check EXPERIMENTS.md §13.5 records.
+#   arms <result> [--baseline LABEL]
+#   arms --seed-sensitivity [--seeds 20] [<result>...]
+[tasks."arms"]
+description = "Paired intervals, Holm-adjusted p and interval guards for a committed sweep"
+depends = ["build:compare"]
+run = "node tools/comparison/dist/arms.js"
 
 # Assert every sweep arm sets the constants its own label names. A tune string
 # is applied on top of Tunables::DEFAULT, so an omitted knob inherits whatever

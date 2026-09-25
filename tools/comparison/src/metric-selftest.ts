@@ -57,6 +57,14 @@ import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
 import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
+import { compareArms, guardVerdictOnIntervals } from "./arms-core.ts";
+import {
+  bootstrapP,
+  correlationInference,
+  holm,
+  normalQuantile,
+  studentTQuantile,
+} from "./stats.ts";
 import { classifyProbe, repoRelative } from "./perf/availability.ts";
 import {
   type TableRegisterInput,
@@ -1022,6 +1030,136 @@ check(
   alignmentError([]) !== null,
   `${alignmentError([])}`,
 );
+
+console.log(
+  "\ninference — the intervals, adjustments and guards sweeps read\n",
+);
+
+// Every verdict a sweep prints now turns on these: a Holm adjustment that
+// failed to be monotone, a correlation threshold off by a degree of freedom,
+// or a guard that read the wrong end of an interval would each print a table
+// of exactly the right shape. Answers known by hand or from standard tables.
+
+// S1. Holm against a worked family: sorted .005 .01 .03 .04 scale by 4 3 2 1
+//     to .02 .03 .06 .04, and monotonicity lifts the last to .06. Returned in
+//     input order, with a non-finite entry left out of m and passed through.
+{
+  const adjusted = holm([0.01, 0.04, 0.03, 0.005, Number.NaN]);
+  const want = [0.03, 0.06, 0.06, 0.02];
+  check(
+    "Holm scales by the step-down multipliers, stays monotone, keeps input order",
+    want.every((w, i) => Math.abs((adjusted[i] ?? 0) - w) < 1e-12) &&
+      Number.isNaN(adjusted[4]),
+    `adjusted=${adjusted.map((p) => p.toFixed(3)).join(" ")}`,
+  );
+}
+
+// S2. The t quantile and the correlation threshold it gives. t(0.975, 29) is
+//     2.0452 in every table; r_crit = t/√(df + t²) = 0.3550 at n = 31, the
+//     threshold §13.5 quotes. And the Fisher-z interval at r = 0.29, n = 31:
+//     atanh(0.29) ± 1.95996/√28 mapped back is [−0.0717, 0.5843].
+{
+  const t = studentTQuantile(0.975, 29);
+  const inf = correlationInference(0.29, 31);
+  check(
+    "t(0.975, 29), the n = 31 threshold and a Fisher-z interval match tables",
+    Math.abs(t - 2.04523) < 1e-5 &&
+      inf !== null &&
+      Math.abs(inf.rCritical - 0.35505) < 1e-5 &&
+      inf.ci !== null &&
+      Math.abs(inf.ci[0] + 0.07171) < 1e-4 &&
+      Math.abs(inf.ci[1] - 0.5843) < 1e-4 &&
+      Math.abs(normalQuantile(0.975) - 1.959964) < 1e-6,
+    `t=${t.toFixed(5)} rcrit=${inf?.rCritical.toFixed(5)} ci=${inf?.ci?.map((v) => v.toFixed(4)).join(",")}`,
+  );
+}
+
+// S3. The bootstrap p at its two ends: two bit-identical arms (every delta 0)
+//     are p = 1, and a delta that is positive on every image is at the floor
+//     2/(B + 1) rather than 0.
+{
+  const same = bootstrapP([0, 0, 0, 0]);
+  const always = bootstrapP([0.1, 0.2, 0.3, 0.4]);
+  check(
+    "bootstrap p is 1 for identical arms and 2/(B+1) for a one-signed delta",
+    same === 1 && Math.abs(always - 2 / 10_001) < 1e-12,
+    `identical=${same} one-signed=${always}`,
+  );
+}
+
+// S4. The guard verdict reads the right end of each interval, in all three
+//     states. SSIMULACRA2's tolerance is a floor on the lower bound; a relative
+//     guard's is a ceiling on the upper bound, scaled by the incumbent's mean.
+{
+  const stat = (
+    key: "ssimulacra2" | "butteraugli",
+    ci: [number, number],
+    baseMean: number,
+  ) => ({
+    key,
+    label: key,
+    better: key === "ssimulacra2" ? ("higher" as const) : ("lower" as const),
+    pairs: 31,
+    baseMean,
+    meanDelta: (ci[0] + ci[1]) / 2,
+    ci,
+    p: 0.5,
+    pHolm: 0.5,
+  });
+  const tol = { ssimulacra2Drop: 1, relativeRise: 0.02 };
+  const arm = (ssim: [number, number], butter: [number, number]) => ({
+    label: "arm",
+    stats: [stat("ssimulacra2", ssim, -300), stat("butteraugli", butter, 50)],
+  });
+  // Butteraugli's margin is 0.02 × 50 = 1.0.
+  const ok = guardVerdictOnIntervals(arm([-0.9, 2], [-1, 0.9]), tol, undefined);
+  const straddle = guardVerdictOnIntervals(
+    arm([-1.5, 2], [-1, 0.9]),
+    tol,
+    undefined,
+  );
+  const shown = guardVerdictOnIntervals(
+    arm([-0.5, 2], [1.1, 3]),
+    tol,
+    undefined,
+  );
+  const unscored = guardVerdictOnIntervals(undefined, tol, undefined);
+  check(
+    "interval guards: inside = ok, straddling = inconclusive, beyond = FAIL",
+    ok === "ok" &&
+      straddle === "inconclusive" &&
+      shown === "FAIL" &&
+      unscored === "ok",
+    `inside=${ok} straddle=${straddle} beyond=${shown} unscored=${unscored}`,
+  );
+}
+
+// S5. compareArms against a reference other than row 0: Δ is arm − reference
+//     with that sign, the reference is not compared with itself, and Holm's m
+//     is the number of arms compared. An arm identical to the reference scores
+//     Δ = 0 and p = 1.
+{
+  const rows = [
+    { label: "a", perImage: { ciede2000: [10, 11, 12, 13] } },
+    { label: "ref", perImage: { ciede2000: [9, 10, 11, 12] } },
+    { label: "same", perImage: { ciede2000: [9, 10, 11, 12] } },
+  ];
+  const cmps = compareArms(rows, 1);
+  const a = cmps.find((c) => c.label === "a")?.stats[0];
+  const same = cmps.find((c) => c.label === "same")?.stats[0];
+  check(
+    "compareArms: arm − reference, reference excluded, Holm over the arms",
+    cmps.length === 2 &&
+      a !== undefined &&
+      a.meanDelta === 1 &&
+      a.ci[0] === 1 &&
+      Math.abs(a.pHolm - 2 * a.p) < 1e-12 &&
+      same !== undefined &&
+      same.meanDelta === 0 &&
+      same.p === 1,
+    `labels=${cmps.map((c) => c.label).join(",")} Δa=${a?.meanDelta} pa=${a?.p} pHolm=${a?.pHolm} Δsame=${same?.meanDelta}`,
+  );
+}
 
 console.log("\nverify-benchmark — what passes, what is skipped, what fails\n");
 

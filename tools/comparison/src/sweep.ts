@@ -14,7 +14,10 @@
  * capToTier0 / version). The first variant is the incumbent: every other
  * variant's guard metrics (SSIMULACRA2 / Butteraugli / DSSIM) are checked
  * against it, mirroring the §12.1 sweep discipline — a candidate only "wins" if
- * it improves mean ΔE00 without regressing the perceptual guards.
+ * it improves mean ΔE00 without regressing the perceptual guards. Guards are
+ * judged on paired intervals and every metric's p-value is Holm-adjusted
+ * across the arms (`arms-core.ts`); the point-mean guard verdict is printed
+ * beside the interval one.
  *
  * A variant may name a released tag (`"version": "v0.6"`) instead of running
  * the working tree. Putting one first makes the previous release the incumbent,
@@ -46,6 +49,13 @@ import { gamutToSrgbReference } from "./gamut.ts";
 import { DEFAULT_TIER } from "./rd/lineup.ts";
 import { generateFixtures } from "./generate-fixtures.ts";
 import { ensureAlphaImages } from "./alpha-images.ts";
+import {
+  type ArmComparison,
+  type GuardVerdict,
+  compareArms,
+  formatArmTables,
+  guardVerdictOnIntervals,
+} from "./arms-core.ts";
 import { bootstrapCI } from "./stats.ts";
 import { ensureGraphicImages } from "./graphic-images.ts";
 import { ensureHoldoutImages } from "./holdout-images.ts";
@@ -273,8 +283,16 @@ interface SweepRow {
   perImageSpuriousGrid: (number | null)[] | null;
   /** ΔE00 change vs the incumbent, in percent (negative = better). */
   ciedeDeltaPct: number | null;
-  /** All guard metrics within tolerance of the incumbent. */
-  guardsOk: boolean | null;
+  /**
+   * Every guard metric's *mean* within tolerance of the incumbent's — the rule
+   * every verdict in EXPERIMENTS.md before §13.5 was taken on. Kept beside
+   * {@link guardsCi} so a reader sees where the two disagree.
+   */
+  guardsMeans: boolean | null;
+  /** The guard verdict on the paired intervals (`arms-core.ts`); only `ok` passes. */
+  guardsCi: GuardVerdict | null;
+  /** Every metric's paired comparison against the incumbent, Holm-adjusted. */
+  comparison: ArmComparison | null;
   /** Per-image ΔE00 in corpus order — the input to paired statistics and to
    * per-image (oracle) analyses the aggregate row cannot express. */
   perImageCiede: (number | null)[];
@@ -563,7 +581,9 @@ async function scoreVariant(
     perImageRinging: ringings.some((v) => v !== null) ? ringings : null,
     perImageSpuriousGrid: grids.some((v) => v !== null) ? grids : null,
     ciedeDeltaPct: null,
-    guardsOk: null,
+    guardsMeans: null,
+    guardsCi: null,
+    comparison: null,
     pairedCi: null,
     wins: null,
     pairs: null,
@@ -617,11 +637,27 @@ function gridDisagreements(
   return out.length > 0 ? out : null;
 }
 
-/** Fill ciedeDeltaPct/guardsOk/paired stats on every row from the incumbent. */
-function applyGuards(rows: SweepRow[], config: SweepConfig): void {
+/**
+ * Fill Δ%, the paired statistics and both guard verdicts on every row from the
+ * incumbent. The verdict that decides is `guardsCi`, read off the paired
+ * intervals; `guardsMeans` is the older point-mean rule, reported beside it.
+ */
+function applyGuards(rows: SweepRow[], config: SweepConfig): ArmComparison[] {
   const base = rows[0];
-  if (!base) return;
-  for (const row of rows.slice(1)) {
+  if (!base) return [];
+  const tolerances = {
+    ssimulacra2Drop: GUARD_SSIM2_DROP,
+    relativeRise: GUARD_REL_RISE,
+  };
+  const comparisons = compareArms(rows);
+  for (const [i, row] of rows.slice(1).entries()) {
+    const cmp = comparisons[i] ?? null;
+    row.comparison = cmp;
+    row.guardsCi = guardVerdictOnIntervals(
+      cmp ?? undefined,
+      tolerances,
+      config.artifactGuardRise,
+    );
     // Paired against the incumbent on the images both scored, sign-normalised
     // so positive = this variant is better.
     const deltas: number[] = [];
@@ -645,13 +681,14 @@ function applyGuards(rows: SweepRow[], config: SweepConfig): void {
     // the columns visible before it decides what a regression in them even is.
     // Where a tolerance IS declared, an artifact rise fails the row exactly as a
     // guard-metric rise does -- which is the whole point of measuring them.
-    row.guardsOk = guardsHold(
+    row.guardsMeans = guardsHold(
       row,
       base,
-      { ssimulacra2Drop: GUARD_SSIM2_DROP, relativeRise: GUARD_REL_RISE },
+      tolerances,
       config.artifactGuardRise,
     );
   }
+  return comparisons;
 }
 
 async function main(): Promise<void> {
@@ -755,7 +792,7 @@ async function main(): Promise<void> {
       `  ${variant.label.padEnd(28)} ΔE00 ${row.meanCiede?.toFixed(3) ?? "N/A"} (${((performance.now() - started) / 1000).toFixed(0)}s)`,
     );
   }
-  applyGuards(rows, config);
+  const comparisons = applyGuards(rows, config);
 
   const expectBytes = config.expectBytes;
   if (expectBytes !== undefined) {
@@ -831,12 +868,15 @@ async function main(): Promise<void> {
   const pinned = config.artifactGridEdge;
   const ringLabel = showArtifacts && pinned !== undefined ? "Ring*" : "Ring";
   console.log(
-    `  ${"Variant".padEnd(28)} ${"Bytes".padStart(6)} ${"ΔE00".padStart(8)} ${"Δ%".padStart(7)} ${"Med".padStart(8)} ${"SSIM2".padStart(8)} ${"Butter".padStart(8)} ${"DSSIM".padStart(8)}${showAlpha ? ` ${"αMAE".padStart(8)}` : ""}${showArtifacts ? ` ${ringLabel.padStart(7)} ${"Spur".padStart(7)} ${"Deficit".padStart(8)} ${"Sp:V/H/D".padStart(20)}` : ""} ${"paired 95% CI".padStart(18)} ${"win/n".padStart(7)} Guards`,
+    `  ${"Variant".padEnd(28)} ${"Bytes".padStart(6)} ${"ΔE00".padStart(8)} ${"Δ%".padStart(7)} ${"Med".padStart(8)} ${"SSIM2".padStart(8)} ${"Butter".padStart(8)} ${"DSSIM".padStart(8)}${showAlpha ? ` ${"αMAE".padStart(8)}` : ""}${showArtifacts ? ` ${ringLabel.padStart(7)} ${"Spur".padStart(7)} ${"Deficit".padStart(8)} ${"Sp:V/H/D".padStart(20)}` : ""} ${"paired 95% CI".padStart(18)} ${"win/n".padStart(7)} ${"Guards(CI)".padEnd(12)} (means)`,
   );
   const cell = (v: number | null, d: number, w: number) =>
     (v !== null ? v.toFixed(d) : "N/A").padStart(w);
   for (const r of rows) {
-    const guards = r.guardsOk === null ? "(base)" : r.guardsOk ? "ok" : "FAIL";
+    const guards =
+      r.guardsCi === null
+        ? "(base)".padEnd(12)
+        : `${r.guardsCi.padEnd(12)} ${r.guardsMeans ? "ok" : "FAIL"}`;
     const alpha = showAlpha ? ` ${cell(r.meanAlphaMae, 4, 8)}` : "";
     const vhd = [
       r.meanSpuriousVertical,
@@ -857,6 +897,16 @@ async function main(): Promise<void> {
       `  ${r.label.padEnd(28)} ${r.bytes.toFixed(0).padStart(6)} ${cell(r.meanCiede, 3, 8)} ${cell(r.ciedeDeltaPct, 2, 7)} ${cell(r.medianCiede, 3, 8)} ${cell(r.meanSsimulacra2, 1, 8)} ${cell(r.meanButteraugli, 2, 8)} ${cell(r.meanDssim, 4, 8)}${alpha}${artifacts} ${ci.padStart(18)} ${winN.padStart(7)} ${guards}`,
     );
   }
+  console.log(
+    `\n  Guards(CI) reads each guard's paired interval against its tolerance: ok = a
+  regression beyond it is ruled out, FAIL = one is shown, inconclusive = the
+  interval straddles it. Only ok passes. (means) is the older point-mean rule.`,
+  );
+  // Every metric, not ΔE00 alone, with the multiplicity adjustment beside the
+  // raw p: the table above is the one a reader picks a winner from, and the
+  // more arms it has the more likely its best-looking row is luck.
+  const base = rows[0];
+  if (base) console.log(formatArmTables(base.label, comparisons));
   if (showArtifacts && pinned !== undefined) {
     const disagreed = gridDisagreements(rows);
     if (disagreed === null) {
