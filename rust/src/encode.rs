@@ -1358,7 +1358,7 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
         deadzone: t.deadzone_alpha,
         accel: None,
     }
-    .accelerated(t.accel_quant_table && has_alpha && t.alpha_ac_fit);
+    .accelerated(t.accel_quant_table);
     let (alpha_scl_q, alpha_codes) = if !has_alpha {
         (0, Vec::new())
     } else if t.alpha_ac_fit {
@@ -2194,6 +2194,104 @@ mod tests {
             for v in [-1.0, -0.4, -0.01, 0.0, 0.03, 0.5, 1.0] {
                 assert_eq!(fast.quant(i, v), plain.quant(i, v), "index {i} value {v}");
             }
+        }
+    }
+
+    #[test]
+    fn band_gain_refine_cfl_and_shared_scale_goldens() {
+        // The lever tests above compare two paths through the same lines, so a
+        // defect on a line both share passes them. These pin the bytes of the
+        // lines the levers re-plumbed — every `· gain_at(i)`, the refinement's
+        // dequantized value and window, the CfL predictor, the shared chroma
+        // scale — under Tunables where each one matters (every shipped gain
+        // and window is 1.0, where `·` and `/` agree). The bytes were produced
+        // by `master`'s encoder before any lever existed, and this branch's
+        // reproduces them.
+        let (w, h) = (11u32, 9u32);
+        let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h as usize {
+            for x in 0..w as usize {
+                rgba.extend_from_slice(&[
+                    ((x * 37 + y * 11) % 256) as u8,
+                    ((x * x * 3 + y * 29) % 256) as u8,
+                    ((x * y * 5 + 17) % 256) as u8,
+                    255,
+                ]);
+            }
+        }
+        let banded = Tunables {
+            band_gain_l: 1.4,
+            band_gain_c: 0.7,
+            ..Tunables::DEFAULT
+        };
+        let cases: [(Tunables, u8, &[u8]); 5] = [
+            (
+                banded,
+                1,
+                &[
+                    8, 137, 77, 94, 50, 121, 210, 196, 144, 20, 9, 90, 110, 233, 217, 217, 225, 25,
+                    26, 97, 157, 26, 182, 96, 88, 53, 43, 217, 68, 152, 198, 148,
+                ],
+            ),
+            (
+                banded,
+                2,
+                &[
+                    16, 137, 77, 94, 242, 152, 140, 1, 228, 140, 101, 70, 108, 53, 171, 235, 216,
+                    107, 112, 58, 38, 87, 137, 8, 178, 248, 108, 148, 145, 54, 246, 152, 106, 49,
+                    66, 249, 166, 107, 80, 193, 245, 92, 115, 111, 58, 249, 158, 123, 241, 173,
+                    215, 222, 123, 239, 193, 247, 232, 123, 242, 185, 7, 223, 123, 111, 61, 246,
+                    218, 123, 242, 189, 247, 30, 177, 228, 106, 36, 229, 150, 210, 233, 25, 13,
+                    206, 217, 38, 15, 22, 14, 209, 82, 175, 178, 196, 0, 22, 234, 176, 234, 169,
+                    50, 209, 32, 36, 92, 105, 237, 34, 50,
+                ],
+            ),
+            (
+                Tunables {
+                    cfl_bits: 5,
+                    ..banded
+                },
+                1,
+                &[
+                    8, 137, 77, 94, 50, 121, 78, 155, 19, 67, 82, 36, 104, 185, 165, 103, 103, 135,
+                    103, 104, 132, 117, 105, 88, 98, 97, 87, 205, 101, 21, 97, 26, 83, 2,
+                ],
+            ),
+            (
+                Tunables {
+                    refine_passes: 1,
+                    refine_scale: true,
+                    refine_dc: true,
+                    w_min_l: 0.6,
+                    w_exp_l: 2,
+                    ..banded
+                },
+                1,
+                &[
+                    8, 137, 76, 30, 82, 137, 16, 197, 144, 216, 8, 158, 46, 173, 221, 217, 221, 25,
+                    86, 157, 157, 152, 149, 96, 216, 52, 43, 201, 68, 168, 198, 148,
+                ],
+            ),
+            (
+                Tunables {
+                    b_scale_from_a: true,
+                    ..banded
+                },
+                1,
+                &[
+                    8, 137, 77, 94, 50, 121, 38, 134, 164, 72, 208, 114, 75, 207, 206, 14, 207,
+                    208, 8, 235, 212, 176, 5, 195, 170, 89, 201, 38, 2, 181, 166, 4,
+                ],
+            ),
+        ];
+        for (k, (t, tier, expected)) in cases.iter().enumerate() {
+            assert_eq!(
+                encode_with(w, h, &rgba, Gamut::Srgb, t, *tier).as_ref(),
+                *expected,
+                "case {k}"
+            );
+            // And every lever on reproduces them too.
+            assert_levers_reproduce(*t, w, h, &rgba, *tier);
         }
     }
 }

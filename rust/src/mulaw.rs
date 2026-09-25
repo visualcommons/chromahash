@@ -56,6 +56,11 @@ pub fn mu_law_dequantize(index: u32, bits: u32, mu: f64) -> f64 {
 /// Every family but µ-law is dispatched to [`compand_quantize`] unchanged; the
 /// µ-law arm is the same deadzone test and the same [`mu_law_quantize`]
 /// arithmetic, with [`mu_compress_by`] in place of [`mu_compress`].
+///
+/// The deadzone test drops `compand_quantize`'s `deadzone > 0.0` guard, which
+/// decides nothing: `|value| < deadzone` is already false for every
+/// `deadzone <= 0`. The arms are spelled out rather than ending in `_`, so no
+/// family can fall through to a path it was not meant to take.
 pub(crate) fn compand_quantize_hoisted(
     value: f64,
     bits: u32,
@@ -67,12 +72,14 @@ pub(crate) fn compand_quantize_hoisted(
 ) -> u32 {
     match family {
         Companding::MuLaw => {
-            if deadzone > 0.0 && value.abs() < deadzone {
+            if value.abs() < deadzone {
                 return (1u32 << (bits - 1)) - 1;
             }
             quantize_compressed(mu_compress_by(value, mu, ln_1p_mu), bits)
         }
-        _ => compand_quantize(value, bits, family, mu, table, deadzone),
+        Companding::ALaw { .. } | Companding::Power { .. } | Companding::Table => {
+            compand_quantize(value, bits, family, mu, table, deadzone)
+        }
     }
 }
 
