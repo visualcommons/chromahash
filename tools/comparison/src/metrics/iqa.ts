@@ -137,6 +137,14 @@ export function ensureIqaAvailable(): void {
 }
 
 /**
+ * The `iqa-cli --version` banner every committed result and the metric
+ * reference test are held to. The version `mise run install:iqa` and
+ * `ci-comparison.yml` install; bump all three together, re-record the results,
+ * and re-record the golden pair (`metric-reference-test.ts --update`).
+ */
+export const PINNED_IQA_CLI = "iqa-cli 1.2.1";
+
+/**
  * The `iqa-cli --version` banner {@link ensureIqaAvailable} captured, for a
  * result's provenance. "unknown" until that has run.
  */

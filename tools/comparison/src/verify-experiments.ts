@@ -75,6 +75,8 @@ import {
   parseCell,
   parseTables,
 } from "./doc-tables.ts";
+// A result from another iqa-cli is a different instrument, not a reproduction.
+import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
 import {
   RESULTS_DIR,
   type ResultFile,
@@ -88,13 +90,6 @@ import { bootstrapCI } from "./stats.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const DOC = path.join(REPO_ROOT, "spec/EXPERIMENTS.md");
-
-/**
- * The `iqa-cli` every committed result must have been scored with. The same
- * version `mise run install:iqa` and `ci-comparison.yml` install; a result from
- * another version is a different instrument, not a reproduction.
- */
-const PINNED_IQA_CLI = "iqa-cli 1.2.1";
 
 // ─── Sweep results ──────────────────────────────────────────────────────────
 
