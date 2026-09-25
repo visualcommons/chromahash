@@ -70,7 +70,12 @@ import {
   type TableRegisterInput,
   tableRegisterProblems,
 } from "./experiments-register.ts";
-import { RESULT_SCHEMA, type ResultFile, shapeProblems } from "./results.ts";
+import {
+  ARTIFACT_ZERO_BASE_ALLOWANCE,
+  RESULT_SCHEMA,
+  type ResultFile,
+  shapeProblems,
+} from "./results.ts";
 import {
   type Binding,
   type Counters,
@@ -1074,6 +1079,32 @@ console.log(
   );
 }
 
+// S2b. The correlation t-test p, which §13.5's "survives Holm" readings rest
+//      on. t = r·√(29/(1 − r²)) on 29 df, two-sided, against a direct
+//      numerical integral of the t density: r = 0.29 gives t = 1.63182 and
+//      p = 0.113530; r = 0.5 gives t = 3.10913 and p = 0.0041806. The sign of r
+//      does not move p, and at r = rCritical p is α exactly — the test and the
+//      threshold solve the same equation.
+{
+  const at29 = correlationInference(0.29, 31);
+  const neg29 = correlationInference(-0.29, 31);
+  const at50 = correlationInference(0.5, 31);
+  const atCrit =
+    at29 === null ? null : correlationInference(at29.rCritical, 31);
+  check(
+    "correlation p matches the t distribution, is symmetric in r, and is α at the threshold",
+    at29 !== null &&
+      neg29 !== null &&
+      at50 !== null &&
+      atCrit !== null &&
+      Math.abs(at29.p - 0.1135304) < 1e-6 &&
+      Math.abs(neg29.p - at29.p) < 1e-12 &&
+      Math.abs(at50.p - 0.0041806) < 1e-6 &&
+      Math.abs(atCrit.p - 0.05) < 1e-6,
+    `p(0.29)=${at29?.p.toFixed(7)} p(−0.29)=${neg29?.p.toFixed(7)} p(0.5)=${at50?.p.toFixed(7)} p(rcrit)=${atCrit?.p.toFixed(7)}`,
+  );
+}
+
 // S3. The bootstrap p at its two ends: two bit-identical arms (every delta 0)
 //     are p = 1, and a delta that is positive on every image is at the floor
 //     2/(B + 1) rather than 0.
@@ -1092,7 +1123,7 @@ console.log(
 //     guard's is a ceiling on the upper bound, scaled by the incumbent's mean.
 {
   const stat = (
-    key: "ssimulacra2" | "butteraugli",
+    key: "ssimulacra2" | "butteraugli" | "ringing" | "spurious",
     ci: [number, number],
     baseMean: number,
   ) => ({
@@ -1131,6 +1162,51 @@ console.log(
       shown === "FAIL" &&
       unscored === "ok",
     `inside=${ok} straddle=${straddle} beyond=${shown} unscored=${unscored}`,
+  );
+
+  // S4b. The artifact guards, which apply only where the run declared an
+  //      artifactRise. Spurious has an incumbent mean of 10, so at rise 0.5
+  //      its margin is 5. Ringing has an incumbent mean of 0, where a relative
+  //      margin would be 0 and any rise at all a FAIL; the margin is the
+  //      ARTIFACT_ZERO_BASE_ALLOWANCE instead. Each is driven through all
+  //      three states with the other guards held at ok, and a ringing interval
+  //      that would FAIL is ignored when no artifactRise is declared.
+  const zero = ARTIFACT_ZERO_BASE_ALLOWANCE;
+  const withArtifacts = (ring: [number, number], spur: [number, number]) => ({
+    label: "arm",
+    stats: [
+      stat("ssimulacra2", [-0.5, 2], -300),
+      stat("butteraugli", [-1, 0.5], 50),
+      stat("ringing", ring, 0),
+      stat("spurious", spur, 10),
+    ],
+  });
+  const verdict = (ring: [number, number], spur: [number, number]) =>
+    guardVerdictOnIntervals(withArtifacts(ring, spur), tol, 0.5);
+  const artifactStates = {
+    ringOk: verdict([0, zero - 0.1], [-1, 4]),
+    ringStraddle: verdict([0, zero + 0.1], [-1, 4]),
+    ringBeyond: verdict([zero + 0.1, zero + 1], [-1, 4]),
+    spurOk: verdict([0, 0.5], [-1, 4.9]),
+    spurStraddle: verdict([0, 0.5], [4, 6]),
+    spurBeyond: verdict([0, 0.5], [5.1, 6]),
+    undeclared: guardVerdictOnIntervals(
+      withArtifacts([zero + 0.1, zero + 1], [5.1, 6]),
+      tol,
+      undefined,
+    ),
+  };
+  check(
+    "artifact guards: zero-incumbent allowance and relative margin, in all three states, only when declared",
+    zero > 0 &&
+      artifactStates.ringOk === "ok" &&
+      artifactStates.ringStraddle === "inconclusive" &&
+      artifactStates.ringBeyond === "FAIL" &&
+      artifactStates.spurOk === "ok" &&
+      artifactStates.spurStraddle === "inconclusive" &&
+      artifactStates.spurBeyond === "FAIL" &&
+      artifactStates.undeclared === "ok",
+    JSON.stringify(artifactStates),
   );
 }
 
