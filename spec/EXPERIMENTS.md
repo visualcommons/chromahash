@@ -2526,7 +2526,7 @@ Beaten on all four metrics, out of sample, at ThumbHash's own size — the claim
 | Change | Evidence |
 |---|---|
 | Alpha row → `L 22 @ 4, a/b 3 @ 3, A 28 @ 3` at tier 0 and the tier-1..3 base (the compact tier takes its own, below) | −17.10% on tune (§11.3), −11.95% on tune at tier 1 (§11.11); −16.19% holdout, all guards, on the retired alpha split, which can no longer be reproduced (§11.12) |
-| Compact tier, code 4, 21 B, `L 19 @ 4 / a/b 6 @ 3` (alpha `L 12 @ 4 / a/b 1 @ 3 / A 16 @ 3`) | Beats ThumbHash on all four on holdout (§11.10, §11.12) |
+| Compact tier, code 4, 21 B, `L 19 @ 4 / a/b 6 @ 3` (alpha `L 12 @ 4 / a/b 1 @ 3 / A 16 @ 3`) | Opaque layout: beats ThumbHash on all four on the photographic holdout (§11.10, §11.12). Alpha layout: −13.00% on tune against the 21 B shipped shape; −9.49% holdout, on the retired alpha split, which can no longer be reproduced (§11.12) |
 | Deadzone made reachable again | It was byte-identical at every value (§11.7) |
 
 Deliberately unchanged, each with the number that left it alone:
