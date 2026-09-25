@@ -36,9 +36,10 @@ STAGES = "\n".join(
         "eotf_lut=10",
         "linearize=40",
         "dct_forward=600",
-        "quantize_and_pack=350",
-        "stage_sum=650",
+        "ac_quantize=340",
+        "stage_sum=990",
         "whole_encode=1000",
+        "unmarked=10",
         "",
     ]
 )
@@ -125,7 +126,8 @@ class RecordStagesTest(unittest.TestCase):
         self.assertEqual(cell["ns"]["whole_encode"], 1000)
         # Shares are of the whole encode, and the two totals are not rows.
         self.assertAlmostEqual(cell["sharePct"]["dct_forward"], 60.0)
-        self.assertAlmostEqual(cell["sharePct"]["quantize_and_pack"], 35.0)
+        self.assertAlmostEqual(cell["sharePct"]["ac_quantize"], 34.0)
+        self.assertAlmostEqual(cell["sharePct"]["unmarked"], 1.0)
         self.assertNotIn("whole_encode", cell["sharePct"])
         self.assertNotIn("stage_sum", cell["sharePct"])
 

@@ -234,10 +234,11 @@ def main() -> None:
             # taken inside one process, and the reason that table is readable on
             # a host whose absolute wall-clock is not.
             #
-            # `quantize_and_pack` is not a marked stage. bench_stages.rs derives
-            # it as whole_encode - stage_sum, so it is a residual and its share
-            # is whatever the marked stages do not account for. §1 says so in
-            # place.
+            # `unmarked` is not a marked stage. bench_stages.rs derives it as
+            # whole_encode - stage_sum; the marks cover `encode_with` end to
+            # end, so it is the return and the timers' own overhead. (It was
+            # `quantize_and_pack` while the quantizer searches, the refinement
+            # and the packing were one unmarked span.) §1 says so in place.
             "sharePct": shares(stages, "whole_encode"),
             "recordedAt": datetime.datetime.now(datetime.UTC).isoformat(),
         },

@@ -188,8 +188,8 @@ fn main() {
     // What the marks do not cover: the return from `render_at_size` to this
     // loop, and the timers' own overhead. The first mark measures from
     // `reset()`, so `header` already holds the entry point's header read and
-    // size computation, and every line of `render_at_size` is inside a mark —
-    // unlike encode's `quantize_and_pack`, this residual names no algorithmic
-    // work.
+    // size computation, and every line of `render_at_size` is inside a mark,
+    // so this residual names no algorithmic work — as encode's `unmarked` now
+    // does too.
     println!("unmarked={}", whole_ns.saturating_sub(stage_sum) / n);
 }
