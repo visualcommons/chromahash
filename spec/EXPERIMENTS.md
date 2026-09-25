@@ -86,8 +86,8 @@ That shape is what codes 2–4 ship at 108, 411 and 1623 B. It is **not** what
 the two lower tiers ship: the default tier (32 B) is `L 28 @ 4 / C 15 @ 3` and
 the compact tier (21 B) `L 19 @ 4 / C 6 @ 3`, both off this curve and both
 better than it at their budget. So the 32 and 21 B columns below are the
-ladder's shape at those budgets, not the tiers; the third table gives the
-shipped default beside it.
+ladder's shape at those budgets, not the tiers; the last table in this section
+gives the shipped default beside it.
 
 Both splits were re-measured together for v0.7. §4.5 and §7.12 quote an
 **earlier** ladder, taken against the pre-adoption v0.6-derived constants, and
@@ -744,8 +744,9 @@ turns one into a failure.
 
 Every `sweep` and `rd-budget` line above writes its result to
 `tools/comparison/results/<name>[-holdout].json`, which is committed, and every
-one of them was re-run from a clean tree at one commit, `e310475`, for the
-2026-09 re-measure: 54 results, per-image scores and provenance only.
+one of them that can still run was re-run from a clean tree at one commit,
+`e310475`, for the 2026-09 re-measure: 54 results, per-image scores and
+provenance only. The one that cannot is the alpha holdout run (#83).
 `verify:experiments --strict` checks this file against them in CI. The three
 `node .../dist/*.js --split tune` probes (`cfl-probe`, `coeff-stats`,
 `entropy-budget`) and `main.js` are not sweeps, write to the gitignored
@@ -1211,7 +1212,10 @@ there the saving is less than 20%, and the holdout figure is the one to quote.
 `entropy-budget.ts` re-asks §4.9's question with two changes: the code stream is
 actually coded (sequentially, per image, against a Laplace-smoothed adaptive
 model) rather than assigned its pooled entropy, and the model is scored
-**leave-one-image-out** so the table's own fitting cost is paid.
+**leave-one-image-out** so the table's own fitting cost is paid. (As in §4.9,
+"shipped" below is the `L 26 @ 5 / C 9 @ 4` row the tool calls shipped, not
+today's `L 28 @ 4 / C 15 @ 3` default. Re-run in the 2026-09 re-measure, every
+figure in this section reproduces.)
 
 | Model | AC bits (of 202 fixed) | vs fixed | honest? |
 |---|---|---|---|
@@ -1890,6 +1894,10 @@ Stated so their absence is not mistaken for agreement:
   says so in place. **§11.0, §11.2 and §11.3** are the synthetic fixture and the
   alpha corpus, which the re-source did not touch.
   `verify:experiments --list-unbound` is the full list.
+* **§4.6 and §4.8 were missed by that list**, and still carried the retired
+  corpus's figures until the 2026-09 re-measure (§6), which re-ran every sweep
+  at one commit, re-ran the `cfl-probe`, `coeff-stats` and `entropy-budget`
+  probes, and re-derived both. §4.9, §4.10 and §7.13 reproduced to the digit.
 
 ## 10. Adoption: making §8 the default (2026-08)
 
