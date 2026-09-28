@@ -102,10 +102,12 @@ import {
 import {
   type CommonsFacts,
   admit,
+  alphaFractions,
   covariatesOf,
   isFreeLicence,
   measureFile,
   sha1Mismatch,
+  silhouetteOf,
   srgbToLab,
 } from "./corpus-covariates.ts";
 import { computeRinging } from "./metrics/local.ts";
@@ -3063,6 +3065,79 @@ console.log("\nverify:experiments — the table register and result shape\n");
       rotated.width === 24 &&
       rotated.orientation === "landscape",
     `exif ${rotated.exifOrientation} ${rotated.width}×${rotated.height}`,
+  );
+
+  // The alpha covariates the alpha holdout2 candidates are chosen on (#93).
+  check(
+    "an image with no alpha channel has no alpha covariates",
+    rotated.alpha === null,
+    JSON.stringify(rotated.alpha),
+  );
+  const fractions = alphaFractions(
+    new Uint8Array([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 255]),
+  );
+  check(
+    "alpha 255, 0, 128, 255 is half non-opaque and a quarter soft",
+    fractions.nonOpaqueFraction === 0.5 && fractions.softAlphaFraction === 0.25,
+    JSON.stringify(fractions),
+  );
+  const mask = (
+    w: number,
+    h: number,
+    on: (x: number, y: number) => boolean,
+  ): Uint8Array => {
+    const out = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) out[4 * (y * w + x) + 3] = on(x, y) ? 255 : 0;
+    }
+    return out;
+  };
+  const square = silhouetteOf(
+    mask(16, 16, (x, y) => x >= 4 && x < 12 && y >= 4 && y < 12),
+    16,
+    16,
+  );
+  const dots = silhouetteOf(
+    mask(16, 16, (x, y) => (x === 2 && y === 2) || (x === 9 && y === 9)),
+    16,
+    16,
+  );
+  const edge = silhouetteOf(
+    mask(4, 4, () => true),
+    4,
+    4,
+  );
+  check(
+    "an axis-aligned square scores silhouette 1, two lone pixels √2, and the raster border counts as edge",
+    square === 1 &&
+      dots !== null &&
+      Math.abs(dots - Math.SQRT2) < 1e-12 &&
+      edge === 1,
+    `square ${square} dots ${dots} edge ${edge}`,
+  );
+  check(
+    "an empty mask has no silhouette",
+    silhouetteOf(
+      mask(4, 4, () => false),
+      4,
+      4,
+    ) === null,
+    "",
+  );
+  const halfPng = await sharp(Buffer.from(mask(1024, 512, (x) => x >= 512)), {
+    raw: { width: 1024, height: 512, channels: 4 },
+  })
+    .png()
+    .toBuffer();
+  const half = await measureFile(halfPng);
+  check(
+    "measureFile takes the alpha fractions on the stored pixels and the silhouette on the reference",
+    half.alpha !== null &&
+      half.alpha.nonOpaqueFraction === 0.5 &&
+      half.alpha.softAlphaFraction === 0 &&
+      half.alpha.silhouette !== null &&
+      Math.abs(half.alpha.silhouette - 1) < 0.02,
+    JSON.stringify(half.alpha),
   );
 
   // The --commons path's refusals, on the facts Commons would return.

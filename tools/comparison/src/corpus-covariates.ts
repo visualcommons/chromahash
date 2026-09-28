@@ -6,8 +6,11 @@
  * candidate is judged only by what it *is*: its licence, its source camera,
  * and five numbers measured on the same 512 px reference the harness scores
  * against (`image-loader.ts`) — orientation, mean CIELAB L\*, mean chroma C\*,
- * the high-key and low-key pixel fractions, and a Laplacian detail energy. No
- * encoder is built or run here, and nothing reads a result.
+ * the high-key and low-key pixel fractions, and a Laplacian detail energy. An
+ * image with an alpha channel also gets the three covariates the alpha corpus
+ * is curated on (#93): its non-opaque and soft-alpha fractions and its
+ * silhouette complexity ({@link AlphaCovariates}). No encoder is built or run
+ * here, and nothing reads a result.
  *
  * The detail formula is written down here because the one behind the
  * `detail` figures in `natural-images.ts` was not: no formula tried reproduces
@@ -65,6 +68,37 @@ export interface Covariates {
    * local structure the image has, in L* units per pixel.
    */
   detail: number;
+  /**
+   * The alpha covariates, for an image that stores an alpha channel; null for
+   * one that does not. The colour covariates above are taken over every pixel
+   * whatever its alpha, so on a cut-out they describe the stored raster, not
+   * what a composite shows.
+   */
+  alpha: AlphaCovariates | null;
+}
+
+/**
+ * What the alpha corpus is curated on (#93): how much of the image is
+ * transparent, how much of that is soft, and how intricate the silhouette is.
+ */
+export interface AlphaCovariates {
+  /**
+   * Fraction of pixels with alpha < 255, on the stored pixels at full
+   * resolution: the same measurement as `nonOpaqueFraction` in
+   * `alpha-images.ts`, so a candidate's figure is comparable with a pin's.
+   */
+  nonOpaqueFraction: number;
+  /** Fraction with 0 < alpha < 255, on the same pixels: the soft edges. */
+  softAlphaFraction: number;
+  /**
+   * How intricate the silhouette is, on the 512 px reference: the mask is
+   * alpha ≥ 128, its perimeter P is the number of 4-neighbour pixel edges
+   * between mask and non-mask (the raster's border counts as non-mask), and
+   * the figure is P / (4 √A) for mask area A. An axis-aligned square scores 1,
+   * a disc about 1.13, and a ragged or perforated outline much more. Null when
+   * no pixel reaches alpha 128.
+   */
+  silhouette: number | null;
 }
 
 /** A pixel this light counts toward the high-key fraction. */
@@ -98,14 +132,77 @@ export function srgbToLab(
 }
 
 /**
- * Covariates of an RGBA raster, which is already the scoring reference.
- * Alpha is ignored: the candidates are opaque photographs.
+ * The non-opaque and soft-alpha fractions of an RGBA raster, which for a
+ * curated alpha image is the stored pixels at full resolution
+ * ({@link AlphaCovariates}).
+ */
+export function alphaFractions(rgba: Uint8Array): {
+  nonOpaqueFraction: number;
+  softAlphaFraction: number;
+} {
+  const n = Math.floor(rgba.length / 4);
+  let nonOpaque = 0;
+  let soft = 0;
+  for (let i = 0; i < n; i++) {
+    const a = rgba[4 * i + 3] ?? 255;
+    if (a < 255) nonOpaque++;
+    if (a > 0 && a < 255) soft++;
+  }
+  return {
+    nonOpaqueFraction: n > 0 ? nonOpaque / n : 0,
+    softAlphaFraction: n > 0 ? soft / n : 0,
+  };
+}
+
+/** The mask threshold for {@link silhouetteOf}. */
+export const SILHOUETTE_ALPHA = 128;
+
+/**
+ * Silhouette complexity P / (4 √A) of an RGBA raster's alpha ≥
+ * {@link SILHOUETTE_ALPHA} mask ({@link AlphaCovariates}); null for an empty
+ * mask.
+ */
+export function silhouetteOf(
+  rgba: Uint8Array,
+  w: number,
+  h: number,
+): number | null {
+  const inside = (x: number, y: number): boolean =>
+    x >= 0 &&
+    y >= 0 &&
+    x < w &&
+    y < h &&
+    (rgba[4 * (y * w + x) + 3] ?? 0) >= SILHOUETTE_ALPHA;
+  let area = 0;
+  let perimeter = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!inside(x, y)) continue;
+      area++;
+      if (!inside(x - 1, y)) perimeter++;
+      if (!inside(x + 1, y)) perimeter++;
+      if (!inside(x, y - 1)) perimeter++;
+      if (!inside(x, y + 1)) perimeter++;
+    }
+  }
+  return area > 0 ? perimeter / (4 * Math.sqrt(area)) : null;
+}
+
+/**
+ * Covariates of an RGBA raster, which is already the scoring reference. The
+ * colour covariates ignore alpha; `native.alpha` carries the alpha
+ * covariates, which {@link measureFile} measures partly at full resolution.
  */
 export function covariatesOf(
   rgba: Uint8Array,
   w: number,
   h: number,
-  native: { width: number; height: number; exifOrientation?: number | null },
+  native: {
+    width: number;
+    height: number;
+    exifOrientation?: number | null;
+    alpha?: AlphaCovariates | null;
+  },
 ): Covariates {
   const n = w * h;
   const L = new Float64Array(n);
@@ -158,13 +255,16 @@ export function covariatesOf(
     highKey: high / n,
     lowKey: low / n,
     detail: interior > 0 ? lap / interior : 0,
+    alpha: native.alpha ?? null,
   };
 }
 
 /**
  * Covariates of an encoded image, on the reference `image-loader.ts` builds:
  * the original capped to {@link REFERENCE_CAP} on the long edge with Lanczos3,
- * never enlarged.
+ * never enlarged. An image that stores alpha also gets its
+ * {@link AlphaCovariates}: the two fractions on the stored pixels, the
+ * silhouette on the reference.
  */
 export async function measureFile(bytes: Buffer): Promise<Covariates> {
   const meta = await sharp(bytes).metadata();
@@ -179,10 +279,20 @@ export async function measureFile(bytes: Buffer): Promise<Covariates> {
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  return covariatesOf(new Uint8Array(data), w, h, {
+  const reference = new Uint8Array(data);
+  let alpha: AlphaCovariates | null = null;
+  if (meta.hasAlpha === true) {
+    const stored = await sharp(bytes).ensureAlpha().raw().toBuffer();
+    alpha = {
+      ...alphaFractions(new Uint8Array(stored)),
+      silhouette: silhouetteOf(reference, w, h),
+    };
+  }
+  return covariatesOf(reference, w, h, {
     width,
     height,
     exifOrientation: meta.orientation ?? null,
+    alpha,
   });
 }
 
