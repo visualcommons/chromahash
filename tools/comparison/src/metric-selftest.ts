@@ -112,6 +112,7 @@ import {
   silhouetteOf,
   srgbToLab,
 } from "./corpus-covariates.ts";
+import { rewriteCell } from "./doc-tables.ts";
 import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
@@ -2415,6 +2416,71 @@ console.log("\nverify:experiments — the table register and result shape\n");
     only(fs5, 'row "arm" bytes has 1 values for 2 images'),
     JSON.stringify(fs5),
   );
+}
+
+// --- verify:experiments --fix: rewriting a cell keeps its markup (#109) -----
+//
+// `--fix` rewrites cells only when a table disagrees with its results, which
+// the committed document never does, so no run CI makes reaches the rewriter.
+// Each case is a cell shape the document uses, with the answer written out.
+console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n");
+{
+  const cases: [string, string, boolean, string, string][] = [
+    [
+      "a cell bold on its number only keeps both markers and what follows",
+      "**11.458** (−1.7%)",
+      true,
+      "11.457",
+      "**11.457** (−1.7%)",
+    ],
+    [
+      "a fully bold cell stays fully bold",
+      "**4.21%**",
+      true,
+      "4.15",
+      "**4.15%**",
+    ],
+    [
+      "a bold signed cell keeps its + on a positive value",
+      "**+4.21%**",
+      true,
+      "4.15",
+      "**+4.15%**",
+    ],
+    [
+      "a plain signed cell keeps its + and its annotation",
+      "+0.40%, CI straddles",
+      true,
+      "0.39",
+      "+0.39%, CI straddles",
+    ],
+    [
+      "a signed cell turning negative takes the document's minus, not a +",
+      "+0.480",
+      true,
+      "-0.496",
+      "−0.496",
+    ],
+    [
+      "a signed cell rounding to zero is written unsigned",
+      "+0.004",
+      false,
+      "0.000",
+      "0.000",
+    ],
+    ["an unsigned cell gains no +", "11.458", false, "11.457", "11.457"],
+    [
+      "a composite value is not given the old cell's suffix or sign",
+      "+15/31",
+      false,
+      "16/31",
+      "16/31",
+    ],
+  ];
+  for (const [name, raw, unicode, value, want] of cases) {
+    const got = rewriteCell(raw, value, unicode);
+    check(name, got === want, `${raw} ← ${value}: ${got}`);
+  }
 }
 
 // --- Alpha corpus: the retired holdout and withdrawn pins (#83) ------------
