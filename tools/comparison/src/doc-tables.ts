@@ -125,6 +125,62 @@ export function parseCell(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Put a corrected value into a cell without disturbing anything else about it:
+ * the document uses bold to mark winners, a unicode minus, an explicit plus on
+ * signed columns, and trailing units, and all of that is meaning, not
+ * formatting noise.
+ *
+ * `docUsesUnicodeMinus` is the document's minus convention, not the cell's.
+ * Reading it from the cell alone gets it wrong in exactly the case that
+ * matters: a cell whose old value was positive has no minus to copy, so a
+ * newly-negative measurement lands as an ASCII hyphen among unicode ones.
+ *
+ * Here rather than in `verify-experiments.ts` because that file is a script
+ * that runs on import, and the self-test has to reach this without running it.
+ */
+export function rewriteCell(
+  raw: string,
+  measured: string,
+  docUsesUnicodeMinus: boolean,
+): string {
+  // A bare number that rounds to zero carries no direction, so it is written
+  // unsigned. `toFixed` keeps the sign of a small negative (`-0.0004` gives
+  // `-0.000`), which the minus convention below would turn into `−0.000`.
+  const value =
+    /^[-+][0-9.]+$/.test(measured) && Number(measured) === 0
+      ? measured.slice(1)
+      : measured;
+  const trimmed = raw.trim();
+  // A leading bold span is rewritten inside, and whatever follows it is kept.
+  // Treating a cell as bold only when it both starts and ends with `**` read
+  // §4.2's `**11.458** (−1.7%)` as plain, stripped its opening marker, and
+  // took `** (−1.7%)` for the unit, leaving `11.457** (−1.7%)` (#109).
+  const span = /^\*\*(.+?)\*\*(.*)$/s.exec(trimmed);
+  const body = span?.[1] ?? trimmed;
+  const tail = span?.[2] ?? "";
+  const usesUnicodeMinus = trimmed.includes("−") || docUsesUnicodeMinus;
+  let next = value;
+  if (usesUnicodeMinus) next = next.replace(/^-/, "−");
+  // Preserve a trailing unit or annotation ("%", " B", " @32 px", "pp") — but
+  // only when the measured value is a bare number. A composite value already
+  // carries what this regex reads as a suffix: on a win count the "unit" is
+  // `/31`, so appending it to `16/31` produced `16/31/31`. That stayed hidden
+  // while every win count happened to agree, and surfaced the first time one
+  // did not.
+  const suffix = /^[-−+]?[0-9.]+(.*)$/.exec(body)?.[1] ?? "";
+  if (/^[-−+]?[0-9.]+$/.test(value)) {
+    // A measured value arrives unsigned when positive. Where the old cell
+    // wrote its sign, the column is a signed one, so the `+` stays: dropping
+    // it left §7.11, §12.2 and §13.2 mixing signed and unsigned values (#109).
+    if (body.startsWith("+") && /^[0-9.]/.test(value) && Number(value) > 0) {
+      next = `+${next}`;
+    }
+    next += suffix;
+  } else if (usesUnicodeMinus) next = value.replace(/-/g, "−");
+  return span ? `**${next}**${tail}` : next;
+}
+
 /** Decimals shown, so a tolerance can match the precision the doc claims. */
 export function decimals(raw: string): number {
   const m = /\.(\d+)/.exec(raw.replace(/[*`]/g, ""));

@@ -75,6 +75,7 @@ import {
   decimals,
   parseCell,
   parseTables,
+  rewriteCell as rewriteDocCell,
 } from "./doc-tables.ts";
 import { tableRegisterProblems } from "./experiments-register.ts";
 // A result from another iqa-cli is a different instrument, not a reproduction.
@@ -784,32 +785,9 @@ function docUsesUnicodeMinus(): boolean {
   return docMinusCache;
 }
 
-/**
- * Put a corrected value into a cell without disturbing anything else about it:
- * the document uses bold to mark winners, a unicode minus, and trailing units,
- * and all of that is meaning, not formatting noise.
- */
-function rewriteCell(raw: string, value: string): string {
-  const bold = raw.trim().startsWith("**") && raw.trim().endsWith("**");
-  const body = raw.trim().replace(/^\*\*|\*\*$/g, "");
-  // The minus convention belongs to the document, not to the cell being
-  // replaced. Reading it from the cell alone gets it wrong in exactly the case
-  // that matters: a cell whose old value was positive has no minus to copy, so
-  // a newly-negative measurement lands as an ASCII hyphen among unicode ones.
-  const usesUnicodeMinus = /[\u2212]/.test(body) || docUsesUnicodeMinus();
-  let next = value;
-  if (usesUnicodeMinus) next = next.replace(/^-/, "\u2212");
-  // Preserve a trailing unit or annotation ("%", " B", " @32 px", "pp") \u2014 but
-  // only when the measured value is a bare number. A composite value already
-  // carries what this regex reads as a suffix: on a win count the "unit" is
-  // `/31`, so appending it to `16/31` produced `16/31/31`. That stayed hidden
-  // while every win count happened to agree, and surfaced the first time one
-  // did not.
-  const suffix = /^[-\u2212+]?[0-9.]+(.*)$/.exec(body)?.[1] ?? "";
-  if (/^[-\u2212+]?[0-9.]+$/.test(value)) next += suffix;
-  else if (usesUnicodeMinus) next = value.replace(/-/g, "\u2212");
-  return bold ? `**${next}**` : next;
-}
+/** `rewriteCell` (`doc-tables.ts`) with this document's minus convention. */
+const rewriteCell = (raw: string, value: string): string =>
+  rewriteDocCell(raw, value, docUsesUnicodeMinus());
 
 function checkRowTable(
   b: RowBinding,
