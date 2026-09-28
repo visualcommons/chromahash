@@ -2906,6 +2906,10 @@ console.log("\nverify:experiments — the table register and result shape\n");
   for (const [what, bad] of [
     ["a holdout2 pin without the prefix", { ...spec, label: "natural-x" }],
     ["a sealed- pin on another split", { ...spec, split: "tune" as const }],
+    [
+      "a photographic pin sealed as a cut-out",
+      { ...spec, label: `${ALPHA_HOLDOUT2_PREFIX}x` },
+    ],
   ] as const) {
     const message = thrown(() => holdout2Specs([bad]));
     check(`${what} is refused`, message.includes("is labelled"), message);
