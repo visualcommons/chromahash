@@ -18,9 +18,10 @@ any entry carries it, is the sealed holdout: no tool fetches it until
 `spec/V0.8-DECISIONS.md` records the decision it answers as frozen.
 
 **Axis** is the §9.1 corpus-audit axis the image was chosen to cover.
-**Notes** are its covariates on the 512 px scoring reference: orientation,
-mean CIELAB L\*, mean chroma C\*, and a Laplacian detail energy whose exact
-formula was not recorded when these were measured.
+**Notes** are its covariates on the upright 512 px scoring reference:
+orientation, mean CIELAB L\*, mean chroma C\*, and a detail energy (mean
+absolute 4-neighbour Laplacian of L\*), all measured by
+`src/corpus-covariates.ts --files` (#102).
 
 
 39 images — 31 tune, 8 tune2.
@@ -34,7 +35,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4157x2771
 - Split: tune2
 - Axis: the chroma floor: near-zero C*
-- Notes: landscape, mean L* 40.1, mean C* 6.8, detail 9.85
+- Notes: landscape, mean L* 40, mean C* 6.9, detail 2.94
 
 ### `chroma-glass-reinforcements`
 
@@ -45,7 +46,7 @@ formula was not recorded when these were measured.
 - Dimensions: 1523x1437
 - Split: tune
 - Axis: flat woven pattern
-- Notes: landscape, mean L* 72.2, mean C* 6.6, detail 28.4
+- Notes: landscape, mean L* 72.4, mean C* 6.8, detail 8.49
 
 ### `chroma-the-old-monochrome`
 
@@ -56,7 +57,7 @@ formula was not recorded when these were measured.
 - Dimensions: 2736x3648
 - Split: tune
 - Axis: the chroma floor: near-zero C*
-- Notes: portrait, mean L* 46.2, mean C* 0, detail 24.56
+- Notes: portrait, mean L* 46.2, mean C* 0, detail 8.82
 
 ### `chroma-windows-toronto-city`
 
@@ -67,7 +68,7 @@ formula was not recorded when these were measured.
 - Dimensions: 6000x3885
 - Split: tune
 - Axis: the chroma floor: near-zero C*
-- Notes: landscape, mean L* 27.7, mean C* 1.1, detail 39.81
+- Notes: landscape, mean L* 27.4, mean C* 1.2, detail 14.16
 
 ### `natural-agraulis-vanillae-isla`
 
@@ -78,7 +79,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4000x2705
 - Split: tune
 - Axis: extreme close detail
-- Notes: landscape, mean L* 39.2, mean C* 21.9, detail 13.31
+- Notes: landscape, mean L* 39.2, mean C* 22, detail 4.04
 
 ### `natural-andrew-jackson-state`
 
@@ -89,7 +90,7 @@ formula was not recorded when these were measured.
 - Dimensions: 3914x5219
 - Split: tune
 - Axis: dense periodic man-made detail
-- Notes: portrait, mean L* 61.7, mean C* 12.7, detail 47.25
+- Notes: portrait, mean L* 61.7, mean C* 12.8, detail 15.12
 
 ### `natural-bird-cherry-ermine`
 
@@ -100,7 +101,7 @@ formula was not recorded when these were measured.
 - Dimensions: 5058x3372
 - Split: tune
 - Axis: fine fur/feather texture
-- Notes: landscape, mean L* 21.6, mean C* 12.6, detail 19
+- Notes: landscape, mean L* 21.7, mean C* 12.8, detail 5.31
 
 ### `natural-dish-meatloaf-served`
 
@@ -111,7 +112,7 @@ formula was not recorded when these were measured.
 - Dimensions: 5184x6912
 - Split: tune
 - Axis: close framing, saturated food
-- Notes: portrait, mean L* 62.1, mean C* 9.6, detail 14.81
+- Notes: portrait, mean L* 62.2, mean C* 9.6, detail 5.01
 
 ### `natural-egretta-thula-las`
 
@@ -122,7 +123,7 @@ formula was not recorded when these were measured.
 - Dimensions: 2437x3159
 - Split: tune2
 - Axis: fine fur/feather texture
-- Notes: portrait, mean L* 53, mean C* 13.9, detail 8.12
+- Notes: portrait, mean L* 53, mean C* 13.9, detail 2.66
 
 ### `natural-fishing-the-coast`
 
@@ -133,7 +134,7 @@ formula was not recorded when these were measured.
 - Dimensions: 3984x2656
 - Split: tune
 - Axis: outdoor daylight landscape
-- Notes: landscape, mean L* 64.6, mean C* 8.3, detail 7.06
+- Notes: landscape, mean L* 64.7, mean C* 8.2, detail 1.99
 
 ### `natural-forest-road-slavne`
 
@@ -144,7 +145,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4500x2850
 - Split: tune
 - Axis: outdoor daylight landscape
-- Notes: landscape, mean L* 53.2, mean C* 0, detail 74.18
+- Notes: landscape, mean L* 53.1, mean C* 0, detail 21.83
 
 ### `natural-hard-rock-cafe`
 
@@ -155,7 +156,7 @@ formula was not recorded when these were measured.
 - Dimensions: 3296x2472
 - Split: tune
 - Axis: interior and mixed illuminants
-- Notes: landscape, mean L* 12.6, mean C* 11.4, detail 12.83
+- Notes: landscape, mean L* 12.6, mean C* 11.4, detail 4.93
 
 ### `natural-interior-cafe-commerce`
 
@@ -166,7 +167,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4608x3456
 - Split: tune2
 - Axis: interior and mixed illuminants
-- Notes: landscape, mean L* 50.6, mean C* 9.7, detail 23.09
+- Notes: landscape, mean L* 50.6, mean C* 9.7, detail 9.14
 
 ### `natural-landschaftsschutzgebiet-dwest-gen`
 
@@ -177,7 +178,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4032x3024
 - Split: tune2
 - Axis: high-key framing, DC-dominated
-- Notes: landscape, mean L* 66.4, mean C* 13.3, detail 40.79
+- Notes: landscape, mean L* 66.4, mean C* 13.5, detail 12.11
 
 ### `natural-landschaftsschutzgebiet-volkspark-rehberge`
 
@@ -188,7 +189,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4032x3024
 - Split: tune
 - Axis: high-key framing, DC-dominated
-- Notes: landscape, mean L* 59.5, mean C* 3.1, detail 75.92
+- Notes: landscape, mean L* 59.6, mean C* 3.3, detail 22.11
 
 ### `natural-lmen-umland`
 
@@ -199,7 +200,7 @@ formula was not recorded when these were measured.
 - Dimensions: 5184x3456
 - Split: tune
 - Axis: outdoor daylight landscape
-- Notes: landscape, mean L* 46.7, mean C* 11, detail 35.93
+- Notes: landscape, mean L* 46.5, mean C* 11.7, detail 10.58
 
 ### `natural-mabrousha-cake-with`
 
@@ -210,7 +211,7 @@ formula was not recorded when these were measured.
 - Dimensions: 3456x4608
 - Split: tune2
 - Axis: close framing, saturated food
-- Notes: portrait, mean L* 47.7, mean C* 13.5, detail 35.72
+- Notes: portrait, mean L* 47.8, mean C* 13.5, detail 11.13
 
 ### `natural-maidens-tower`
 
@@ -221,7 +222,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4288x2848
 - Split: tune
 - Axis: interior and mixed illuminants
-- Notes: landscape, mean L* 79.7, mean C* 8.3, detail 17.7
+- Notes: landscape, mean L* 79.7, mean C* 8.2, detail 4.72
 
 ### `natural-mid-1920s-house`
 
@@ -232,7 +233,7 @@ formula was not recorded when these were measured.
 - Dimensions: 5184x3888
 - Split: tune
 - Axis: interior illuminant
-- Notes: landscape, mean L* 46.8, mean C* 18.3, detail 20.07
+- Notes: landscape, mean L* 46.8, mean C* 18.3, detail 5.69
 
 ### `natural-nnov-shcherbinki-produce`
 
@@ -243,7 +244,7 @@ formula was not recorded when these were measured.
 - Dimensions: 2048x1536
 - Split: tune
 - Axis: cluttered saturated scene
-- Notes: landscape, mean L* 44.4, mean C* 15.2, detail 34.75
+- Notes: landscape, mean L* 44.6, mean C* 15.3, detail 10.92
 
 ### `natural-nster-westdeutsche-lotterie`
 
@@ -254,7 +255,7 @@ formula was not recorded when these were measured.
 - Dimensions: 3648x5472
 - Split: tune
 - Axis: dense periodic man-made detail
-- Notes: portrait, mean L* 42.1, mean C* 9.2, detail 22.77
+- Notes: portrait, mean L* 42.2, mean C* 9.1, detail 7.87
 
 ### `natural-nster-westdeutsche-lotterie-2`
 
@@ -265,7 +266,7 @@ formula was not recorded when these were measured.
 - Dimensions: 7728x4347
 - Split: tune
 - Axis: dense periodic man-made detail
-- Notes: landscape, mean L* 50.6, mean C* 7, detail 17.48
+- Notes: landscape, mean L* 50.6, mean C* 6.9, detail 5.64
 
 ### `natural-obama-center-library`
 
@@ -276,7 +277,7 @@ formula was not recorded when these were measured.
 - Dimensions: 3444x2296
 - Split: tune
 - Axis: interior illuminant
-- Notes: landscape, mean L* 25.2, mean C* 7.5, detail 7.41
+- Notes: landscape, mean L* 25.2, mean C* 7.6, detail 2.47
 
 ### `natural-pike-place-market`
 
@@ -287,7 +288,7 @@ formula was not recorded when these were measured.
 - Dimensions: 3469x2298
 - Split: tune
 - Axis: cluttered saturated scene
-- Notes: landscape, mean L* 34.1, mean C* 22.8, detail 13.27
+- Notes: landscape, mean L* 34.2, mean C* 22.9, detail 4.41
 
 ### `natural-roof-tiles-packed`
 
@@ -298,7 +299,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4000x3000
 - Split: tune
 - Axis: dense periodic man-made detail
-- Notes: landscape, mean L* 46, mean C* 46, detail 25.17
+- Notes: landscape, mean L* 46, mean C* 46.1, detail 8.11
 
 ### `natural-studioarrangement-for-product`
 
@@ -309,7 +310,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4374x2925
 - Split: tune
 - Axis: high-key framing, DC-dominated
-- Notes: landscape, mean L* 43.3, mean C* 8.6, detail 13.96
+- Notes: landscape, mean L* 43.3, mean C* 8.6, detail 5.92
 
 ### `natural-table-set-for`
 
@@ -320,7 +321,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4032x6048
 - Split: tune2
 - Axis: interior and mixed illuminants
-- Notes: portrait, mean L* 51.8, mean C* 19.3, detail 14.53
+- Notes: portrait, mean L* 51.9, mean C* 19.3, detail 5.11
 
 ### `natural-trees-rising-out`
 
@@ -331,7 +332,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4032x2800
 - Split: tune
 - Axis: outdoor daylight landscape
-- Notes: landscape, mean L* 56.4, mean C* 29, detail 14.12
+- Notes: landscape, mean L* 56.4, mean C* 29, detail 3.99
 
 ### `natural-walnut-tart-close`
 
@@ -342,7 +343,7 @@ formula was not recorded when these were measured.
 - Dimensions: 3872x2592
 - Split: tune2
 - Axis: close framing, saturated food
-- Notes: landscape, mean L* 43.8, mean C* 44.4, detail 9.07
+- Notes: landscape, mean L* 43.8, mean C* 44.5, detail 2.82
 
 ### `night-bas-lica-notre`
 
@@ -353,7 +354,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4911x4549
 - Split: tune
 - Axis: low key, saturated artificial light
-- Notes: landscape, mean L* 26.2, mean C* 27.2, detail 23.88
+- Notes: landscape, mean L* 26.2, mean C* 27.4, detail 7.23
 
 ### `night-long-island-city`
 
@@ -364,7 +365,7 @@ formula was not recorded when these were measured.
 - Dimensions: 8000x4000
 - Split: tune
 - Axis: low key, saturated artificial light
-- Notes: landscape, mean L* 49.1, mean C* 27.9, detail 28.32
+- Notes: landscape, mean L* 49.2, mean C* 28, detail 8.99
 
 ### `night-night-sky-milky`
 
@@ -375,7 +376,7 @@ formula was not recorded when these were measured.
 - Dimensions: 5616x3744
 - Split: tune
 - Axis: low key, saturated artificial light
-- Notes: landscape, mean L* 7.7, mean C* 1.9, detail 6.76
+- Notes: landscape, mean L* 7.8, mean C* 1.9, detail 2.11
 
 ### `night-nster-liudgerhaus-und`
 
@@ -386,7 +387,7 @@ formula was not recorded when these were measured.
 - Dimensions: 3601x5401
 - Split: tune2
 - Axis: low key, saturated artificial light
-- Notes: portrait, mean L* 47.9, mean C* 10.5, detail 22.71
+- Notes: portrait, mean L* 48, mean C* 10.4, detail 7.63
 
 ### `portrait-african-lady`
 
@@ -396,8 +397,8 @@ formula was not recorded when these were measured.
 - License: CC BY-SA 4.0
 - Dimensions: 1668x2500
 - Split: tune
-- Axis: skin tone and portrait framing
-- Notes: portrait, mean L* 63.5, mean C* 0, detail 28.33
+- Axis: portrait framing; monochrome, so no skin chroma
+- Notes: portrait, mean L* 63.4, mean C* 0, detail 10.54
 
 ### `portrait-african-woman-rusinga`
 
@@ -408,7 +409,7 @@ formula was not recorded when these were measured.
 - Dimensions: 4160x6240
 - Split: tune
 - Axis: skin tone and portrait framing
-- Notes: portrait, mean L* 52.3, mean C* 16.1, detail 10.2
+- Notes: portrait, mean L* 52.4, mean C* 16, detail 3.74
 
 ### `portrait-imene6`
 
@@ -419,7 +420,7 @@ formula was not recorded when these were measured.
 - Dimensions: 3456x5184
 - Split: tune
 - Axis: skin tone and portrait framing
-- Notes: portrait, mean L* 23.7, mean C* 26.6, detail 13.15
+- Notes: portrait, mean L* 23.7, mean C* 26.8, detail 4.58
 
 ### `portrait-mother-and-child`
 
@@ -429,8 +430,8 @@ formula was not recorded when these were measured.
 - License: CC BY-SA 3.0
 - Dimensions: 4288x2848
 - Split: tune
-- Axis: skin tone and portrait framing
-- Notes: landscape, mean L* 59.5, mean C* 0, detail 11.4
+- Axis: portrait framing; monochrome, so no skin chroma
+- Notes: landscape, mean L* 59.5, mean C* 0, detail 3.56
 
 ### `portrait-portrait-femme-tenue`
 
@@ -440,8 +441,8 @@ formula was not recorded when these were measured.
 - License: CC BY-SA 4.0
 - Dimensions: 3456x5184
 - Split: tune
-- Axis: skin tone and portrait framing
-- Notes: portrait, mean L* 27.2, mean C* 0, detail 21.72
+- Axis: portrait framing; monochrome, so no skin chroma
+- Notes: portrait, mean L* 27.2, mean C* 0, detail 7.44
 
 ### `portrait-sideshow-bob-love`
 
@@ -452,4 +453,4 @@ formula was not recorded when these were measured.
 - Dimensions: 4288x2848
 - Split: tune
 - Axis: skin tone and portrait framing
-- Notes: landscape, mean L* 50.6, mean C* 44.1, detail 17.64
+- Notes: landscape, mean L* 50.6, mean C* 44.3, detail 5.33

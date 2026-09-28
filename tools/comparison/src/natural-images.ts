@@ -45,7 +45,12 @@ export interface NaturalImageSpec {
   licence: string;
   /** Which axis of the §9.1 corpus audit this image is here to cover. */
   axis: string;
-  /** Measured on the 512 px scoring reference — see the notes in §12. */
+  /**
+   * Orientation, mean L\*, mean C\* and detail energy of the upright picture,
+   * measured on the 512 px scoring reference by `corpus-covariates.ts --files`
+   * (#102), whose `covariatesOf` defines each figure. `stratify` parses them
+   * back out of this string.
+   */
   notes: string;
 }
 
@@ -62,7 +67,13 @@ export interface NaturalImageSpec {
  * Selection was measured, not guessed: every candidate was reduced to the same
  * 512 px reference the harness scores against, and mean L*, mean chroma C* and
  * Laplacian detail energy were computed on it; the set was then chosen to span
- * each axis rather than cluster at its centre. Candidates were restricted to
+ * each axis rather than cluster at its centre. The formula behind those
+ * selection-time figures was never recorded and could not be reproduced, so
+ * every `notes` figure below is a re-measurement by `corpus-covariates.ts`
+ * (#102); the selection itself stands as made. Three of the six portraits
+ * chosen for skin tone turned out to be monochrome (mean C\* 0): they cover
+ * portrait framing but no skin chroma, and their `axis` says so. Candidates
+ * were restricted to
  * files carrying camera EXIF and outside Commons' artwork categories, because a
  * search for "portrait photograph" on an archive returns as many oil paintings
  * as photographs, and a scanned painting has nothing statistically in common
@@ -91,7 +102,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Kızıl",
     licence: "CC BY-SA 4.0",
     axis: "the chroma floor: near-zero C*",
-    notes: "landscape, mean L* 40.1, mean C* 6.8, detail 9.85",
+    notes: "landscape, mean L* 40, mean C* 6.9, detail 2.94",
   },
   {
     label: "chroma-glass-reinforcements",
@@ -108,7 +119,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Cjp24",
     licence: "CC BY-SA 3.0",
     axis: "flat woven pattern",
-    notes: "landscape, mean L* 72.2, mean C* 6.6, detail 28.4",
+    notes: "landscape, mean L* 72.4, mean C* 6.8, detail 8.49",
   },
   {
     label: "chroma-the-old-monochrome",
@@ -125,7 +136,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Sue Allen",
     licence: "CC BY-SA 3.0",
     axis: "the chroma floor: near-zero C*",
-    notes: "portrait, mean L* 46.2, mean C* 0, detail 24.56",
+    notes: "portrait, mean L* 46.2, mean C* 0, detail 8.82",
   },
   {
     label: "chroma-windows-toronto-city",
@@ -142,7 +153,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Maksim Sokolov (maxergon.com)",
     licence: "CC BY-SA 4.0",
     axis: "the chroma floor: near-zero C*",
-    notes: "landscape, mean L* 27.7, mean C* 1.1, detail 39.81",
+    notes: "landscape, mean L* 27.4, mean C* 1.2, detail 14.16",
   },
   {
     label: "natural-landschaftsschutzgebiet-dwest-gen",
@@ -159,7 +170,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Lukas Beck",
     licence: "CC BY 4.0",
     axis: "high-key framing, DC-dominated",
-    notes: "landscape, mean L* 66.4, mean C* 13.3, detail 40.79",
+    notes: "landscape, mean L* 66.4, mean C* 13.5, detail 12.11",
   },
   {
     label: "natural-landschaftsschutzgebiet-volkspark-rehberge",
@@ -176,7 +187,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Lukas Beck",
     licence: "CC BY 4.0",
     axis: "high-key framing, DC-dominated",
-    notes: "landscape, mean L* 59.5, mean C* 3.1, detail 75.92",
+    notes: "landscape, mean L* 59.6, mean C* 3.3, detail 22.11",
   },
   {
     label: "natural-studioarrangement-for-product",
@@ -193,7 +204,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Hubertl",
     licence: "CC BY-SA 4.0",
     axis: "high-key framing, DC-dominated",
-    notes: "landscape, mean L* 43.3, mean C* 8.6, detail 13.96",
+    notes: "landscape, mean L* 43.3, mean C* 8.6, detail 5.92",
   },
   {
     label: "natural-hard-rock-cafe",
@@ -210,7 +221,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "shankar s. from Dubai, united arab emirates",
     licence: "CC BY 2.0",
     axis: "interior and mixed illuminants",
-    notes: "landscape, mean L* 12.6, mean C* 11.4, detail 12.83",
+    notes: "landscape, mean L* 12.6, mean C* 11.4, detail 4.93",
   },
   {
     label: "natural-interior-cafe-commerce",
@@ -227,7 +238,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "James Petts from London, England",
     licence: "CC BY-SA 2.0",
     axis: "interior and mixed illuminants",
-    notes: "landscape, mean L* 50.6, mean C* 9.7, detail 23.09",
+    notes: "landscape, mean L* 50.6, mean C* 9.7, detail 9.14",
   },
   {
     label: "natural-maidens-tower",
@@ -244,7 +255,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Jorge Láscar from Australia",
     licence: "CC BY 2.0",
     axis: "interior and mixed illuminants",
-    notes: "landscape, mean L* 79.7, mean C* 8.3, detail 17.7",
+    notes: "landscape, mean L* 79.7, mean C* 8.2, detail 4.72",
   },
   {
     label: "natural-mid-1920s-house",
@@ -261,7 +272,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Infrogmation of New Orleans",
     licence: "CC BY 2.0",
     axis: "interior illuminant",
-    notes: "landscape, mean L* 46.8, mean C* 18.3, detail 20.07",
+    notes: "landscape, mean L* 46.8, mean C* 18.3, detail 5.69",
   },
   {
     label: "natural-obama-center-library",
@@ -278,7 +289,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "AlphaBeta135",
     licence: "CC BY 4.0",
     axis: "interior illuminant",
-    notes: "landscape, mean L* 25.2, mean C* 7.5, detail 7.41",
+    notes: "landscape, mean L* 25.2, mean C* 7.6, detail 2.47",
   },
   {
     label: "natural-table-set-for",
@@ -295,7 +306,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Shixart1985",
     licence: "CC BY 2.0",
     axis: "interior and mixed illuminants",
-    notes: "portrait, mean L* 51.8, mean C* 19.3, detail 14.53",
+    notes: "portrait, mean L* 51.9, mean C* 19.3, detail 5.11",
   },
   {
     label: "natural-agraulis-vanillae-isla",
@@ -312,7 +323,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Wilfredor",
     licence: "CC0",
     axis: "extreme close detail",
-    notes: "landscape, mean L* 39.2, mean C* 21.9, detail 13.31",
+    notes: "landscape, mean L* 39.2, mean C* 22, detail 4.04",
   },
   {
     label: "natural-bird-cherry-ermine",
@@ -329,7 +340,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Charles J. Sharp",
     licence: "CC BY-SA 4.0",
     axis: "fine fur/feather texture",
-    notes: "landscape, mean L* 21.6, mean C* 12.6, detail 19",
+    notes: "landscape, mean L* 21.7, mean C* 12.8, detail 5.31",
   },
   {
     label: "natural-dish-meatloaf-served",
@@ -346,7 +357,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Shixart1985",
     licence: "CC BY 2.0",
     axis: "close framing, saturated food",
-    notes: "portrait, mean L* 62.1, mean C* 9.6, detail 14.81",
+    notes: "portrait, mean L* 62.2, mean C* 9.6, detail 5.01",
   },
   {
     label: "natural-egretta-thula-las",
@@ -363,7 +374,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Frank Schulenburg",
     licence: "CC BY-SA 3.0",
     axis: "fine fur/feather texture",
-    notes: "portrait, mean L* 53, mean C* 13.9, detail 8.12",
+    notes: "portrait, mean L* 53, mean C* 13.9, detail 2.66",
   },
   {
     label: "natural-fishing-the-coast",
@@ -380,7 +391,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Vyacheslav Argenberg",
     licence: "CC BY 4.0",
     axis: "outdoor daylight landscape",
-    notes: "landscape, mean L* 64.6, mean C* 8.3, detail 7.06",
+    notes: "landscape, mean L* 64.7, mean C* 8.2, detail 1.99",
   },
   {
     label: "natural-forest-road-slavne",
@@ -397,7 +408,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "George Chernilevsky",
     licence: "Public domain",
     axis: "outdoor daylight landscape",
-    notes: "landscape, mean L* 53.2, mean C* 0, detail 74.18",
+    notes: "landscape, mean L* 53.1, mean C* 0, detail 21.83",
   },
   {
     label: "natural-lmen-umland",
@@ -414,7 +425,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Dietmar Rabich",
     licence: "CC BY-SA 4.0",
     axis: "outdoor daylight landscape",
-    notes: "landscape, mean L* 46.7, mean C* 11, detail 35.93",
+    notes: "landscape, mean L* 46.5, mean C* 11.7, detail 10.58",
   },
   {
     label: "natural-mabrousha-cake-with",
@@ -431,7 +442,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Hayan Alhasan",
     licence: "CC BY-SA 4.0",
     axis: "close framing, saturated food",
-    notes: "portrait, mean L* 47.7, mean C* 13.5, detail 35.72",
+    notes: "portrait, mean L* 47.8, mean C* 13.5, detail 11.13",
   },
   {
     label: "natural-nnov-shcherbinki-produce",
@@ -448,7 +459,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Vmenkov",
     licence: "CC BY-SA 4.0",
     axis: "cluttered saturated scene",
-    notes: "landscape, mean L* 44.4, mean C* 15.2, detail 34.75",
+    notes: "landscape, mean L* 44.6, mean C* 15.3, detail 10.92",
   },
   {
     label: "natural-pike-place-market",
@@ -465,7 +476,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Seattle Municipal Archives from Seattle, WA",
     licence: "CC BY 2.0",
     axis: "cluttered saturated scene",
-    notes: "landscape, mean L* 34.1, mean C* 22.8, detail 13.27",
+    notes: "landscape, mean L* 34.2, mean C* 22.9, detail 4.41",
   },
   {
     label: "natural-trees-rising-out",
@@ -482,7 +493,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Original: Vyacheslav Argenberg Derivative work: The Cosmonaut",
     licence: "CC BY 4.0",
     axis: "outdoor daylight landscape",
-    notes: "landscape, mean L* 56.4, mean C* 29, detail 14.12",
+    notes: "landscape, mean L* 56.4, mean C* 29, detail 3.99",
   },
   {
     label: "natural-walnut-tart-close",
@@ -499,7 +510,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Alpha from Melbourne, Australia",
     licence: "CC BY-SA 2.0",
     axis: "close framing, saturated food",
-    notes: "landscape, mean L* 43.8, mean C* 44.4, detail 9.07",
+    notes: "landscape, mean L* 43.8, mean C* 44.5, detail 2.82",
   },
   {
     label: "night-bas-lica-notre",
@@ -516,7 +527,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Diego Delso",
     licence: "CC BY-SA 4.0",
     axis: "low key, saturated artificial light",
-    notes: "landscape, mean L* 26.2, mean C* 27.2, detail 23.88",
+    notes: "landscape, mean L* 26.2, mean C* 27.4, detail 7.23",
   },
   {
     label: "night-long-island-city",
@@ -533,7 +544,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "King of Hearts",
     licence: "CC BY-SA 3.0",
     axis: "low key, saturated artificial light",
-    notes: "landscape, mean L* 49.1, mean C* 27.9, detail 28.32",
+    notes: "landscape, mean L* 49.2, mean C* 28, detail 8.99",
   },
   {
     label: "night-night-sky-milky",
@@ -550,7 +561,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "ForestWander",
     licence: "CC BY-SA 3.0 us",
     axis: "low key, saturated artificial light",
-    notes: "landscape, mean L* 7.7, mean C* 1.9, detail 6.76",
+    notes: "landscape, mean L* 7.8, mean C* 1.9, detail 2.11",
   },
   {
     label: "night-nster-liudgerhaus-und",
@@ -567,7 +578,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Dietmar Rabich",
     licence: "CC BY-SA 4.0",
     axis: "low key, saturated artificial light",
-    notes: "portrait, mean L* 47.9, mean C* 10.5, detail 22.71",
+    notes: "portrait, mean L* 48, mean C* 10.4, detail 7.63",
   },
   {
     label: "portrait-african-lady",
@@ -582,8 +593,8 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     source: "https://commons.wikimedia.org/wiki/File%3AAn_African_Lady.jpg",
     author: "K15photos",
     licence: "CC BY-SA 4.0",
-    axis: "skin tone and portrait framing",
-    notes: "portrait, mean L* 63.5, mean C* 0, detail 28.33",
+    axis: "portrait framing; monochrome, so no skin chroma",
+    notes: "portrait, mean L* 63.4, mean C* 0, detail 10.54",
   },
   {
     label: "portrait-african-woman-rusinga",
@@ -600,7 +611,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Jeffmugendi",
     licence: "CC BY-SA 4.0",
     axis: "skin tone and portrait framing",
-    notes: "portrait, mean L* 52.3, mean C* 16.1, detail 10.2",
+    notes: "portrait, mean L* 52.4, mean C* 16, detail 3.74",
   },
   {
     label: "portrait-imene6",
@@ -614,7 +625,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Samia Dib Benkaci",
     licence: "CC BY-SA 4.0",
     axis: "skin tone and portrait framing",
-    notes: "portrait, mean L* 23.7, mean C* 26.6, detail 13.15",
+    notes: "portrait, mean L* 23.7, mean C* 26.8, detail 4.58",
   },
   {
     label: "portrait-mother-and-child",
@@ -630,8 +641,8 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
       "https://commons.wikimedia.org/wiki/File%3AMother_and_Child_II_(Imagicity_626).jpg",
     author: "Graham Crumb",
     licence: "CC BY-SA 3.0",
-    axis: "skin tone and portrait framing",
-    notes: "landscape, mean L* 59.5, mean C* 0, detail 11.4",
+    axis: "portrait framing; monochrome, so no skin chroma",
+    notes: "landscape, mean L* 59.5, mean C* 0, detail 3.56",
   },
   {
     label: "portrait-portrait-femme-tenue",
@@ -647,8 +658,8 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
       "https://commons.wikimedia.org/wiki/File%3APortrait_de_femme_en_tenue_traditionnelle_de_Berb%C3%A8re_Alg%C3%A9rien.jpg",
     author: "Samia Dib Benkaci",
     licence: "CC BY-SA 4.0",
-    axis: "skin tone and portrait framing",
-    notes: "portrait, mean L* 27.2, mean C* 0, detail 21.72",
+    axis: "portrait framing; monochrome, so no skin chroma",
+    notes: "portrait, mean L* 27.2, mean C* 0, detail 7.44",
   },
   {
     label: "portrait-sideshow-bob-love",
@@ -665,7 +676,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Graham Crumb",
     licence: "CC BY-SA 3.0",
     axis: "skin tone and portrait framing",
-    notes: "landscape, mean L* 50.6, mean C* 44.1, detail 17.64",
+    notes: "landscape, mean L* 50.6, mean C* 44.3, detail 5.33",
   },
   {
     label: "natural-andrew-jackson-state",
@@ -682,7 +693,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Warren LeMay from Chicago, IL, United States",
     licence: "CC BY-SA 2.0",
     axis: "dense periodic man-made detail",
-    notes: "portrait, mean L* 61.7, mean C* 12.7, detail 47.25",
+    notes: "portrait, mean L* 61.7, mean C* 12.8, detail 15.12",
   },
   {
     label: "natural-nster-westdeutsche-lotterie",
@@ -699,7 +710,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Dietmar Rabich",
     licence: "CC BY-SA 4.0",
     axis: "dense periodic man-made detail",
-    notes: "portrait, mean L* 42.1, mean C* 9.2, detail 22.77",
+    notes: "portrait, mean L* 42.2, mean C* 9.1, detail 7.87",
   },
   {
     label: "natural-nster-westdeutsche-lotterie-2",
@@ -716,7 +727,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "Dietmar Rabich",
     licence: "CC BY-SA 4.0",
     axis: "dense periodic man-made detail",
-    notes: "landscape, mean L* 50.6, mean C* 7, detail 17.48",
+    notes: "landscape, mean L* 50.6, mean C* 6.9, detail 5.64",
   },
   {
     label: "natural-roof-tiles-packed",
@@ -733,7 +744,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     author: "W.carter",
     licence: "CC BY-SA 4.0",
     axis: "dense periodic man-made detail",
-    notes: "landscape, mean L* 46, mean C* 46, detail 25.17",
+    notes: "landscape, mean L* 46, mean C* 46.1, detail 8.11",
   },
 ];
 

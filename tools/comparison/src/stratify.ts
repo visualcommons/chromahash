@@ -14,7 +14,8 @@
  * The covariates are already measured and already committed: `natural-images.ts`
  * records mean L*, mean chroma C* and Laplacian detail energy per image, taken
  * on the same 512 px reference the harness scores against, because §9.1's corpus
- * audit needed them to choose the set. Nothing has ever read them back.
+ * audit needed them to choose the set. They are measured by
+ * `corpus-covariates.ts --files` (#102), which defines each one.
  *
  * Usage:
  *   node dist/stratify.js <sweep> [--metric spurious|deficit|ringing|ciede]
@@ -42,8 +43,8 @@ interface Covariates {
 }
 
 /**
- * `notes` is prose with the numbers in it — "landscape, mean L* 40.1, mean C*
- * 6.8, detail 9.85". Parsed rather than restructured because the field is also
+ * `notes` is prose with the numbers in it — "landscape, mean L* 40, mean C*
+ * 6.9, detail 2.94". Parsed rather than restructured because the field is also
  * read by humans, and because a schema change here would touch all 39 entries
  * for no measurement gain.
  *
@@ -52,7 +53,7 @@ interface Covariates {
  * used to be skipped, which silently shrank the corpus every table here is
  * computed over: the bins would still be equal-count terciles, of a different
  * set, and nothing printed would say so. A caption reworded to "detail energy
- * 9.85" is enough to do it.
+ * 2.94" is enough to do it.
  */
 function covariates(): Map<string, Covariates> {
   const out = new Map<string, Covariates>();
