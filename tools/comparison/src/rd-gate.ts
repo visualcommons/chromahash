@@ -38,10 +38,11 @@ import { ensureNaturalImages } from "./natural-images.ts";
 /**
  * The gated images: eight tune-split photographs spanning the corpus categories
  * the encoder is most likely to regress on — mid-key detail, a face, a night
- * scene, a saturated one, a skin tone, and a photograph whose measured mean
- * chroma is ~0 so its chroma AC set is identically zero (the degenerate input
- * for any change to the chroma path). One image per axis of the corpus audit,
- * all from the tune split. Content-pinned by `natural-images.ts`, so this set
+ * scene, a saturated one, and a photograph whose measured mean chroma is ~0 so
+ * its chroma AC set is identically zero (the degenerate input for any change
+ * to the chroma path). The face, `portrait-african-lady`, is a black-and-white
+ * photograph (mean C* 0, #102), so it is a second achromatic input and no
+ * image here carries skin chroma. All from the tune split. Content-pinned by `natural-images.ts`, so this set
  * is byte-identical on every machine.
  */
 const GATE_IMAGES = [

@@ -41,8 +41,8 @@ export function pearson(xs: number[], ys: number[]): number {
  * Split an ascending-sorted list into `binCount` equal-count bins by rank.
  *
  * Rank-based rather than value-based so every bin holds the same number of
- * images: a value-based split of a skewed covariate (detail energy runs 6.8 to
- * 75.9 over the tune corpus) would put twenty images in one bin and two in
+ * images: a value-based split of a skewed covariate (detail energy runs 2.0 to
+ * 22.1 over the photographic corpus) would put twenty images in one bin and two in
  * another, and a two-image mean is not a reading. The remainder when the count
  * does not divide goes to the later bins, and every input lands in exactly one.
  */

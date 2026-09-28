@@ -13,16 +13,46 @@ import type { ImageInput } from "./types.ts";
 export const REFERENCE_CAP = 512;
 
 /**
+ * The picture's dimensions as a viewer shows it: the stored dimensions, swapped
+ * when the EXIF Orientation tag (5–8) turns the picture a quarter turn. An
+ * absent or out-of-range tag leaves them as stored.
+ */
+export function orientedSize(meta: {
+  width?: number | undefined;
+  height?: number | undefined;
+  orientation?: number | undefined;
+}): { width: number; height: number } {
+  const width = meta.width ?? 0;
+  const height = meta.height ?? 0;
+  const o = meta.orientation ?? 1;
+  return o >= 5 && o <= 8
+    ? { width: height, height: width }
+    : { width, height };
+}
+
+/**
+ * A sharp pipeline over an encoded image, turned upright by its EXIF
+ * Orientation tag. Every raster the harness encodes, scores, displays or
+ * measures starts here, so a file stored sideways with an Orientation tag is
+ * encoded and scored the way a viewer (and an LQIP pipeline, which renders
+ * the placeholder in the picture's box) sees it, not lying on its side.
+ * Resize dimensions given after this are of the upright picture.
+ */
+export function upright(bytes: Buffer): sharp.Sharp {
+  return sharp(bytes).rotate();
+}
+
+/**
  * Load an image file, downscale to fit within 100x100 for encoding, and decode
- * a display-resolution reference (REFERENCE_CAP long edge) for scoring.
+ * a display-resolution reference (REFERENCE_CAP long edge) for scoring. Both
+ * are of the upright picture (see {@link upright}).
  */
 export async function loadImage(filePath: string): Promise<ImageInput> {
   const fileBuffer = await fs.readFile(filePath);
-  const image = sharp(fileBuffer);
-  const metadata = await image.metadata();
+  const metadata = await sharp(fileBuffer).metadata();
 
-  const originalWidth = metadata.width ?? 0;
-  const originalHeight = metadata.height ?? 0;
+  const { width: originalWidth, height: originalHeight } =
+    orientedSize(metadata);
 
   if (originalWidth === 0 || originalHeight === 0) {
     throw new Error(`Could not read dimensions from ${filePath}`);
@@ -33,7 +63,7 @@ export async function loadImage(filePath: string): Promise<ImageInput> {
   const smallWidth = Math.max(1, Math.round(originalWidth * scale));
   const smallHeight = Math.max(1, Math.round(originalHeight * scale));
 
-  const { data, info } = await sharp(fileBuffer)
+  const { data, info } = await upright(fileBuffer)
     .resize(smallWidth, smallHeight, { fit: "fill" })
     .ensureAlpha()
     .raw()
@@ -48,7 +78,7 @@ export async function loadImage(filePath: string): Promise<ImageInput> {
   );
   const referenceWidth = Math.max(1, Math.round(originalWidth * refScale));
   const referenceHeight = Math.max(1, Math.round(originalHeight * refScale));
-  const { data: refData, info: refInfo } = await sharp(fileBuffer)
+  const { data: refData, info: refInfo } = await upright(fileBuffer)
     .resize(referenceWidth, referenceHeight, {
       kernel: "lanczos3",
       fit: "fill",
@@ -103,7 +133,7 @@ export async function fileBufferToDisplayDataUri(
   fileBuffer: Buffer,
   maxDim = 600,
 ): Promise<string> {
-  const jpg = await sharp(fileBuffer)
+  const jpg = await upright(fileBuffer)
     .resize(maxDim, maxDim, { fit: "inside", withoutEnlargement: true })
     .jpeg({ quality: 85 })
     .toBuffer();

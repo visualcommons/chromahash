@@ -64,9 +64,10 @@ any entry carries it, is the sealed holdout: no tool fetches it until
 \`spec/V0.8-DECISIONS.md\` records the decision it answers as frozen.
 
 **Axis** is the §9.1 corpus-audit axis the image was chosen to cover.
-**Notes** are its covariates on the 512 px scoring reference: orientation,
-mean CIELAB L\\*, mean chroma C\\*, and a Laplacian detail energy whose exact
-formula was not recorded when these were measured.
+**Notes** are its covariates on the upright 512 px scoring reference:
+orientation, mean CIELAB L\\*, mean chroma C\\*, and a detail energy (mean
+absolute 4-neighbour Laplacian of L\\*), all measured by
+\`src/corpus-covariates.ts --files\` (#102).
 
 `;
 

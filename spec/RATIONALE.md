@@ -273,7 +273,7 @@ attribution above — whatever was true at the v0.5 constants, at v0.7's the
 invented structure is luma, and this paragraph's second sentence should not be
 read as describing the format as it now ships. And at code 2 the lightest taper
 (`w_min 0.85`) is **statistically free** on ΔE00 — a paired CI of
-[−0.027, +0.012] over 31 images — buying a 28% cut in invented detail and a
+[−0.030, +0.011] over 31 images — buying a 28% cut in invented detail and a
 better DSSIM, and failing on SSIMULACRA2 alone. That is a decision resting
 entirely on whether SSIMULACRA2 is right about placeholders, which is U19 and
 is still open.
@@ -473,8 +473,8 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
 1. ~~**Chroma-from-luma**~~ — **built in v0.7, and it does not pay for itself**
    (`EXPERIMENTS.md` §7.10). Implemented as a signalled per-channel
    least-squares gain and measured at every tier. The prediction is real and
-   grows with tier — given away free it is −0.09% ΔE00 at 32 B and −0.90% at
-   code 3 — but the gain field that signals it costs +2.18% at 32 B, which is
+   grows with tier — given away free it is −0.10% ΔE00 at 32 B and −0.90% at
+   code 3 — but the gain field that signals it costs +2.11% at 32 B, which is
    more than it returns. Note what is *not* being claimed: an earlier reading
    had a free predictor scoring *worse* than none, which is not physically
    expected and prompted an audit; on the Wikimedia corpus that anti-correlation
