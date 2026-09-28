@@ -122,8 +122,13 @@ These files are **not committed** — they are fetched on demand and content-pin
 by SHA-256 (\`src/alpha-images.ts\`, \`src/corpus-pin.ts\`). A pin mismatch is
 fatal: the corpus a number was measured on is part of what the number means.
 
-The holdout split is retired (#83): see \`ALPHA_HOLDOUT_RETIRED\` in
-\`src/alpha-images.ts\`. Its images keep their declared split below.
+**Splits.** \`tune\` is what constants are chosen on. The holdout split is
+retired (#83): see \`ALPHA_HOLDOUT_RETIRED\` in \`src/alpha-images.ts\`. Its
+seven surviving images are \`tune2\` (#93), tuning data kept apart from tune;
+only its withdrawn image is still marked \`holdout\`, so a cached copy joins no
+sweep. \`holdout2\`, if any entry carries it, is the sealed replacement: every
+such entry is labelled \`sealed-cutout-*\`, and no tool fetches it until
+\`spec/V0.8-DECISIONS.md\` records the decision it answers as frozen.
 
 **This file is generated.** Edit the table in \`src/alpha-images.ts\` and run
 \`mise run corpus:licenses\`; \`--check\` fails when the two disagree.
@@ -141,7 +146,7 @@ function renderAlpha(): string {
 
   const parts = [ALPHA_HEADER];
   parts.push(
-    `${rows.length} images — ${rows.filter((r) => r.split === "tune").length} tune, ${rows.filter((r) => r.split === "holdout").length} holdout; ${withdrawn} withdrawn.\n`,
+    `${rows.length} images — ${splitCounts(rows)}; ${withdrawn} withdrawn.\n`,
   );
 
   for (const r of rows) {

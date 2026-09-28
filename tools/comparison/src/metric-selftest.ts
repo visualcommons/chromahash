@@ -53,7 +53,8 @@
  *
  * The alpha corpus block covers the retired alpha holdout split and withdrawn
  * pins (`alpha-images.ts`, #83), whose refusal and skip no sweep CI runs ever
- * reaches.
+ * reaches, and the move of the split's survivors to tune2 (#93). The alpha
+ * holdout2 block covers the sealed split that replaces it (#93).
  *
  * The photographic splits block covers the same for the photographic holdout
  * #76 retired into tune2, and for the gate that keeps holdout2 sealed until
@@ -67,19 +68,26 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import {
+  ALPHA_HOLDOUT2_UNPINNED,
   ALPHA_HOLDOUT_RETIRED,
+  ALPHA_IMAGES,
   type AlphaImageSpec,
+  alphaHoldout2Specs,
   alphaImagesToFetch,
 } from "./alpha-images.ts";
 import {
+  ALPHA_HOLDOUT2_PREFIX,
+  HOLDOUT2_ALL_REFUSED,
   HOLDOUT2_PREFIX,
   PHOTO_HOLDOUT_RETIRED,
+  assertHoldout2Corpus,
   inCorpus,
   inSplit,
   parseScratchPhotoSplit,
   parseSplit,
   partitionSealed,
   splitFor,
+  tierFor,
 } from "./corpus.ts";
 import {
   assertHoldout2Unread,
@@ -96,10 +104,12 @@ import {
 import {
   type CommonsFacts,
   admit,
+  alphaFractions,
   covariatesOf,
   isFreeLicence,
   measureFile,
   sha1Mismatch,
+  silhouetteOf,
   srgbToLab,
 } from "./corpus-covariates.ts";
 import {
@@ -2481,6 +2491,205 @@ console.log("\nverify:experiments — the table register and result shape\n");
     splitFor("cutout-wordmark-aflac") === "holdout",
     splitFor("cutout-wordmark-aflac"),
   );
+
+  // The retired split's seven survivors are tune2 (#93).
+  const survivors = [
+    "cutout-app-icon-aptoide",
+    "cutout-campaign-medal",
+    "cutout-dslr-camera",
+    "cutout-glassfish",
+    "cutout-insignia-4id",
+    "cutout-lineart-oinochoe",
+    "cutout-planet-gas-giant",
+  ];
+  const tune2Pins = ALPHA_IMAGES.filter((s) => s.split === "tune2")
+    .map((s) => s.label)
+    .sort();
+  check(
+    "the retired alpha holdout's seven survivors, and only they, are tune2",
+    tune2Pins.join(",") === survivors.join(",") &&
+      survivors.every((l) => splitFor(l) === "tune2"),
+    tune2Pins.join(","),
+  );
+  const leftInHoldout = ALPHA_IMAGES.filter(
+    (s) => s.split === "holdout" && s.withdrawn === undefined,
+  );
+  check(
+    "no fetchable alpha pin is left in the retired holdout split",
+    leftInHoldout.length === 0,
+    leftInHoldout.map((s) => s.label).join(","),
+  );
+  check(
+    "the retired-holdout refusal names tune2 and the sealed holdout2",
+    ALPHA_HOLDOUT_RETIRED.includes("--split tune2") &&
+      ALPHA_HOLDOUT_RETIRED.includes("holdout2"),
+    ALPHA_HOLDOUT_RETIRED,
+  );
+  check(
+    "a tune2 alpha fetch takes the tune2 pins only",
+    labels(
+      alphaImagesToFetch("tune2", [
+        ...fixture,
+        { ...base, label: "fixture-survivor", split: "tune2" },
+      ]),
+    ) === "fixture-survivor",
+    "",
+  );
+}
+
+// --- Alpha corpus: the sealed holdout2 (#93) ---------------------------------
+//
+// The alpha holdout2 opens through the same register gate as the photographic
+// one, and nothing a CI sweep runs asks for it, so every branch of its
+// selection and of the corpus rule that tells it from a sealed photograph is
+// driven here from fixtures.
+{
+  console.log("\nalpha holdout2:");
+
+  const thrown = (f: () => unknown): string => {
+    try {
+      f();
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    return "";
+  };
+  const sealedCutout = `${ALPHA_HOLDOUT2_PREFIX}fixture`;
+  check(
+    "the alpha seal is the holdout2 seal followed by the alpha corpus prefix",
+    ALPHA_HOLDOUT2_PREFIX === `${HOLDOUT2_PREFIX}cutout-`,
+    ALPHA_HOLDOUT2_PREFIX,
+  );
+  check(
+    "a sealed-cutout- image is holdout2, in the alpha corpus and not the photographic one",
+    splitFor(sealedCutout) === "holdout2" &&
+      inCorpus(sealedCutout, "alpha") &&
+      !inCorpus(sealedCutout, "photo") &&
+      !inCorpus(sealedCutout, "graphic"),
+    splitFor(sealedCutout),
+  );
+  check(
+    "a sealed photograph stays out of the alpha corpus",
+    inCorpus(`${HOLDOUT2_PREFIX}phone-fixture`, "photo") &&
+      !inCorpus(`${HOLDOUT2_PREFIX}phone-fixture`, "alpha"),
+    "",
+  );
+  const sealedGraphic = `${HOLDOUT2_PREFIX}graphic-fixture`;
+  check(
+    "a sealed-graphic- image is filed under the graphics corpus, not the photographic one",
+    inCorpus(sealedGraphic, "graphic") &&
+      !inCorpus(sealedGraphic, "photo") &&
+      !inCorpus(sealedGraphic, "alpha"),
+    "",
+  );
+  check(
+    '--split holdout2 refuses the "all" corpus, and reads photo or alpha',
+    thrown(() => assertHoldout2Corpus("all")) === HOLDOUT2_ALL_REFUSED &&
+      thrown(() => assertHoldout2Corpus("photo")) === "" &&
+      thrown(() => assertHoldout2Corpus("alpha")) === "",
+    thrown(() => assertHoldout2Corpus("all")),
+  );
+  check(
+    '"all" excludes a sealed cut-out, and the report drops a cached one',
+    !inSplit(sealedCutout, "all") &&
+      partitionSealed([`/fx/alpha/${sealedCutout}.png`]).sealed.length === 1,
+    "",
+  );
+  check(
+    "a sealed cut-out is real content, not a synthetic fixture",
+    tierFor(sealedCutout) === "real",
+    tierFor(sealedCutout),
+  );
+
+  const base: AlphaImageSpec = {
+    label: "cutout-open",
+    url: "https://example.invalid/open.png",
+    ext: ".png",
+    width: 1,
+    height: 1,
+    split: "tune",
+    nonOpaqueFraction: 0.5,
+    softAlphaFraction: 0,
+    sha256: "0".repeat(64),
+    source: "https://example.invalid/open",
+    author: "fixture",
+    licence: "CC0",
+    notes: "fixture",
+  };
+  const sealed: AlphaImageSpec = {
+    ...base,
+    label: sealedCutout,
+    split: "holdout2",
+  };
+  const opening = {
+    decision: "C2",
+    register: "spec/V0.8-DECISIONS.md",
+    registerSha256: "0".repeat(64),
+  };
+  const table = [base, sealed];
+  const labels = (specs: AlphaImageSpec[]): string =>
+    specs.map((s) => s.label).join(",");
+
+  check(
+    "the alpha holdout2 is refused without the gate's opening",
+    thrown(() => alphaImagesToFetch("holdout2", table)).includes(
+      "fetched only through the register gate",
+    ),
+    thrown(() => alphaImagesToFetch("holdout2", table)),
+  );
+  check(
+    "an opened alpha holdout2 fetches exactly its sealed pins",
+    labels(alphaImagesToFetch("holdout2", table, opening)) === sealedCutout,
+    labels(alphaImagesToFetch("holdout2", table, opening)),
+  );
+  check(
+    "with no split, the alpha fetch skips every sealed pin",
+    labels(alphaImagesToFetch(undefined, table)) === "cutout-open",
+    labels(alphaImagesToFetch(undefined, table)),
+  );
+  const empty = thrown(() => alphaImagesToFetch("holdout2", [base], opening));
+  check(
+    "an opened alpha holdout2 with no pins refuses rather than scoring nothing",
+    empty.startsWith(ALPHA_HOLDOUT2_UNPINNED) && empty.includes('"C2"'),
+    empty,
+  );
+  const gone = thrown(() =>
+    alphaImagesToFetch(
+      "holdout2",
+      [...table, { ...sealed, label: `${sealedCutout}-gone`, withdrawn: "x" }],
+      opening,
+    ),
+  );
+  check(
+    "an alpha holdout2 with a withdrawn pin refuses, since it cannot be read whole",
+    gone.includes("cannot be read whole"),
+    gone,
+  );
+  check(
+    "the shipped alpha table has no holdout2 pin until its list is approved",
+    alphaHoldout2Specs().length === 0 &&
+      thrown(() =>
+        alphaImagesToFetch("holdout2", undefined, opening),
+      ).startsWith(ALPHA_HOLDOUT2_UNPINNED),
+    "",
+  );
+  for (const [what, bad] of [
+    [
+      "an alpha holdout2 pin without the prefix",
+      { ...sealed, label: "cutout-x" },
+    ],
+    [
+      "a sealed-cutout- pin on another split",
+      { ...sealed, split: "tune" as const },
+    ],
+    [
+      "an alpha pin sealed as a photograph",
+      { ...sealed, label: `${HOLDOUT2_PREFIX}x` },
+    ],
+  ] as const) {
+    const message = thrown(() => alphaHoldout2Specs([bad]));
+    check(`${what} is refused`, message.includes("is labelled"), message);
+  }
 }
 
 // --- Photographic splits: tune2 retired, holdout2 sealed (#76) --------------
@@ -2720,6 +2929,10 @@ console.log("\nverify:experiments — the table register and result shape\n");
   for (const [what, bad] of [
     ["a holdout2 pin without the prefix", { ...spec, label: "natural-x" }],
     ["a sealed- pin on another split", { ...spec, split: "tune" as const }],
+    [
+      "a photographic pin sealed as a cut-out",
+      { ...spec, label: `${ALPHA_HOLDOUT2_PREFIX}x` },
+    ],
   ] as const) {
     const message = thrown(() => holdout2Specs([bad]));
     check(`${what} is refused`, message.includes("is labelled"), message);
@@ -2958,6 +3171,94 @@ console.log("\nverify:experiments — the table register and result shape\n");
     );
     rmSync(dir, { recursive: true, force: true });
   }
+
+  // The alpha covariates the alpha holdout2 candidates are chosen on (#93).
+  check(
+    "an image with no alpha channel has no alpha covariates",
+    rotated.alpha === null,
+    JSON.stringify(rotated.alpha),
+  );
+  const fractions = alphaFractions(
+    new Uint8Array([0, 0, 0, 255, 0, 0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 255]),
+  );
+  check(
+    "alpha 255, 0, 128, 255 is half non-opaque and a quarter soft",
+    fractions.nonOpaqueFraction === 0.5 && fractions.softAlphaFraction === 0.25,
+    JSON.stringify(fractions),
+  );
+  const mask = (
+    w: number,
+    h: number,
+    on: (x: number, y: number) => boolean,
+  ): Uint8Array => {
+    const out = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) out[4 * (y * w + x) + 3] = on(x, y) ? 255 : 0;
+    }
+    return out;
+  };
+  const square = silhouetteOf(
+    mask(16, 16, (x, y) => x >= 4 && x < 12 && y >= 4 && y < 12),
+    16,
+    16,
+  );
+  const dots = silhouetteOf(
+    mask(16, 16, (x, y) => (x === 2 && y === 2) || (x === 9 && y === 9)),
+    16,
+    16,
+  );
+  const edge = silhouetteOf(
+    mask(4, 4, () => true),
+    4,
+    4,
+  );
+  check(
+    "an axis-aligned square scores silhouette 1, two lone pixels √2, and the raster border counts as edge",
+    square === 1 &&
+      dots !== null &&
+      Math.abs(dots - Math.SQRT2) < 1e-12 &&
+      edge === 1,
+    `square ${square} dots ${dots} edge ${edge}`,
+  );
+  check(
+    "an empty mask has no silhouette",
+    silhouetteOf(
+      mask(4, 4, () => false),
+      4,
+      4,
+    ) === null,
+    "",
+  );
+  const halfPng = await sharp(Buffer.from(mask(1024, 512, (x) => x >= 512)), {
+    raw: { width: 1024, height: 512, channels: 4 },
+  })
+    .png()
+    .toBuffer();
+  const half = await measureFile(halfPng);
+  // Squared to 512 × 512, the opaque half is a 256 × 512 rectangle on the
+  // border: P = 2 (256 + 512), A = 256 · 512.
+  const halfSilhouette = 1536 / (4 * Math.sqrt(256 * 512));
+  check(
+    "measureFile takes the alpha fractions on the stored pixels and the silhouette on a square resample",
+    half.alpha !== null &&
+      half.alpha.nonOpaqueFraction === 0.5 &&
+      half.alpha.softAlphaFraction === 0 &&
+      half.alpha.silhouette !== null &&
+      Math.abs(half.alpha.silhouette - halfSilhouette) < 0.02,
+    `${JSON.stringify(half.alpha)} (expected silhouette ${halfSilhouette.toFixed(4)})`,
+  );
+  const strip = await measureFile(
+    await sharp(Buffer.from(mask(1300, 100, () => true)), {
+      raw: { width: 1300, height: 100, channels: 4 },
+    })
+      .png()
+      .toBuffer(),
+  );
+  check(
+    "the silhouette ignores the raster's aspect: an opaque 13:1 strip scores 1, not the ~2 its own raster would",
+    strip.alpha?.silhouette === 1,
+    JSON.stringify(strip.alpha),
+  );
 
   // The --commons path's refusals, on the facts Commons would return.
   const facts: CommonsFacts = {
