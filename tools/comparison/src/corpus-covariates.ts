@@ -9,11 +9,11 @@
  * the high-key and low-key pixel fractions, and a Laplacian detail energy. No
  * encoder is built or run here, and nothing reads a result.
  *
- * The detail formula is written down here because the one behind the
- * `detail` figures in `natural-images.ts` was not: no formula tried reproduces
- * them, so those figures and these are on different scales. To place a
- * candidate against the existing corpus, run `--files` over the cached corpus
- * too and compare like with like.
+ * This is also the tool the covariates in `natural-images.ts`' `notes` are
+ * measured with (`--files` over the cached corpus; #102). The figures first
+ * recorded there came from a formula nobody wrote down and no variant tried
+ * reproduced, so they were re-measured here, and a candidate and a pinned
+ * image are now on one scale.
  *
  *   node dist/corpus-covariates.js --commons <titles.txt> [--out <file.json>]
  *   node dist/corpus-covariates.js --files <image> [<image> ...]
@@ -33,20 +33,24 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import sharp from "sharp";
-import { REFERENCE_CAP } from "./image-loader.ts";
+import { REFERENCE_CAP, orientedSize, upright } from "./image-loader.ts";
 
 /** Covariates of one image, measured on its scoring reference. */
 export interface Covariates {
-  /** Stored pixel dimensions: what the harness scores, which never rotates. */
+  /**
+   * Dimensions of the upright picture: the stored ones, swapped when the EXIF
+   * Orientation tag turns it a quarter turn. The harness turns every image
+   * upright before it encodes or scores it (`image-loader.ts` `upright`), so
+   * these are the dimensions it scores, and the ones a pin records.
+   */
   width: number;
   height: number;
-  /** Of the stored pixels, not of the picture a viewer would be shown. */
+  /** Of the upright picture, as a viewer is shown it and the harness scores it. */
   orientation: "landscape" | "portrait" | "square";
   /**
-   * The EXIF Orientation tag, when present. Anything but 1 means a viewer
-   * rotates or flips the picture and the harness does not (`image-loader.ts`
-   * never calls `rotate()`), so the orientation above is not what a person
-   * looking at the file sees.
+   * The EXIF Orientation tag, when present. Anything but 1 means the stored
+   * pixels are rotated or flipped relative to the picture; every figure here
+   * is measured after undoing it.
    */
   exifOrientation: number | null;
   /** Mean CIELAB L* (D65), 0–100. */
@@ -163,18 +167,17 @@ export function covariatesOf(
 
 /**
  * Covariates of an encoded image, on the reference `image-loader.ts` builds:
- * the original capped to {@link REFERENCE_CAP} on the long edge with Lanczos3,
- * never enlarged.
+ * the upright original capped to {@link REFERENCE_CAP} on the long edge with
+ * Lanczos3, never enlarged.
  */
 export async function measureFile(bytes: Buffer): Promise<Covariates> {
   const meta = await sharp(bytes).metadata();
-  const width = meta.width ?? 0;
-  const height = meta.height ?? 0;
+  const { width, height } = orientedSize(meta);
   if (width === 0 || height === 0) throw new Error("unreadable dimensions");
   const scale = Math.min(REFERENCE_CAP / width, REFERENCE_CAP / height, 1);
   const w = Math.max(1, Math.round(width * scale));
   const h = Math.max(1, Math.round(height * scale));
-  const { data } = await sharp(bytes)
+  const { data } = await upright(bytes)
     .resize(w, h, { kernel: "lanczos3", fit: "fill" })
     .ensureAlpha()
     .raw()
