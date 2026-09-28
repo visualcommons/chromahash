@@ -1,7 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ensurePinnedFixture } from "./corpus-pin.ts";
-import type { CorpusSplit } from "./corpus.ts";
+import {
+  ALPHA_HOLDOUT2_PREFIX,
+  type CorpusSplit,
+  HOLDOUT2_PREFIX,
+} from "./corpus.ts";
+import type { Holdout2Opening } from "./holdout-images.ts";
 
 const ALPHA_DIR = path.resolve(import.meta.dirname, "../fixtures/alpha");
 
@@ -23,7 +28,12 @@ export interface AlphaImageSpec {
   ext: string;
   width: number;
   height: number;
-  /** Split. Constants are chosen on "tune" and validated on "holdout". */
+  /**
+   * Split. Constants are chosen on "tune". "tune2" is the retired holdout's
+   * seven surviving images, which are tuning data now (#93); "holdout" is left
+   * only on the withdrawn pin; "holdout2" is the sealed split, labelled
+   * `sealed-cutout-*` ({@link alphaHoldout2Specs}).
+   */
   split: CorpusSplit;
   /** Fraction of pixels with alpha < 255, measured on the pinned bytes. */
   nonOpaqueFraction: number;
@@ -60,14 +70,25 @@ export interface AlphaImageSpec {
  * The split was eight images. One is gone, so scoring the other seven would be
  * a different experiment reported under the old one's name. It has also been
  * spent: §11.12 read it to adopt the alpha row, and to adopt the compact alpha
- * row, and to reject `alpha_ac_fit`. A replacement is a new split, curated on
- * covariates and sealed before it is read, not a re-run of this one.
+ * row, and to reject `alpha_ac_fit`. The seven survivors are `tune2` now
+ * (#93), tuning data kept apart from tune, as the photographic holdout's are
+ * (#76). The replacement is the sealed `holdout2` split, curated on covariates
+ * and read only through the register gate.
  */
 export const ALPHA_HOLDOUT_RETIRED =
   "the alpha holdout split is retired (#83): cutout-wordmark-aflac, one of its eight images, " +
   "was deleted from Wikimedia Commons on 2026-08-25 as a copyright violation and has no archived copy, " +
   "and the split has already informed the decisions spec/EXPERIMENTS.md §11.12 records. " +
-  "Scoring the remaining seven is a new experiment, not a reproduction; a replacement needs a new, sealed split.";
+  "Its seven surviving images are the tune2 split now (#93): score them with --split tune2 (tuning data, not a verdict). " +
+  "The out-of-sample alpha split is holdout2, sealed until spec/V0.8-DECISIONS.md records the decision it answers as frozen.";
+
+/**
+ * Why an alpha holdout2 fetch refuses when no pin exists. The split is built
+ * and gated, but its images are chosen on covariates alone and pinned only
+ * once the user approves the candidate list.
+ */
+export const ALPHA_HOLDOUT2_UNPINNED =
+  "the alpha holdout2 split has no pinned images yet: its candidate list awaits approval before anything is pinned (#107)";
 
 /**
  * Curated alpha corpus, sourced from Wikimedia Commons under free licences.
@@ -119,7 +140,7 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     ext: ".png",
     width: 601,
     height: 600,
-    split: "holdout",
+    split: "tune2",
     nonOpaqueFraction: 0.1179,
     softAlphaFraction: 0.0053,
     sha256: "40ae89a4816df285936235cf877f7c69cf9ca000e27eeea3ac4709dce0e7982a",
@@ -167,7 +188,7 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     ext: ".png",
     width: 726,
     height: 816,
-    split: "holdout",
+    split: "tune2",
     nonOpaqueFraction: 0.4527,
     softAlphaFraction: 0.0004,
     sha256: "1d49ac031e3ae558d3a46cbb3aec5b12c64e31363f01705a9b49852f458f29f8",
@@ -218,7 +239,7 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     ext: ".png",
     width: 800,
     height: 719,
-    split: "holdout",
+    split: "tune2",
     nonOpaqueFraction: 0.5228,
     softAlphaFraction: 0.006,
     sha256: "b52e726f129bfc656763ac5d2c8c98f4ee96ce1b6cea95010fa90cb8564bffc5",
@@ -268,7 +289,7 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     ext: ".png",
     width: 2417,
     height: 1461,
-    split: "holdout",
+    split: "tune2",
     nonOpaqueFraction: 0.6323,
     softAlphaFraction: 0.099,
     sha256: "122c8a89f44ddd023cb0c581e565cd027c4013261e06a11d54ceef379d85305c",
@@ -317,7 +338,7 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     ext: ".png",
     width: 622,
     height: 620,
-    split: "holdout",
+    split: "tune2",
     nonOpaqueFraction: 0.4635,
     softAlphaFraction: 0.0011,
     sha256: "8fb32f6350082d5b90019b4fdd2070bea4e0d8fb48e934a0f50b4c2d85f08924",
@@ -366,7 +387,7 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     ext: ".png",
     width: 1255,
     height: 2048,
-    split: "holdout",
+    split: "tune2",
     nonOpaqueFraction: 0.4301,
     softAlphaFraction: 0.0028,
     sha256: "3bfbc282601a585c17938950b8cba766faeaf4d423bf8a36b87e716c4c42d5ff",
@@ -414,7 +435,7 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
     ext: ".png",
     width: 4000,
     height: 4000,
-    split: "holdout",
+    split: "tune2",
     nonOpaqueFraction: 0.4301,
     softAlphaFraction: 0.1796,
     sha256: "16d9563712b9d7b42c548b64821d7f17f2913c5ed62c62086967394d5540183d",
@@ -478,19 +499,73 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
 ];
 
 /**
- * The pins {@link ensureAlphaImages} fetches for `split`: withdrawn entries
- * are skipped, and the retired holdout split throws
- * {@link ALPHA_HOLDOUT_RETIRED}. Separate from the fetch so the self-test
- * (`metric-selftest.ts`) can assert both without the network.
+ * The alpha holdout2 pins, after checking that labels and splits agree.
+ * `splitFor` seals by the `sealed-` prefix and `inCorpus` puts a sealed image
+ * in the alpha corpus only by `sealed-cutout-`, so every holdout2 pin, and
+ * only a holdout2 pin, carries {@link ALPHA_HOLDOUT2_PREFIX}; and no alpha pin
+ * carries a bare `sealed-` prefix, which would seal it as a photograph.
+ */
+export function alphaHoldout2Specs(
+  images: readonly AlphaImageSpec[] = ALPHA_IMAGES,
+): AlphaImageSpec[] {
+  const mismatched = images.filter(
+    (s) =>
+      (s.split === "holdout2") !== s.label.startsWith(ALPHA_HOLDOUT2_PREFIX) ||
+      (s.label.startsWith(HOLDOUT2_PREFIX) &&
+        !s.label.startsWith(ALPHA_HOLDOUT2_PREFIX)),
+  );
+  if (mismatched.length > 0) {
+    throw new Error(
+      `every alpha holdout2 pin, and only an alpha holdout2 pin, is labelled "${ALPHA_HOLDOUT2_PREFIX}*"; these are not: ${mismatched.map((s) => `${s.label} (${s.split})`).join(", ")}`,
+    );
+  }
+  return images.filter((s) => s.split === "holdout2");
+}
+
+/**
+ * The pins {@link ensureAlphaImages} fetches for `split`. Withdrawn entries
+ * are skipped. The retired holdout split throws {@link ALPHA_HOLDOUT_RETIRED}.
+ * The sealed holdout2 split is fetched only with the gate's opening, only
+ * whole, and never as part of "every split": with no split, its pins are
+ * skipped. Separate from the fetch so the self-test (`metric-selftest.ts`)
+ * can assert every branch without the network.
+ *
+ * @param opening The register gate's proof (`openHoldout2` in
+ *   `holdout-images.ts`); required for, and only meaningful with, holdout2.
  */
 export function alphaImagesToFetch(
   split?: CorpusSplit,
   images: readonly AlphaImageSpec[] = ALPHA_IMAGES,
+  opening?: Holdout2Opening,
 ): AlphaImageSpec[] {
   if (split === "holdout") throw new Error(ALPHA_HOLDOUT_RETIRED);
+  const sealed = alphaHoldout2Specs(images);
+  if (split === "holdout2") {
+    if (opening === undefined) {
+      throw new Error(
+        "the alpha holdout2 split is sealed: it is fetched only through the register gate (openHoldout2), for one decision spec/V0.8-DECISIONS.md records as frozen",
+      );
+    }
+    const specs = sealed.filter((s) => s.withdrawn === undefined);
+    if (specs.length !== sealed.length) {
+      throw new Error(
+        `an alpha holdout2 pin is withdrawn (${sealed
+          .filter((s) => s.withdrawn !== undefined)
+          .map((s) => s.label)
+          .join(", ")}), so the split cannot be read whole`,
+      );
+    }
+    if (specs.length === 0) {
+      throw new Error(
+        `${ALPHA_HOLDOUT2_UNPINNED}, so decision "${opening.decision}" cannot be read against it`,
+      );
+    }
+    return specs;
+  }
   return images.filter(
     (spec) =>
       spec.withdrawn === undefined &&
+      spec.split !== "holdout2" &&
       (split === undefined || spec.split === split),
   );
 }
@@ -506,12 +581,16 @@ export function alphaImagesToFetch(
  *   The holdout split is retired, so asking for it throws
  *   {@link ALPHA_HOLDOUT_RETIRED} before anything is fetched, rather than
  *   failing on the missing file or scoring a smaller corpus.
- *   With no split, every image that has not been withdrawn is fetched.
+ *   The sealed holdout2 split needs `opening`.
+ *   With no split, every image that has not been withdrawn and is not sealed
+ *   is fetched.
+ * @param opening The register gate's proof, for holdout2 only.
  */
 export async function ensureAlphaImages(
   split?: CorpusSplit,
+  opening?: Holdout2Opening,
 ): Promise<string[]> {
-  const specs = alphaImagesToFetch(split);
+  const specs = alphaImagesToFetch(split, ALPHA_IMAGES, opening);
   await fs.mkdir(ALPHA_DIR, { recursive: true });
   const paths: string[] = [];
   let downloaded = 0;
@@ -531,6 +610,11 @@ export async function ensureAlphaImages(
   }
   if (downloaded > 0) {
     console.log(`Downloaded ${downloaded} alpha image(s) to ${ALPHA_DIR}`);
+  }
+  if (split === "holdout2" && opening !== undefined) {
+    console.log(
+      `alpha holdout2 opened for decision "${opening.decision}" (${opening.register} sha256 ${opening.registerSha256.slice(0, 12)})`,
+    );
   }
   return paths;
 }

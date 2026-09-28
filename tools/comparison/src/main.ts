@@ -750,7 +750,8 @@ async function main(): Promise<void> {
   const allStats = computeFormatStats(entries, activeFormatNames);
   // Split summaries so sweep tooling can compare generalization without
   // re-deriving the split (see corpus.ts). `holdout` holds no photograph since
-  // #76 retired the photographic holdout into `tune2`.
+  // #76 retired the photographic holdout into `tune2`, and no fetchable
+  // cut-out since #93 moved the alpha one's survivors there too.
   const tuneStats = computeFormatStats(
     entries,
     activeFormatNames,

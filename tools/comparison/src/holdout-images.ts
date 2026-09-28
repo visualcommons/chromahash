@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ensurePinnedFixture, sha256 } from "./corpus-pin.ts";
-import { HOLDOUT2_PREFIX } from "./corpus.ts";
+import { HOLDOUT2_PREFIX, inCorpus } from "./corpus.ts";
 import {
   CURATED_IMAGES,
   type NaturalImageSpec,
@@ -271,17 +271,22 @@ export function assertHoldout2Unread(resultFile: string): void {
  * The holdout2 pins, after checking that the prefix and the declared split
  * agree. `splitFor` seals by the `sealed-` prefix, so a holdout2 pin without
  * it would be scored as tune by every other loader, and a `sealed-` image
- * declared anything else would be sealed without the table saying so.
+ * declared anything else would be sealed without the table saying so. A
+ * sealed label that names another corpus after the seal (`sealed-cutout-*`,
+ * the alpha half, #93) is refused too: it would never be scored as a
+ * photograph.
  */
 export function holdout2Specs(
   images: readonly NaturalImageSpec[] = CURATED_IMAGES,
 ): NaturalImageSpec[] {
   const mismatched = images.filter(
-    (s) => (s.split === "holdout2") !== s.label.startsWith(HOLDOUT2_PREFIX),
+    (s) =>
+      (s.split === "holdout2") !== s.label.startsWith(HOLDOUT2_PREFIX) ||
+      (s.label.startsWith(HOLDOUT2_PREFIX) && !inCorpus(s.label, "photo")),
   );
   if (mismatched.length > 0) {
     throw new Error(
-      `every holdout2 pin, and only a holdout2 pin, is labelled "${HOLDOUT2_PREFIX}*"; these are not: ${mismatched.map((s) => `${s.label} (${s.split})`).join(", ")}`,
+      `every holdout2 pin, and only a holdout2 pin, is labelled "${HOLDOUT2_PREFIX}*", with no other corpus's prefix after the seal; these are not: ${mismatched.map((s) => `${s.label} (${s.split})`).join(", ")}`,
     );
   }
   return images.filter((s) => s.split === "holdout2");

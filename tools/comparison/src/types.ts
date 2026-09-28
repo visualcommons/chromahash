@@ -490,8 +490,9 @@ export interface ComparisonJson {
   /**
    * Summary statistics: photographic images (primary), all images, and the
    * corpus splits (see corpus.ts). `tune2` is the spent photographic holdout
-   * #76 retired; `holdout` is the graphics one, and holds no photograph. The
-   * sealed holdout2 is never scored by the report.
+   * #76 retired, and the seven surviving cut-outs of the alpha one (#93);
+   * `holdout` is the graphics one, and holds no photograph. The sealed
+   * holdout2 is never scored by the report.
    */
   summary: {
     naturalAndRealistic: FormatStat[];
