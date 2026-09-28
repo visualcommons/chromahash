@@ -55,7 +55,7 @@ import {
   TIER_BYTES,
 } from "./rd/lineup.ts";
 import { computeRdCurves, generateRdSection } from "./rd/report.ts";
-import { splitFor, tierFor } from "./corpus.ts";
+import { partitionSealed, splitFor, tierFor } from "./corpus.ts";
 import { defaultJobs, mapConcurrent } from "./pool.ts";
 import { aspectFidelity, REFLOW_CONTAINER_PX } from "./aspect.ts";
 import {
@@ -85,8 +85,9 @@ const { values } = parseArgs({
     "skip-harnesses": { type: "boolean", default: false },
     "generate-fixtures": { type: "boolean", default: true },
     "skip-natural": { type: "boolean", default: false },
-    // Skip downloading the Kodak holdout suite (mirrors --skip-natural; the
-    // holdout images live in fixtures/holdout/ and are cached the same way).
+    // Skip downloading the Kodak suite (mirrors --skip-natural; the images live
+    // in fixtures/holdout/ and are cached the same way). The flag and directory
+    // keep their names, but Kodak is the tune2 split since #76.
     "skip-holdout": { type: "boolean", default: false },
     // Preview-only escape hatch: metrics degrade to N/A instead of failing the
     // run when iqa-cli is unavailable. Never use for published comparisons.
@@ -289,11 +290,12 @@ async function main(): Promise<void> {
     console.log(`${naturalPaths.length} natural image(s) available.`);
   }
 
-  // Fetch the Kodak holdout suite (on-demand with local cache)
+  // Fetch the Kodak suite (on-demand with local cache). It is the tune2 split
+  // since #76 retired the photographic holdout; the flag keeps its old name.
   if (!skipHoldout) {
-    console.log("Ensuring holdout images are cached...");
-    const holdoutPaths = await ensureHoldoutImages();
-    console.log(`${holdoutPaths.length} holdout image(s) available.`);
+    console.log("Ensuring Kodak (tune2) images are cached...");
+    const kodakPaths = await ensureHoldoutImages();
+    console.log(`${kodakPaths.length} Kodak (tune2) image(s) available.`);
   }
 
   // Find all image files
@@ -305,6 +307,17 @@ async function main(): Promise<void> {
     }
   }
   imagePaths.sort();
+
+  // The sealed holdout2 is read only by a gated sweep or rd-budget run
+  // (holdout-images.ts). A copy such a run cached is still under fixtures/, so
+  // the report drops it here rather than scoring it for anyone who looks.
+  const { open, sealed } = partitionSealed(imagePaths);
+  if (sealed.length > 0) {
+    console.log(
+      `Skipping ${sealed.length} sealed holdout2 image(s); the report never scores them.`,
+    );
+    imagePaths = open;
+  }
 
   // R-D mode answers "which format wins at equal byte cost" for real
   // photographs — synthetic fixture categories would only add noise, so the
@@ -735,12 +748,18 @@ async function main(): Promise<void> {
     PHOTO_CATEGORIES.includes(e.category),
   );
   const allStats = computeFormatStats(entries, activeFormatNames);
-  // Tune/holdout split summaries so sweep tooling can compare generalization
-  // without re-deriving the split (see corpus.ts).
+  // Split summaries so sweep tooling can compare generalization without
+  // re-deriving the split (see corpus.ts). `holdout` holds no photograph since
+  // #76 retired the photographic holdout into `tune2`.
   const tuneStats = computeFormatStats(
     entries,
     activeFormatNames,
     (e) => splitFor(e.name) === "tune",
+  );
+  const tune2Stats = computeFormatStats(
+    entries,
+    activeFormatNames,
+    (e) => splitFor(e.name) === "tune2",
   );
   const holdoutStats = computeFormatStats(
     entries,
@@ -771,6 +790,7 @@ async function main(): Promise<void> {
         ),
         all: pairedFor(),
         tune: pairedFor((e) => splitFor(e.name) === "tune"),
+        tune2: pairedFor((e) => splitFor(e.name) === "tune2"),
         holdout: pairedFor((e) => splitFor(e.name) === "holdout"),
       }
     : null;
@@ -819,6 +839,7 @@ async function main(): Promise<void> {
       naturalAndRealistic: naturalStats,
       all: allStats,
       tune: tuneStats,
+      tune2: tune2Stats,
       holdout: holdoutStats,
     },
     crossLanguage,
@@ -884,13 +905,19 @@ async function main(): Promise<void> {
   printSummary("Natural Images Only", naturalStats);
   printSummary("All Images", allStats);
 
-  // Paired A/B is the conclusion of a version run, so it prints last — the
-  // holdout block is the honest number and goes closest to the prompt.
+  // Paired A/B is the conclusion of a version run, so it prints last. No
+  // block here is out of sample for photographs: tune2 is the spent holdout,
+  // and the report never scores the sealed holdout2.
   if (paired) {
     console.log(formatPairedTable("photographic", paired.naturalAndRealistic));
     console.log(formatPairedTable("all images", paired.all));
+    if (paired.tune2.length > 0) {
+      console.log(
+        formatPairedTable("tune2 (spent photographic holdout)", paired.tune2),
+      );
+    }
     if (paired.holdout.length > 0) {
-      console.log(formatPairedTable("HOLDOUT split", paired.holdout));
+      console.log(formatPairedTable("graphics HOLDOUT split", paired.holdout));
     }
   }
 

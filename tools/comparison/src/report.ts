@@ -725,13 +725,20 @@ export function generateReport(
   const headlineStats = computeFormatStats(photoEntries, formatNames);
   const allStats = computeFormatStats(entries, formatNames);
 
-  // Tune/holdout split summaries (see corpus.ts); the holdout tables only
-  // render when holdout entries were actually part of the run.
+  // Split summaries (see corpus.ts); the tables only render when the run
+  // scored more than one split. The report never scores the sealed holdout2
+  // (main.ts drops it), so the only holdout it can show is the graphics one.
   const hasHoldout = entries.some((e) => splitFor(e.name) === "holdout");
+  const hasTune2 = entries.some((e) => splitFor(e.name) === "tune2");
   const tuneStats = computeFormatStats(
     entries,
     formatNames,
     (e) => splitFor(e.name) === "tune",
+  );
+  const tune2Stats = computeFormatStats(
+    entries,
+    formatNames,
+    (e) => splitFor(e.name) === "tune2",
   );
   const holdoutStats = computeFormatStats(
     entries,
@@ -822,25 +829,25 @@ ${
 ${pairedTable(pairedAll)}
 ${
   pairedHoldout.length > 0
-    ? `<h4>Holdout split only</h4>
-<p class="section-note">The never-tuned split — the honest number for a wire or constants change.</p>
+    ? `<h4>Graphics holdout only</h4>
+<p class="section-note">The graphics corpus's holdout, which no committed result or recorded decision has read. It holds no photograph: the photographic holdout is spent and is <strong>tune2</strong> now, and its replacement, <strong>holdout2</strong>, is sealed and never scored by this report.</p>
 ${pairedTable(pairedHoldout)}`
     : ""
 }
 `
     : ""
 }${
-  hasHoldout
+  hasHoldout || hasTune2
     ? `
-<h3>Tune vs holdout</h3>
-<p class="section-note">Constants sweeps tune on the <strong>tune</strong> split only; the untouched <strong>holdout</strong> split (Kodak True Color suite + held-out curated photos) checks that tuned constants generalize instead of overfitting the corpus.</p>
+<h3>By corpus split</h3>
+<p class="section-note">Constants sweeps tune on the <strong>tune</strong> split. <strong>tune2</strong> is the photographic holdout (Kodak True Color suite + eight curated photos) retired as spent: it informed a decision in every round, so it is tuning data now and says nothing out of sample. <strong>holdout</strong> is the graphics corpus's holdout. The out-of-sample photographic split, <strong>holdout2</strong>, is sealed and never scored here.</p>
 <details class="methodology">
-<summary>Tune and holdout tables</summary>
+<summary>Per-split tables</summary>
 <div class="inner">
 <h4>Tune split</h4>
 ${formatStatsTable(tuneStats)}
-<h4>Holdout split</h4>
-${formatStatsTable(holdoutStats)}
+${hasTune2 ? `<h4>tune2 (the spent photographic holdout)</h4>\n${formatStatsTable(tune2Stats)}` : ""}
+${hasHoldout ? `<h4>Graphics holdout</h4>\n${formatStatsTable(holdoutStats)}` : ""}
 </div>
 </details>
 `

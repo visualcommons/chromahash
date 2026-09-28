@@ -22,8 +22,12 @@ export interface NaturalImageSpec {
   /** Native height of the pinned original. */
   height: number;
   /**
-   * Corpus split: constants sweeps tune on "tune" images only and validate on
-   * "holdout" (see corpus.ts). Never move an image from holdout to tune.
+   * Corpus split (see corpus.ts): constants sweeps tune on "tune" images only.
+   * "tune2" is the photographic holdout #76 retired as spent; "holdout2" is
+   * the sealed one, whose label must start with `HOLDOUT2_PREFIX` and which
+   * {@link ensureNaturalImages} never fetches. Never move an image out of a
+   * holdout except by retiring the whole split, disclosed where its results
+   * are reported.
    */
   split: CorpusSplit;
   /**
@@ -80,7 +84,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     ext: ".jpg",
     width: 4157,
     height: 2771,
-    split: "holdout",
+    split: "tune2",
     sha256: "0ea4fa6c16e8923ec0b3658a5cebb6bee4ba32ae35bca0641b69b9fe64e27f50",
     source:
       "https://commons.wikimedia.org/wiki/File%3ABlack_and_white_cat%E2%80%93IMG_6332_02.jpg",
@@ -148,7 +152,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     ext: ".jpg",
     width: 4032,
     height: 3024,
-    split: "holdout",
+    split: "tune2",
     sha256: "c76ccdd7cb56c1959272d57726c324998e3cb81bcaa0d658180d0d065d3bd33a",
     source:
       "https://commons.wikimedia.org/wiki/File%3ALandschaftsschutzgebiet_S%C3%BCdwest-R%C3%BCgen-Zudar_lub_2026-02-07_img26.jpg",
@@ -216,7 +220,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     ext: ".jpg",
     width: 4608,
     height: 3456,
-    split: "holdout",
+    split: "tune2",
     sha256: "2bb825fed40007f83a759f4103691599fcdddb116d411648752dd8df990b7ec9",
     source:
       "https://commons.wikimedia.org/wiki/File%3AInterior%2C_Cafe_du_Commerce%2C_Paris_24_September_2016.jpg",
@@ -284,7 +288,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     ext: ".jpg",
     width: 4032,
     height: 6048,
-    split: "holdout",
+    split: "tune2",
     sha256: "9af6423b26141dce7d14aeeef58f94d4d980875ead7c7d6653814dec81ee756c",
     source:
       "https://commons.wikimedia.org/wiki/File%3ATable_set_for_dining_in_a_modern_restaurant_interior_with_wooden_walls_and_elegant_decor.jpg",
@@ -352,7 +356,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     ext: ".jpg",
     width: 2437,
     height: 3159,
-    split: "holdout",
+    split: "tune2",
     sha256: "00e9a470e07721ac2d384a437fe922f66ee82c27cc81c106e8a2097a14bfb6c1",
     source:
       "https://commons.wikimedia.org/wiki/File%3AEgretta_thula_at_Las_Gallinas_Wildlife_Ponds.jpg",
@@ -420,7 +424,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     ext: ".jpg",
     width: 3456,
     height: 4608,
-    split: "holdout",
+    split: "tune2",
     sha256: "fc1bc49c2b2ca9675bd87205d7b4382ef2b10d80da8346600abd9a19a637d985",
     source:
       "https://commons.wikimedia.org/wiki/File%3AMabrousha_cake_with_strawberry_jam_-_Home_baked_Middle_Eastern_dessert.jpg",
@@ -488,7 +492,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     ext: ".jpg",
     width: 3872,
     height: 2592,
-    split: "holdout",
+    split: "tune2",
     sha256: "68141502b2131761f963dca2c4f9ef09e43457812235f88c8a448326009f6e93",
     source:
       "https://commons.wikimedia.org/wiki/File%3AWalnut_tart_close-up_-_Aviv_(4714494928).jpg",
@@ -556,7 +560,7 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     ext: ".jpg",
     width: 3601,
     height: 5401,
-    split: "holdout",
+    split: "tune2",
     sha256: "1c4dedcc5564305a8bf0bfdfde912dc45057b60c3a80caef977c2b39eaa36674",
     source:
       "https://commons.wikimedia.org/wiki/File%3AM%C3%BCnster%2C_Liudgerhaus_und_Di%C3%B6zesanbibliothek_--_2014_--_0303.jpg",
@@ -733,11 +737,52 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
   },
 ];
 
+/** Where a curated image is cached. */
+export function naturalImagePath(spec: NaturalImageSpec): string {
+  return path.join(NATURAL_DIR, `${spec.label}${spec.ext}`);
+}
+
+/**
+ * The curated pins `ensureNaturalImages` fetches: every one that is not in
+ * the sealed holdout2 split, or only the labels in `only`. A label that is
+ * unknown, or that names a holdout2 pin, throws before anything is fetched.
+ * `images` is the table to select from, so the self-test can drive it with
+ * fixtures.
+ */
+export function naturalImagesToFetch(
+  only?: readonly string[],
+  images: readonly NaturalImageSpec[] = CURATED_IMAGES,
+): NaturalImageSpec[] {
+  const wanted = only ? new Set(only) : null;
+  if (wanted) {
+    const byLabel = new Map(images.map((s) => [s.label, s]));
+    for (const label of wanted) {
+      const spec = byLabel.get(label);
+      if (spec === undefined) {
+        throw new Error(`unknown curated image label: ${label}`);
+      }
+      if (spec.split === "holdout2") {
+        throw new Error(
+          `${label} is in the sealed holdout2 split; only ensureHoldout2Images fetches it, through the register gate`,
+        );
+      }
+    }
+  }
+  return images.filter(
+    (spec) =>
+      spec.split !== "holdout2" && (wanted === null || wanted.has(spec.label)),
+  );
+}
+
 /**
  * Ensure every curated image is present and content-verified, whether from
  * cache or from the network. A fetch failure or a digest mismatch throws: a
  * partial or drifted corpus would silently move every reported mean, so the
  * run stops rather than producing a number nobody can reproduce.
+ *
+ * The sealed holdout2 images are never fetched here: only
+ * `ensureHoldout2Images` fetches them, and only once the register gate has
+ * opened the split (`holdout-images.ts`). Asking for one by label throws.
  *
  * @param only Restrict to these labels — for the CI R-D gate, which scores a
  *   handful of images and should not pull the whole corpus it will not look at.
@@ -745,24 +790,14 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
 export async function ensureNaturalImages(
   only?: readonly string[],
 ): Promise<string[]> {
+  const specs = naturalImagesToFetch(only);
   await fs.mkdir(NATURAL_DIR, { recursive: true });
-
-  const wanted = only ? new Set(only) : null;
-  if (wanted) {
-    const known = new Set(CURATED_IMAGES.map((s) => s.label));
-    for (const label of wanted) {
-      if (!known.has(label)) {
-        throw new Error(`unknown curated image label: ${label}`);
-      }
-    }
-  }
 
   const paths: string[] = [];
   let downloadCount = 0;
 
-  for (const spec of CURATED_IMAGES) {
-    if (wanted && !wanted.has(spec.label)) continue;
-    const filePath = path.join(NATURAL_DIR, `${spec.label}${spec.ext}`);
+  for (const spec of specs) {
+    const filePath = naturalImagePath(spec);
     const downloaded = await ensurePinnedFixture({
       filePath,
       urls: spec.urls,

@@ -2,13 +2,16 @@
  * Constants sweep runner: score CHROMAHASH_TUNE variants over the TUNE split
  * of the corpus and emit a decision table.
  *
- * Usage: node dist/sweep.js <config.json> [--split tune|holdout] [--max-images N]
- *                          [--out-dir DIR]
+ * Usage: node dist/sweep.js <config.json>
+ *                          [--split tune|tune2|holdout|holdout2 [--decision ID]]
+ *                          [--max-images N] [--out-dir DIR]
  *
- * A full run writes `tools/comparison/results/<name>[-holdout].json`, which is
- * committed: the per-image scores and the run's provenance (`results.ts`). A
- * `--max-images` run scores a different corpus, so it is scratch and goes to
- * `output/sweeps/` instead.
+ * A full run writes `tools/comparison/results/<name>[-<split>].json` (no
+ * suffix for tune), which is committed: the per-image scores and the run's
+ * provenance (`results.ts`). A `--max-images` run scores a different corpus,
+ * so it is scratch and goes to `output/sweeps/` instead. The committed
+ * `<name>-holdout.json` photographic results predate #76: they scored what is
+ * now tune2, and a re-run of one is `--split tune2`.
  *
  * A config declares explicit variants (label + TUNE string + optional tier /
  * capToTier0 / version). The first variant is the incumbent: every other
@@ -24,9 +27,15 @@
  * so a wire change is gated against what actually shipped rather than against
  * another build of the same tree.
  *
- * Sweeps read the TUNE split only (src/corpus.ts); `--split holdout` exists
- * solely to validate a finished winner against the pre-registered rule
- * (≥3% holdout mean ΔE00 improvement, no guard regressions) — never to tune.
+ * Sweeps read the TUNE split (src/corpus.ts). `--split tune2` scores the spent
+ * photographic holdout #76 retired, which is tuning data now.
+ * `--split holdout2` exists solely to validate a finished winner against the
+ * pre-registered rule (≥3% holdout mean ΔE00 improvement, no guard
+ * regressions) — never to tune — and opens only for a decision
+ * `spec/V0.8-DECISIONS.md` records as frozen, named with `--decision`; it is
+ * read once, whole, into a committed result the run refuses to overwrite.
+ * `--split holdout` is the graphics corpus's holdout, and refuses a
+ * photographic corpus.
  */
 
 import fs from "node:fs/promises";
@@ -41,8 +50,10 @@ import {
 import {
   type CorpusSet,
   type CorpusSplit,
+  PHOTO_HOLDOUT_RETIRED,
   inCorpus,
   parseCorpusSet,
+  parseSplit,
   splitFor,
 } from "./corpus.ts";
 import { gamutToSrgbReference } from "./gamut.ts";
@@ -58,7 +69,13 @@ import {
 } from "./arms-core.ts";
 import { bootstrapCI } from "./stats.ts";
 import { ensureGraphicImages } from "./graphic-images.ts";
-import { ensureHoldoutImages } from "./holdout-images.ts";
+import {
+  type Holdout2Opening,
+  assertHoldout2Unread,
+  ensureHoldout2Images,
+  ensureHoldoutImages,
+  openHoldout2,
+} from "./holdout-images.ts";
 import { loadImage } from "./image-loader.ts";
 import {
   BACKDROP_SETS,
@@ -326,6 +343,7 @@ const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
     split: { type: "string", default: "tune" },
+    decision: { type: "string" },
     "max-images": { type: "string" },
     "out-dir": { type: "string" },
   },
@@ -334,15 +352,32 @@ const { values, positionals } = parseArgs({
 const configPathArg = positionals[0];
 if (!configPathArg) {
   console.error(
-    "Usage: node dist/sweep.js <config.json> [--split tune|holdout] [--max-images N] [--out-dir DIR]",
+    "Usage: node dist/sweep.js <config.json> [--split tune|tune2|holdout|holdout2] [--decision ID] [--max-images N] [--out-dir DIR]",
   );
   process.exit(1);
 }
 // Narrowed copy: the guard above doesn't flow into function bodies.
 const configPath: string = configPathArg;
-const split = (values.split ?? "tune") as CorpusSplit;
-if (split !== "tune" && split !== "holdout") {
-  console.error(`invalid --split: ${values.split}`);
+let split: CorpusSplit;
+let holdout2: Holdout2Opening | null = null;
+try {
+  split = parseSplit(values.split ?? "tune", false);
+  if (values.decision !== undefined && split !== "holdout2") {
+    throw new Error(
+      `--decision names the register decision a holdout2 reading answers; it means nothing on --split ${split}`,
+    );
+  }
+  if (split === "holdout2") {
+    // A partial or side-channel look at the sealed split is still a look.
+    if (values["max-images"] !== undefined || values["out-dir"] !== undefined) {
+      throw new Error(
+        "--split holdout2 takes neither --max-images nor --out-dir: the sealed split is read whole, once, into a committed result",
+      );
+    }
+    holdout2 = openHoldout2(values.decision);
+  }
+} catch (e) {
+  console.error(e instanceof Error ? e.message : String(e));
   process.exit(1);
 }
 const maxImages = values["max-images"]
@@ -386,8 +421,10 @@ async function loadCorpus(corpus: CorpusSet): Promise<ImageInput[]> {
     await generateFixtures();
   }
   await ensureNaturalImages();
-  if (split === "holdout") {
-    await ensureHoldoutImages();
+  if (split === "tune2") await ensureHoldoutImages();
+  if (split === "holdout2") {
+    if (holdout2 === null) throw new Error("holdout2 was not opened");
+    await ensureHoldout2Images(holdout2);
   }
   // Only fetch a corpus a run will actually score: the alpha and graphics sets
   // are ~40 MB the photographic sweeps would never look at.
@@ -739,6 +776,15 @@ async function main(): Promise<void> {
   }
 
   const corpus = corpusFor(config);
+  // The graphics holdout is still a holdout; the photographic one is spent.
+  if (split === "holdout" && (corpus === "photo" || corpus === "all")) {
+    throw new Error(PHOTO_HOLDOUT_RETIRED);
+  }
+  const outPath = resultPath(
+    outDir,
+    `${config.name}${split === "tune" ? "" : `-${split}`}`,
+  );
+  if (split === "holdout2") assertHoldout2Unread(outPath);
   let inputs = await loadCorpus(corpus);
   if (corpus !== "all") {
     inputs = inputs.filter((i) =>
@@ -747,6 +793,13 @@ async function main(): Promise<void> {
   }
   if (maxImages !== null) {
     inputs = inputs.slice(0, maxImages);
+  }
+  // A mean over nothing prints as N/A on every arm and commits a result that
+  // looks like a run: refuse it instead.
+  if (inputs.length === 0) {
+    throw new Error(
+      `config ${config.name} selects no image on the ${split} split of the ${corpus} corpus`,
+    );
   }
   if (config.forceOpaque) {
     // Flatten both the encoder input and the reference, so the images enter the
@@ -808,8 +861,6 @@ async function main(): Promise<void> {
   }
 
   await fs.mkdir(outDir, { recursive: true });
-  const suffix = split === "holdout" ? "-holdout" : "";
-  const outPath = resultPath(outDir, `${config.name}${suffix}`);
   // Per-image series, the settings that give them meaning, and provenance --
   // nothing derived. Means, Δ%, intervals and guard verdicts are recomputed by
   // every reader from these (results.ts).
@@ -828,6 +879,7 @@ async function main(): Promise<void> {
       artifactGridEdge: config.artifactGridEdge ?? null,
       forceOpaque: config.forceOpaque ?? false,
       expectBytes: config.expectBytes ?? null,
+      ...(holdout2 !== null ? { holdout2 } : {}),
       guardTolerances: {
         ssimulacra2Drop: GUARD_SSIM2_DROP,
         relativeRise: GUARD_REL_RISE,

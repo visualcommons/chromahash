@@ -21,9 +21,16 @@
  * by `--max-images` or `--formats` is not a result and goes to `output/sweeps/`.
  *
  * Usage:
- *   node dist/rd-budget.js [--split tune|holdout|all] [--budgets 16,21,24,32,...]
+ *   node dist/rd-budget.js [--split tune|tune2|holdout2|all] [--decision ID]
+ *                          [--budgets 16,21,24,32,...]
  *                          [--max-images N] [--out <name>] [--formats a,b,c]
  *                          [--out-dir DIR]
+ *
+ * `all` is every split that is not sealed. `holdout2` opens only for a
+ * decision `spec/V0.8-DECISIONS.md` records as frozen (`--decision`), whole
+ * and once (`holdout-images.ts`). `holdout` is refused: the photographic
+ * holdout is spent and is `tune2` now, so the committed
+ * `rd-budget-holdout.json` scored what a re-run calls `--split tune2`.
  *   node dist/rd-budget.js --summarize results/rd-budget-holdout.json
  *                          [--budgets 16,21,24,32,...]
  */
@@ -47,10 +54,22 @@ import {
 import { LqipModernAdapter } from "./adapters/lqip-modern.ts";
 import { RawPixelsAdapter } from "./adapters/raw-pixels.ts";
 import { ThumbHashAdapter } from "./adapters/thumbhash.ts";
-import { type CorpusSplit, inCorpus, splitFor } from "./corpus.ts";
+import {
+  type CorpusSplit,
+  PHOTO_HOLDOUT_RETIRED,
+  inCorpus,
+  inSplit,
+  parseSplit,
+} from "./corpus.ts";
 import { gamutToSrgbReference } from "./gamut.ts";
 import { generateFixtures } from "./generate-fixtures.ts";
-import { ensureHoldoutImages } from "./holdout-images.ts";
+import {
+  type Holdout2Opening,
+  assertHoldout2Unread,
+  ensureHoldout2Images,
+  ensureHoldoutImages,
+  openHoldout2,
+} from "./holdout-images.ts";
 import { loadImage } from "./image-loader.ts";
 import { computeAllMetrics, setScoringConfig } from "./metrics.ts";
 import { ensureIqaAvailable, iqaVersionBanner } from "./metrics/iqa.ts";
@@ -174,6 +193,7 @@ interface Row {
 const { values } = parseArgs({
   options: {
     split: { type: "string", default: "tune" },
+    decision: { type: "string" },
     budgets: { type: "string" },
     formats: { type: "string" },
     "max-images": { type: "string" },
@@ -183,10 +203,37 @@ const { values } = parseArgs({
   },
 });
 
-const splitArg = values.split ?? "tune";
-if (splitArg !== "tune" && splitArg !== "holdout" && splitArg !== "all") {
-  console.error(`invalid --split: ${splitArg}`);
-  process.exit(1);
+let splitArg: CorpusSplit | "all" = "tune";
+let holdout2: Holdout2Opening | null = null;
+// --summarize reads a result that already exists and scores nothing, so it
+// neither needs nor opens a split.
+if (values.summarize === undefined) {
+  try {
+    splitArg = parseSplit(values.split ?? "tune", true);
+    // A photographs-only tool: the only "holdout" left is the graphics one.
+    if (splitArg === "holdout") throw new Error(PHOTO_HOLDOUT_RETIRED);
+    if (values.decision !== undefined && splitArg !== "holdout2") {
+      throw new Error(
+        `--decision names the register decision a holdout2 reading answers; it means nothing on --split ${splitArg}`,
+      );
+    }
+    if (splitArg === "holdout2") {
+      // A partial or side-channel look at the sealed split is still a look.
+      if (
+        values["max-images"] !== undefined ||
+        values.formats !== undefined ||
+        values["out-dir"] !== undefined
+      ) {
+        throw new Error(
+          "--split holdout2 takes none of --max-images, --formats or --out-dir: the sealed split is read whole, once, into a committed result",
+        );
+      }
+      holdout2 = openHoldout2(values.decision);
+    }
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(1);
+  }
 }
 const DEFAULT_BUDGETS = [16, 21, 24, 32, 48, 64, 108, 192, 411, 1623];
 const budgets = (values.budgets ?? DEFAULT_BUDGETS.join(","))
@@ -211,7 +258,11 @@ async function loadCorpus(): Promise<ImageInput[]> {
     await generateFixtures();
   }
   await ensureNaturalImages();
-  if (splitArg !== "tune") await ensureHoldoutImages();
+  if (splitArg === "tune2" || splitArg === "all") await ensureHoldoutImages();
+  if (splitArg === "holdout2") {
+    if (holdout2 === null) throw new Error("holdout2 was not opened");
+    await ensureHoldout2Images(holdout2);
+  }
 
   const paths: string[] = [];
   for await (const entry of glob(
@@ -225,8 +276,7 @@ async function loadCorpus(): Promise<ImageInput[]> {
   for (const filePath of paths) {
     const name = path.basename(filePath).replace(/\.[^.]+$/, "");
     if (!inCorpus(name, "photo")) continue;
-    if (splitArg !== "all" && splitFor(name) !== (splitArg as CorpusSplit))
-      continue;
+    if (!inSplit(name, splitArg)) continue;
     const input = await loadImage(filePath);
     input.gamut = "srgb";
     input.metricReferenceRgba = gamutToSrgbReference(
@@ -634,8 +684,23 @@ async function main(): Promise<void> {
   ensureIqaAvailable();
   setScoringConfig({ upscalePolicy: "browser-gamma", blurredScoring: false });
 
+  // Named before anything is scored, so a second holdout2 reading is refused
+  // before it is taken.
+  const outDir =
+    values["out-dir"] !== undefined
+      ? path.resolve(values["out-dir"])
+      : maxImages !== null || formatFilter !== null
+        ? SCRATCH_DIR
+        : RESULTS_DIR;
+  const name = `${values.out ?? "rd-budget"}-${splitArg}`;
+  const outPath = resultPath(outDir, name);
+  if (splitArg === "holdout2") assertHoldout2Unread(outPath);
+
   let inputs = await loadCorpus();
   if (maxImages !== null) inputs = inputs.slice(0, maxImages);
+  if (inputs.length === 0) {
+    throw new Error(`rd-budget selects no photograph on --split ${splitArg}`);
+  }
 
   // rd-budget has no config file; what decides its rows is its arguments, so
   // those are what the config digest covers. Taken before the first encode.
@@ -784,16 +849,8 @@ async function main(): Promise<void> {
   }
 
   // A run narrowed to some images or some formats is not the cross-format
-  // result, so it never lands where the committed one lives.
-  const outDir =
-    values["out-dir"] !== undefined
-      ? path.resolve(values["out-dir"])
-      : maxImages !== null || formatFilter !== null
-        ? SCRATCH_DIR
-        : RESULTS_DIR;
+  // result, so it never lands where the committed one lives (outDir, above).
   await fs.mkdir(outDir, { recursive: true });
-  const name = `${values.out ?? "rd-budget"}-${splitArg}`;
-  const outPath = resultPath(outDir, name);
   const summary = summarizeGuards(rows, budgets);
   const result: ResultFile = {
     schema: RESULT_SCHEMA,
@@ -804,6 +861,7 @@ async function main(): Promise<void> {
       budgets,
       formats: effectiveArgs.formats,
       jxl: effectiveArgs.jxl,
+      ...(holdout2 !== null ? { holdout2 } : {}),
     },
     provenance,
     imageNames: provenance.corpus.map((c) => c.name),

@@ -34,9 +34,15 @@ of it answers the same question.
   39 curated photographs, the 24-image Kodak suite, 24 transparent cut-outs and
   24 graphics. Synthetic is the generated fixtures: `solid-*`, `gradient-*`,
   `dim-*`, `gamut-*`, `noise`.
-- **`CorpusSplit`** — `tune` or `holdout`. Constants sweeps tune on `tune` only;
-  `holdout` (the Kodak True Color suite plus held-out curated photographs) is
-  what shows whether tuned constants generalize.
+- **`CorpusSplit`** — `tune`, `tune2`, `holdout` or `holdout2`. Constants
+  sweeps tune on `tune`. `tune2` is the spent photographic holdout (the Kodak
+  True Color suite plus eight curated photographs), retired by #76 because it
+  informed a decision in every round: it is tuning data now, not a verdict.
+  `holdout` holds only the graphics holdout (the alpha holdout was retired by
+  #83), and `--split holdout` refuses a photographic corpus. `holdout2` is the
+  sealed photographic holdout: only `sweep` and `rd-budget` read it, and only
+  with `--decision <ID>` once `spec/V0.8-DECISIONS.md` records that decision
+  as frozen. `all` never includes it, and the report never scores it.
 - **`CorpusSet`** — `photo`, `alpha`, `graphic`, `all`. Which body of content a
   sweep is measured against.
 

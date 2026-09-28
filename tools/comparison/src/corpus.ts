@@ -1,14 +1,49 @@
+import path from "node:path";
 import { ALPHA_IMAGES } from "./alpha-images.ts";
 import { GRAPHIC_IMAGES } from "./graphic-images.ts";
 import { CURATED_IMAGES } from "./natural-images.ts";
 
 /**
  * Which corpus split an image belongs to. Constants sweeps MUST tune on the
- * "tune" split only and validate on "holdout" — tuning on the full corpus is
+ * "tune" split only and validate on a holdout — tuning on the full corpus is
  * train/test contamination (the format's constants were once swept on the same
  * images the report evaluates; this split exists so that never happens again).
+ *
+ * - `tune` — what constants are chosen on.
+ * - `tune2` — the **spent** photographic holdout: Kodak24 and the eight curated
+ *   photographs that were `holdout` until #76. It informed a decision in every
+ *   round (`spec/EXPERIMENTS.md` §11.12), so it can no longer give an
+ *   out-of-sample verdict. It is kept apart from `tune` rather than merged into
+ *   it, so every committed tune result keeps meaning what it measured and the
+ *   split's history stays visible in its name. It is tuning data now.
+ * - `holdout` — the graphics corpus's holdout, which no committed result or
+ *   recorded decision has read, and the alpha corpus's retired one (#83, refused by
+ *   `alphaImagesToFetch`). No photograph is in it any more:
+ *   {@link PHOTO_HOLDOUT_RETIRED}.
+ * - `holdout2` — the sealed photographic holdout (#76). No tool reads it
+ *   unless `spec/V0.8-DECISIONS.md` records the decision being answered as
+ *   frozen (`holdout-images.ts` `openHoldout2`), and nothing reads it by
+ *   accident: see {@link isSealed}.
  */
-export type CorpusSplit = "tune" | "holdout";
+export type CorpusSplit = "tune" | "tune2" | "holdout" | "holdout2";
+
+/** Every split, in the order a tool lists them. */
+export const CORPUS_SPLITS: readonly CorpusSplit[] = [
+  "tune",
+  "tune2",
+  "holdout",
+  "holdout2",
+];
+
+/**
+ * Why `--split holdout` refuses a photographic corpus. The images still exist
+ * and are pinned; what is gone is their use as a holdout. They are `tune2`.
+ */
+export const PHOTO_HOLDOUT_RETIRED =
+  "the photographic holdout is spent and retired (#76): Kodak24 and its eight curated photographs " +
+  "informed a decision in every round (spec/EXPERIMENTS.md §11.12), so they are now the tune2 split. " +
+  "Score them with --split tune2 (tuning data, not a verdict); the out-of-sample split is holdout2, " +
+  "sealed until spec/V0.8-DECISIONS.md records the decision it answers as frozen.";
 
 /** Declared split of every curated image, keyed by label. */
 const DECLARED_SPLITS = new Map<string, CorpusSplit>([
@@ -18,16 +53,106 @@ const DECLARED_SPLITS = new Map<string, CorpusSplit>([
 ]);
 
 /**
+ * Filename prefix of every sealed-holdout image. The prefix, not a table
+ * lookup, is what marks an image sealed: a cached file whose pin was later
+ * removed or renamed would otherwise fall through to "tune" and join every
+ * tune sweep — the failure `alpha-images.ts` keeps withdrawn pins to prevent.
+ */
+export const HOLDOUT2_PREFIX = "sealed-";
+
+/**
  * Resolve the corpus split for an image by its report name (the filename
  * without extension). Explicit rules:
  *
- * - `kodak*` (the Kodak True Color suite) is holdout by definition.
+ * - `sealed-*` is holdout2, whatever any table says.
+ * - `kodak*` (the Kodak True Color suite) is tune2: it was holdout by
+ *   definition until #76 retired the photographic holdout.
  * - Every curated image — photo, alpha or graphic — carries its declared split.
  * - Everything else — all synthetic fixtures and realistic images — is tune.
  */
 export function splitFor(imageName: string): CorpusSplit {
-  if (imageName.startsWith("kodak")) return "holdout";
+  if (imageName.startsWith(HOLDOUT2_PREFIX)) return "holdout2";
+  if (imageName.startsWith("kodak")) return "tune2";
   return DECLARED_SPLITS.get(imageName) ?? "tune";
+}
+
+/**
+ * Is `split` sealed: never read unless the register gate opens it for one
+ * decision? A loader that globs `fixtures/**` sees a sealed image whenever an
+ * earlier gated run cached it, so every loader asks this before scoring one,
+ * and "all" never includes it.
+ */
+export function isSealed(split: CorpusSplit): boolean {
+  return split === "holdout2";
+}
+
+/**
+ * Separate the image files a loader found into those it may score and the
+ * sealed ones it must drop, judged by filename (without extension) through
+ * {@link splitFor}. The report calls this on everything it globbed under
+ * `fixtures/`, where a gated holdout2 run may have left a cached copy.
+ */
+export function partitionSealed(paths: readonly string[]): {
+  open: string[];
+  sealed: string[];
+} {
+  const open: string[] = [];
+  const sealed: string[] = [];
+  for (const p of paths) {
+    (isSealed(splitFor(path.parse(p).name)) ? sealed : open).push(p);
+  }
+  return { open, sealed };
+}
+
+/**
+ * Does an image belong to the split a tool was asked for? `"all"` means every
+ * split that is not sealed. A sealed split matches only when asked for by
+ * name, which the tools that accept it do only after the register gate.
+ */
+export function inSplit(
+  imageName: string,
+  wanted: CorpusSplit | "all",
+): boolean {
+  const split = splitFor(imageName);
+  if (wanted === "all") return !isSealed(split);
+  return split === wanted;
+}
+
+/**
+ * Parse a `--split` value, throwing on anything unrecognized rather than
+ * defaulting. `allowAll` admits `"all"` for the tools that score every
+ * unsealed split at once.
+ */
+export function parseSplit(value: string, allowAll: false): CorpusSplit;
+export function parseSplit(value: string, allowAll: true): CorpusSplit | "all";
+export function parseSplit(
+  value: string,
+  allowAll: boolean,
+): CorpusSplit | "all" {
+  if (allowAll && value === "all") return "all";
+  const found = CORPUS_SPLITS.find((s) => s === value);
+  if (found !== undefined) return found;
+  throw new Error(
+    `unknown --split "${value}" (expected ${[...CORPUS_SPLITS, ...(allowAll ? ["all"] : [])].join(", ")})`,
+  );
+}
+
+/**
+ * Parse `--split` for a photographs-only tool whose output is scratch — JSON
+ * under `output/`, with no provenance and nothing committed. `holdout` is
+ * refused because no photograph is in it any more; `holdout2` because a
+ * reading of the sealed split has to be a committed result that records the
+ * register decision it answers, which only `sweep` and `rd-budget` write.
+ */
+export function parseScratchPhotoSplit(value: string): CorpusSplit | "all" {
+  const split = parseSplit(value, true);
+  if (split === "holdout") throw new Error(PHOTO_HOLDOUT_RETIRED);
+  if (split === "holdout2") {
+    throw new Error(
+      "this tool does not read holdout2: its output is scratch with no provenance, and a reading of the sealed split must be a committed result (results.ts) recording the register decision it answers — use sweep or rd-budget with --decision",
+    );
+  }
+  return split;
 }
 
 /**
@@ -51,7 +176,14 @@ export type CorpusSet = "photo" | "alpha" | "graphic" | "all";
  * the alpha *path*, not content anything should be tuned against.
  */
 const CORPUS_PREFIXES: Record<Exclude<CorpusSet, "all">, readonly string[]> = {
-  photo: ["natural-", "portrait-", "night-", "chroma-", "kodak"],
+  photo: [
+    "natural-",
+    "portrait-",
+    "night-",
+    "chroma-",
+    "kodak",
+    HOLDOUT2_PREFIX,
+  ],
   alpha: ["cutout-"],
   graphic: ["graphic-"],
 };
