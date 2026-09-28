@@ -754,9 +754,10 @@ depends = ["build:compare"]
 run = "node tools/comparison/dist/corpus-licenses.js"
 
 # Read a sweep's per-image scores against the covariates natural-images.ts
-# records per image -- mean L*, mean chroma C*, Laplacian detail energy, all
-# measured on the same 512 px reference the harness scores against, for §9.1's
-# corpus audit, and never read back since. Every table in EXPERIMENTS.md is an
+# records per image -- mean L*, mean chroma C*, Laplacian detail energy (mean
+# |4-neighbour Laplacian| of L*), all measured on the same upright 512 px
+# reference the harness scores against by `corpus-covariates.js --files`, which
+# defines them (#102). Every table in EXPERIMENTS.md is an
 # aggregate, which is the right unit for choosing a constant and the wrong one
 # for deciding what to change: a mean says the format invents structure, not
 # which pictures it invents it on.

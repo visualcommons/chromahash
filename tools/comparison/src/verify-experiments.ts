@@ -1586,7 +1586,7 @@ const BINDINGS: Binding[] = [
     sweep: "embedded-tiers",
     columns: {
       ΔE00: "meanCiede",
-      "vs native tier 0 (11.473)": "ciedeDeltaPct",
+      "vs native tier 0 (11.481)": "ciedeDeltaPct",
       SSIM2: "meanSsimulacra2",
     },
     aliases: {

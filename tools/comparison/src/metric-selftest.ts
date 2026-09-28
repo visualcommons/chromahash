@@ -112,6 +112,12 @@ import {
   silhouetteOf,
   srgbToLab,
 } from "./corpus-covariates.ts";
+import {
+  dataUriToBuffer,
+  fileBufferToDisplayDataUri,
+  loadImage,
+  orientedSize,
+} from "./image-loader.ts";
 import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
@@ -3022,7 +3028,7 @@ console.log("\nverify:experiments — the table register and result shape\n");
     `detail ${checker.detail}`,
   );
   check(
-    "orientation is of the stored pixels",
+    "orientation is of the dimensions the caller gives",
     grey.orientation === "landscape" && grey.exifOrientation === null,
     grey.orientation,
   );
@@ -3044,7 +3050,7 @@ console.log("\nverify:experiments — the table register and result shape\n");
   }
 
   // measureFile: the reference is capped at 512 px and never enlarged, and
-  // the stored pixels are measured without rotation.
+  // it is of the upright picture.
   const checkerPng = (w: number, h: number): Promise<Buffer> =>
     sharp(
       Buffer.from(
@@ -3072,21 +3078,99 @@ console.log("\nverify:experiments — the table register and result shape\n");
       large.lowKey === 0,
     `${large.width}×${large.height} detail ${large.detail}`,
   );
-  const rotated = await measureFile(
-    await sharp(Buffer.alloc(24 * 12 * 3, 128), {
-      raw: { width: 24, height: 12, channels: 3 },
-    })
-      .jpeg()
-      .withMetadata({ orientation: 6 })
-      .toBuffer(),
+  // A file stored 24 × 12, left half white and right half black, tagged
+  // Orientation 6 (turn a quarter clockwise to view): upright it is 12 × 24
+  // with the white half on top. The harness encodes, scores and measures the
+  // upright picture (#102), so every path must see it that way.
+  const sideways = await sharp(
+    Buffer.from(
+      makeRgba(24, 12, (x) => (x < 12 ? [255, 255, 255] : [0, 0, 0])),
+    ),
+    { raw: { width: 24, height: 12, channels: 4 } },
+  )
+    .jpeg({ quality: 100 })
+    .withMetadata({ orientation: 6 })
+    .toBuffer();
+  const rotated = await measureFile(sideways);
+  check(
+    "measureFile records EXIF Orientation and measures the upright picture",
+    rotated.exifOrientation === 6 &&
+      rotated.width === 12 &&
+      rotated.height === 24 &&
+      rotated.orientation === "portrait",
+    `exif ${rotated.exifOrientation} ${rotated.width}×${rotated.height} ${rotated.orientation}`,
   );
   check(
-    "measureFile records EXIF Orientation and measures the stored, unrotated pixels",
-    rotated.exifOrientation === 6 &&
-      rotated.width === 24 &&
-      rotated.orientation === "landscape",
-    `exif ${rotated.exifOrientation} ${rotated.width}×${rotated.height}`,
+    "orientedSize swaps only for the quarter-turn tags 5–8",
+    [1, 2, 3, 4, 5, 6, 7, 8, undefined]
+      .map((o) => orientedSize({ width: 3, height: 2, orientation: o }).width)
+      .join() === "3,3,3,3,2,2,2,2,3",
+    "",
   );
+  {
+    const dir = mkdtempSync(path.join(tmpdir(), "chromahash-orient-"));
+    const file = path.join(dir, "sideways.jpg");
+    writeFileSync(file, sideways);
+    const input = await loadImage(file);
+    // Mean of the red channel over the top and bottom halves of a raster.
+    const halves = (rgba: Uint8Array, w: number, h: number): number[] =>
+      [0, 1].map((half) => {
+        let sum = 0;
+        for (let y = half * (h / 2); y < (half + 1) * (h / 2); y++) {
+          for (let x = 0; x < w; x++) sum += rgba[4 * (y * w + x)] ?? 0;
+        }
+        return sum / ((w * h) / 2);
+      });
+    const [refTop = 0, refBottom = 0] = halves(
+      input.referenceRgba,
+      input.referenceWidth,
+      input.referenceHeight,
+    );
+    const [smallTop = 0, smallBottom = 0] = halves(
+      input.smallRgba,
+      input.smallWidth,
+      input.smallHeight,
+    );
+    check(
+      "loadImage encodes and scores the upright picture of an EXIF-rotated file",
+      input.originalWidth === 12 &&
+        input.originalHeight === 24 &&
+        input.referenceWidth === 12 &&
+        input.referenceHeight === 24 &&
+        input.smallWidth === 12 &&
+        input.smallHeight === 24 &&
+        refTop > 200 &&
+        refBottom < 55 &&
+        smallTop > 200 &&
+        smallBottom < 55,
+      `${input.originalWidth}×${input.originalHeight}, reference top ${refTop.toFixed(0)} bottom ${refBottom.toFixed(0)}, small top ${smallTop.toFixed(0)} bottom ${smallBottom.toFixed(0)}`,
+    );
+    // The report's display image: its stored pixels must already be upright,
+    // and it must carry no Orientation tag a browser would apply again.
+    const display = dataUriToBuffer(
+      await fileBufferToDisplayDataUri(sideways),
+    ).buffer;
+    const displayMeta = await sharp(display).metadata();
+    const { data: displayRgba, info: displayInfo } = await sharp(display)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const [displayTop = 0, displayBottom = 0] = halves(
+      new Uint8Array(displayRgba),
+      displayInfo.width,
+      displayInfo.height,
+    );
+    check(
+      "fileBufferToDisplayDataUri shows the upright picture of an EXIF-rotated file",
+      displayInfo.width === 12 &&
+        displayInfo.height === 24 &&
+        (displayMeta.orientation ?? 1) === 1 &&
+        displayTop > 200 &&
+        displayBottom < 55,
+      `${displayInfo.width}×${displayInfo.height} orientation ${displayMeta.orientation}, top ${displayTop.toFixed(0)} bottom ${displayBottom.toFixed(0)}`,
+    );
+    rmSync(dir, { recursive: true, force: true });
+  }
 
   // The alpha covariates the alpha holdout2 candidates are chosen on (#93).
   check(
