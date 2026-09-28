@@ -40,7 +40,11 @@ tune and validated on holdout, per the pre-registered rule in `RATIONALE.md`.
 > once their list is approved. Until then it holds no image, and every tool
 > that is asked for it says so. It is sealed: no tool reads it until
 > `spec/V0.8-DECISIONS.md` records the decision being answered as frozen,
-> and then only once. §6 and §11.12 give the mechanics.
+> and then only once. §6 and §11.12 give the mechanics. The alpha holdout,
+> retired in #83 when one of its images was deleted, went the same way (#93):
+> its seven surviving cut-outs are `tune2` too, and its replacement is the
+> alpha half of `holdout2`, curated on covariates alone, pinned only once its
+> list is approved, and behind the same gate.
 
 > **Tier numbering.** Every section below was written before the tier codes
 > were reordered by quality, and uses the *old* numbering, where code 0 was the
@@ -755,10 +759,14 @@ is retired as spent (§11.12), so asking for it refuses and names the
 replacement. Its 32 images are `--split tune2` now, which scores the same
 pinned bytes and writes `<name>-tune2.json` instead; `verify:experiments`
 reads the `-holdout` results, not those. The alpha line was already retired
-(#83). The out-of-sample split is `holdout2`: `sweep` and `rd-budget` read it
-only with `--split holdout2 --decision <ID>`, only when
-`spec/V0.8-DECISIONS.md` records that decision as frozen, only whole, and only
-once. A second reading under the same result name is refused.
+(#83); its seven surviving images are `--split tune2` now as well (#93). The
+out-of-sample split is `holdout2`: `sweep` and `rd-budget` read it only with
+`--split holdout2 --decision <ID>`, only when `spec/V0.8-DECISIONS.md`
+records that decision as frozen, only whole, and only once. A second reading
+under the same result name is refused. A config's corpus picks the half it
+reads: a photographic config reads the sealed photographs (#76), an alpha
+config such as `v07-holdout-alpha` the sealed cut-outs (#93), and each is
+fetched only for its own corpus.
 
 The three `--split holdout` lines marked §4.5, §7.6 and §11.14 were **missing
 until the §9.5 re-run**, and each is the only source for a table this file
@@ -2560,7 +2568,8 @@ Everything in this section is tune evidence. Its out-of-sample confirmation
 was §11.12's alpha holdout, which is **retired and can no longer be
 reproduced**: one of its images was deleted from Wikimedia Commons (§11.12,
 #83). The adopted row rests on this section until a new alpha split is sealed
-and read.
+and read. That split is the alpha half of `holdout2` (#93, §11.12), and the
+reading is register entry C2 in `spec/V0.8-DECISIONS.md`.
 
 **The alpha channel also ran a generation behind the others.** L, a and b go
 through `quantize_ac_channel`, where `scale_fit` and `ac_nearest` live; alpha
@@ -2616,7 +2625,10 @@ compact / 0 / 1 / 2 / 3 — monotone, which `validate.py` asserts.
 
 This is a tune measurement only. The tier-1 row was never scored on a holdout,
 and the tier-0 holdout figure it would lean on is from the retired alpha split,
-which can no longer be reproduced (§11.12).
+which can no longer be reproduced (§11.12). The sealed alpha half of
+`holdout2` (#93) is where it is first read out of sample: register entry C2
+reads this file's arms at code 2, and D6 asks the question again at codes 3
+and 4.
 
 ### 11.12 The holdout, and how often it has been read
 
@@ -2769,6 +2781,30 @@ unchanged; the reason it is rejected is now over-determined.
 > retired (above), so the run cannot be repeated. Every holdout cell in this
 > table rests on the commit that produced it, which is why the commit is named.
 
+**What #93 did with the alpha split.** It went the way #76 took the
+photographic one:
+
+- **Its seven surviving images are `tune2`.** They keep their pins and their
+  bytes, and join `tune2` rather than `tune`, so every committed alpha tune
+  result keeps its image set. They were read for all four verdicts in the
+  table above, so a figure from them is in-sample for those four decisions.
+  The deleted `cutout-wordmark-aflac` stays `holdout`, the retired split, so
+  a cached copy joins no sweep, and asking for `--split holdout` on the alpha
+  corpus still refuses.
+- **The replacement is the alpha half of `holdout2`**, labelled
+  `sealed-cutout-*`. The seal and the corpus are both read off the label, so
+  a sealed cut-out is never scored as a photograph or as tune. It opens
+  through the same gate as the photographic half: an alpha config with
+  `--split holdout2 --decision <ID>`, only for a decision
+  `spec/V0.8-DECISIONS.md` records as frozen (C2, and D6 once its sweep
+  exists), whole and once. Its candidates are chosen on three
+  covariates and nothing else: the non-opaque and soft-alpha fractions
+  `alpha-images.ts` already records, and a silhouette complexity
+  (`corpus-covariates.ts`). No encoder is run on a candidate. The list, the
+  protocol that drew it, and each candidate's covariates, licence and SHA-256
+  are in #105, and nothing is pinned until the list is approved. Until then
+  an alpha `holdout2` run refuses and says so.
+
 The alpha allocation validated emphatically on that split: SSIMULACRA2
 −307.2 → −242.7, Butteraugli 57.56 → 44.36, DSSIM 0.2319 → 0.2179, αMAE
 0.2696 → 0.1675. Those figures are from the retired split and cannot be
@@ -2817,7 +2853,11 @@ What is still not measured, and is now the honest list for v0.8:
   reminder that a metric that agrees with itself across two corpora can still
   fail on a third split.
 * **Tiers 2–3 alpha**, inherited from the tier-1 measurement rather than
-  measured directly.
+  measured directly. Register entry D6 asks it, to be read on the sealed
+  alpha half of `holdout2` (#93).
+* **Out-of-sample evidence for the alpha rows above.** Every alpha row and
+  `alpha_ac_fit` lost it with the retired split. Register entry C2 re-reads
+  them once on the sealed alpha half of `holdout2` (#93, §11.12).
 * **Smartphone-source photographs** — sensor noise, motion blur, heavy JPEG
   history. Both photographic corpora are professional captures.
 * **Entropy-coded AC** (−1.6% at 32 B, −4.8% at 108 B), which remains refused
