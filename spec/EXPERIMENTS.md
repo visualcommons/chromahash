@@ -110,19 +110,19 @@ measured against.
 
 | Bytes | 10 | 12 | 14 | 16 | 18 | 21 | 24 | 28 | 32 | 40 | 48 | 64 | 80 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| ΔE00 tune | 15.51 | 14.17 | 13.59 | 13.19 | 13.05 | 12.57 | 12.16 | 11.92 | 11.65 | 11.25 | 10.97 | 10.48 | 10.13 |
+| ΔE00 tune | 15.51 | 14.20 | 13.64 | 13.21 | 13.08 | 12.62 | 12.15 | 11.94 | 11.66 | 11.25 | 10.97 | 10.48 | 10.13 |
 | ΔE00 holdout | 14.96 | 13.88 | 13.49 | 13.00 | 12.75 | 12.49 | 12.14 | 11.85 | 11.54 | 11.17 | 10.81 | 10.36 | 9.98 |
 
 | Bytes | **108** | 129 | 161 | 189 | 246 | 310 | **411** | 512 | 767 | 1017 | **1623** |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| ΔE00 tune | **9.67** | 9.40 | 9.06 | 8.81 | 8.42 | 8.13 | **7.83** | 7.62 | 7.24 | 7.03 | **6.75** |
+| ΔE00 tune | **9.67** | 9.41 | 9.06 | 8.81 | 8.42 | 8.14 | **7.83** | 7.63 | 7.25 | 7.03 | **6.75** |
 | ΔE00 holdout | **9.52** | 9.23 | 8.93 | 8.73 | 8.39 | 8.09 | **7.78** | 7.56 | 7.20 | 7.02 | **6.77** |
 
 Marginal value collapses far faster than 1/bytes (tune split):
 
 | Interval | 16→32 B | 32→64 B | 64→129 B | 129→246 B | 246→512 B | 512→1017 B |
 |---|---|---|---|---|---|---|
-| ΔE00 gained per byte | 0.096 | 0.037 | 0.0166 | 0.0084 | 0.0030 | 0.00118 |
+| ΔE00 gained per byte | 0.097 | 0.037 | 0.0166 | 0.0084 | 0.0030 | 0.00118 |
 
 Each doubling of the budget buys 36–51% of what the previous one did. The three
 upper tier anchors are points on this one smooth curve, and there is nothing
@@ -132,8 +132,8 @@ their budgets (§4.2, §11.10) and the ladder's were not:
 
 | 32 B layout | ΔE00 tune | ΔE00 holdout |
 |---|---|---|
-| ladder shape, L 26 @ 5 / C 9 @ 4 | 11.65 | 11.54 |
-| **shipped default, L 28 @ 4 / C 15 @ 3** | **11.47** | **11.30** |
+| ladder shape, L 26 @ 5 / C 9 @ 4 | 11.66 | 11.54 |
+| **shipped default, L 28 @ 4 / C 15 @ 3** | **11.48** | **11.30** |
 
 ## 2. Cross-format at equal bytes, same corpus, same scoring
 
@@ -261,10 +261,10 @@ byte count *and* coefficient count fixed, vary only the raster
 
 | Coefficients (bytes) | small raster | native tier raster | Δ |
 |---|---|---|---|
-| 104 L / 36 C (108 B) | 9.665 @32 px | 9.667 @64 px | −0.02% |
-| 416 L / 144 C (411 B) | 7.900 @32 px | 7.828 @128 px | 0.92% |
-| 416 L / 144 C (411 B) @64 px | 7.830 @64 px | 7.828 @128 px | 0.02% |
-| 1664 L / 576 C (1623 B) | 6.745 @64 px | 6.726 @256 px | 0.29% |
+| 104 L / 36 C (108 B) | 9.668 @32 px | 9.670 @64 px | −0.02% |
+| 416 L / 144 C (411 B) | 7.904 @32 px | 7.832 @128 px | 0.92% |
+| 416 L / 144 C (411 B) @64 px | 7.833 @64 px | 7.832 @128 px | 0.01% |
+| 1664 L / 576 C (1623 B) | 6.748 @64 px | 6.729 @256 px | 0.28% |
 
 (The "native tier raster" column names the tier's own render. The shipped-tier
 arms are scored through the harness's ≤100 px encoder input, so t2 and t3 render
@@ -308,12 +308,12 @@ and 108 B):
 
 | Allocation | 32 B ΔE00 | 108 B ΔE00 |
 |---|---|---|
-| L26@5 C9@4 — **shipped** | 11.655 | **9.721** |
-| L28@4 C15@3 | 11.546 (−0.9%) | 9.912 (+2.0%) |
-| L38@4 C8@3 | **11.458** (−1.7%) | 9.927 (+2.1%) |
-| L28@4 C11@4 | 11.541 (−1.0%) | 9.767 (+0.5%) |
-| L44@3 C11@3 | 11.660 (+0.0%) | 10.721 (+10%) |
-| L29@5 C9@3 | 11.608 (−0.4%) | 9.833 (+1.2%) |
+| L26@5 C9@4 — **shipped** | 11.656 | **9.722** |
+| L28@4 C15@3 | 11.547 (−0.9%) | 9.915 (+2.0%) |
+| L38@4 C8@3 | 11.457** (−1.7%) | 9.926 (+2.1%) |
+| L28@4 C11@4 | 11.543 (−1.0%) | 9.769 (+0.5%) |
+| L44@3 C11@3 | 11.661 (+0.0%) | 10.721 (+10%) |
+| L29@5 C9@3 | 11.609 (−0.4%) | 9.832 (+1.2%) |
 
 The optimum moves with the budget. Sweeping six precision families across five
 budgets (`sweeps/precision-by-budget.json`, tune) gives the trend cleanly:
@@ -356,11 +356,11 @@ Best found at 21 B against ThumbHash's own 21 B
 | Layout | Bytes | ΔE00 | SSIM2 | Butter | DSSIM |
 |---|---|---|---|---|---|
 | ThumbHash | 21.0 | 13.171 | −380.6 | 33.16 | 0.2723 |
-| shipped shape L13@5 C6@4 | 21 | 12.702 | −399.2 | 35.17 | 0.2691 |
+| shipped shape L13@5 C6@4 | 21 | 12.703 | −399.2 | 35.17 | 0.2691 |
 | L26@3 C6@3 | 21 | 12.224 | −360.3 | 31.95 | 0.2682 |
-| L19@4 C6@3 | 21 | 12.308 | −375.3 | 32.38 | 0.2675 |
-| **L19@4 C6@3 + stack** | 21 | **12.181** | **−373.0** | **32.19** | **0.2664** |
-| L22@4 C8@3 + stack | 24 | 11.983 | −364.1 | 31.55 | 0.2654 |
+| L19@4 C6@3 | 21 | 12.310 | −375.3 | 32.38 | 0.2675 |
+| **L19@4 C6@3 + stack** | 21 | **12.182** | **−373.1** | **32.19** | **0.2664** |
+| L22@4 C8@3 + stack | 24 | 11.984 | −364.2 | 31.55 | 0.2654 |
 
 **Holdout split**
 
@@ -406,10 +406,10 @@ Two defects in the shipped encoder, both free to fix:
 
 | Layout | shipped | ac_nearest | scale_fit=1 | scale_fit=2 | fit2 + nearest |
 |---|---|---|---|---|---|
-| 21 B | 12.702 | — | — | — | 12.679 (−0.18%) |
-| 32 B | 11.655 | 11.653 (−0.02%) | 11.638 (−0.14%) | 11.619 (−0.30%) | 11.619 (−0.30%) |
-| 108 B | 9.721 | — | — | — | 9.667 (−0.56%) |
-| 411 B | 7.908 | — | — | — | 7.826 (−1.04%) |
+| 21 B | 12.703 | — | — | — | 12.679 (−0.18%) |
+| 32 B | 11.656 | 11.655 (−0.02%) | 11.640 (−0.14%) | 11.621 (−0.30%) | 11.621 (−0.30%) |
+| 108 B | 9.722 | — | — | — | 9.668 (−0.56%) |
+| 411 B | 7.910 | — | — | — | 7.827 (−1.04%) |
 
 `ac_nearest` alone is worth 0.02% — µ-law's compressed-domain rounding is
 already near reconstruction-optimal, an independent confirmation of the
@@ -456,9 +456,9 @@ run:
 
 | Bytes | 12 | 16 | 21 | 24 | 28 | 32 | 48 | 64 | 108 | 246 | 411 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| tune, pre-adoption shipped | 14.24 | 13.20 | 12.70 | 12.23 | 11.95 | 11.65 | 10.96 | 10.51 | 9.72 | 8.63 | 7.91 |
-| tune, tuned | 13.60 | 12.72 | 12.18 | 11.98 | 11.60 | 11.43 | 10.80 | 10.49 | 9.66 | 8.48 | 7.91 |
-| tune Δ | −4.5% | −3.6% | −4.1% | −2.0% | −2.9% | −1.9% | −1.5% | −0.2% | −0.7% | −1.8% | 0.0% |
+| tune, pre-adoption shipped | 14.24 | 13.20 | 12.70 | 12.23 | 11.95 | 11.66 | 10.96 | 10.51 | 9.72 | 8.64 | 7.91 |
+| tune, tuned | 13.60 | 12.72 | 12.18 | 11.98 | 11.61 | 11.44 | 10.80 | 10.49 | 9.66 | 8.48 | 7.91 |
+| tune Δ | −4.5% | −3.6% | −4.1% | −2.0% | −2.9% | −1.9% | −1.4% | −0.2% | −0.7% | −1.8% | 0.0% |
 | holdout, pre-adoption shipped | 14.23 | 13.28 | 12.73 | 12.29 | 11.97 | 11.74 | 10.94 | 10.51 | 9.70 | 8.57 | 8.00 |
 | holdout, tuned | 13.40 | 12.73 | 12.20 | 11.92 | 11.61 | 11.39 | 10.72 | 10.40 | 9.53 | 8.38 | 7.81 |
 | holdout Δ | −5.8% | −4.2% | −4.1% | −3.0% | −3.1% | −3.0% | −2.1% | −1.0% | −1.7% | −2.2% | −2.3% |
@@ -830,11 +830,11 @@ decode), two passes reduce the gamma-sRGB squared error it optimizes by
 
 | Variant | ΔE00 | Δ% |
 |---|---|---|
-| shipped | 11.655 | — |
-| `refine_obj=1` (OKLAB, no clipping model — the control) | 11.636 | −0.16% |
-| `refine_obj=0` (gamma sRGB), 2 passes | 11.685 | **0.26%** |
-| `refine_obj=0`, 2 passes + dc + scale | 11.740 | **0.73%** |
-| `refine_obj=2` (clipped OKLAB), 2 passes | 11.633 | −0.19% |
+| shipped | 11.656 | — |
+| `refine_obj=1` (OKLAB, no clipping model — the control) | 11.638 | −0.16% |
+| `refine_obj=0` (gamma sRGB), 2 passes | 11.686 | **0.26%** |
+| `refine_obj=0`, 2 passes + dc + scale | 11.741 | **0.73%** |
+| `refine_obj=2` (clipped OKLAB), 2 passes | 11.634 | −0.19% |
 
 A 15–31% reduction in decoded-pixel squared error buys a **+0.26% increase** in
 ΔE00, and pushing it to 17–31% with the DC and scale coordinates buys **+0.73%**
@@ -959,13 +959,13 @@ Every header field width is now tunable. Pure cost first (same AC layout, tune,
 
 | Narrowing | bits saved | ΔE00 Δ% | guards (means) | guards (CI) |
 |---|---|---|---|---|
-| aspect 8 → 5 b | 3 | **−0.11%** | ok | inconclusive |
-| aspect 8 → 4 b | 4 | **−0.06%** | **FAIL** | inconclusive |
-| scales 6/6/5 → 5/4/4, linear grid | 4 | 0.69% | ok | inconclusive |
-| scales 6/6/5 → 5/4/4, **µ-law grid** (`scale_mu=8`) | 4 | 0.09% | ok | inconclusive |
+| aspect 8 → 5 b | 3 | **−0.17%** | ok | inconclusive |
+| aspect 8 → 4 b | 4 | **−0.11%** | **FAIL** | inconclusive |
+| scales 6/6/5 → 5/4/4, linear grid | 4 | 0.67% | ok | inconclusive |
+| scales 6/6/5 → 5/4/4, **µ-law grid** (`scale_mu=8`) | 4 | 0.08% | ok | inconclusive |
 | `b_scale_from_a` (drop the b field) | 5 | 2.20% | **FAIL** | inconclusive |
 | DC 7/7/7 → 6/6/6 | 3 | 0.76% | ok | ok |
-| all of the above | 15 | 2.71% | **FAIL** | inconclusive |
+| all of the above | 15 | 2.65% | **ok** | inconclusive |
 
 (Both guard columns are bound. The point-mean one was once unbound, and two of
 its cells were stale: narrowing aspect to 4 b and the all-in row both fail their
@@ -1050,11 +1050,11 @@ Zero bytes. `sweeps/detail-synthesis.json`, tune:
 
 | variant | ΔE00 Δ% | SSIM2 | Butteraugli | DSSIM |
 |---|---|---|---|---|
-| shipped | — | −341.7 | 30.38 | 0.2638 |
-| 26 extra coefficients, gain 0.25 | 0.59% | −346.1 | 30.53 | 0.2643 |
-| 78, gain 0.5 | 4.54% | −392.6 | 32.29 | 0.2695 |
-| 234, gain 0.5 | 6.60% | −432.1 | 33.38 | 0.2752 |
-| tier 1, 312, gain 0.5 | +5.0 pp | −281.0 | 26.01 | 0.2704 |
+| shipped | — | −342.1 | 30.35 | 0.2639 |
+| 26 extra coefficients, gain 0.25 | 0.59% | −346.6 | 30.49 | 0.2644 |
+| 78, gain 0.5 | 4.54% | −393.2 | 32.22 | 0.2697 |
+| 234, gain 0.5 | 6.62% | −433.5 | 33.30 | 0.2755 |
+| tier 1, 312, gain 0.5 | +5.0 pp | −279.7 | 25.94 | 0.2701 |
 
 The hypothesis was that SSIMULACRA2 and DSSIM — the axes where the format loses
 to WebP — would reward plausible detail. **They do the opposite**: every
@@ -1097,13 +1097,13 @@ selection index. `sweeps/cfl.json`, tune:
 
 | | bytes | ΔE00 | vs its own control |
 |---|---|---|---|
-| shipped | 32 | 11.473 | — |
-| CfL free (gains not paid for) | 34 | 11.462 | **−0.09%** |
+| shipped | 32 | 11.481 | — |
+| CfL free (gains not paid for) | 34 | 11.470 | **−0.09%** |
 | CfL paid, L24@5 C9@4 | 32 | 11.723 | −0.04% vs the same layout without CfL |
-| CfL paid on the 4-bit layout | 32 | 11.512 | −0.04% vs its control |
-| tier 1 free | 109 | 9.656 | −0.11% |
-| tier 2 free | 412 | 7.793 | −0.45% |
-| tier 3 free | 1624 | 6.665 | −0.90% |
+| CfL paid on the 4-bit layout | 32 | 11.520 | −0.04% vs its control |
+| tier 1 free | 109 | 9.659 | −0.11% |
+| tier 2 free | 412 | 7.797 | −0.45% |
+| tier 3 free | 1624 | 6.668 | −0.90% |
 
 **This column changed sign on the Wikimedia corpus, and it is the one column in
 the table nothing checks** — the binding covers `bytes` and `ΔE00`, so the
@@ -1156,11 +1156,11 @@ tune:
 
 | Decoded from a 108 B tier-1 hash | ΔE00 | vs native tier 0 (11.473) | SSIM2 |
 |---|---|---|---|
-| first 32 B, interleaved | 11.955 | **+4.21%** | −378.4 |
-| first 32 B, channel-sequential | 12.584 | +9.69% | −319.8 |
-| first 48 B, interleaved | 11.220 | −2.20% | −344.2 |
-| first 64 B, interleaved | 10.700 | −6.74% | −311.2 |
-| full 108 B (either order) | 9.667 | −15.74% | −212.9 |
+| first 32 B, interleaved | 11.957 | **4.15%** | −378.4 |
+| first 32 B, channel-sequential | 12.581 | 9.59% | −319.7 |
+| first 48 B, interleaved | 11.221 | −2.26% | −344.2 |
+| first 64 B, interleaved | 10.697 | −6.83% | −310.8 |
+| full 108 B (either order) | 9.670 | −15.77% | −213.2 |
 
 Interleaving is worth **5.0%** over a sequential prefix at the 32-byte cut, and
 progressive costs **~4%** against a native tier-0 encode at the same 32 bytes.
@@ -1209,8 +1209,8 @@ The whole ladder under the constants-only recipe
 
 | Bytes | 12 | 16 | 21 | 24 | 28 | 32 | 40 | 48 | 64 | 80 | 108 | 161 | 246 | 411 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| tune, pre-adoption shipped | 14.24 | 13.20 | 12.70 | 12.23 | 11.95 | 11.65 | 11.29 | 10.96 | 10.51 | 10.17 | 9.72 | 9.19 | 8.63 | 7.91 |
-| tune, optimized | 13.50 | 12.68 | 12.15 | 11.93 | 11.67 | 11.41 | 11.09 | 10.76 | 10.48 | 10.14 | 9.67 | 9.05 | 8.45 | 7.90 |
+| tune, pre-adoption shipped | 14.24 | 13.20 | 12.70 | 12.23 | 11.95 | 11.66 | 11.29 | 10.96 | 10.51 | 10.17 | 9.72 | 9.20 | 8.64 | 7.91 |
+| tune, optimized | 13.52 | 12.68 | 12.16 | 11.94 | 11.68 | 11.41 | 11.09 | 10.76 | 10.47 | 10.14 | 9.67 | 9.05 | 8.45 | 7.90 |
 | holdout, pre-adoption shipped | 14.23 | 13.28 | 12.73 | 12.29 | 11.97 | 11.74 | 11.31 | 10.94 | 10.51 | 10.11 | 9.70 | 9.11 | 8.57 | 8.00 |
 | holdout, optimized | 13.30 | 12.72 | 12.15 | 11.88 | 11.55 | 11.38 | 10.98 | 10.67 | 10.35 | 9.99 | 9.51 | 8.92 | 8.39 | 7.82 |
 
@@ -2041,8 +2041,8 @@ change and nothing else moved:
 | holdout, tier 0, **DEFAULT** | **11.298** | **−3.72** | **−303.7** | **28.16** | **0.2623** |
 | holdout, tier 1, pre-adoption | 9.696 | — | −184.9 | 23.00 | 0.2589 |
 | holdout, tier 1, **DEFAULT** | **9.517** | **−1.84** | **−174.1** | **22.75** | **0.2582** |
-| tune, tier 0, pre-adoption | 11.655 | — | −349.1 | 30.64 | 0.2641 |
-| tune, tier 0, **DEFAULT** | **11.473** | **−1.56** | **−341.7** | 30.38 | **0.2638** |
+| tune, tier 0, pre-adoption | 11.656 | — | −349.1 | 30.64 | 0.2641 |
+| tune, tier 0, **DEFAULT** | **11.481** | **−1.51** | **−342.1** | 30.35 | **0.2639** |
 
 Every cell matches §8.3. The R-D gate baseline moves with it, 9.0933 → **8.8459**
 (−2.72% over the 8 gated photos), and `spec/test-vectors/` was regenerated: the
@@ -2225,15 +2225,15 @@ adopted pair as incumbent and an explicit isotropic arm.
 
 | variant | ΔE00 | Δ% | paired 95% CI | Holm p | win/n |
 |---|---|---|---|---|---|
-| **DEFAULT** aniso 1.2 / hv 0.15 | 11.473 | — | — | — | — |
-| isotropic (aniso 0, hv 0) | 11.453 | −0.17% | [−0.071, +0.120] | 1.0000 | 16/31 |
-| **aniso 0.9 / hv 0.0** | **11.392** | **−0.71%** | **[+0.027, +0.143]** | 0.0850 | 17/31 |
-| **aniso 1.2 / hv 0.0** (shipped aniso, `sel_hv` off) | **11.420** | **−0.46%** | **[+0.011, +0.101]** | 0.3040 | 20/31 |
-| aniso 1.2 / hv 0.30 | 11.518 | 0.40% | [−0.119, +0.025] | 1.0000 | 14/31 |
-| aniso 2.0 / hv 0.30 | 11.574 | 0.88% | **[−0.187, −0.025]** | 0.1886 | 13/31 |
-| aniso 1.2 / hv −0.15 | 11.470 | −0.03% | [−0.076, +0.073] | 1.0000 | 19/31 |
-| aniso 1.2 / hv −0.30 | 11.553 | 0.70% | [−0.185, +0.014] | 1.0000 | 12/31 |
-| aniso 3.2 / hv 0.0 | 11.631 | 1.38% | **[−0.265, −0.072]** | 0.0056 | 7/31 |
+| **DEFAULT** aniso 1.2 / hv 0.15 | 11.481 | — | — | — | — |
+| isotropic (aniso 0, hv 0) | 11.455 | −0.23% | [−0.063, +0.126] | 1.0000 | 16/31 |
+| **aniso 0.9 / hv 0.0** | **11.393** | **−0.76%** | **[+0.035, +0.149]** | 0.0432 | 18/31 |
+| **aniso 1.2 / hv 0.0** (shipped aniso, `sel_hv` off) | **11.421** | **−0.52%** | **[+0.016, +0.111]** | 0.2112 | 20/31 |
+| aniso 1.2 / hv 0.30 | 11.525 | 0.39% | [−0.119, +0.025] | 1.0000 | 14/31 |
+| aniso 2.0 / hv 0.30 | 11.578 | 0.85% | **[−0.183, −0.020]** | 0.2438 | 13/31 |
+| aniso 1.2 / hv −0.15 | 11.464 | −0.14% | [−0.063, +0.085] | 1.0000 | 20/31 |
+| aniso 1.2 / hv −0.30 | 11.549 | 0.59% | [−0.176, +0.026] | 1.0000 | 13/31 |
+| aniso 3.2 / hv 0.0 | 11.632 | 1.32% | **[−0.260, −0.064]** | 0.0056 | 8/31 |
 
 Three findings, and the first two are uncomfortable:
 
@@ -2275,13 +2275,13 @@ the 4 b/3 b tier-0 depths rather than the 5 b/4 b depths it was locked against.
 
 | family | ΔE00 | Δ% |
 |---|---|---|
-| **µ-law µ_L=5 / µ_C=8 (shipped)** | 11.473 | — |
-| µ_L=7 | 11.480 | 0.06% |
-| µ_C=12 | 11.475 | 0.02% |
-| A-law 87.6 (G.711) | 11.666 | 1.69% |
-| power-law 0.75 (AAC/MP3) | 11.527 | 0.47% |
-| power-law 0.9 | 11.599 | 1.10% |
-| Lloyd-Max L+C (trained on this corpus) | 11.498 | 0.22% |
+| **µ-law µ_L=5 / µ_C=8 (shipped)** | 11.481 | — |
+| µ_L=7 | 11.488 | 0.06% |
+| µ_C=12 | 11.483 | 0.02% |
+| A-law 87.6 (G.711) | 11.673 | 1.68% |
+| power-law 0.75 (AAC/MP3) | 11.535 | 0.47% |
+| power-law 0.9 | 11.609 | 1.12% |
+| Lloyd-Max L+C (trained on this corpus) | 11.505 | 0.21% |
 
 Every alternative family is worse, including codebooks trained on the corpus
 being scored. The µ plateau §4.6 reported survives both the corpus revision and
@@ -2302,10 +2302,10 @@ A fired deadzone now short-circuits the search, and the knob measures again:
 
 | variant | ΔE00 | Δ% |
 |---|---|---|
-| **no deadzone (shipped)** | 11.473 | — |
-| `deadzone_l = 0.02` | 11.473 | 0.00% |
-| `deadzone_l = 0.05` | 11.482 | 0.08% |
-| both = 0.03 | 11.472 | −0.01% |
+| **no deadzone (shipped)** | 11.481 | — |
+| `deadzone_l = 0.02` | 11.481 | 0.00% |
+| `deadzone_l = 0.05` | 11.490 | 0.08% |
+| both = 0.03 | 11.480 | −0.01% |
 
 Rejected — now on evidence rather than on an artifact.
 
@@ -2346,15 +2346,15 @@ tier code is spent on it.
 
 | layout | ΔE00 | Δ% vs shipped shape | paired CI vs the leader | Holm p vs the leader |
 |---|---|---|---|---|
-| shipped shape L13@5 C6@4 | 12.573 | — | **[−0.580, −0.288]** | 0.0028 |
-| **L19@4 C6@3** | **12.147** | −3.39% | (leader) | (leader) |
-| L26@3 C6@3 | 12.161 | −3.27% | [−0.090, +0.062] | 1.0000 |
-| L18@4 C7@3 | 12.175 | −3.16% | [−0.098, +0.023] | 1.0000 |
-| L16@4 C8@3 | 12.240 | −2.65% | **[−0.195, −0.002]** | 0.6555 |
-| L24@3 C7@3 | 12.181 | −3.12% | [−0.106, +0.032] | 1.0000 |
-| L20@4 C5@3 | 12.227 | −2.75% | [−0.204, +0.012] | 0.8153 |
-| L35@3 C2@2 (count-maximal) | 12.279 | −2.34% | **[−0.403, +0.120]** | 1.0000 |
-| L19@5 C2@4 (precision-maximal) | 12.436 | −1.09% | **[−0.501, −0.130]** | 0.0028 |
+| shipped shape L13@5 C6@4 | 12.620 | — | **[−0.673, −0.301]** | 0.0028 |
+| **L19@4 C6@3** | **12.156** | −3.67% | (leader) | (leader) |
+| L26@3 C6@3 | 12.166 | −3.59% | [−0.085, +0.069] | 1.0000 |
+| L18@4 C7@3 | 12.171 | −3.55% | [−0.076, +0.028] | 1.0000 |
+| L16@4 C8@3 | 12.244 | −2.98% | **[−0.184, −0.000]** | 0.6775 |
+| L24@3 C7@3 | 12.189 | −3.41% | [−0.106, +0.033] | 1.0000 |
+| L20@4 C5@3 | 12.243 | −2.98% | [−0.209, +0.004] | 0.6775 |
+| L35@3 C2@2 (count-maximal) | 12.280 | −2.69% | **[−0.398, +0.124]** | 1.0000 |
+| L19@5 C2@4 (precision-maximal) | 12.444 | −1.40% | **[−0.499, −0.127]** | 0.0028 |
 
 The extremes are decisively rejected and the shipped shape is decisively beaten
 — by 3.39% — but **the leading five layouts are a plateau**: their paired CIs
@@ -2691,10 +2691,10 @@ split read once, not a rewording (#76).
 
 | candidate | tune | holdout | verdict |
 |---|---|---|---|
-| `sel_hv` 0.15 → 0.30 | +0.40%, CI straddles (§11.5) | **+0.56%** | **rejected** |
-| isotropic weights | −0.17%, CI straddles | +0.62%, guards fail | rejected |
-| pre-adoption v0.6-derived | +1.59% | +3.87% | (confirms §8 out of sample) |
-| compact 21 B `L19@4 C6@3` | −3.39% | −2.78%, vs the shipped shape | adopted |
+| `sel_hv` 0.15 → 0.30 | 0.39%, CI straddles (§11.5) | **+0.56%** | **rejected** |
+| isotropic weights | −0.23%, CI straddles | +0.62%, guards fail | rejected |
+| pre-adoption v0.6-derived | 1.53% | +3.87% | (confirms §8 out of sample) |
+| compact 21 B `L19@4 C6@3` | −3.67% | −2.78%, vs the shipped shape | adopted |
 
 **The compact row is adopted at −2.78%, below the ≥3% the rule asks for, and
 the rule did not apply to it.** `RATIONALE.md`'s rule governs changing a
@@ -2981,14 +2981,14 @@ no hash.
 
 | variant | ΔE00 | Δ% | SSIM2 | Ring | Spur | paired 95% CI | Holm p | guards (means) | guards (CI) |
 |---|---|---|---|---|---|---|---|---|---|
-| shipped (no window) | 11.473 | — | −341.7 | 1.02 | 3.53 | — | — | (base) | (base) |
-| w_min 0.85 exp 1 | 11.510 | +0.33% | −343.8 | 0.78 | 2.44 | [−0.077, −0.003] | 0.0692 | FAIL | inconclusive |
-| w_min 0.7 exp 1 | 11.646 | +1.51% | −347.7 | 0.67 | 1.80 | [−0.273, −0.092] | 0.0014 | FAIL | FAIL |
-| w_min 0.7 exp 2 | 11.775 | +2.64% | −349.5 | 0.73 | 1.53 | [−0.435, −0.187] | 0.0014 | FAIL | FAIL |
-| w_min 0.5 exp 1 | 11.980 | +4.42% | −356.1 | 0.78 | 1.28 | [−0.722, −0.329] | 0.0014 | FAIL | FAIL |
-| w_min 0.5 exp 2 | 12.308 | +7.28% | −360.6 | 1.00 | 0.95 | [−1.120, −0.590] | 0.0014 | FAIL | FAIL |
-| luma only 0.7 exp 1 | 11.649 | +1.53% | −347.1 | 0.67 | 1.90 | [−0.267, −0.102] | 0.0014 | FAIL | FAIL |
-| chroma only 0.7 exp 1 | 11.476 | +0.03% | −342.2 | 1.03 | 3.58 | [−0.029, +0.029] | 0.7965 | ok | ok |
+| shipped (no window) | 11.481 | — | −342.1 | 1.03 | 3.53 | — | — | (base) | (base) |
+| w_min 0.85 exp 1 | 11.518 | +0.33% | −344.1 | 0.79 | 2.44 | [−0.077, −0.003] | 0.0692 | FAIL | inconclusive |
+| w_min 0.7 exp 1 | 11.652 | 1.49% | −347.9 | 0.68 | 1.79 | [−0.267, −0.092] | 0.0014 | FAIL | FAIL |
+| w_min 0.7 exp 2 | 11.781 | 2.61% | −349.7 | 0.75 | 1.52 | [−0.427, −0.187] | 0.0014 | FAIL | FAIL |
+| w_min 0.5 exp 1 | 11.983 | 4.38% | −356.2 | 0.80 | 1.28 | [−0.707, −0.329] | 0.0014 | FAIL | FAIL |
+| w_min 0.5 exp 2 | 12.311 | 7.23% | −360.8 | 1.02 | 0.95 | [−1.105, −0.590] | 0.0014 | FAIL | FAIL |
+| luma only 0.7 exp 1 | 11.654 | 1.51% | −347.3 | 0.68 | 1.90 | [−0.261, −0.101] | 0.0014 | FAIL | FAIL |
+| chroma only 0.7 exp 1 | 11.484 | +0.03% | −342.7 | 1.03 | 3.58 | [−0.029, +0.029] | 0.8103 | ok | ok |
 
 Four things this settles.
 
@@ -3028,12 +3028,12 @@ incumbent and make the tightest instrument here meaningless.
 
 | variant | ΔE00 | Δ% | SSIM2 | DSSIM | Ring | Spur | paired 95% CI | Holm p | guards (means) | guards (CI) |
 |---|---|---|---|---|---|---|---|---|---|---|
-| t2 shipped (no window) | 9.667 | — | −212.9 | 0.2559 | 1.32 | 3.65 | — | — | (base) | (base) |
-| t2 w_min 0.85 exp 1 | 9.674 | +0.06% | −216.1 | 0.2548 | 1.03 | 2.64 | [−0.027, +0.012] | 1.0000 | FAIL | FAIL |
-| t2 w_min 0.7 exp 1 | 9.756 | +0.92% | −221.8 | 0.2544 | 0.87 | 2.01 | [−0.136, −0.048] | 0.0010 | FAIL | FAIL |
-| t2 w_min 0.5 exp 2 | 10.255 | +6.08% | −242.2 | 0.2561 | 1.00 | 1.27 | [−0.732, −0.459] | 0.0010 | FAIL | FAIL |
-| t2 luma only 0.7 exp 1 | 9.750 | +0.85% | −221.0 | 0.2543 | 0.88 | 2.04 | [−0.126, −0.047] | 0.0010 | FAIL | FAIL |
-| t2 chroma only 0.7 exp 1 | 9.674 | +0.06% | −213.7 | 0.2561 | 1.30 | 3.71 | [−0.033, +0.022] | 1.0000 | ok | inconclusive |
+| t2 shipped (no window) | 9.670 | — | −213.2 | 0.2560 | 1.32 | 3.64 | — | — | (base) | (base) |
+| t2 w_min 0.85 exp 1 | 9.678 | 0.08% | −216.5 | 0.2549 | 1.03 | 2.62 | [−0.030, +0.011] | 0.9143 | FAIL | FAIL |
+| t2 w_min 0.7 exp 1 | 9.763 | 0.96% | −222.2 | 0.2544 | 0.87 | 1.99 | [−0.141, −0.050] | 0.0010 | FAIL | FAIL |
+| t2 w_min 0.5 exp 2 | 10.271 | 6.21% | −242.7 | 0.2562 | 1.01 | 1.26 | [−0.756, −0.463] | 0.0010 | FAIL | FAIL |
+| t2 luma only 0.7 exp 1 | 9.755 | 0.88% | −221.4 | 0.2544 | 0.88 | 2.02 | [−0.130, −0.049] | 0.0010 | FAIL | FAIL |
+| t2 chroma only 0.7 exp 1 | 9.678 | 0.08% | −214.0 | 0.2561 | 1.30 | 3.70 | [−0.035, +0.021] | 0.9143 | ok | inconclusive |
 
 The pattern holds, and the light arm gets interesting.
 
@@ -3198,11 +3198,11 @@ what a viewer of that tier receives:
 
 | tier | bytes | ΔE00 | SSIM2 | DSSIM | Ring | Spur | Deficit |
 |---|---|---|---|---|---|---|---|
-| code 0 (compact) | 21 | 12.147 | −371.1 | 0.2664 | 1.34 | 3.98 | 27.05 |
-| code 1 (default) | 32 | 11.473 | −341.7 | 0.2638 | 1.02 | 3.53 | 24.79 |
-| code 2 | 108 | 9.667 | −212.9 | 0.2559 | 1.32 | 3.65 | 23.23 |
-| code 3 | 411 | 7.828 | −89.5 | 0.2451 | 1.48 | 4.47 | 19.33 |
-| code 4 | 1623 | 6.726 | −63.8 | 0.2342 | 2.30 | 6.56 | 13.24 |
+| code 0 (compact) | 21 | 12.156 | −372.0 | 0.2665 | 1.32 | 3.98 | 27.10 |
+| code 1 (default) | 32 | 11.481 | −342.1 | 0.2639 | 1.03 | 3.53 | 24.81 |
+| code 2 | 108 | 9.670 | −213.2 | 0.2560 | 1.32 | 3.64 | 23.24 |
+| code 3 | 411 | 7.832 | −89.5 | 0.2451 | 1.48 | 4.48 | 19.35 |
+| code 4 | 1623 | 6.729 | −63.8 | 0.2343 | 2.30 | 6.56 | 13.25 |
 
 **Do not read the artifact columns down this table.** Both spectral scores are
 defined on the decode's own grid, so a tier-4 row is judged on frequencies a
@@ -3235,11 +3235,11 @@ and is not a change to make at the end of a round.
 
 | tier | bytes | ΔE00 | Spur | Deficit | Spur / Deficit |
 |---|---|---|---|---|---|
-| code 0 (compact) | 21 | 12.147 | 3.98 | 27.05 | 0.15 |
-| code 1 (default) | 32 | 11.473 | 3.53 | 24.79 | 0.14 |
-| **code 2** | 108 | 9.667 | **3.49** | 17.01 | 0.21 |
-| code 3 | 411 | 7.828 | 4.21 | 8.44 | 0.50 |
-| code 4 | 1623 | 6.726 | 4.23 | 4.58 | **0.92** |
+| code 0 (compact) | 21 | 12.156 | 3.98 | 27.10 | 0.15 |
+| code 1 (default) | 32 | 11.481 | 3.53 | 24.81 | 0.14 |
+| **code 2** | 108 | 9.670 | **3.48** | 17.02 | 0.21 |
+| code 3 | 411 | 7.832 | 4.22 | 8.45 | 0.50 |
+| code 4 | 1623 | 6.729 | 4.22 | 4.58 | **0.92** |
 
 Ringing is deliberately still reported per row and still not comparable across
 them: it derives its envelope radius from the upscale factor and has no
@@ -3253,11 +3253,11 @@ against each other:
 
 | comparison | Spur Δ | paired 95% CI | Holm p |
 |---|---|---|---|
-| code 0 − code 2 | +0.480 | [−0.014, +1.004] | 0.1064 |
-| code 1 − code 2 | +0.039 | [−0.393, +0.446] | 0.8297 |
-| code 3 − code 2 | +0.717 | [+0.334, +1.136] | 0.0008 |
-| code 4 − code 2 | +0.735 | [+0.261, +1.177] | 0.0078 |
-| code 4 − code 3 | +0.018 | [−0.269, +0.276] | 0.8851 |
+| code 0 − code 2 | 0.496 | [−0.009, +1.015] | 0.0976 |
+| code 1 − code 2 | 0.048 | [−0.385, +0.453] | 0.7991 |
+| code 3 − code 2 | 0.735 | [+0.348, +1.154] | 0.0008 |
+| code 4 − code 2 | 0.742 | [+0.263, +1.182] | 0.0072 |
+| code 4 − code 3 | 0.007 | [−0.284, +0.258] | 0.9209 |
 
 `mise run arms artifact-ladder-common-grid --baseline "code 2 (108 B)"` prints
 the first four rows (and the same comparison for every other metric), and
@@ -3448,12 +3448,12 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 839 | 617 | 562 | 507 | 168 | 164 | 83 | 85 |
-| `selection-weights` | 28 | 12 | 1 | 0 | 27 | 1 | 12 | 15 |
+| all committed sweeps | 839 | 618 | 565 | 507 | 169 | 163 | 87 | 82 |
+| `selection-weights` | 28 | 13 | 2 | 1 | 27 | 0 | 13 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
 | `graphics-layout` | 28 | 1 | 0 | 16 | 12 | 0 | 7 | 5 |
-| `prefix-shrink` | 32 | 22 | 18 | 11 | 13 | 8 | 5 | 8 |
+| `prefix-shrink` | 32 | 22 | 18 | 11 | 13 | 8 | 7 | 6 |
 | `synthesis-window` | 7 | 6 | 5 | 1 | 1 | 5 | 0 | 1 |
 | `holdout-candidates-holdout` | 13 | 13 | 13 | 8 | 0 | 5 | 0 | 0 |
 | `final-candidates-holdout` | 16 | 16 | 16 | 13 | 1 | 2 | 0 | 1 |
