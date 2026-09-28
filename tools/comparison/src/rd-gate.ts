@@ -40,13 +40,17 @@ import { ensureNaturalImages } from "./natural-images.ts";
  * the encoder is most likely to regress on — mid-key detail, a face, a night
  * scene, a saturated one, and a photograph whose measured mean chroma is ~0 so
  * its chroma AC set is identically zero (the degenerate input for any change
- * to the chroma path). The face, `portrait-african-lady`, is a black-and-white
- * photograph (mean C* 0, #102), so it is a second achromatic input and no
- * image here carries skin chroma. All from the tune split. Content-pinned by `natural-images.ts`, so this set
- * is byte-identical on every machine.
+ * to the chroma path). The face, `portrait-african-woman-rusinga`, is the
+ * dark-skin colour portrait (mean C* 16), so a chroma-path regression on skin
+ * moves the gated mean (alone, it fails the ±1% gate once its own ΔE00 moves
+ * by about 7%); it replaced the black-and-white `portrait-african-lady`
+ * (mean C* 0), which only duplicated the achromatic input (#110). It is also
+ * stored with EXIF Orientation 8, so the gate scores it upright only while the
+ * loader honours the tag. All from the tune split. Content-pinned by
+ * `natural-images.ts`, so this set is byte-identical on every machine.
  */
 const GATE_IMAGES = [
-  "portrait-african-lady",
+  "portrait-african-woman-rusinga",
   "chroma-the-old-monochrome",
   "natural-landschaftsschutzgebiet-volkspark-rehberge",
   "natural-andrew-jackson-state",
