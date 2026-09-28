@@ -38,11 +38,14 @@ of it answers the same question.
   sweeps tune on `tune`. `tune2` is the spent photographic holdout (the Kodak
   True Color suite plus eight curated photographs), retired by #76 because it
   informed a decision in every round: it is tuning data now, not a verdict.
-  `holdout` holds only the graphics holdout (the alpha holdout was retired by
-  #83), and `--split holdout` refuses a photographic corpus. `holdout2` is the
-  sealed photographic holdout: only `sweep` and `rd-budget` read it, and only
-  with `--decision <ID>` once `spec/V0.8-DECISIONS.md` records that decision
-  as frozen. `all` never includes it, and the report never scores it.
+  The alpha holdout, retired by #83, joined it on the same terms: its seven
+  surviving cut-outs are `tune2` (#93). `holdout` holds only the graphics
+  holdout, and `--split holdout` refuses a photographic or alpha corpus.
+  `holdout2` is the sealed holdouts, photographic (`sealed-*`) and alpha
+  (`sealed-cutout-*`): only `sweep` and `rd-budget` read them (`rd-budget`
+  the photographic one only), and only with `--decision <ID>` once
+  `spec/V0.8-DECISIONS.md` records that decision as frozen. `all` never
+  includes them, and the report never scores them.
 - **`CorpusSet`** — `photo`, `alpha`, `graphic`, `all`. Which body of content a
   sweep is measured against.
 

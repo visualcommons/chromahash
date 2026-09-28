@@ -15,15 +15,19 @@ import { CURATED_IMAGES } from "./natural-images.ts";
  *   round (`spec/EXPERIMENTS.md` §11.12), so it can no longer give an
  *   out-of-sample verdict. It is kept apart from `tune` rather than merged into
  *   it, so every committed tune result keeps meaning what it measured and the
- *   split's history stays visible in its name. It is tuning data now.
+ *   split's history stays visible in its name. It is tuning data now. The
+ *   alpha corpus's retired holdout (#83) joined it on the same terms: its
+ *   seven surviving cut-outs are `tune2` (#93).
  * - `holdout` — the graphics corpus's holdout, which no committed result or
- *   recorded decision has read, and the alpha corpus's retired one (#83, refused by
- *   `alphaImagesToFetch`). No photograph is in it any more:
- *   {@link PHOTO_HOLDOUT_RETIRED}.
- * - `holdout2` — the sealed photographic holdout (#76). No tool reads it
- *   unless `spec/V0.8-DECISIONS.md` records the decision being answered as
- *   frozen (`holdout-images.ts` `openHoldout2`), and nothing reads it by
- *   accident: see {@link isSealed}.
+ *   recorded decision has read. The alpha corpus keeps only its withdrawn pin
+ *   here, so a cached copy stays out of every tune sweep, and asking for the
+ *   split on the alpha corpus is refused (`alphaImagesToFetch`). No photograph
+ *   is in it any more: {@link PHOTO_HOLDOUT_RETIRED}.
+ * - `holdout2` — the sealed holdouts: photographic (#76) and alpha (#93),
+ *   told apart by corpus ({@link inCorpus}). No tool reads it unless
+ *   `spec/V0.8-DECISIONS.md` records the decision being answered as frozen
+ *   (`holdout-images.ts` `openHoldout2`), and nothing reads it by accident:
+ *   see {@link isSealed}.
  */
 export type CorpusSplit = "tune" | "tune2" | "holdout" | "holdout2";
 
@@ -45,12 +49,21 @@ export const PHOTO_HOLDOUT_RETIRED =
   "Score them with --split tune2 (tuning data, not a verdict); the out-of-sample split is holdout2, " +
   "sealed until spec/V0.8-DECISIONS.md records the decision it answers as frozen.";
 
-/** Declared split of every curated image, keyed by label. */
-const DECLARED_SPLITS = new Map<string, CorpusSplit>([
-  ...CURATED_IMAGES.map((s): [string, CorpusSplit] => [s.label, s.split]),
-  ...ALPHA_IMAGES.map((s): [string, CorpusSplit] => [s.label, s.split]),
-  ...GRAPHIC_IMAGES.map((s): [string, CorpusSplit] => [s.label, s.split]),
-]);
+/**
+ * Declared split of every curated image, keyed by label. Built on first use,
+ * not at load: `alpha-images.ts` imports this module's prefixes, so the two
+ * form an import cycle, and whichever loads second would otherwise read the
+ * other's table before it exists.
+ */
+let declaredSplits: Map<string, CorpusSplit> | undefined;
+function declaredSplit(label: string): CorpusSplit | undefined {
+  declaredSplits ??= new Map<string, CorpusSplit>([
+    ...CURATED_IMAGES.map((s): [string, CorpusSplit] => [s.label, s.split]),
+    ...ALPHA_IMAGES.map((s): [string, CorpusSplit] => [s.label, s.split]),
+    ...GRAPHIC_IMAGES.map((s): [string, CorpusSplit] => [s.label, s.split]),
+  ]);
+  return declaredSplits.get(label);
+}
 
 /**
  * Filename prefix of every sealed-holdout image. The prefix, not a table
@@ -61,10 +74,18 @@ const DECLARED_SPLITS = new Map<string, CorpusSplit>([
 export const HOLDOUT2_PREFIX = "sealed-";
 
 /**
+ * Filename prefix of every sealed alpha image: the seal, then the alpha
+ * corpus's own prefix, so {@link inCorpus} can tell a sealed cut-out from a
+ * sealed photograph (#93).
+ */
+export const ALPHA_HOLDOUT2_PREFIX = `${HOLDOUT2_PREFIX}cutout-`;
+
+/**
  * Resolve the corpus split for an image by its report name (the filename
  * without extension). Explicit rules:
  *
- * - `sealed-*` is holdout2, whatever any table says.
+ * - `sealed-*` is holdout2, whatever any table says — `sealed-cutout-*`
+ *   included, which is the alpha corpus's sealed split.
  * - `kodak*` (the Kodak True Color suite) is tune2: it was holdout by
  *   definition until #76 retired the photographic holdout.
  * - Every curated image — photo, alpha or graphic — carries its declared split.
@@ -73,7 +94,7 @@ export const HOLDOUT2_PREFIX = "sealed-";
 export function splitFor(imageName: string): CorpusSplit {
   if (imageName.startsWith(HOLDOUT2_PREFIX)) return "holdout2";
   if (imageName.startsWith("kodak")) return "tune2";
-  return DECLARED_SPLITS.get(imageName) ?? "tune";
+  return declaredSplit(imageName) ?? "tune";
 }
 
 /**
@@ -176,21 +197,31 @@ export type CorpusSet = "photo" | "alpha" | "graphic" | "all";
  * the alpha *path*, not content anything should be tuned against.
  */
 const CORPUS_PREFIXES: Record<Exclude<CorpusSet, "all">, readonly string[]> = {
-  photo: [
-    "natural-",
-    "portrait-",
-    "night-",
-    "chroma-",
-    "kodak",
-    HOLDOUT2_PREFIX,
-  ],
+  photo: ["natural-", "portrait-", "night-", "chroma-", "kodak"],
   alpha: ["cutout-"],
   graphic: ["graphic-"],
 };
 
+/**
+ * The corpus a sealed (`sealed-*`) image belongs to: the one whose prefix
+ * follows the seal — `sealed-cutout-*` is alpha (#93) — and otherwise photo,
+ * since the photographic holdout2 labels name an axis, not a corpus (#76).
+ */
+function sealedCorpus(imageName: string): Exclude<CorpusSet, "all"> {
+  const rest = imageName.slice(HOLDOUT2_PREFIX.length);
+  if (CORPUS_PREFIXES.alpha.some((p) => rest.startsWith(p))) return "alpha";
+  if (CORPUS_PREFIXES.graphic.some((p) => rest.startsWith(p))) {
+    return "graphic";
+  }
+  return "photo";
+}
+
 /** Does an image (by report name, i.e. filename without extension) belong to `set`? */
 export function inCorpus(imageName: string, set: CorpusSet): boolean {
   if (set === "all") return true;
+  if (imageName.startsWith(HOLDOUT2_PREFIX)) {
+    return sealedCorpus(imageName) === set;
+  }
   return CORPUS_PREFIXES[set].some((p) => imageName.startsWith(p));
 }
 

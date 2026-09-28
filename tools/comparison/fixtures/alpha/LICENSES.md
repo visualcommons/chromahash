@@ -11,14 +11,19 @@ These files are **not committed** — they are fetched on demand and content-pin
 by SHA-256 (`src/alpha-images.ts`, `src/corpus-pin.ts`). A pin mismatch is
 fatal: the corpus a number was measured on is part of what the number means.
 
-The holdout split is retired (#83): see `ALPHA_HOLDOUT_RETIRED` in
-`src/alpha-images.ts`. Its images keep their declared split below.
+**Splits.** `tune` is what constants are chosen on. The holdout split is
+retired (#83): see `ALPHA_HOLDOUT_RETIRED` in `src/alpha-images.ts`. Its
+seven surviving images are `tune2` (#93), tuning data kept apart from tune;
+only its withdrawn image is still marked `holdout`, so a cached copy joins no
+sweep. `holdout2`, if any entry carries it, is the sealed replacement: every
+such entry is labelled `sealed-cutout-*`, and no tool fetches it until
+`spec/V0.8-DECISIONS.md` records the decision it answers as frozen.
 
 **This file is generated.** Edit the table in `src/alpha-images.ts` and run
 `mise run corpus:licenses`; `--check` fails when the two disagree.
 
 
-24 images — 16 tune, 8 holdout; 1 withdrawn.
+24 images — 16 tune, 7 tune2, 1 holdout; 1 withdrawn.
 
 ### `cutout-3d-star-greek`
 
@@ -49,7 +54,7 @@ The holdout split is retired (#83): see `ALPHA_HOLDOUT_RETIRED` in
 - Author: Aptoide
 - License: Public domain
 - Dimensions: 601x600
-- Split: holdout
+- Split: tune2
 - Alpha: 11.8% non-opaque, 0.5% soft-edged
 - Notes: Modern app icon; flat colour, rounded-square alpha mask.
 
@@ -82,7 +87,7 @@ The holdout split is retired (#83): see `ALPHA_HOLDOUT_RETIRED` in
 - Author: Defense Logistics Agency
 - License: Public domain
 - Dimensions: 726x816
-- Split: holdout
+- Split: tune2
 - Alpha: 45.3% non-opaque, 0.0% soft-edged
 - Notes: Medal with ribbon: metallic detail plus fabric texture, narrow mostly-transparent frame.
 
@@ -115,7 +120,7 @@ The holdout split is retired (#83): see `ALPHA_HOLDOUT_RETIRED` in
 - Author: Zacke82
 - License: Public domain
 - Dimensions: 800x719
-- Split: holdout
+- Split: tune2
 - Alpha: 52.3% non-opaque, 0.6% soft-edged
 - Notes: Product photo cutout of a DSLR body; detailed dark monochrome subject with hard-ish silhouette.
 
@@ -148,7 +153,7 @@ The holdout split is retired (#83): see `ALPHA_HOLDOUT_RETIRED` in
 - Author: Pelagic
 - License: CC BY-SA 4.0
 - Dimensions: 2417x1461
-- Split: holdout
+- Split: tune2
 - Alpha: 63.2% non-opaque, 9.9% soft-edged
 - Notes: Isolated fish photo with translucent fins, i.e. genuinely soft partial alpha.
 
@@ -181,7 +186,7 @@ The holdout split is retired (#83): see `ALPHA_HOLDOUT_RETIRED` in
 - Author: US Army
 - License: Public domain
 - Dimensions: 622x620
-- Split: holdout
+- Split: tune2
 - Alpha: 46.4% non-opaque, 0.1% soft-edged
 - Notes: Flat vector-style military patch; hard binary alpha, few flat colours.
 
@@ -214,7 +219,7 @@ The holdout split is retired (#83): see `ALPHA_HOLDOUT_RETIRED` in
 - Author: Pearson Scott Foresman
 - License: Public domain
 - Dimensions: 1255x2048
-- Split: holdout
+- Split: tune2
 - Alpha: 43.0% non-opaque, 0.3% soft-edged
 - Notes: Line-art vessel drawing; hatched shading, monochrome, mostly transparent.
 
@@ -247,7 +252,7 @@ The holdout split is retired (#83): see `ALPHA_HOLDOUT_RETIRED` in
 - Author: unnamed
 - License: CC0
 - Dimensions: 4000x4000
-- Split: holdout
+- Split: tune2
 - Alpha: 43.0% non-opaque, 18.0% soft-edged
 - Notes: Banded gas giant render; smooth low-detail interior, soft alpha rim.
 

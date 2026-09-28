@@ -53,7 +53,8 @@
  *
  * The alpha corpus block covers the retired alpha holdout split and withdrawn
  * pins (`alpha-images.ts`, #83), whose refusal and skip no sweep CI runs ever
- * reaches.
+ * reaches, and the move of the split's survivors to tune2 (#93). The alpha
+ * holdout2 block covers the sealed split that replaces it (#93).
  *
  * The photographic splits block covers the same for the photographic holdout
  * #76 retired into tune2, and for the gate that keeps holdout2 sealed until
@@ -67,11 +68,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import {
+  ALPHA_HOLDOUT2_UNPINNED,
   ALPHA_HOLDOUT_RETIRED,
+  ALPHA_IMAGES,
   type AlphaImageSpec,
+  alphaHoldout2Specs,
   alphaImagesToFetch,
 } from "./alpha-images.ts";
 import {
+  ALPHA_HOLDOUT2_PREFIX,
   HOLDOUT2_PREFIX,
   PHOTO_HOLDOUT_RETIRED,
   inCorpus,
@@ -80,6 +85,7 @@ import {
   parseSplit,
   partitionSealed,
   splitFor,
+  tierFor,
 } from "./corpus.ts";
 import {
   assertHoldout2Unread,
@@ -2475,6 +2481,190 @@ console.log("\nverify:experiments — the table register and result shape\n");
     splitFor("cutout-wordmark-aflac") === "holdout",
     splitFor("cutout-wordmark-aflac"),
   );
+
+  // The retired split's seven survivors are tune2 (#93).
+  const survivors = [
+    "cutout-app-icon-aptoide",
+    "cutout-campaign-medal",
+    "cutout-dslr-camera",
+    "cutout-glassfish",
+    "cutout-insignia-4id",
+    "cutout-lineart-oinochoe",
+    "cutout-planet-gas-giant",
+  ];
+  const tune2Pins = ALPHA_IMAGES.filter((s) => s.split === "tune2")
+    .map((s) => s.label)
+    .sort();
+  check(
+    "the retired alpha holdout's seven survivors, and only they, are tune2",
+    tune2Pins.join(",") === survivors.join(",") &&
+      survivors.every((l) => splitFor(l) === "tune2"),
+    tune2Pins.join(","),
+  );
+  const leftInHoldout = ALPHA_IMAGES.filter(
+    (s) => s.split === "holdout" && s.withdrawn === undefined,
+  );
+  check(
+    "no fetchable alpha pin is left in the retired holdout split",
+    leftInHoldout.length === 0,
+    leftInHoldout.map((s) => s.label).join(","),
+  );
+  check(
+    "the retired-holdout refusal names tune2 and the sealed holdout2",
+    ALPHA_HOLDOUT_RETIRED.includes("--split tune2") &&
+      ALPHA_HOLDOUT_RETIRED.includes("holdout2"),
+    ALPHA_HOLDOUT_RETIRED,
+  );
+  check(
+    "a tune2 alpha fetch takes the tune2 pins only",
+    labels(
+      alphaImagesToFetch("tune2", [
+        ...fixture,
+        { ...base, label: "fixture-survivor", split: "tune2" },
+      ]),
+    ) === "fixture-survivor",
+    "",
+  );
+}
+
+// --- Alpha corpus: the sealed holdout2 (#93) ---------------------------------
+//
+// The alpha holdout2 opens through the same register gate as the photographic
+// one, and nothing a CI sweep runs asks for it, so every branch of its
+// selection and of the corpus rule that tells it from a sealed photograph is
+// driven here from fixtures.
+{
+  console.log("\nalpha holdout2:");
+
+  const thrown = (f: () => unknown): string => {
+    try {
+      f();
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    return "";
+  };
+  const sealedCutout = `${ALPHA_HOLDOUT2_PREFIX}fixture`;
+  check(
+    "the alpha seal is the holdout2 seal followed by the alpha corpus prefix",
+    ALPHA_HOLDOUT2_PREFIX === `${HOLDOUT2_PREFIX}cutout-`,
+    ALPHA_HOLDOUT2_PREFIX,
+  );
+  check(
+    "a sealed-cutout- image is holdout2, in the alpha corpus and not the photographic one",
+    splitFor(sealedCutout) === "holdout2" &&
+      inCorpus(sealedCutout, "alpha") &&
+      !inCorpus(sealedCutout, "photo") &&
+      !inCorpus(sealedCutout, "graphic"),
+    splitFor(sealedCutout),
+  );
+  check(
+    "a sealed photograph stays out of the alpha corpus",
+    inCorpus(`${HOLDOUT2_PREFIX}phone-fixture`, "photo") &&
+      !inCorpus(`${HOLDOUT2_PREFIX}phone-fixture`, "alpha"),
+    "",
+  );
+  check(
+    '"all" excludes a sealed cut-out, and the report drops a cached one',
+    !inSplit(sealedCutout, "all") &&
+      partitionSealed([`/fx/alpha/${sealedCutout}.png`]).sealed.length === 1,
+    "",
+  );
+  check(
+    "a sealed cut-out is real content, not a synthetic fixture",
+    tierFor(sealedCutout) === "real",
+    tierFor(sealedCutout),
+  );
+
+  const base: AlphaImageSpec = {
+    label: "cutout-open",
+    url: "https://example.invalid/open.png",
+    ext: ".png",
+    width: 1,
+    height: 1,
+    split: "tune",
+    nonOpaqueFraction: 0.5,
+    softAlphaFraction: 0,
+    sha256: "0".repeat(64),
+    source: "https://example.invalid/open",
+    author: "fixture",
+    licence: "CC0",
+    notes: "fixture",
+  };
+  const sealed: AlphaImageSpec = {
+    ...base,
+    label: sealedCutout,
+    split: "holdout2",
+  };
+  const opening = {
+    decision: "C2",
+    register: "spec/V0.8-DECISIONS.md",
+    registerSha256: "0".repeat(64),
+  };
+  const table = [base, sealed];
+  const labels = (specs: AlphaImageSpec[]): string =>
+    specs.map((s) => s.label).join(",");
+
+  check(
+    "the alpha holdout2 is refused without the gate's opening",
+    thrown(() => alphaImagesToFetch("holdout2", table)).includes(
+      "fetched only through the register gate",
+    ),
+    thrown(() => alphaImagesToFetch("holdout2", table)),
+  );
+  check(
+    "an opened alpha holdout2 fetches exactly its sealed pins",
+    labels(alphaImagesToFetch("holdout2", table, opening)) === sealedCutout,
+    labels(alphaImagesToFetch("holdout2", table, opening)),
+  );
+  check(
+    "with no split, the alpha fetch skips every sealed pin",
+    labels(alphaImagesToFetch(undefined, table)) === "cutout-open",
+    labels(alphaImagesToFetch(undefined, table)),
+  );
+  const empty = thrown(() => alphaImagesToFetch("holdout2", [base], opening));
+  check(
+    "an opened alpha holdout2 with no pins refuses rather than scoring nothing",
+    empty.startsWith(ALPHA_HOLDOUT2_UNPINNED) && empty.includes('"C2"'),
+    empty,
+  );
+  const gone = thrown(() =>
+    alphaImagesToFetch(
+      "holdout2",
+      [...table, { ...sealed, label: `${sealedCutout}-gone`, withdrawn: "x" }],
+      opening,
+    ),
+  );
+  check(
+    "an alpha holdout2 with a withdrawn pin refuses, since it cannot be read whole",
+    gone.includes("cannot be read whole"),
+    gone,
+  );
+  check(
+    "the shipped alpha table has no holdout2 pin until its list is approved",
+    alphaHoldout2Specs().length === 0 &&
+      thrown(() =>
+        alphaImagesToFetch("holdout2", undefined, opening),
+      ).startsWith(ALPHA_HOLDOUT2_UNPINNED),
+    "",
+  );
+  for (const [what, bad] of [
+    [
+      "an alpha holdout2 pin without the prefix",
+      { ...sealed, label: "cutout-x" },
+    ],
+    [
+      "a sealed-cutout- pin on another split",
+      { ...sealed, split: "tune" as const },
+    ],
+    [
+      "an alpha pin sealed as a photograph",
+      { ...sealed, label: `${HOLDOUT2_PREFIX}x` },
+    ],
+  ] as const) {
+    const message = thrown(() => alphaHoldout2Specs([bad]));
+    check(`${what} is refused`, message.includes("is labelled"), message);
+  }
 }
 
 // --- Photographic splits: tune2 retired, holdout2 sealed (#76) --------------

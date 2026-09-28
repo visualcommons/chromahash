@@ -28,14 +28,16 @@
  * another build of the same tree.
  *
  * Sweeps read the TUNE split (src/corpus.ts). `--split tune2` scores the spent
- * photographic holdout #76 retired, which is tuning data now.
+ * holdouts, which are tuning data now: the photographic one #76 retired, and
+ * the seven surviving images of the alpha one (#83, #93).
  * `--split holdout2` exists solely to validate a finished winner against the
  * pre-registered rule (≥3% holdout mean ΔE00 improvement, no guard
  * regressions) — never to tune — and opens only for a decision
  * `spec/V0.8-DECISIONS.md` records as frozen, named with `--decision`; it is
  * read once, whole, into a committed result the run refuses to overwrite.
- * `--split holdout` is the graphics corpus's holdout, and refuses a
- * photographic corpus.
+ * The config's corpus says which sealed holdout2 is read: the photographic one
+ * (#76) or the alpha one (#93). `--split holdout` is the graphics corpus's
+ * holdout, and refuses a photographic or alpha corpus.
  */
 
 import fs from "node:fs/promises";
@@ -421,14 +423,20 @@ async function loadCorpus(corpus: CorpusSet): Promise<ImageInput[]> {
     await generateFixtures();
   }
   await ensureNaturalImages();
-  if (split === "tune2") await ensureHoldoutImages();
-  if (split === "holdout2") {
-    if (holdout2 === null) throw new Error("holdout2 was not opened");
-    await ensureHoldout2Images(holdout2);
+  if (split === "holdout2" && holdout2 === null) {
+    throw new Error("holdout2 was not opened");
   }
+  const opening = holdout2 ?? undefined;
   // Only fetch a corpus a run will actually score: the alpha and graphics sets
-  // are ~40 MB the photographic sweeps would never look at.
-  if (corpus === "alpha" || corpus === "all") await ensureAlphaImages(split);
+  // are ~40 MB the photographic sweeps would never look at, and each sealed
+  // holdout2 (photographic, #76; alpha, #93) is fetched only for its corpus,
+  // so one with no pins yet cannot refuse a run on the other.
+  const photo = corpus === "photo" || corpus === "all";
+  if (photo && split === "tune2") await ensureHoldoutImages();
+  if (photo && opening !== undefined) await ensureHoldout2Images(opening);
+  if (corpus === "alpha" || corpus === "all") {
+    await ensureAlphaImages(split, opening);
+  }
   if (corpus === "graphic" || corpus === "all") await ensureGraphicImages();
 
   const paths: string[] = [];
