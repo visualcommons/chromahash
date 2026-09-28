@@ -2800,9 +2800,12 @@ photographic one:
   exists), whole and once. Its candidates are chosen on three
   covariates and nothing else: the non-opaque and soft-alpha fractions
   `alpha-images.ts` already records, and a silhouette complexity
-  (`corpus-covariates.ts`). No encoder is run on a candidate. The list, the
+  (`corpus-covariates.ts`). The candidate list is 16 images, two for each
+  combination of mostly opaque or mostly transparent, hard or soft edges,
+  and simple or detailed silhouette, drawn in a seeded order under cuts fixed
+  in advance. No encoder is run on a candidate. The list, the
   protocol that drew it, and each candidate's covariates, licence and SHA-256
-  are in #105, and nothing is pinned until the list is approved. Until then
+  are in #107, and nothing is pinned until the list is approved. Until then
   an alpha `holdout2` run refuses and says so.
 
 The alpha allocation validated emphatically on that split: SSIMULACRA2

@@ -88,7 +88,7 @@ export const ALPHA_HOLDOUT_RETIRED =
  * once the user approves the candidate list.
  */
 export const ALPHA_HOLDOUT2_UNPINNED =
-  "the alpha holdout2 split has no pinned images yet: its candidate list awaits approval before anything is pinned (#105)";
+  "the alpha holdout2 split has no pinned images yet: its candidate list awaits approval before anything is pinned (#107)";
 
 /**
  * Curated alpha corpus, sourced from Wikimedia Commons under free licences.
