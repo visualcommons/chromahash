@@ -1,5 +1,5 @@
 {
-  "note": "Baseline for the tier-0 R-D regression gate (src/rd-gate.ts). Regenerate deliberately with `mise run rd:gate:update` after an intended encoder change, and say so in the commit message.",
+  "note": "Baseline for the default-tier (code 1, 32 B) R-D regression gate (src/rd-gate.ts). Regenerate deliberately with `mise run rd:gate:update` after an intended encoder change, and say so in the commit message.",
   "tier": 1,
   "tolerancePct": 1,
   "images": [
@@ -11,12 +11,12 @@
     {
       "label": "natural-andrew-jackson-state",
       "bytes": 32,
-      "ciede2000": 13.285259391540746
+      "ciede2000": 13.285259391540748
     },
     {
       "label": "natural-dish-meatloaf-served",
       "bytes": 32,
-      "ciede2000": 14.228461571862523
+      "ciede2000": 14.22846157186252
     },
     {
       "label": "natural-fishing-the-coast",
@@ -26,23 +26,23 @@
     {
       "label": "natural-hard-rock-cafe",
       "bytes": 32,
-      "ciede2000": 12.04764075794808
+      "ciede2000": 12.047640757948082
     },
     {
       "label": "natural-landschaftsschutzgebiet-volkspark-rehberge",
       "bytes": 32,
-      "ciede2000": 10.499755598019469
+      "ciede2000": 10.49975559801947
     },
     {
       "label": "night-bas-lica-notre",
       "bytes": 32,
-      "ciede2000": 12.959260640331395
+      "ciede2000": 12.9592606403314
     },
     {
-      "label": "portrait-african-lady",
+      "label": "portrait-african-woman-rusinga",
       "bytes": 32,
-      "ciede2000": 13.533332266463093
+      "ciede2000": 13.174716841198153
     }
   ],
-  "meanCiede2000": 11.136929381839785
+  "meanCiede2000": 11.092102453681667
 }

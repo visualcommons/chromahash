@@ -1378,9 +1378,14 @@ defaults to byte-identical output; 8.8459 is the −2.72% the gated set moved by
 when those defaults changed; 11.1369 is +25.9% and is a different set of eight
 photographs, not a quality change — the encoder did not move, and `rd:gate`
 reports 0.00% drift against it here. The re-source did not keep the skin-tone
-half of that coverage: the gate's one portrait, `portrait-african-lady`, is a
+half of that coverage: the gate's one portrait, `portrait-african-lady`, was a
 black-and-white photograph (mean C\* 0, #102), so on the Wikimedia set the gate
-has two achromatic inputs and no skin chroma at all.
+had two achromatic inputs and no skin chroma at all. #110 restored it by
+swapping in the dark-skin colour portrait `portrait-african-woman-rusinga`
+(mean C\* 16) for `portrait-african-lady`, keeping eight images and
+`chroma-the-old-monochrome` as the one achromatic input: **11.1369 → 11.0921**
+(−0.40%). That step is the image swap alone; the unchanged set reported 0.00%
+drift against 11.1369 immediately before it.
 
 **U19 — perceptual validation.** Two of the three gaps are now closed; the third
 is still the most valuable thing left.
@@ -1639,7 +1644,8 @@ narrow along every axis the format is actually sensitive to.
 > this row wanted tested against a range of skin loci is exercised by **three**
 > colour portraits (`portrait-african-woman-rusinga`, `portrait-imene6`,
 > `portrait-sideshow-bob-love`), not six; their pins now say so. The CI R-D
-> gate's one portrait is one of the three monochrome ones (§7.14).
+> gate's one portrait was one of the three monochrome ones; #110 replaced it
+> with `portrait-african-woman-rusinga` (§7.14).
 >
 > On orientation, one tune photograph, `portrait-african-woman-rusinga`, is
 > stored 6240×4160 with EXIF Orientation 8. Until #102 the harness ignored the
