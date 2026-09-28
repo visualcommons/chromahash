@@ -3134,14 +3134,29 @@ console.log("\nverify:experiments — the table register and result shape\n");
     .png()
     .toBuffer();
   const half = await measureFile(halfPng);
+  // Squared to 512 × 512, the opaque half is a 256 × 512 rectangle on the
+  // border: P = 2 (256 + 512), A = 256 · 512.
+  const halfSilhouette = 1536 / (4 * Math.sqrt(256 * 512));
   check(
-    "measureFile takes the alpha fractions on the stored pixels and the silhouette on the reference",
+    "measureFile takes the alpha fractions on the stored pixels and the silhouette on a square resample",
     half.alpha !== null &&
       half.alpha.nonOpaqueFraction === 0.5 &&
       half.alpha.softAlphaFraction === 0 &&
       half.alpha.silhouette !== null &&
-      Math.abs(half.alpha.silhouette - 1) < 0.02,
-    JSON.stringify(half.alpha),
+      Math.abs(half.alpha.silhouette - halfSilhouette) < 0.02,
+    `${JSON.stringify(half.alpha)} (expected silhouette ${halfSilhouette.toFixed(4)})`,
+  );
+  const strip = await measureFile(
+    await sharp(Buffer.from(mask(1300, 100, () => true)), {
+      raw: { width: 1300, height: 100, channels: 4 },
+    })
+      .png()
+      .toBuffer(),
+  );
+  check(
+    "the silhouette ignores the raster's aspect: an opaque 13:1 strip scores 1, not the ~2 its own raster would",
+    strip.alpha?.silhouette === 1,
+    JSON.stringify(strip.alpha),
   );
 
   // The --commons path's refusals, on the facts Commons would return.

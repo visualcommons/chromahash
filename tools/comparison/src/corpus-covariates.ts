@@ -91,12 +91,15 @@ export interface AlphaCovariates {
   /** Fraction with 0 < alpha < 255, on the same pixels: the soft edges. */
   softAlphaFraction: number;
   /**
-   * How intricate the silhouette is, on the 512 px reference: the mask is
-   * alpha ≥ 128, its perimeter P is the number of 4-neighbour pixel edges
-   * between mask and non-mask (the raster's border counts as non-mask), and
-   * the figure is P / (4 √A) for mask area A. An axis-aligned square scores 1,
-   * a disc about 1.13, and a ragged or perforated outline much more. Null when
-   * no pixel reaches alpha 128.
+   * How intricate the silhouette is. The image is resampled to a
+   * {@link REFERENCE_CAP} px square whatever its aspect (Lanczos3), so the
+   * figure measures the outline and not the raster's shape: a mask filling a
+   * 13:1 strip is as simple as one filling a square. The mask is alpha ≥ 128,
+   * its perimeter P is the number of 4-neighbour pixel edges between mask and
+   * non-mask (the raster's border counts as non-mask), and the figure is
+   * P / (4 √A) for mask area A. A mask filling the raster scores 1, a disc
+   * about 1.13, and a ragged, perforated or scattered outline much more. Null
+   * when no pixel reaches alpha 128.
    */
   silhouette: number | null;
 }
@@ -264,7 +267,7 @@ export function covariatesOf(
  * the original capped to {@link REFERENCE_CAP} on the long edge with Lanczos3,
  * never enlarged. An image that stores alpha also gets its
  * {@link AlphaCovariates}: the two fractions on the stored pixels, the
- * silhouette on the reference.
+ * silhouette on a square resample.
  */
 export async function measureFile(bytes: Buffer): Promise<Covariates> {
   const meta = await sharp(bytes).metadata();
@@ -283,9 +286,18 @@ export async function measureFile(bytes: Buffer): Promise<Covariates> {
   let alpha: AlphaCovariates | null = null;
   if (meta.hasAlpha === true) {
     const stored = await sharp(bytes).ensureAlpha().raw().toBuffer();
+    const square = await sharp(bytes)
+      .resize(REFERENCE_CAP, REFERENCE_CAP, { kernel: "lanczos3", fit: "fill" })
+      .ensureAlpha()
+      .raw()
+      .toBuffer();
     alpha = {
       ...alphaFractions(new Uint8Array(stored)),
-      silhouette: silhouetteOf(reference, w, h),
+      silhouette: silhouetteOf(
+        new Uint8Array(square),
+        REFERENCE_CAP,
+        REFERENCE_CAP,
+      ),
     };
   }
   return covariatesOf(reference, w, h, {
