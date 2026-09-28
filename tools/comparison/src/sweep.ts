@@ -36,7 +36,8 @@
  * `spec/V0.8-DECISIONS.md` records as frozen, named with `--decision`; it is
  * read once, whole, into a committed result the run refuses to overwrite.
  * The config's corpus says which sealed holdout2 is read: the photographic one
- * (#76) or the alpha one (#93). `--split holdout` is the graphics corpus's
+ * (#76) or the alpha one (#93); the corpus "all" names both and is refused.
+ * `--split holdout` is the graphics corpus's
  * holdout, and refuses a photographic or alpha corpus.
  */
 
@@ -53,6 +54,7 @@ import {
   type CorpusSet,
   type CorpusSplit,
   PHOTO_HOLDOUT_RETIRED,
+  assertHoldout2Corpus,
   inCorpus,
   parseCorpusSet,
   parseSplit,
@@ -430,7 +432,8 @@ async function loadCorpus(corpus: CorpusSet): Promise<ImageInput[]> {
   // Only fetch a corpus a run will actually score: the alpha and graphics sets
   // are ~40 MB the photographic sweeps would never look at, and each sealed
   // holdout2 (photographic, #76; alpha, #93) is fetched only for its corpus,
-  // so one with no pins yet cannot refuse a run on the other.
+  // so one with no pins yet cannot refuse a run on the other. A holdout2 run
+  // never reaches here with "all": `assertHoldout2Corpus` refuses it first.
   const photo = corpus === "photo" || corpus === "all";
   if (photo && split === "tune2") await ensureHoldoutImages();
   if (photo && opening !== undefined) await ensureHoldout2Images(opening);
@@ -788,6 +791,7 @@ async function main(): Promise<void> {
   if (split === "holdout" && (corpus === "photo" || corpus === "all")) {
     throw new Error(PHOTO_HOLDOUT_RETIRED);
   }
+  if (split === "holdout2") assertHoldout2Corpus(corpus);
   const outPath = resultPath(
     outDir,
     `${config.name}${split === "tune" ? "" : `-${split}`}`,

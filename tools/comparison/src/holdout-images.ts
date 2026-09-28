@@ -286,7 +286,7 @@ export function holdout2Specs(
   );
   if (mismatched.length > 0) {
     throw new Error(
-      `every holdout2 pin, and only a holdout2 pin, is labelled "${HOLDOUT2_PREFIX}*", with no other corpus's prefix after the seal; these are not:${mismatched.map((s) => `${s.label} (${s.split})`).join(", ")}`,
+      `every holdout2 pin, and only a holdout2 pin, is labelled "${HOLDOUT2_PREFIX}*", with no other corpus's prefix after the seal; these are not: ${mismatched.map((s) => `${s.label} (${s.split})`).join(", ")}`,
     );
   }
   return images.filter((s) => s.split === "holdout2");

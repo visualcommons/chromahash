@@ -44,7 +44,9 @@ of it answers the same question.
   `holdout2` is the sealed holdouts, photographic (`sealed-*`) and alpha
   (`sealed-cutout-*`): only `sweep` and `rd-budget` read them (`rd-budget`
   the photographic one only), and only with `--decision <ID>` once
-  `spec/V0.8-DECISIONS.md` records that decision as frozen. `all` never
+  `spec/V0.8-DECISIONS.md` records that decision as frozen. A `sweep` reads
+  one of them, chosen by a `photo` or `alpha` config corpus, and refuses the
+  corpus `all` on `--split holdout2`. The split `all` never
   includes them, and the report never scores them.
 - **`CorpusSet`** — `photo`, `alpha`, `graphic`, `all`. Which body of content a
   sweep is measured against.

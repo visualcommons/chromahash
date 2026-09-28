@@ -77,8 +77,10 @@ import {
 } from "./alpha-images.ts";
 import {
   ALPHA_HOLDOUT2_PREFIX,
+  HOLDOUT2_ALL_REFUSED,
   HOLDOUT2_PREFIX,
   PHOTO_HOLDOUT_RETIRED,
+  assertHoldout2Corpus,
   inCorpus,
   inSplit,
   parseScratchPhotoSplit,
@@ -2565,6 +2567,21 @@ console.log("\nverify:experiments — the table register and result shape\n");
     inCorpus(`${HOLDOUT2_PREFIX}phone-fixture`, "photo") &&
       !inCorpus(`${HOLDOUT2_PREFIX}phone-fixture`, "alpha"),
     "",
+  );
+  const sealedGraphic = `${HOLDOUT2_PREFIX}graphic-fixture`;
+  check(
+    "a sealed-graphic- image is filed under the graphics corpus, not the photographic one",
+    inCorpus(sealedGraphic, "graphic") &&
+      !inCorpus(sealedGraphic, "photo") &&
+      !inCorpus(sealedGraphic, "alpha"),
+    "",
+  );
+  check(
+    '--split holdout2 refuses the "all" corpus, and reads photo or alpha',
+    thrown(() => assertHoldout2Corpus("all")) === HOLDOUT2_ALL_REFUSED &&
+      thrown(() => assertHoldout2Corpus("photo")) === "" &&
+      thrown(() => assertHoldout2Corpus("alpha")) === "",
+    thrown(() => assertHoldout2Corpus("all")),
   );
   check(
     '"all" excludes a sealed cut-out, and the report drops a cached one',

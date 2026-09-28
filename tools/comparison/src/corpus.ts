@@ -226,6 +226,22 @@ export function inCorpus(imageName: string, set: CorpusSet): boolean {
 }
 
 /**
+ * Why `--split holdout2` refuses the `all` corpus. Each sealed holdout2 —
+ * photographic (#76), alpha (#93) — validates a register decision on its own
+ * corpus; one mean over both would answer no decision, and fetching both
+ * would let the half that has no pins yet refuse a reading of the other.
+ */
+export const HOLDOUT2_ALL_REFUSED =
+  '--split holdout2 reads one sealed holdout, and the corpus "all" names two: the photographic one (#76) ' +
+  "and the alpha one (#93) validate separate register decisions, so a single mean over both answers neither. " +
+  'Set the config\'s "corpus" to "photo" or "alpha".';
+
+/** Refuse a holdout2 reading over a corpus that names more than one sealed holdout. */
+export function assertHoldout2Corpus(corpus: CorpusSet): void {
+  if (corpus === "all") throw new Error(HOLDOUT2_ALL_REFUSED);
+}
+
+/**
  * Whether an image is real content or a generated capability fixture.
  *
  * This is a third axis, orthogonal to {@link CorpusSplit} (tune/holdout) and
