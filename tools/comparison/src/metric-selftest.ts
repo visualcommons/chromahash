@@ -102,7 +102,12 @@ import {
   sha1Mismatch,
   srgbToLab,
 } from "./corpus-covariates.ts";
-import { loadImage, orientedSize } from "./image-loader.ts";
+import {
+  dataUriToBuffer,
+  fileBufferToDisplayDataUri,
+  loadImage,
+  orientedSize,
+} from "./image-loader.ts";
 import { computeRinging } from "./metrics/local.ts";
 import { computeSpurious } from "./metrics/spurious.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
@@ -2926,6 +2931,30 @@ console.log("\nverify:experiments — the table register and result shape\n");
         smallTop > 200 &&
         smallBottom < 55,
       `${input.originalWidth}×${input.originalHeight}, reference top ${refTop.toFixed(0)} bottom ${refBottom.toFixed(0)}, small top ${smallTop.toFixed(0)} bottom ${smallBottom.toFixed(0)}`,
+    );
+    // The report's display image: its stored pixels must already be upright,
+    // and it must carry no Orientation tag a browser would apply again.
+    const display = dataUriToBuffer(
+      await fileBufferToDisplayDataUri(sideways),
+    ).buffer;
+    const displayMeta = await sharp(display).metadata();
+    const { data: displayRgba, info: displayInfo } = await sharp(display)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const [displayTop = 0, displayBottom = 0] = halves(
+      new Uint8Array(displayRgba),
+      displayInfo.width,
+      displayInfo.height,
+    );
+    check(
+      "fileBufferToDisplayDataUri shows the upright picture of an EXIF-rotated file",
+      displayInfo.width === 12 &&
+        displayInfo.height === 24 &&
+        (displayMeta.orientation ?? 1) === 1 &&
+        displayTop > 200 &&
+        displayBottom < 55,
+      `${displayInfo.width}×${displayInfo.height} orientation ${displayMeta.orientation}, top ${displayTop.toFixed(0)} bottom ${displayBottom.toFixed(0)}`,
     );
     rmSync(dir, { recursive: true, force: true });
   }
