@@ -369,11 +369,11 @@ encode is `O(K·W·H)`. Tier 1, gradient:
 
 | source | encode | per megapixel |
 |---|---:|---:|
-| 64×64 | 1.57 ms | 0.38 ms |
-| 100×100 | 2.46 ms | 0.25 ms |
+| 64×64 | 1.57 ms | 384.49 ms |
+| 100×100 | 2.46 ms | 246.12 ms |
 | 128×128 | TBD ms | TBD ms |
-| 256×256 | 12.32 ms | 0.19 ms |
-| 512×512 | 46.74 ms | 0.18 ms |
+| 256×256 | 12.32 ms | 188.03 ms |
+| 512×512 | 46.74 ms | 178.29 ms |
 | 1024×1024 | TBD ms | TBD ms |
 
 The per-megapixel column falls as the source grows and then flattens, which is
