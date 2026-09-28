@@ -471,10 +471,10 @@ const BINDINGS: Binding[] = [
       "per megapixel": (row, R) => {
         const n = sizeOf(row("source"));
         if (n === null) return null;
-        // Reported in ms per megapixel.
-        return (
-          R.us(`encode/Rust/t1/${n}x${n}/gradient`) / 1000 / ((n * n) / 1e6)
-        );
+        // Microseconds per megapixel. Return it unconverted: agrees() applies
+        // the column's own unit (the document writes ms), and a conversion here
+        // as well would divide by 1000 twice.
+        return R.us(`encode/Rust/t1/${n}x${n}/gradient`) / ((n * n) / 1e6);
       },
     },
   },
