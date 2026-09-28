@@ -141,9 +141,16 @@ export function parseCell(raw: string): number | null {
  */
 export function rewriteCell(
   raw: string,
-  value: string,
+  measured: string,
   docUsesUnicodeMinus: boolean,
 ): string {
+  // A bare number that rounds to zero carries no direction, so it is written
+  // unsigned. `toFixed` keeps the sign of a small negative (`-0.0004` gives
+  // `-0.000`), which the minus convention below would turn into `−0.000`.
+  const value =
+    /^[-+][0-9.]+$/.test(measured) && Number(measured) === 0
+      ? measured.slice(1)
+      : measured;
   const trimmed = raw.trim();
   // A leading bold span is rewritten inside, and whatever follows it is kept.
   // Treating a cell as bold only when it both starts and ends with `**` read

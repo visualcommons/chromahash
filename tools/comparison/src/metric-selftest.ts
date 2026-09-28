@@ -2468,6 +2468,13 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
       "0.000",
       "0.000",
     ],
+    [
+      "a negative value rounding to zero is written unsigned, not −0.000",
+      "+0.004",
+      true,
+      "-0.000",
+      "0.000",
+    ],
     ["an unsigned cell gains no +", "11.458", false, "11.457", "11.457"],
     [
       "a composite value is not given the old cell's suffix or sign",
