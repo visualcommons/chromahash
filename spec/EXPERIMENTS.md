@@ -2868,8 +2868,11 @@ photographic one:
   and simple or detailed silhouette, drawn in a seeded order under cuts fixed
   in advance. No encoder is run on a candidate. The list, the
   protocol that drew it, and each candidate's covariates, licence and SHA-256
-  are in #107, and nothing is pinned until the list is approved. Until then
-  an alpha `holdout2` run refuses and says so.
+  are in #107. Fourteen of the sixteen were approved and are pinned: a city
+  police patch tagged public domain and an AI-generated icon were dropped and
+  not replaced, so two cells (opaque/hard/simple, transparent/soft/simple)
+  hold one image each. No encoder has run on a pinned image either; the
+  split is fetched only when the gate opens.
 
 The alpha allocation validated emphatically on that split: SSIMULACRA2
 −307.2 → −242.7, Butteraugli 57.56 → 44.36, DSSIM 0.2319 → 0.2179, αMAE
