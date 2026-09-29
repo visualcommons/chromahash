@@ -19,18 +19,20 @@ on:
       # It is also the source verify:claims checks the files below against.
       - "spec/EXPERIMENTS.md"
       # The files that quote EXPERIMENTS.md figures by hand: README.md,
-      # spec/README.md, spec/RATIONALE.md, spec/constants.py and
-      # rust/src/constants.rs. verify:claims checks each registered figure
-      # against the cell it cites, so an edit to any of them must run it.
-      # rust/** is already listed above.
+      # spec/README.md, spec/RATIONALE.md, spec/V0.8-DECISIONS.md,
+      # spec/constants.py and rust/src/constants.rs. verify:claims checks each
+      # registered figure against the cell it cites, so an edit to any of them
+      # must run it. rust/** is already listed above.
       #
       # spec/constants.py is here for the same reason and was missed when this
       # list was written: it restates LAYOUT_T0's holdout and alpha figures in
       # a comment, and validate:spec compares the constants those tables
-      # declare, never the prose around them.
+      # declare, never the prose around them. spec/V0.8-DECISIONS.md was
+      # likewise missed when its §7.13 figure joined the register.
       - "README.md"
       - "spec/README.md"
       - "spec/RATIONALE.md"
+      - "spec/V0.8-DECISIONS.md"
       - "spec/constants.py"
       - ".github/workflows/ci-comparison.yml"
   pull_request:
@@ -50,18 +52,20 @@ on:
       # It is also the source verify:claims checks the files below against.
       - "spec/EXPERIMENTS.md"
       # The files that quote EXPERIMENTS.md figures by hand: README.md,
-      # spec/README.md, spec/RATIONALE.md, spec/constants.py and
-      # rust/src/constants.rs. verify:claims checks each registered figure
-      # against the cell it cites, so an edit to any of them must run it.
-      # rust/** is already listed above.
+      # spec/README.md, spec/RATIONALE.md, spec/V0.8-DECISIONS.md,
+      # spec/constants.py and rust/src/constants.rs. verify:claims checks each
+      # registered figure against the cell it cites, so an edit to any of them
+      # must run it. rust/** is already listed above.
       #
       # spec/constants.py is here for the same reason and was missed when this
       # list was written: it restates LAYOUT_T0's holdout and alpha figures in
       # a comment, and validate:spec compares the constants those tables
-      # declare, never the prose around them.
+      # declare, never the prose around them. spec/V0.8-DECISIONS.md was
+      # likewise missed when its §7.13 figure joined the register.
       - "README.md"
       - "spec/README.md"
       - "spec/RATIONALE.md"
+      - "spec/V0.8-DECISIONS.md"
       - "spec/constants.py"
       - ".github/workflows/ci-comparison.yml"
 
@@ -138,9 +142,10 @@ jobs:
       - name: The locally-computed metrics hold their defining properties
         run: node tools/comparison/dist/metric-selftest.js
 
-      # The figures README.md, spec/README.md, spec/RATIONALE.md and
-      # rust/src/constants.rs quote from spec/EXPERIMENTS.md, each checked
-      # against the cell it cites. Reads four files and one markdown document:
+      # The figures README.md, spec/README.md, spec/RATIONALE.md,
+      # spec/V0.8-DECISIONS.md, spec/constants.py and rust/src/constants.rs
+      # quote from spec/EXPERIMENTS.md, each checked against the cell it
+      # cites. Reads six files and one markdown document:
       # no sweep output, no iqa-cli, no corpus, no network. It is the gate that
       # would have caught the six figures the 2026-09 re-baseline stranded.
       - name: The repo's quoted figures agree with EXPERIMENTS.md
