@@ -2911,7 +2911,7 @@ Deliberately unchanged, each with the number that left it alone:
 | µ-law µ_L = 5 / µ_C = 8 | Every alternative family is worse, including corpus-trained codebooks (§11.6) |
 | No deadzone | +0.08% once the knob could move the output (§11.7) |
 | Quantization ranges | Every arm within ±0.17% (§11.8) |
-| No scalefactor bands | −0.13%, below threshold and unable to pay its signalling (§11.9) |
+| No scalefactor bands | −0.14%, below threshold and unable to pay its signalling (§11.9) |
 | Tier-0 opaque layout | Holds on non-photographic content; no candidate significantly better (§11.4) |
 | `alpha_ac_fit = false` | −0.21% on tune, +0.09% on the retired alpha holdout, which can no longer be reproduced (§11.12) |
 
