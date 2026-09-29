@@ -83,12 +83,13 @@ export const ALPHA_HOLDOUT_RETIRED =
   "The out-of-sample alpha split is holdout2, sealed until spec/V0.8-DECISIONS.md records the decision it answers as frozen.";
 
 /**
- * Why an alpha holdout2 fetch refuses when no pin exists. The split is built
- * and gated, but its images are chosen on covariates alone and pinned only
- * once the user approves the candidate list.
+ * Why an alpha holdout2 fetch refuses when the table it reads holds no
+ * holdout2 pin, rather than scoring an empty split. The shipped table holds
+ * the fourteen approved in #107, so this is reached only from a table that
+ * lost them.
  */
 export const ALPHA_HOLDOUT2_UNPINNED =
-  "the alpha holdout2 split has no pinned images yet: its candidate list awaits approval before anything is pinned (#107)";
+  "the alpha holdout2 split has no pinned images in this table (the approved list is pinned in #107)";
 
 /**
  * Curated alpha corpus, sourced from Wikimedia Commons under free licences.
@@ -99,6 +100,15 @@ export const ALPHA_HOLDOUT2_UNPINNED =
  * Curated along the axes alpha coding is sensitive to rather than by subject:
  * hard binary masks vs anti-aliased edges, mostly-opaque vs mostly-transparent,
  * and simple silhouettes vs detailed cut-outs.
+ *
+ * The `sealed-cutout-*` entries are the sealed holdout2 split (#107), drawn
+ * from Commons on those same three axes by the protocol #107 records: cuts
+ * fixed in advance (non-opaque < 0.5 or ≥ 0.5; soft-alpha ≤ 0.01 or ≥ 0.03;
+ * silhouette ≤ 1.5 or ≥ 2.0, measured by `corpus-covariates.ts`), two per
+ * cell, in a seeded order, with no encoder run on any candidate. Sixteen were
+ * proposed and fourteen approved: the LAPD patch (a city work tagged public
+ * domain) and an AI-generated icon were dropped and not replaced, so the
+ * opaque/hard/simple and transparent/soft/simple cells hold one image each.
  */
 export const ALPHA_IMAGES: AlphaImageSpec[] = [
   {
@@ -495,6 +505,239 @@ export const ALPHA_IMAGES: AlphaImageSpec[] = [
       "Wide wordmark logo: extreme aspect, monochrome, overwhelmingly transparent canvas.",
     withdrawn:
       "deleted from Wikimedia Commons on 2026-08-25 as a copyright violation (COM:CSD#F1); no archived copy (#83)",
+  },
+  {
+    label: "sealed-cutout-2006-nd-proof",
+    url: "https://upload.wikimedia.org/wikipedia/commons/d/d9/2006_ND_Proof.png",
+    ext: ".png",
+    width: 2000,
+    height: 2000,
+    split: "holdout2",
+    nonOpaqueFraction: 0.3271,
+    softAlphaFraction: 0.1239,
+    sha256: "ffe78ac75f9092627d69005ffa1c952338c5e21a58fff3d89ce9b729aad7ae28",
+    source: "https://commons.wikimedia.org/wiki/File:2006_ND_Proof.png",
+    author: "United States Mint",
+    licence: "Public domain",
+    notes:
+      "Cell opaque/soft/simple; silhouette 1.19. North Dakota state quarter proof: fine silver relief inside an anti-aliased circular rim.",
+  },
+  {
+    label: "sealed-cutout-bupropion-molecule-spacefill",
+    url: "https://upload.wikimedia.org/wikipedia/commons/5/57/Bupropion_molecule_spacefill.png",
+    ext: ".png",
+    width: 2000,
+    height: 1485,
+    split: "holdout2",
+    nonOpaqueFraction: 0.5209,
+    softAlphaFraction: 0.0021,
+    sha256: "b10fc6254dedf252ae40d4ad32a49d72fb08fad2cef965f4aabcaebe20e35ee1",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Bupropion_molecule_spacefill.png",
+    author: "Jynto (talk)",
+    licence: "CC0",
+    notes:
+      "Cell transparent/hard/simple; silhouette 1.48. Space-filling molecule render, a compact blob of shaded spheres.",
+  },
+  {
+    label: "sealed-cutout-coffee-bean",
+    url: "https://upload.wikimedia.org/wikipedia/commons/5/55/Coffee_bean_transparent.png",
+    ext: ".png",
+    width: 1005,
+    height: 1005,
+    split: "holdout2",
+    nonOpaqueFraction: 0.7513,
+    softAlphaFraction: 0.2031,
+    sha256: "9c47c28d41745b58a476249abe3102bc5ea84626c8fde1e89d0083d3c0f0db58",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Coffee_bean_transparent.png",
+    author: "Chiccodoro",
+    licence: "CC BY-SA 2.0",
+    notes:
+      "Cell transparent/soft/simple (the cell's only image: its other candidate was not approved); silhouette 1.24. Single coffee bean photo cut-out with a soft shadow fringe.",
+  },
+  {
+    label: "sealed-cutout-flashlight-symbol",
+    url: "https://upload.wikimedia.org/wikipedia/commons/6/68/Flashlight_symbol.png",
+    ext: ".png",
+    width: 984,
+    height: 794,
+    split: "holdout2",
+    nonOpaqueFraction: 0.7807,
+    softAlphaFraction: 0.7807,
+    sha256: "44c9659c2d9a54a8b730300a727906dbd698825d4a20829d6e4a1d2b60bcda02",
+    source: "https://commons.wikimedia.org/wiki/File:Flashlight_symbol.png",
+    author: "Timedfootpaths",
+    licence: "CC BY-SA 4.0",
+    notes:
+      "Cell transparent/soft/detailed; silhouette 2.75. Line-art flashlight icon with light rays. No fully transparent pixel: its background is one partly transparent layer, so its soft alpha is a translucent field rather than a feathered edge.",
+  },
+  {
+    label: "sealed-cutout-flowerit-5-gray",
+    url: "https://upload.wikimedia.org/wikipedia/commons/b/bc/Flowerit_5_Gray.png",
+    ext: ".png",
+    width: 614,
+    height: 595,
+    split: "holdout2",
+    nonOpaqueFraction: 0.6415,
+    softAlphaFraction: 0.0,
+    sha256: "7778893f7946e67f7bdc0d7fc6f84ca8abcc92315b5ca8dc3dd32a1a9ca70c7d",
+    source: "https://commons.wikimedia.org/wiki/File:Flowerit_5_Gray.png",
+    author: "unknown: very old wide-spread illustrations ornament",
+    licence: "CC0",
+    notes:
+      "Cell transparent/hard/detailed; silhouette 5.62. Flat grey five-petal flower ornament with a binary mask and an open centre ring.",
+  },
+  {
+    label: "sealed-cutout-helmed-hoplite-sparta",
+    url: "https://upload.wikimedia.org/wikipedia/commons/c/c4/Helmed_Hoplite_Sparta_2.png",
+    ext: ".png",
+    width: 517,
+    height: 836,
+    split: "holdout2",
+    nonOpaqueFraction: 0.5236,
+    softAlphaFraction: 0.0,
+    sha256: "7c95feabb74e52e82f72ca65f80278e4b84a56c47183f7e79142b0b34391d71b",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Helmed_Hoplite_Sparta_2.png",
+    author: "Modifications by myself of a picture by de:Benutzer:Ticinese",
+    licence: "CC BY-SA 3.0",
+    notes:
+      "Cell transparent/hard/simple; silhouette 1.45. Photo cut-out of a sculpted helmeted hoplite bust, stone texture, binary mask.",
+  },
+  {
+    label: "sealed-cutout-journal-plague-year",
+    url: "https://upload.wikimedia.org/wikipedia/commons/5/52/A_Journal_of_the_Plague_Year_-_Half_Title_Headpiece.png",
+    ext: ".png",
+    width: 1304,
+    height: 109,
+    split: "holdout2",
+    nonOpaqueFraction: 0.4935,
+    softAlphaFraction: 0.0,
+    sha256: "ff8a6aabccf29b24602bd6e5680e6243da42dad54d3b307966c76014c565377f",
+    source:
+      "https://commons.wikimedia.org/wiki/File:A_Journal_of_the_Plague_Year_-_Half_Title_Headpiece.png",
+    author: "Daniel Defoe Artist unknown",
+    licence: "Public domain",
+    notes:
+      "Cell opaque/hard/detailed; silhouette 28.95. Ornamental book headpiece band at a 12:1 aspect, near the format's 16:1 limit and wider than any other alpha pin.",
+  },
+  {
+    label: "sealed-cutout-languages-difference-icon",
+    url: "https://upload.wikimedia.org/wikipedia/commons/4/4c/Languages_difference_icon.png",
+    ext: ".png",
+    width: 2000,
+    height: 2000,
+    split: "holdout2",
+    nonOpaqueFraction: 0.2135,
+    softAlphaFraction: 0.0444,
+    sha256: "a38fe6c358a9841f733f4635b0af4e50f1c5367d3077a63f884602e1072ee2aa",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Languages_difference_icon.png",
+    author: "SlicedIceDice",
+    licence: "CC BY-SA 4.0",
+    notes:
+      "Cell opaque/soft/simple; silhouette 1.21. Round light-blue icon lettered with greetings in many scripts; anti-aliased rim.",
+  },
+  {
+    label: "sealed-cutout-mammal-barnstar-hires",
+    url: "https://upload.wikimedia.org/wikipedia/commons/4/4d/Mammal_Barnstar_Hires.png",
+    ext: ".png",
+    width: 2000,
+    height: 1900,
+    split: "holdout2",
+    nonOpaqueFraction: 0.6083,
+    softAlphaFraction: 0.047,
+    sha256: "cf95173996a1e043be4dbf8a4c9c201c6cf4a4a9c64f1b281b8cc20180bdc699",
+    source: "https://commons.wikimedia.org/wiki/File:Mammal_Barnstar_Hires.png",
+    author: "Original idea by Leptictidium Original remastering by Antonu",
+    licence: "CC BY-SA 3.0",
+    notes:
+      "Cell transparent/soft/detailed; silhouette 2.48. Tiger head over a bronze barnstar; illustrated, anti-aliased edges.",
+  },
+  {
+    label: "sealed-cutout-marcosticks-3d-printed",
+    url: "https://upload.wikimedia.org/wikipedia/commons/d/d9/Marcosticks-3D-printed_Ergonomic_chopsticks.png",
+    ext: ".png",
+    width: 4032,
+    height: 3024,
+    split: "holdout2",
+    nonOpaqueFraction: 0.7571,
+    softAlphaFraction: 0.0075,
+    sha256: "9fd578d0542ed53d6fde4c97cf251556f38ecb69e5f84fb911ee7f55cc53c3f3",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Marcosticks-3D-printed_Ergonomic_chopsticks.png",
+    author: "Marcosticks",
+    licence: "CC BY-SA 4.0",
+    notes:
+      "Cell transparent/hard/detailed; silhouette 2.71. Photo cut-out of a hand holding 3D-printed chopsticks: long thin shapes on a mostly transparent canvas.",
+  },
+  {
+    label: "sealed-cutout-neuro-muscular-junction",
+    url: "https://upload.wikimedia.org/wikipedia/commons/a/ac/Neuro_Muscular_Junction.png",
+    ext: ".png",
+    width: 4096,
+    height: 3112,
+    split: "holdout2",
+    nonOpaqueFraction: 0.4854,
+    softAlphaFraction: 0.4086,
+    sha256: "5831ddccee0ab6de9d950cedf5829a0cf15677958655432e36ad94f5e8323694",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Neuro_Muscular_Junction.png",
+    author: "Doctor Jana",
+    licence: "CC BY 4.0",
+    notes:
+      "Cell opaque/soft/detailed; silhouette 5.49. Labelled medical illustration of a neuromuscular junction; partial alpha covers about 41% of the canvas.",
+  },
+  {
+    label: "sealed-cutout-new-doodles-2016",
+    url: "https://upload.wikimedia.org/wikipedia/commons/1/1e/New_doodles_2016_4.png",
+    ext: ".png",
+    width: 1112,
+    height: 1112,
+    split: "holdout2",
+    nonOpaqueFraction: 0.4794,
+    softAlphaFraction: 0.0335,
+    sha256: "3fcc1ddc26d7d9ac3aa5441970478e43775459d55a0676398a5b1202b08f2614",
+    source: "https://commons.wikimedia.org/wiki/File:New_doodles_2016_4.png",
+    author: "Oxana59",
+    licence: "CC BY-SA 4.0",
+    notes:
+      "Cell opaque/soft/detailed; silhouette 4.68. Grid of fourteen colourful mandala doodles: many separate intricate shapes.",
+  },
+  {
+    label: "sealed-cutout-uscgc-florence-finch",
+    url: "https://upload.wikimedia.org/wikipedia/commons/b/bb/USCGC_Florence_Finch_%28WPC_1157%29_CoA.png",
+    ext: ".png",
+    width: 2178,
+    height: 2178,
+    split: "holdout2",
+    nonOpaqueFraction: 0.2211,
+    softAlphaFraction: 0.0014,
+    sha256: "17a22976013b846f544f841cf6dcdb86ebe73e8f06e1c372a11c3d92db5cff6e",
+    source:
+      "https://commons.wikimedia.org/wiki/File:USCGC_Florence_Finch_(WPC_1157)_CoA.png",
+    author: "The Institute of Heraldry",
+    licence: "Public domain",
+    notes:
+      "Cell opaque/hard/simple (the cell's only image: its other candidate was not approved); silhouette 1.18. Circular cutter coat of arms: lettered ring around a heraldic shield, hard mask.",
+  },
+  {
+    label: "sealed-cutout-usmc-pistol-marksman",
+    url: "https://upload.wikimedia.org/wikipedia/commons/2/23/USMC_Pistol_Marksman_badge.png",
+    ext: ".png",
+    width: 603,
+    height: 600,
+    split: "holdout2",
+    nonOpaqueFraction: 0.4739,
+    softAlphaFraction: 0.0,
+    sha256: "64332e02d051cd87d16fd7ca0350cededeaab4778f2a66f0e5d3812c4033a2ba",
+    source:
+      "https://commons.wikimedia.org/wiki/File:USMC_Pistol_Marksman_badge.png",
+    author: "USMC",
+    licence: "Public domain",
+    notes:
+      "Cell opaque/hard/detailed; silhouette 2.46. Silver marksmanship badge: lettered bar and hanging target pendant, binary mask.",
   },
 ];
 

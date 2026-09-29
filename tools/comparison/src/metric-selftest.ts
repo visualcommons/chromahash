@@ -2738,13 +2738,48 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
     gone.includes("cannot be read whole"),
     gone,
   );
+  // The fourteen approved in #107: sixteen were proposed, and the LAPD patch
+  // and the AI-generated filing-cabinet icon were dropped, not replaced.
+  const approved = [
+    "sealed-cutout-2006-nd-proof",
+    "sealed-cutout-bupropion-molecule-spacefill",
+    "sealed-cutout-coffee-bean",
+    "sealed-cutout-flashlight-symbol",
+    "sealed-cutout-flowerit-5-gray",
+    "sealed-cutout-helmed-hoplite-sparta",
+    "sealed-cutout-journal-plague-year",
+    "sealed-cutout-languages-difference-icon",
+    "sealed-cutout-mammal-barnstar-hires",
+    "sealed-cutout-marcosticks-3d-printed",
+    "sealed-cutout-neuro-muscular-junction",
+    "sealed-cutout-new-doodles-2016",
+    "sealed-cutout-uscgc-florence-finch",
+    "sealed-cutout-usmc-pistol-marksman",
+  ];
+  const shippedSealed = alphaHoldout2Specs()
+    .map((s) => s.label)
+    .sort();
   check(
-    "the shipped alpha table has no holdout2 pin until its list is approved",
-    alphaHoldout2Specs().length === 0 &&
-      thrown(() =>
-        alphaImagesToFetch("holdout2", undefined, opening),
-      ).startsWith(ALPHA_HOLDOUT2_UNPINNED),
+    "the shipped alpha holdout2 is exactly the fourteen approved pins",
+    shippedSealed.join(",") === approved.join(","),
+    shippedSealed.join(","),
+  );
+  check(
+    "an opened alpha holdout2 fetches every approved pin",
+    labels(alphaImagesToFetch("holdout2", undefined, opening))
+      .split(",")
+      .sort()
+      .join(",") === approved.join(","),
     "",
+  );
+  const leaked = alphaImagesToFetch()
+    .concat(alphaImagesToFetch("tune"), alphaImagesToFetch("tune2"))
+    .filter((s) => s.split === "holdout2");
+  check(
+    "no unopened alpha fetch reaches a shipped holdout2 pin",
+    leaked.length === 0 &&
+      approved.every((l) => splitFor(l) === "holdout2"),
+    labels(leaked),
   );
   for (const [what, bad] of [
     [

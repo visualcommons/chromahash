@@ -23,7 +23,7 @@ such entry is labelled `sealed-cutout-*`, and no tool fetches it until
 `mise run corpus:licenses`; `--check` fails when the two disagree.
 
 
-24 images — 16 tune, 7 tune2, 1 holdout; 1 withdrawn.
+38 images — 16 tune, 7 tune2, 1 holdout, 14 holdout2; 1 withdrawn.
 
 ### `cutout-3d-star-greek`
 
@@ -289,3 +289,157 @@ such entry is labelled `sealed-cutout-*`, and no tool fetches it until
 - Split: holdout
 - Alpha: 59.7% non-opaque, 0.8% soft-edged
 - Notes: Wide wordmark logo: extreme aspect, monochrome, overwhelmingly transparent canvas.
+
+### `sealed-cutout-2006-nd-proof`
+
+- Source: <https://commons.wikimedia.org/wiki/File:2006_ND_Proof.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/d/d9/2006_ND_Proof.png>
+- Author: United States Mint
+- License: Public domain
+- Dimensions: 2000x2000
+- Split: holdout2
+- Alpha: 32.7% non-opaque, 12.4% soft-edged
+- Notes: Cell opaque/soft/simple; silhouette 1.19. North Dakota state quarter proof: fine silver relief inside an anti-aliased circular rim.
+
+### `sealed-cutout-bupropion-molecule-spacefill`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Bupropion_molecule_spacefill.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/5/57/Bupropion_molecule_spacefill.png>
+- Author: Jynto (talk)
+- License: CC0
+- Dimensions: 2000x1485
+- Split: holdout2
+- Alpha: 52.1% non-opaque, 0.2% soft-edged
+- Notes: Cell transparent/hard/simple; silhouette 1.48. Space-filling molecule render, a compact blob of shaded spheres.
+
+### `sealed-cutout-coffee-bean`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Coffee_bean_transparent.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/5/55/Coffee_bean_transparent.png>
+- Author: Chiccodoro
+- License: CC BY-SA 2.0
+- Dimensions: 1005x1005
+- Split: holdout2
+- Alpha: 75.1% non-opaque, 20.3% soft-edged
+- Notes: Cell transparent/soft/simple (the cell's only image: its other candidate was not approved); silhouette 1.24. Single coffee bean photo cut-out with a soft shadow fringe.
+
+### `sealed-cutout-flashlight-symbol`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Flashlight_symbol.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/68/Flashlight_symbol.png>
+- Author: Timedfootpaths
+- License: CC BY-SA 4.0
+- Dimensions: 984x794
+- Split: holdout2
+- Alpha: 78.1% non-opaque, 78.1% soft-edged
+- Notes: Cell transparent/soft/detailed; silhouette 2.75. Line-art flashlight icon with light rays. No fully transparent pixel: its background is one partly transparent layer, so its soft alpha is a translucent field rather than a feathered edge.
+
+### `sealed-cutout-flowerit-5-gray`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Flowerit_5_Gray.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/b/bc/Flowerit_5_Gray.png>
+- Author: unknown: very old wide-spread illustrations ornament
+- License: CC0
+- Dimensions: 614x595
+- Split: holdout2
+- Alpha: 64.1% non-opaque, 0.0% soft-edged
+- Notes: Cell transparent/hard/detailed; silhouette 5.62. Flat grey five-petal flower ornament with a binary mask and an open centre ring.
+
+### `sealed-cutout-helmed-hoplite-sparta`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Helmed_Hoplite_Sparta_2.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/c/c4/Helmed_Hoplite_Sparta_2.png>
+- Author: Modifications by myself of a picture by de:Benutzer:Ticinese
+- License: CC BY-SA 3.0
+- Dimensions: 517x836
+- Split: holdout2
+- Alpha: 52.4% non-opaque, 0.0% soft-edged
+- Notes: Cell transparent/hard/simple; silhouette 1.45. Photo cut-out of a sculpted helmeted hoplite bust, stone texture, binary mask.
+
+### `sealed-cutout-journal-plague-year`
+
+- Source: <https://commons.wikimedia.org/wiki/File:A_Journal_of_the_Plague_Year_-_Half_Title_Headpiece.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/5/52/A_Journal_of_the_Plague_Year_-_Half_Title_Headpiece.png>
+- Author: Daniel Defoe Artist unknown
+- License: Public domain
+- Dimensions: 1304x109
+- Split: holdout2
+- Alpha: 49.4% non-opaque, 0.0% soft-edged
+- Notes: Cell opaque/hard/detailed; silhouette 28.95. Ornamental book headpiece band at a 12:1 aspect, near the format's 16:1 limit and wider than any other alpha pin.
+
+### `sealed-cutout-languages-difference-icon`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Languages_difference_icon.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/4c/Languages_difference_icon.png>
+- Author: SlicedIceDice
+- License: CC BY-SA 4.0
+- Dimensions: 2000x2000
+- Split: holdout2
+- Alpha: 21.3% non-opaque, 4.4% soft-edged
+- Notes: Cell opaque/soft/simple; silhouette 1.21. Round light-blue icon lettered with greetings in many scripts; anti-aliased rim.
+
+### `sealed-cutout-mammal-barnstar-hires`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Mammal_Barnstar_Hires.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/4d/Mammal_Barnstar_Hires.png>
+- Author: Original idea by Leptictidium Original remastering by Antonu
+- License: CC BY-SA 3.0
+- Dimensions: 2000x1900
+- Split: holdout2
+- Alpha: 60.8% non-opaque, 4.7% soft-edged
+- Notes: Cell transparent/soft/detailed; silhouette 2.48. Tiger head over a bronze barnstar; illustrated, anti-aliased edges.
+
+### `sealed-cutout-marcosticks-3d-printed`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Marcosticks-3D-printed_Ergonomic_chopsticks.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/d/d9/Marcosticks-3D-printed_Ergonomic_chopsticks.png>
+- Author: Marcosticks
+- License: CC BY-SA 4.0
+- Dimensions: 4032x3024
+- Split: holdout2
+- Alpha: 75.7% non-opaque, 0.8% soft-edged
+- Notes: Cell transparent/hard/detailed; silhouette 2.71. Photo cut-out of a hand holding 3D-printed chopsticks: long thin shapes on a mostly transparent canvas.
+
+### `sealed-cutout-neuro-muscular-junction`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Neuro_Muscular_Junction.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/a/ac/Neuro_Muscular_Junction.png>
+- Author: Doctor Jana
+- License: CC BY 4.0
+- Dimensions: 4096x3112
+- Split: holdout2
+- Alpha: 48.5% non-opaque, 40.9% soft-edged
+- Notes: Cell opaque/soft/detailed; silhouette 5.49. Labelled medical illustration of a neuromuscular junction; partial alpha covers about 41% of the canvas.
+
+### `sealed-cutout-new-doodles-2016`
+
+- Source: <https://commons.wikimedia.org/wiki/File:New_doodles_2016_4.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/1/1e/New_doodles_2016_4.png>
+- Author: Oxana59
+- License: CC BY-SA 4.0
+- Dimensions: 1112x1112
+- Split: holdout2
+- Alpha: 47.9% non-opaque, 3.4% soft-edged
+- Notes: Cell opaque/soft/detailed; silhouette 4.68. Grid of fourteen colourful mandala doodles: many separate intricate shapes.
+
+### `sealed-cutout-uscgc-florence-finch`
+
+- Source: <https://commons.wikimedia.org/wiki/File:USCGC_Florence_Finch_(WPC_1157)_CoA.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/b/bb/USCGC_Florence_Finch_%28WPC_1157%29_CoA.png>
+- Author: The Institute of Heraldry
+- License: Public domain
+- Dimensions: 2178x2178
+- Split: holdout2
+- Alpha: 22.1% non-opaque, 0.1% soft-edged
+- Notes: Cell opaque/hard/simple (the cell's only image: its other candidate was not approved); silhouette 1.18. Circular cutter coat of arms: lettered ring around a heraldic shield, hard mask.
+
+### `sealed-cutout-usmc-pistol-marksman`
+
+- Source: <https://commons.wikimedia.org/wiki/File:USMC_Pistol_Marksman_badge.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/2/23/USMC_Pistol_Marksman_badge.png>
+- Author: USMC
+- License: Public domain
+- Dimensions: 603x600
+- Split: holdout2
+- Alpha: 47.4% non-opaque, 0.0% soft-edged
+- Notes: Cell opaque/hard/detailed; silhouette 2.46. Silver marksmanship badge: lettered bar and hanging target pendant, binary mask.
