@@ -2777,8 +2777,7 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
     .filter((s) => s.split === "holdout2");
   check(
     "no unopened alpha fetch reaches a shipped holdout2 pin",
-    leaked.length === 0 &&
-      approved.every((l) => splitFor(l) === "holdout2"),
+    leaked.length === 0 && approved.every((l) => splitFor(l) === "holdout2"),
     labels(leaked),
   );
   for (const [what, bad] of [
