@@ -3,8 +3,8 @@
  *
  * `verify-experiments.ts` closes the loop between the sweeps and the workbench
  * log. It does not close the one after it: `README.md`, `spec/README.md`,
- * `spec/RATIONALE.md`, `rust/src/constants.rs` and `spec/constants.py` all
- * restate figures from that log by hand, and nothing has ever checked them. The
+ * `spec/RATIONALE.md`, `spec/V0.8-DECISIONS.md`, `rust/src/constants.rs` and
+ * `spec/constants.py` all restate figures from that log by hand, and nothing has ever checked them. The
  * drift that follows is not hypothetical — it is what the 2026-09 Wikimedia
  * re-baseline left behind, and it is the second time. After it:
  *
@@ -487,6 +487,82 @@ const REGISTER: Claim[] = [
     row: "411 B",
     column: "fit2 + nearest",
     cellPattern: PARENTHESISED_DELTA,
+    transform: abs,
+  },
+
+  // ── The v1 roadmap's outcomes, and the v0.8 register's prior evidence ────
+  // Four prose figures that restate §7.10, §7.13 and §11.9 by hand. The #102
+  // re-score moved all four cells and none of the quotes, because none was
+  // registered here: this gate stayed at exit 0 while they drifted.
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "the leave-one-image-out coder's AC-bit saving at 32 B",
+    pattern: /leave-one-image-out: −([\d.]+)% of the AC bits at 32 B/,
+    section: "7.13",
+    row: "**per-index context backing off to order-0, LOO**",
+    column: "vs fixed",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "CfL with free gains at 32 B",
+    pattern: /prediction helps, and grows with tier: −([\d.]+)% ΔE00 at 32 B/,
+    section: "7.10",
+    row: "CfL free (gains not paid for)",
+    column: "vs its own control",
+    transform: abs,
+  },
+  // The same sentence's other end. Not named in the issue that added this
+  // block, but it is the same cell column one row down, and leaving it unbound
+  // would gate half a range.
+  {
+    file: "spec/README.md",
+    what: "CfL with free gains at code 3",
+    pattern: /ΔE00 at 32 B to −([\d.]+)% at code 3/,
+    section: "7.10",
+    row: "tier 3 free",
+    column: "vs its own control",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "CfL with paid gains at 32 B, against the shipped layout",
+    // Signed and without `abs`, like the 108 B entry above: the sentence's
+    // whole content is that paying for the gains makes the hash *worse*.
+    pattern: /at 32 B the field costs \*\*(\+[\d.]+)%\*\*/,
+    section: "7.10",
+    row: "CfL paid, L24@5 C9@4",
+    column: "ΔE00",
+    // §7.10's table carries the paid row's score and measures its delta against
+    // a size-matched control; the +2.11% is against the `shipped` row above it,
+    // which only §7.10's prose states. Recomputed from the two cells, for the
+    // same reason as §11.14's WebP margin: the cells are what the sweep emits.
+    transform: (paid) => {
+      const shipped = cellOf("7.10", 0, "shipped", "ΔE00");
+      if (shipped === null) throw new Error("§7.10 has no shipped row");
+      return ((paid - shipped) / shipped) * 100;
+    },
+  },
+  // §11.9 states its best arm only in prose; the one table cell carrying it is
+  // §9.5's re-source summary, whose `Wikimedia` column is the current figure.
+  // Binding there is binding to the same measurement, one table removed.
+  {
+    file: "spec/README.md",
+    what: "the best scalefactor-band arm, in the roadmap table",
+    pattern: /the best arm is −([\d.]+)% ΔE00, far under/,
+    section: "9.5",
+    row: "Scalefactor bands, best arm",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "the best scalefactor-band arm, in the roadmap summary",
+    pattern:
+      /frequency-weighted quantization is −([\d.]+)% and below threshold/,
+    section: "9.5",
+    row: "Scalefactor bands, best arm",
+    column: "Wikimedia",
     transform: abs,
   },
 ];
