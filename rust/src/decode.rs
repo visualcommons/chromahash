@@ -57,18 +57,19 @@ fn linear_to_gamma8(x: f64, lut: &[u8; 4096]) -> u8 {
     lut[idx]
 }
 
-/// Decode the byte-0 descriptor + byte-1 aspect: (version, tier, hasAlpha,
-/// aspect). Per spec §3.1 (v1). Callers operate on hashes already validated by
-/// [`crate::ChromaHash::from_bytes`], so the fields are well-formed here.
-fn read_header_fields(hash: &[u8], t: &Tunables) -> (u8, u8, bool, u8) {
+/// Decode the byte-0 descriptor + byte-1 aspect: (tier, hasAlpha, aspect). Per
+/// spec §3.1 (v1). Callers operate on hashes already validated by
+/// [`crate::ChromaHash::from_bytes`], so the fields are well-formed here. The
+/// version field is not returned: validation has already required it to be
+/// the one version this decoder reads, so no render path has a use for it.
+fn read_header_fields(hash: &[u8], t: &Tunables) -> (u8, bool, u8) {
     let b0 = hash[0];
-    let version = b0 & ((1 << VERSION_BITS) - 1);
     let tier = (b0 >> VERSION_BITS) & ((1 << TIER_BITS) - 1);
     let has_alpha = (b0 >> ALPHA_FLAG_BIT) & 1 == 1;
     // The aspect field may be narrower than a byte; reconstruct the byte the
     // encoder selected and rendered on.
     let aspect = dequantize_aspect(read_bits(hash, 8, t.aspect_bits), t.aspect_bits);
-    (version, tier, has_alpha, aspect)
+    (tier, has_alpha, aspect)
 }
 
 /// One channel's AC data ready for rendering: windowed coefficient values and
@@ -166,7 +167,7 @@ fn synthesize_detail(
 fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) -> Vec<u8> {
     // 1. Header fields: byte-0 descriptor + byte-1 aspect, then DC/scale prefix
     //    (bits 16..54). Per spec §3.1 (v1).
-    let (_version, tier, has_alpha, aspect) = read_header_fields(hash, t);
+    let (tier, has_alpha, aspect) = read_header_fields(hash, t);
 
     let mut bitpos = 8usize + t.aspect_bits as usize;
     let l_dc_q = read_bits(hash, bitpos, t.l_dc_bits);
@@ -529,7 +530,7 @@ fn render_flat(
 /// Decode a ChromaHash into RGBA pixel data in the given output gamut, with
 /// explicit tunables. Returns (width, height, rgba_pixels).
 pub fn decode_to_with(hash: &[u8], t: &Tunables, output: Gamut) -> (u32, u32, Vec<u8>) {
-    let (_version, tier, _has_alpha, aspect) = read_header_fields(hash, t);
+    let (tier, _has_alpha, aspect) = read_header_fields(hash, t);
     let (w, h) = decode_output_size(aspect, tier);
     let rgba = render_at_size(hash, w as usize, h as usize, t, output);
     (w, h, rgba)
@@ -561,7 +562,7 @@ pub fn decode_capped_to_with(
     t: &Tunables,
     output: Gamut,
 ) -> (u32, u32, Vec<u8>) {
-    let (_version, tier, _has_alpha, aspect) = read_header_fields(hash, t);
+    let (tier, _has_alpha, aspect) = read_header_fields(hash, t);
     let (nat_w, nat_h) = decode_output_size(aspect, tier);
     let w = nat_w.min(max_w);
     let h = nat_h.min(max_h);
@@ -636,7 +637,7 @@ pub fn decode_at_size_to_with(
 /// Extract the average color from a ChromaHash without full decode, with
 /// explicit tunables. Returns [r, g, b, a] as u8 values. Per spec §11.2.
 pub fn average_color_with(hash: &[u8], t: &Tunables) -> [u8; 4] {
-    let (_version, _tier, has_alpha, _aspect) = read_header_fields(hash, t);
+    let (_tier, has_alpha, _aspect) = read_header_fields(hash, t);
 
     let mut bitpos = 8usize + t.aspect_bits as usize;
     let l_dc_q = read_bits(hash, bitpos, t.l_dc_bits);
