@@ -123,7 +123,7 @@ mise run verify:sweep-labels # every enforceable sweep arm sets the constants it
 mise run corpus:licenses -- --check   # corpus attribution vs the pin tables
 mise run verify:benchmark   # every number in spec/PERFORMANCE.md vs the committed runs
 mise run mutants:rust       # full mutation sweep of the core (slow)
-mise run benchmark:session  # re-measure spec/PERFORMANCE.md end to end (about an hour)
+mise run benchmark:session  # re-measure spec/PERFORMANCE.md end to end (about 1.5 h)
 mise run benchmark          # one bounded perf sweep
 mise run benchmark:full     # the cells only the exhaustive matrix has (a supplement)
 mise run benchmark:stages   # where encode time goes, stage by stage
@@ -197,36 +197,55 @@ lists (governor `performance`, boost off — the driver never runs `sudo`):
 mise run benchmark:session            # preflight, bounded x2, full supplement,
                                       # stages, copy, verify:benchmark --fix, verify:benchmark
 mise run benchmark:session --pin 2,4,6,8                  # the same, pinned with taskset
+mise run benchmark:session --set-primary                  # and make this host the document's
 mise run benchmark:session --scratch /tmp/s --quick       # smoke-test the procedure only
 ```
 
 Run it from a clean tree, on a branch rebased onto `master`, and land it
-before `master`'s measured sources move. What the gate holds a run to:
+before `master`'s measured sources move. The session waits out the load
+rather than refusing it (`--load-timeout`, default 1800 s each time), and
+changes `baselines/hosts/PRIMARY` only with `--set-primary`; on another host
+it commits a secondary set and skips the stage files. What the gate holds a
+run to:
 
-- **The host.** The driver refuses to start above a 1-minute load of one task
-  per eight hardware threads; `--force-loaded` marks the run `loaded`, and the
-  gate refuses a loaded run as a baseline. Governor, boost, SMT, kernel, rustc
-  and the load at every round are recorded in `environment.preflight`.
-- **The method.** Each cell is three independent processes (`--processes`),
-  interleaved round-robin across cells; the reported cost is the median of the
-  per-process minima, with a bootstrap interval across processes. A lever, the
-  `simd` build, a capped decode and a batch thread count are each a *paired*
-  ratio against their base, timed back to back.
+- **The host.** The bar is a 1-minute load of one task per eight hardware
+  threads. The gate recomputes it from the run's own core count and holds the
+  start and every process round to it, whatever `--max-load` the driver was
+  given, so a run that turns loaded midway fails. Governor, boost, SMT,
+  kernel, rustc, the load at every round and the seconds waited are recorded
+  in `environment.preflight`.
+- **The record.** A `/3` run needs an even count of at least four processes,
+  at least five blocks, a git commit and digest, and a preflight, or it is
+  rejected. A rejected run (including `--quick` and `/1`) is a failure, not a
+  note.
+- **The method.** Each cell is four independent processes (`--processes`),
+  interleaved round-robin across cells. The reported cost is the median of the
+  per-process minima, beside their *range* (87.5% coverage of the median at
+  four, not a 95% interval). A cell whose processes spread past 5% is checked
+  on the band alone; past 10% it fails. A lever, the `simd` build, a capped
+  decode and a batch thread count are each a *paired* ratio against their
+  base: the geometric mean over A B / B A blocks, so an order effect cancels.
+  A `/3` run missing a pair it publishes fails.
 - **The supplement.** `benchmark:full` measures only ids the bounded matrix
   does not hold; the gate fails a full run holding one.
 - **Per host.** Sweeps live in `baselines/hosts/<os>-<arch>-<cpu>/`;
   `baselines/hosts/PRIMARY` names the host the document speaks for. The 10%
   cross-run spread and §0's stability pair (two bounded runs, one commit, one
   host) are checked within a host, never across, so a macOS session can commit
-  its own set; it fills only the targets the primary host recorded absent.
-- **Tolerance.** A documented value passes inside its cell's interval or
-  within ±5% of the committed run (a stage share within half a point), and
-  `--fix` rewrites only what is outside. A re-run on a stable host should
-  rewrite almost nothing; what it rewrites has moved.
+  its own set; it fills only the targets the primary host recorded absent, and
+  needs its own passing pair to be read at all.
+- **Tolerance.** A documented value passes inside its cell's range or within
+  ±5% of the committed run (a timing percentage within 5% of its ratio, a
+  stage share within half a point). A stated speedup or slowdown must also
+  keep its sign. `--fix` rewrites only what is outside, and refuses to write
+  while the committed runs themselves fail.
 - **Provenance.** Every recorder writes its commit and a digest of the measured
-  sources (`perf/provenance.ts`); the gate accepts the commit when it is an
+  sources, `.mise.toml` and `mise-tasks/benchmark/` included and documentation
+  excluded (`perf/provenance.ts`). The gate accepts the commit when it is an
   ancestor of `HEAD`, and otherwise any commit in `HEAD`'s history with the
-  same sources — which is what survives a squash merge.
+  same sources, which is what survives a squash merge. A baseline the change
+  adds must carry `HEAD`'s own digest, so a run gone stale while its PR was
+  open fails before the merge.
 
 A laptop is usually not good enough; an Apple M3 Pro measured the same cell
 across fresh processes with a 34% spread and drifted ~25% over a few hours.

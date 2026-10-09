@@ -142,12 +142,15 @@ jobs:
       # broke that property shipped past a green run once already, because the
       # suite exercised a single upscale factor; it now sweeps the decode sizes
       # the real lineup produces. It also asserts verify:benchmark's pass, skip
-      # and fail rules against fixture runs — the ±5%/interval band, the full
-      # run as a supplement, per-host stability, provenance by source digest,
-      # paired ratios — the perf driver's plan and statistics, and its
-      # absent/broken probe classification against real spawns: the gate's run
-      # below only exercises the one state the committed baseline happens to
-      # be in.
+      # and fail rules against fixture runs — the ±5%/range band and its sign
+      # rule, the recomputed load bar, the sampling floor, noisy and unstable
+      # cells, the full run as a supplement, per-host stability, provenance by
+      # source digest and the landing rule, AB/BA paired ratios, --fix's
+      # refusal — the perf driver's plan, statistics and load wait, the TS and
+      # Python source digests agreeing on HEAD (it runs python3), and the
+      # driver's absent/broken probe classification against real spawns: the
+      # gate's run below only exercises the one state the committed baseline
+      # happens to be in.
       - name: The locally-computed metrics hold their defining properties
         run: node tools/comparison/dist/metric-selftest.js
 
@@ -218,8 +221,11 @@ jobs:
       # §12.4's lever cells, and the prose figures bound to them, each written
       # TBD and failed by name. §0 of PERFORMANCE.md counts them, and the gate
       # checks that count. Every other value is checked against the committed
-      # baseline — within its interval or ±5% — so this is a named list of
-      # cells from green, not a drifted document.
+      # baseline — within its range or ±5% — so this is a named list of
+      # cells from green, not a drifted document. A change that adds a
+      # baseline must have measured it on HEAD's sources; on a pull request
+      # HEAD is the merge into the current master, so a run gone stale while
+      # the PR was open fails here, before the merge.
       #
       # One `mise run benchmark:session` on a quiet host closes all of them;
       # drop this line in the change that commits its runs. Swift's rows in §7

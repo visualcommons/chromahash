@@ -1539,7 +1539,7 @@ if (values.fix) {
   }
   writeFileSync(DOC, applyEdits(doc, edits, proseEdits));
   console.log(
-    `Rewrote ${edits.length} table cell(s) and ${proseEdits.length} prose figure(s) in ${path.relative(REPO_ROOT, DOC)} — only those outside their interval and the ±${(TOLERANCE * 100).toFixed(0)}% band, and the placeholders a committed run can fill.`,
+    `Rewrote ${edits.length} table cell(s) and ${proseEdits.length} prose figure(s) in ${path.relative(REPO_ROOT, DOC)} — only those outside their range and the ±${(TOLERANCE * 100).toFixed(0)}% band, and the placeholders a committed run can fill.`,
   );
   console.log("Re-run without --fix to confirm, and review the diff.");
   process.exit(0);
@@ -1547,7 +1547,7 @@ if (values.fix) {
 
 console.log(
   `Checked ${counters.checked} documented value(s) against the committed runs` +
-    ` (${counters.tolerated} within the interval or the ±${(TOLERANCE * 100).toFixed(0)}% band rather than exact)` +
+    ` (${counters.tolerated} within the range or the ±${(TOLERANCE * 100).toFixed(0)}% band rather than exact)` +
     `; ${counters.unbound} deliberately unbound` +
     `${counters.unavailable > 0 ? `, ${counters.unavailable} on targets this run could not reach` : ""}` +
     `${counters.placeholders > 0 ? `, ${counters.placeholders} placeholder(s) a committed run can fill` : ""}` +

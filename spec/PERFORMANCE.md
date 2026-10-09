@@ -17,8 +17,8 @@ reported figure includes process startup. Each cell is timed in several
 independent processes, each reporting the **minimum** over its timed blocks —
 every source of error in a wall-clock benchmark is one-sided, so the minimum is
 the sample least contaminated by the host — and the reported cost is the
-**median of those per-process minima**, with an interval across processes. §0
-states the method and its revisions.
+**median of those per-process minima**, beside their range. §0 states the
+method and its revisions.
 
 Every table below is bound to a cell in a committed run, and
 `mise run verify:benchmark` checks each one. A figure that cannot be traced to a
@@ -54,7 +54,7 @@ cell cannot be published here.
 >
 > | Claim | Reproducible from the tree? |
 > |---|---|
-> | Every table below agrees with a cell in `baselines/hosts/<host>/perf-report*.json`, `baselines/perf-stages.json` and `baselines/perf-decode-stages.json`, within the cell's interval or ±5% | **Yes** — `mise run verify:benchmark`, cell by cell |
+> | Every table below agrees with a cell in `baselines/hosts/<host>/perf-report*.json`, `baselines/perf-stages.json` and `baselines/perf-decode-stages.json`, within the cell's range or ±5% | **Yes** — `mise run verify:benchmark`, cell by cell |
 > | The M3 Pro's 34% / ~25% / 22-of-99 figures | **No.** That host's runs were never committed, and the machine was rejected rather than published |
 > | This host's cross-run agreement | **No.** Only one of the two bounded sweeps is committed, so `verify:benchmark`'s host-stability check has nothing to compare and reports itself `SKIP` |
 >
@@ -132,44 +132,90 @@ stability row to **Yes** with the figures the gate prints, and commit.
 `--scratch DIR` runs only the sweeps, into `DIR`, to smoke-test the procedure;
 every other flag is passed to the sweeps.
 
+It decides, before measuring, whose document this is. `baselines/hosts/PRIMARY`
+names the host the figures speak for, and a session changes it only when told
+to with `--set-primary` (or when there is none yet). On any other host the
+session commits a secondary set — read only for the targets the primary
+records absent, which is how a macOS session fills the Swift rows — and leaves
+PRIMARY, the stage files and the document's figures alone; it used to repoint
+PRIMARY at whichever host ran last.
+
 The order is no longer load-bearing. This block used to be fifteen commands —
 sweeps first, then stages, then the copies — because every recorder stamped
 `git.dirty` and a copied-in baseline dirtied every recording after it. Every
 recorder now leaves the measurement outputs (`baselines/hosts/`, the two stage
 files) out of its dirty probe: an output is not a source.
 
-**Preflight.** Before measuring, the driver reads the load average, the
-cpufreq governor, boost (the global switch, `intel_pstate/no_turbo`, or
-amd-pstate's per-policy `boost`) and SMT. It **refuses to start** above a
-1-minute load of one runnable task per eight hardware threads (never below 1;
-`--max-load` moves it); `--force-loaded` starts anyway and marks the run
-`loaded`, and the gate refuses a loaded run as a baseline. A governor other
+**Preflight and load.** Before measuring, the driver reads the load average
+(Linux and macOS), the cpufreq governor, boost (the global switch,
+`intel_pstate/no_turbo`, or amd-pstate's per-policy `boost`) and SMT. The bar
+is a 1-minute load of one runnable task per eight hardware threads, never
+below 1. The session **waits** for the load to fall under it — after the
+build, before each sweep and **before every process round**, and before the
+stages — for up to `--load-timeout` seconds (default 1800) each time, and
+stops with what it saw if it does not. Refusing instead stopped the session at
+its second sweep: the 1-minute average decays over about a minute, so it is
+still high after the build and after each round's `threads=auto` batch cells.
+Run alone, the driver refuses a loaded host unless given `--wait-for-load`;
+`--force-loaded` starts anyway and marks the run `loaded`. A governor other
 than `performance`, boost on and SMT on are reported, not refused — they need
-root. All of it, with `rustc --version`, the kernel, and the load average at
-the start, at every process round and at the end, is recorded in the run's
-`environment.preflight`. `--pin CPULIST` runs every harness under
-`taskset -c`.
+root. All of it, with `rustc --version`, the kernel, the seconds waited, and
+the load average at the start, at every process round and at the end, is
+recorded in the run's `environment.preflight`. `--pin CPULIST` runs every
+harness under `taskset -c`.
+
+The gate does not take the driver's word for it. It recomputes the bar from
+the run's own core count — so `--max-load 50` does not move it — and holds the
+start and every round to it, so a run that started quiet and became loaded
+fails. (The end reading is recorded and not held: it trails the run's own
+batch cells.) It rejects, as a failure rather than a printed note, a `/3` run
+with fewer than four processes, an odd number, or fewer than five blocks; one
+with no git commit, digest and dirty bit; one with no preflight; and any
+`--quick` or `/1` run, under any file name.
 
 **Method (`chromahash-perf/3`).** One pilot sizes a cell's timed block to
 about 200 ms. The cell is then measured in **P independent processes**
-(`--processes`, default 3) of five timed blocks each (`--reps`), after the
+(`--processes`, default 4) of five timed blocks each (`--reps`), after the
 harness's warmup; each process reports its minimum block, and the cell
-reports the **median of the per-process minima**, with a bootstrap 95%
-interval across processes. Processes are interleaved **round-robin** across
-every cell, so a drift over the sweep lands on every cell a little instead of
-on whichever ran last. With three processes the interval is, in effect, the
-range of the three; it is reported as that, not as more.
+reports the **median of the per-process minima**. Processes are interleaved
+**round-robin** across every cell, so a drift over the sweep lands on every
+cell a little instead of on whichever ran last.
+
+Beside the median the run records the **range** of the process minima — not a
+confidence interval. The range of n independent draws holds their median with
+probability 1 − 2^(1−n): 87.5% at four processes, 75% at three. The run stores
+that coverage beside the range. An earlier draft of this revision called the
+range a "bootstrap 95% interval", which with three processes it could not be.
+A cell is **noisy** when its process minima spread more than 5%. Its range then
+never widens what a documented value may be, so it is checked on the band
+alone. A bound cell whose processes spread more than the 10% host bar
+**fails**: within one run it has already broken the bar two runs are held to.
+No `/3` figure is drawn by bootstrap, so the resample count `stats.ts`
+defaults to does not reach this document. The committed `/2` baseline's
+`ci95NsPerOp` fields were bootstrap draws at 1,000 resamples — `stats.ts`'s
+default at `e53e6cd`, whatever it is now, and not re-drawn since.
+They describe the median of one process's blocks, and the gate reads none of
+them.
 
 A ratio is measured as one. A lever and the cell it is divided into — every
 §4 and §12.4 arm and its base, §6's separable DCT, §5's scalar and SIMD
 builds, §2's natural and capped decodes, §8's one-thread and auto batches —
 form a unit whose processes run back to back, in reverse order every other
-round (A B, then B A, so a linear drift adds to both sides of the ratio
-alike). The run stores each such ratio as a **paired record**: each round's
-base minimum over the same round's arm minimum, their median, and a bootstrap
-interval. Those are what §2's saving, §4's "vs shipped", §5's gain, §6's and
-§12.4's speedups and §8's scaling read — not a ratio of two independently
-measured cells.
+round: rounds 0 and 1 run a pair A B, then B A, and so do rounds 2 and 3. The
+run stores each such ratio as a **paired record**. The record holds each
+round's base minimum over that round's arm minimum, and the ratio is their
+**geometric mean over complete A B / B A blocks**. Whatever running second does
+to a member multiplies one order's ratio by about what it divides the other's
+by, so the order effect cancels. The record also holds each block's ratio, the
+blocks' range (two blocks cover the median half the time, so this is a range
+too) and their spread. A pair whose blocks spread past 5% gets no range
+acceptance, and one whose blocks spread past 10% fails, as for a cell. The
+ratio used to be the median of the rounds. With three rounds (A B, B A, A B)
+that is an A B round, carrying any order effect whole, which is why the count
+is now even. These records are what §2's saving, §4's "vs shipped", §5's gain,
+§6's and §12.4's speedups and §8's scaling read. A `/3` run without the record
+for a ratio it publishes is missing a measurement and fails; only a `/2` run,
+which recorded no pairs, is read as a ratio of two cells.
 
 **One measurement, one cell.** A lever table's `shipped` arm is the base cell
 under another name — `encode/Rust/t1/100x100/gradient/shipped` is
@@ -187,11 +233,13 @@ every bounded id as well, and the gate preferred its value, so filling six
 cells rewrote two hundred. The gate fails a full run that holds a bounded id.
 
 **What it costs.** By the harness's own budget (pilot, warmup, blocks), a
-bounded sweep on this host is about a quarter of an hour, up from about seven
-minutes for one process per cell, and the full supplement about ten minutes;
-a whole session, builds and stage recordings included, is about an hour. These
-are estimates from that budget, not measurements; each run records its own
-`wallSeconds`.
+bounded sweep at four processes on this host is about twenty minutes, up from
+about seven for one process per cell, and the full supplement about a quarter
+of an hour. The load waits add a few minutes per sweep, mostly after rounds
+that end in the `threads=auto` batch cells. A whole session, builds and stage
+recordings included, is about an hour and a half. These are estimates from
+that budget, not measurements; each run records its own `wallSeconds` and the
+seconds it waited.
 
 **How a figure is checked.** A documented value passes when it is the
 measured value rounded as written, when it lies inside the cell's range, or
@@ -209,7 +257,10 @@ on the ratio it stands for — §4's −36.3% is 0.637×, so ±3.2 points. A rat
 timing percentage that states a direction must also keep it: a figure written
 as a speedup fails against a measured slowdown however small the difference,
 and `--fix` writes the measured side; one that rounds to 1× or 0% as written
-states none. `--fix` rewrites only what is outside. That is the document's
+states none. `--fix` rewrites only what is outside, and refuses to write at
+all while the committed runs themselves fail (dirty, loaded, rejected,
+unstable, untraceable): agreeing with a run the gate refused would carry its
+figures into the document. That is the document's
 resolution, stated: a claim within 5% of 1 — §5's SIMD gain — is checked to
 "within 5%" and to its sign, no finer. Every figure the prose restates is bound
 the same way, and one that needs a measurement nobody has committed is written
@@ -224,7 +275,10 @@ supplements them. Spread and stability are checked within a host, never
 across, so a macOS session can commit `baselines/hosts/darwin-arm64-…/` beside
 this one, and is read only for targets the primary host records absent —
 which is how the Swift rows will be filled, and why they stay *macOS only*
-until then.
+until then. Any host whose cells are read must have a passing stability pair
+of its own, the secondary as much as the primary; only a host whose runs are
+all the legacy `/2` format — the committed one, labelled "No" above — is
+exempt.
 
 **Provenance survives a squash merge.** Pull requests here are squash-merged,
 so the commit a run was taken at is unreachable from `master` once it lands:
@@ -257,12 +311,13 @@ processes, not only blocks: the minimum of one process left the variance
 between processes — a different core, heap layout or moment in the host's
 thermal cycle — unsampled, its "interval" was a CI of the median of its
 blocks rather than of the figure reported, and its `noisy` flag was never
-read. It also pairs ratios, makes `--full` a supplement, keys baselines by
-host, records the host's state and a source digest, and checks documented
-figures against an interval or a band instead of exactly. The gate reads `/2`
-and `/3`, and a host's runs must share one. A `/2` cell has no interval, so it
-is held to the ±5% band alone; the gate lists every bound cell the driver
-flagged noisy.
+read. It also pairs ratios over A B / B A blocks, makes `--full` a
+supplement, keys baselines by host, records the host's state and a source
+digest, and checks documented figures against a range or a band instead of
+exactly. The gate reads `/2` and `/3`, and a host's runs must share one. A
+`/2` cell has no range, so it is held to the ±5% band alone; the gate lists
+every bound cell the driver flagged noisy, and holds `/2` to none of the `/3`
+record requirements above, which it predates.
 
 ---
 
