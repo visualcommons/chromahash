@@ -168,6 +168,7 @@ import {
   type Counters,
   type DecodeStageCell,
   type DocNumber,
+  MissingCell,
   type SweepClaim,
   TOLERANCE,
   type Verdict,
@@ -2696,8 +2697,9 @@ for (const order of ["full first", "bounded first"] as const) {
   );
 }
 
-// V7. Paired ratios. A run's own pair record is read, interval and all; with
-//     none, the ratio of the two cells, with no interval.
+// V7. Paired ratios. A run's own pair record is read, range and all. A /3 run
+//     without one is missing a measurement and throws; only a /2 run, which
+//     recorded no pairs, falls back to the ratio of its two cells.
 {
   const b = "encode/Rust/t1/512x512/gradient";
   const a = `${b}/accel all`;
@@ -2721,8 +2723,17 @@ for (const order of ["full first", "bounded first"] as const) {
   const unpaired = new Runs([
     run3("perf-report.json", { [b]: { us: 46700 }, [a]: { us: 20000 } }),
   ]);
+  const legacy = new Runs([
+    timedRun("perf-report.json", { [b]: 46700, [a]: 20000 }),
+  ]);
   const p = paired.ratio(b, a);
-  const u = unpaired.ratio(b, a);
+  let thrown = "";
+  try {
+    unpaired.ratio(b, a);
+  } catch (e) {
+    if (e instanceof MissingCell) thrown = e.message;
+  }
+  const u = legacy.ratio(b, a);
   // Two AB/BA blocks 25% apart: the ratio is unreproducible even though each
   // cell is steady, so its range accepts nothing and the gate fails it.
   const split = new Runs([
@@ -2739,16 +2750,17 @@ for (const order of ["full first", "bounded first"] as const) {
   const s = split.ratio(b, a);
   const splitFails = noiseFailures(split);
   check(
-    "a speedup is the run's paired record where it has one, and blocks that disagree past the bar fail",
+    "a speedup is the run's paired record, a /3 run without one is missing it, and blocks that disagree past the bar fail",
     p.value === 2.4 &&
       p.interval?.[0] === 2.35 &&
       noiseFailures(paired).length === 0 &&
+      thrown.includes("no paired record") &&
       Math.abs(u.value - 2.335) < 1e-9 &&
       u.interval === null &&
       s.interval === null &&
       splitFails.length === 1 &&
       (splitFails[0]?.row ?? "").includes(" / "),
-    `paired=${JSON.stringify(p)} unpaired=${JSON.stringify(u)} split=${JSON.stringify(s)} ${details(splitFails)}`,
+    `paired=${JSON.stringify(p)} unpaired=${thrown} legacy=${JSON.stringify(u)} split=${JSON.stringify(s)} ${details(splitFails)}`,
   );
 }
 

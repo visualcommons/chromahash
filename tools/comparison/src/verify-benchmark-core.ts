@@ -537,6 +537,8 @@ export class Runs {
       interval: [number, number] | null;
       /** Across processes, chromahash-perf/3 only. */
       spread: number | null;
+      /** The format of the run the cell was read from. */
+      schema: string;
     }
   >();
   /** Every loaded run's own value for each of its cells, by file. */
@@ -774,6 +776,7 @@ export class Runs {
               ? [range[0] / 1000, range[1] / 1000]
               : null,
           spread,
+          schema: doc.schema,
         });
       }
       for (const p of doc.pairs ?? []) {
@@ -831,9 +834,13 @@ export class Runs {
   }
 
   /**
-   * `base` time over `arm` time. The run's own paired record when it has one —
-   * a ratio taken process by process, with its interval — and otherwise the
-   * ratio of the two cells, with none.
+   * `base` time over `arm` time: the run's own paired record — AB/BA blocks,
+   * with their range. A chromahash-perf/3 run records one for every ratio the
+   * document publishes (`perf/plan.ts`), so a /3 run without one is missing a
+   * measurement and this throws `MissingCell`, as `est` does for a cell. It
+   * used to fall back to the ratio of the two cells, which silently swapped a
+   * paired estimate for an unpaired one. Only a chromahash-perf/2 run, which
+   * recorded no pairs, still gets that ratio, with no interval.
    */
   ratio(base: string, arm: string): Estimate {
     const b = this.resolveId(base);
@@ -850,6 +857,13 @@ export class Runs {
         interval:
           pair.range && spread !== null && spread <= NOISY ? pair.range : null,
       };
+    }
+    if (this.byId.get(b)?.schema === SCHEMA) {
+      this.touched.add(b);
+      throw new MissingCell(
+        `${b} / ${a}`,
+        `no paired record ${b} / ${a} in ${this.byId.get(b)?.from}, which holds the base cell — a chromahash-perf/3 run pairs every ratio it publishes, so this one was not measured`,
+      );
     }
     return { value: this.us(b) / this.us(a), interval: null };
   }
@@ -1036,8 +1050,11 @@ export function noiseFailures(R: Runs): Failure[] {
 }
 
 export class MissingCell extends Error {
-  constructor(readonly id: string) {
-    super(`no cell "${id}" in any committed run`);
+  constructor(
+    readonly id: string,
+    message = `no cell "${id}" in any committed run`,
+  ) {
+    super(message);
   }
 }
 
