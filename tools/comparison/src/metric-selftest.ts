@@ -176,6 +176,7 @@ import {
   applyEdits,
   checkSweepClaims,
   runFailures,
+  stabilityFailures,
   type Edit,
   type Failure,
   type ProseClaim,
@@ -2527,8 +2528,28 @@ for (const order of ["full first", "bounded first"] as const) {
   );
   const s = checkStability(R);
   const sMac = checkStability(R, "darwin-arm64-m3-pro");
+  // The mac host supplies the Swift cells, so it needs a pair of its own; a
+  // second mac run supplies one. The legacy-only host needs none.
+  const macAlone = stabilityFailures(R);
+  const withPair = stabilityFailures(
+    new Runs(
+      [
+        linux("perf-report.json", 1000),
+        linux("perf-report-2.json", 1020),
+        mac,
+        { ...mac, file: "perf-report-2.json" },
+      ],
+      { primary: "linux-x64-ryzen" },
+    ),
+  );
+  const legacyAlone = stabilityFailures(
+    new Runs([fixtureRun("perf-report.json", ["encode/Rust/t1"])]),
+  );
+  const v3Alone = stabilityFailures(
+    new Runs([run3("perf-report.json", { "encode/Rust/t1": { us: 1 } })]),
+  );
   check(
-    "hosts are keyed, compared only with themselves, and a secondary host fills only what the primary cannot",
+    "hosts are keyed, compared only with themselves, a secondary host fills only what the primary cannot, and any host read from needs its own stability pair",
     R.hosts.size === 2 &&
       R.crossRunSpread.length === 0 &&
       s.status === "pass" &&
@@ -2537,8 +2558,13 @@ for (const order of ["full first", "bounded first"] as const) {
       R.us("encode/Rust/t1") === 1000 &&
       R.us("encode/Swift/t1") === 1310 &&
       !R.unavailable.has("Swift") &&
-      runFailures(R).length === 0,
-    `hosts=${[...R.hosts.keys()].join(",")} spread=${JSON.stringify(R.crossRunSpread)} primary=${s.status}/${s.shared} mac=${sMac.status} rust=${R.us("encode/Rust/t1")}`,
+      runFailures(R).length === 0 &&
+      macAlone.length === 1 &&
+      (macAlone[0]?.row ?? "").startsWith("darwin-arm64-m3-pro") &&
+      withPair.length === 0 &&
+      legacyAlone.length === 0 &&
+      v3Alone.length === 1,
+    `hosts=${[...R.hosts.keys()].join(",")} spread=${JSON.stringify(R.crossRunSpread)} primary=${s.status}/${s.shared} mac=${sMac.status} rust=${R.us("encode/Rust/t1")} macAlone=${details(macAlone)} withPair=${details(withPair)} v3Alone=${v3Alone.length}`,
   );
   const misfiled = new Runs([{ ...mac, hostDir: "linux-x64-ryzen" }]);
   check(

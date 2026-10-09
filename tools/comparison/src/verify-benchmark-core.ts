@@ -539,6 +539,8 @@ export class Runs {
       spread: number | null;
       /** The format of the run the cell was read from. */
       schema: string;
+      /** The host directory of that run. */
+      host: string;
     }
   >();
   /** Every loaded run's own value for each of its cells, by file. */
@@ -777,6 +779,7 @@ export class Runs {
               : null,
           spread,
           schema: doc.schema,
+          host: doc.hostDir as string,
         });
       }
       for (const p of doc.pairs ?? []) {
@@ -916,6 +919,11 @@ export class Runs {
 
   get ids(): string[] {
     return [...this.byId.keys()].sort();
+  }
+
+  /** The hosts that supply at least one cell the document can be read from. */
+  readHosts(): Set<string> {
+    return new Set([...this.byId.values()].map((v) => v.host));
   }
 
   /** One loaded run's own cells, microseconds by id; undefined if not loaded. */
@@ -1173,6 +1181,41 @@ export function checkStability(R: Runs, host: string = R.primary): Stability {
     widest,
     problems,
   };
+}
+
+/**
+ * Every host's stability check as a failure, where it is one. A pair that was
+ * committed and does not agree fails on any host. A host the document reads
+ * cells from must also *have* a pair — a macOS run filling the Swift rows is
+ * held to the same bar as the primary's — unless every run it has is the
+ * legacy format, which predates committing pairs and is what §0's
+ * reproducibility row labels "No".
+ */
+export function stabilityFailures(R: Runs): Failure[] {
+  const out: Failure[] = [];
+  const read = R.readHosts();
+  const bar = `${(CROSS_RUN_TOLERANCE * 100).toFixed(0)}%`;
+  for (const [host, list] of R.hosts) {
+    const s = checkStability(R, host);
+    const legacyOnly = list.every((d) => d.schema === LEGACY_SCHEMA);
+    if (
+      s.status === "fail" ||
+      (s.status === "skip" && read.has(host) && !legacyOnly)
+    ) {
+      out.push({
+        where: "committed runs",
+        column: "host stability",
+        row: `${host}: ${s.runs.join(" vs ") || "(no bounded run)"}`,
+        documented: `two ${STABILITY_MODE} runs, one commit, within ${bar}`,
+        measured: s.status,
+        detail:
+          s.status === "skip"
+            ? `the document reads cells from ${host}, so it needs its own stability pair: ${s.problems.join("; ")}`
+            : s.problems.join("; "),
+      });
+    }
+  }
+  return out;
 }
 
 /** How §0 names the row, and what the gate requires it to quote on "Yes". */

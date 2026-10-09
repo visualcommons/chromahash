@@ -53,7 +53,6 @@ import { allTargets } from "./perf/targets.ts";
 import {
   type Binding,
   type ClaimContext,
-  CROSS_RUN_TOLERANCE,
   type Counters,
   DECODE_STAGES_BASELINE,
   type Estimate,
@@ -64,7 +63,6 @@ import {
   type Resolve,
   type RunDoc,
   Runs,
-  STABILITY_MODE,
   STAGES_BASELINE,
   type StageCell,
   type SweepClaim,
@@ -86,6 +84,7 @@ import {
   parseStages,
   parseTables,
   runFailures,
+  stabilityFailures,
 } from "./verify-benchmark-core.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
@@ -1267,8 +1266,8 @@ for (const binding of BINDINGS) {
 // with itself under two names, misfiled, or forced past the load bar.
 failures.push(...runFailures(runs));
 
-// Every host's stability pair is checked; §0's row speaks for the primary's.
-const spreadPct = (CROSS_RUN_TOLERANCE * 100).toFixed(0);
+// Every host's stability pair is checked, and a host the document reads must
+// have one; §0's row speaks for the primary's.
 const stability = checkStability(runs);
 for (const host of runs.hosts.keys()) {
   const s = host === runs.primary ? stability : checkStability(runs, host);
@@ -1281,17 +1280,8 @@ for (const host of runs.hosts.keys()) {
   console.log(
     `Host stability (§0) ${host}${host === runs.primary ? " [primary]" : ""}: ${s.status.toUpperCase()} — ${detail}`,
   );
-  if (s.status === "fail") {
-    failures.push({
-      where: "committed runs",
-      column: "host stability",
-      row: `${host}: ${s.runs.join(" vs ")}`,
-      documented: `two ${STABILITY_MODE} runs, one commit, within ${spreadPct}%`,
-      measured: "fail",
-      detail: s.problems.join("; "),
-    });
-  }
 }
+failures.push(...stabilityFailures(runs));
 if (!values.section || values.section === "0") {
   failures.push(...checkStabilityClaim(doc, stability));
 }
