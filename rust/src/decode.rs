@@ -897,6 +897,11 @@ mod tests {
         // every pixel. gradient_200x50 → 32×8.
         use crate::ChromaHash;
         let hash = ChromaHash::encode(200, 50, &gradient_image(200, 50), Gamut::Srgb);
+        // Pin the header before decoding (byte 0 = version 0, tier 1, opaque;
+        // byte 1 = round((log2 4 + 4) / 8 · 255) = 191). An encoder that
+        // scrambles byte 0 can name tier 7, whose 4^6-scaled render runs for
+        // minutes, so without this the sweep times out here instead of failing.
+        assert_eq!(hash.as_bytes()[..2], [8, 191]);
         let (w, h, rgba) = hash.decode();
         assert_eq!((w, h), (32, 8));
         let px = |i: usize| &rgba[i * 4..i * 4 + 4];
