@@ -2765,8 +2765,9 @@ split read once, not a rewording (#76).
 - **`--split holdout` refuses a photographic corpus**, naming `tune2`. The
   committed `*-holdout.json` results are left as they were scored, and the
   tables below keep reading them. The graphics corpus keeps its own
-  three-image holdout, which no committed result or recorded decision has
-  read.
+  eight-image holdout (`graphic-images.ts` pins 16 tune and 8 holdout
+  graphics, as `fixtures/graphic/LICENSES.md` lists), which no committed
+  result or recorded decision has read.
 - **The replacement is `holdout2`**, sealed. Its images are chosen on
   covariates alone — the §9.1 axes plus the smartphone snapshots §9.4 lists as
   missing — with no encoder run on a candidate, and nothing is pinned until
@@ -3844,7 +3845,8 @@ closer guide. The images are treated as independent draws. Arms of one sweep
 share images and an incumbent, so the comparisons above are not independent
 samples of σ, and the median and IQR describe the committed record rather than
 a population. The tune split's spread is assumed to carry over to the holdout.
-The holdout2 lists were drawn by axis quota (#103: nine smartphone, six
-skin-tone and four chroma-floor images among the 32), so their spread may
-differ, and no tool reads them to check. The power is 0.8 and α is 0.05;
+The photographic holdout2 list was drawn by axis quota (#103: nine
+smartphone, six skin-tone and four chroma-floor images among the 32), and the
+alpha one two per covariate cell (#107), so their spread may differ, and
+nothing may read them to check before an entry freezes. The power is 0.8 and α is 0.05;
 `mise run mde --power 0.9` or `--alpha` restate the tables at other values.
