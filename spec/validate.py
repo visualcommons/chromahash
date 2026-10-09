@@ -1190,6 +1190,10 @@ def validate_pseudocode_ac_widths():
             loops += 1
             want = f"{loop.group(1)}_B"
             got = set(width_args.findall(line))
+            # The quantizer's own width, not only the bits written or read:
+            # qAC(value, scale, WIDTH, MU) and muLawDequantize(code, WIDTH, MU).
+            got |= set(re.findall(r"qAC\([^()]*?,\s*(\w+),\s*MU_\w+\)", line))
+            got |= set(re.findall(r"muLawDequantize\(readBits\([^()]*\),\s*(\w+),", line))
             if got != {want}:
                 bad.append(f"line {n}: AC loop moves {sorted(got)} bits, not {want}")
         fit = re.search(r"fitScale\((\w+),.*,\s*(\w+)\)\s*$", line)
