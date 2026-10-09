@@ -15,6 +15,7 @@ probe sees a tree whose state the test controls. Run with
 `mise run test:benchmark`.
 """
 
+import hashlib
 import json
 import os
 import subprocess
@@ -74,6 +75,10 @@ GIT = [
     "-c",
     "user.email=test@example.invalid",
 ]
+
+
+def rev_dirty(cell: dict) -> tuple[str, bool]:
+    return cell["git"]["rev"], cell["git"]["dirty"]
 
 
 class RecordStagesTest(unittest.TestCase):
@@ -184,9 +189,9 @@ class RecordStagesTest(unittest.TestCase):
         head2 = self.git("rev-parse", "--short", "HEAD")
         self.record(512, 512, 4)
         cells = self.load()["cells"]
-        self.assertEqual(cells["100x100-t1"]["git"], {"rev": head, "dirty": False})
-        self.assertEqual(cells["512x512-t1"]["git"], {"rev": head, "dirty": False})
-        self.assertEqual(cells["512x512-t4"]["git"], {"rev": head2, "dirty": False})
+        self.assertEqual(rev_dirty(cells["100x100-t1"]), (head, False))
+        self.assertEqual(rev_dirty(cells["512x512-t1"]), (head, False))
+        self.assertEqual(rev_dirty(cells["512x512-t4"]), (head2, False))
 
     def test_any_other_change_is_dirty(self) -> None:
         (self.repo / "README").write_text("edited\n", encoding="utf-8")
@@ -197,6 +202,36 @@ class RecordStagesTest(unittest.TestCase):
         (self.baselines / "perf-report.json").write_text("{}", encoding="utf-8")
         self.record(100, 100, 1)
         self.assertTrue(self.load()["cells"]["100x100-t1"]["git"]["dirty"])
+
+    def test_a_copied_in_sweep_baseline_does_not_dirty_a_recording(self) -> None:
+        # benchmark:session copies the sweeps into baselines/hosts/<host>/ and
+        # records the stages in either order; neither may dirty the other.
+        host = self.baselines / "hosts" / "linux-x64-fixture"
+        host.mkdir(parents=True)
+        (host / "perf-report.json").write_text("{}", encoding="utf-8")
+        (self.baselines / "hosts" / "PRIMARY").write_text("linux-x64-fixture\n", encoding="utf-8")
+        self.record(100, 100, 1)
+        self.assertFalse(self.load()["cells"]["100x100-t1"]["git"]["dirty"])
+
+    def test_records_the_digest_of_the_measured_sources(self) -> None:
+        # No measured path in the fixture repository: nothing to digest.
+        self.record(100, 100, 1)
+        self.assertIsNone(self.load()["cells"]["100x100-t1"]["git"]["digest"])
+        (self.repo / "rust").mkdir()
+        (self.repo / "rust" / "lib.rs").write_text("fn main() {}\n", encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "sources")
+        listing = subprocess.run(
+            [*GIT, "ls-tree", "--full-tree", "HEAD", "--", "rust"],
+            cwd=self.repo,
+            capture_output=True,
+            check=True,
+        ).stdout
+        self.record(512, 512, 1)
+        self.assertEqual(
+            self.load()["cells"]["512x512-t1"]["git"]["digest"],
+            hashlib.sha256(listing).hexdigest(),
+        )
 
     # ─── --decode: PERFORMANCE.md §1.1 ─────────────────────────────────────
 
@@ -278,10 +313,10 @@ class RecordStagesTest(unittest.TestCase):
         self.record(100, 100, 1)  # perf-stages.json now untracked
         self.record_decode(4)
         self.assertEqual(
-            self.load_decode()["cells"]["100x100-t4-natural"]["git"], {"rev": head, "dirty": False}
+            rev_dirty(self.load_decode()["cells"]["100x100-t4-natural"]), (head, False)
         )
         self.record(512, 512, 1)  # and the decode file is untracked for this one
-        self.assertEqual(self.load()["cells"]["512x512-t1"]["git"], {"rev": head, "dirty": False})
+        self.assertEqual(rev_dirty(self.load()["cells"]["512x512-t1"]), (head, False))
 
     def test_decode_any_other_change_is_dirty(self) -> None:
         (self.baselines / "perf-report.json").write_text("{}", encoding="utf-8")

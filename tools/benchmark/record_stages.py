@@ -30,6 +30,7 @@ CAP is `natural` or `CWxCH`.
 """
 
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -39,9 +40,35 @@ import sys
 SCHEMA = "chromahash-perf-stages/1"
 DECODE_SCHEMA = "chromahash-perf-decode-stages/1"
 
-# Every artifact this recorder writes. The dirty probe excludes all of them,
-# not only the one being written; see `provenance`.
-RECORDER_OUTPUTS = ("perf-stages.json", "perf-decode-stages.json")
+# Every measurement output in the tree, repo-root-relative: this recorder's two
+# artifacts and the per-host sweep baselines `mise run benchmark:session` copies
+# in. The dirty probe excludes all of them, not only the one being written; see
+# `provenance`. Kept identical to MEASUREMENT_OUTPUTS in
+# tools/comparison/src/perf/provenance.ts, which `selftest:metrics` asserts.
+MEASUREMENT_OUTPUTS = (
+    "tools/comparison/baselines/hosts",
+    "tools/comparison/baselines/perf-decode-stages.json",
+    "tools/comparison/baselines/perf-stages.json",
+)
+
+# The sources that decide what a measurement measures. A cell records a digest
+# of them at HEAD, so `verify:benchmark` can trace it after a squash merge has
+# made its commit unreachable: some commit in master's history has the same
+# sources. Kept identical to MEASURED_PATHS in
+# tools/comparison/src/perf/provenance.ts, which `selftest:metrics` asserts.
+MEASURED_PATHS = (
+    "Package.swift",
+    "bindings",
+    "csharp",
+    "go",
+    "python",
+    "rust",
+    "swift",
+    "tools/benchmark/record_stages.py",
+    "tools/comparison/src/perf",
+    "tools/comparison/src/stats.ts",
+    "typescript",
+)
 
 # Provenance is recorded so `verify:benchmark` can refuse a baseline that cannot
 # be traced to a source state. The recorder's own artifacts are excluded from the
@@ -50,11 +77,13 @@ RECORDER_OUTPUTS = ("perf-stages.json", "perf-decode-stages.json")
 # invocation after the first observes its predecessor's write and records
 # `dirty: true` — which the gate hard-fails with advice ("re-run from a clean
 # tree") that no multi-invocation table can ever follow. The exclusion covers
-# the sibling artifact too: §0's procedure records §1 and then §1.1 before
-# committing either, and a measurement output is not a source input, so the
-# encode baseline being modified says nothing about what the decode run built.
-# Every other path still counts. The probe also runs *after* the write rather
-# than before, so it sees anything the build itself left behind.
+# the sibling artifact and the per-host sweep baselines too: a measurement
+# output is not a source input, so a copied-in `perf-report.json` says nothing
+# about what this run built. That is what makes `benchmark:session`'s order
+# free — §0 used to require sweeps, then stages, then copies, because a copy
+# made first dirtied every recording after it. Every other path still counts.
+# The probe also runs *after* the write rather than before, so it sees anything
+# the build itself left behind.
 
 
 def git(*args: str) -> str:
@@ -64,16 +93,30 @@ def git(*args: str) -> str:
     ).stdout.strip()
 
 
+def source_digest(rev: str = "HEAD") -> str | None:
+    """SHA-256 of `git ls-tree --full-tree REV -- MEASURED_PATHS`, as provenance.ts has it."""
+    listing = subprocess.run(
+        ["git", "ls-tree", "--full-tree", rev, "--", *MEASURED_PATHS],
+        capture_output=True,
+        check=False,
+    )
+    if listing.returncode != 0 or not listing.stdout:
+        return None
+    return hashlib.sha256(listing.stdout).hexdigest()
+
+
 def provenance(out: str) -> dict[str, object]:
-    """The revision these shares were measured at, and whether anything else was dirty."""
+    """The revision measured, its sources' digest, and whether anything else was dirty."""
     top = git("rev-parse", "--show-toplevel")
-    here = os.path.dirname(os.path.abspath(out))
-    excluded = {os.path.abspath(out)} | {os.path.join(here, n) for n in RECORDER_OUTPUTS}
-    rels = sorted(os.path.relpath(p, top) if top else p for p in excluded)
+    rels = {os.path.relpath(os.path.abspath(out), top) if top else out, *MEASUREMENT_OUTPUTS}
     # `:/` is every path in the repo; `:(exclude,top)` is repo-root-relative, so
     # this is correct regardless of the working directory the task runs from.
-    status = git("status", "--porcelain", "--", ":/", *(f":(exclude,top){r}" for r in rels))
-    return {"rev": git("rev-parse", "--short", "HEAD"), "dirty": status != ""}
+    status = git("status", "--porcelain", "--", ":/", *(f":(exclude,top){r}" for r in sorted(rels)))
+    return {
+        "rev": git("rev-parse", "--short", "HEAD"),
+        "dirty": status != "",
+        "digest": source_digest(),
+    }
 
 
 RERECORD = {
