@@ -2319,4 +2319,621 @@ mod tests {
             assert_levers_reproduce(*t, w, h, &rgba, *tier);
         }
     }
+
+    // ── Header-field quantizers at sweep widths ──────────────────────────
+    //
+    // The shipped widths (8-bit aspect, linear scale grid) take the early
+    // return or the linear branch, so the goldens above never reach the
+    // coarse-aspect or µ-law-scale arithmetic. These pin it directly.
+
+    #[test]
+    fn aspect_quantizer_is_the_identity_at_eight_bits_and_wider() {
+        for byte in 0..=255u8 {
+            for bits in [8u32, 9] {
+                assert_eq!(quantize_aspect(byte, bits), (byte as u32, byte));
+                assert_eq!(dequantize_aspect(byte as u32, bits), byte);
+            }
+        }
+    }
+
+    #[test]
+    fn aspect_quantizer_rounds_onto_the_symmetric_grid() {
+        // At `bits` < 8 the grid is 128 + k·2^(8−bits) for codes
+        // k + 2^(bits−1) in [0, 2^bits), clamped to [0, 255]; the code is
+        // round_half_away_from_zero((byte − 128) / step) + centre, clamped.
+        #[rustfmt::skip]
+        let cases: &[(u32, u8, u32, u8)] = &[
+            // bits = 4: step 16, centre 8.
+            (4, 0, 0, 0), (4, 1, 0, 0), (4, 8, 0, 0), (4, 9, 1, 16),
+            (4, 96, 6, 96), (4, 120, 7, 112), (4, 121, 8, 128), (4, 128, 8, 128),
+            (4, 135, 8, 128), (4, 136, 9, 144), (4, 191, 12, 192), (4, 232, 15, 240),
+            // 255 rounds to code 16, past the top code 15: the clamp holds it.
+            (4, 255, 15, 240),
+            // bits = 1: step 128, centre 1. Two codes, portrait and square.
+            (1, 0, 0, 0), (1, 64, 0, 0), (1, 65, 1, 128), (1, 128, 1, 128), (1, 255, 1, 128),
+            // bits = 7: step 2, centre 64.
+            (7, 0, 0, 0), (7, 127, 63, 126), (7, 128, 64, 128), (7, 129, 65, 130),
+            (7, 254, 127, 254), (7, 255, 127, 254),
+        ];
+        for &(bits, byte, code, recon) in cases {
+            assert_eq!(
+                quantize_aspect(byte, bits),
+                (code, recon),
+                "bits={bits} byte={byte}"
+            );
+            assert_eq!(
+                dequantize_aspect(code, bits),
+                recon,
+                "bits={bits} code={code}"
+            );
+        }
+        // Every code of a 4-bit field, including the clamped bottom one.
+        let grid: Vec<u8> = (0..16).map(|c| dequantize_aspect(c, 4)).collect();
+        let want: Vec<u8> = (0..16).map(|k| (k * 16) as u8).collect();
+        assert_eq!(grid, want);
+    }
+
+    #[test]
+    fn aspect_quantizer_picks_the_nearest_grid_byte() {
+        // A property over every byte and width: the reconstruction is the
+        // decoder's own dequantization of the code, the code fits the field,
+        // and no grid byte is nearer the input.
+        for bits in 1..=7u32 {
+            let grid: Vec<u8> = (0..1u32 << bits)
+                .map(|c| dequantize_aspect(c, bits))
+                .collect();
+            for byte in 0..=255u8 {
+                let (code, recon) = quantize_aspect(byte, bits);
+                assert!(code < 1 << bits, "bits={bits} byte={byte} code={code}");
+                assert_eq!(recon, grid[code as usize], "bits={bits} byte={byte}");
+                let err = (recon as i32 - byte as i32).abs();
+                for &g in &grid {
+                    assert!(
+                        err <= (g as i32 - byte as i32).abs(),
+                        "bits={bits} byte={byte}: {recon} is farther than {g}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn coarse_aspect_field_reaches_the_hash_and_the_decoder() {
+        // 4:1 is aspect byte 191, which a 4-bit field codes as 12 (byte 192).
+        // The encoder writes the code into bits 8..12, and the decoder sizes
+        // its render from the reconstructed byte, not the source's.
+        let t = Tunables {
+            aspect_bits: 4,
+            ..Tunables::DEFAULT
+        };
+        let rgba = lever_image(8, 2, false, 3);
+        let hash = encode_with(8, 2, &rgba, Gamut::Srgb, &t, 1);
+        assert_eq!(hash.len(), body_len_bytes(&t, false, 1));
+        assert_eq!(crate::bitpack::read_bits(&hash, 8, 4), 12);
+        let (w, h, _) = crate::decode::decode_to_with(&hash, &t, Gamut::Srgb);
+        assert_eq!((w, h), crate::aspect::decode_output_size(192, 1));
+    }
+
+    #[test]
+    fn scale_quantizer_linear_grid() {
+        // code = round_half_away_from_zero((2^bits − 1) · clamp01(scale / range)).
+        assert_eq!(quantize_scale(0.0, 0.5, 6, 0.0), 0);
+        assert_eq!(quantize_scale(0.25, 0.5, 6, 0.0), 32); // 31.5 rounds up
+        assert_eq!(quantize_scale(0.5, 0.5, 6, 0.0), 63);
+        assert_eq!(quantize_scale(0.9, 0.5, 6, 0.0), 63); // clamped
+        assert_eq!(quantize_scale(0.1, 0.125, 5, 0.0), 25); // 24.8
+        assert_eq!(dequantize_scale(32, 0.5, 6, 0.0), 32.0 / 63.0 * 0.5);
+        assert_eq!(dequantize_scale(63, 0.5, 6, 0.0), 0.5);
+        assert_eq!(dequantize_scale(0, 0.5, 6, 0.0), 0.0);
+    }
+
+    #[test]
+    fn scale_quantizer_mu_law_grid() {
+        // `scale_mu` > 0 compands the code: 0.05 of a 0.5 range is x = 0.1,
+        // and ln(1 + 5·0.1) / ln 6 = 0.2263, so the code is round(63 · 0.2263)
+        // = 14 where the linear grid gives round(6.3) = 6.
+        assert_eq!(quantize_scale(0.05, 0.5, 6, 5.0), 14);
+        assert_eq!(quantize_scale(0.05, 0.5, 6, 0.0), 6);
+        assert_eq!(
+            dequantize_scale(14, 0.5, 6, 5.0),
+            mu_expand(14.0 / 63.0, 5.0) * 0.5
+        );
+        assert!(dequantize_scale(14, 0.5, 6, 5.0) < dequantize_scale(14, 0.5, 6, 0.0));
+        // Every code round-trips through its own reconstruction on both grids.
+        for mu in [0.0, 5.0] {
+            for code in 0..=63u32 {
+                let s = dequantize_scale(code, 0.5, 6, mu);
+                assert_eq!(quantize_scale(s, 0.5, 6, mu), code, "mu={mu} code={code}");
+            }
+        }
+    }
+
+    // ── AC quantization job ──────────────────────────────────────────────
+
+    /// A job over `values` with the given tiers and quantizer, at the L
+    /// channel's range and scale width and no band split.
+    fn test_job<'a>(
+        values: &'a [f64],
+        tiers: &'a [(usize, u32)],
+        family: crate::constants::Companding,
+        table: &'a crate::constants::QuantTable,
+        deadzone: f64,
+    ) -> AcQuantJob<'a> {
+        AcQuantJob {
+            values,
+            tiers,
+            split: values.len(),
+            band_gain: 1.0,
+            max_scale: 0.5,
+            code_max: 63,
+            scale_bits: 6,
+            scale_mu: 0.0,
+            family,
+            mu: 5.0,
+            table,
+            deadzone,
+            accel: None,
+        }
+    }
+
+    const MU_LAW: crate::constants::Companding = crate::constants::Companding::MuLaw;
+    const NO_TABLE: crate::constants::QuantTable = crate::constants::QuantTable::EMPTY;
+
+    #[test]
+    fn bits_at_walks_the_precision_tiers() {
+        let tiers = [(3usize, 6u32), (2, 5)];
+        let job = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.0);
+        let widths: Vec<u32> = (0..7).map(|i| job.bits_at(i)).collect();
+        // Past the last tier the last width holds.
+        assert_eq!(widths, [6, 6, 6, 5, 5, 5, 5]);
+        let tiers = [(0usize, 6u32), (4, 5)];
+        let job = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.0);
+        assert_eq!(job.bits_at(0), 5);
+        // A third tier is where the running base must accumulate: with two,
+        // the last tier and the past-the-end fallback share a width.
+        let tiers = [(2usize, 6u32), (1, 5), (4, 4)];
+        let job = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.0);
+        let widths: Vec<u32> = (0..8).map(|i| job.bits_at(i)).collect();
+        assert_eq!(widths, [6, 6, 5, 4, 4, 4, 4, 4]);
+    }
+
+    #[test]
+    fn quantize_one_scores_reconstruction_error() {
+        // 4-bit µ-law (µ = 5): levels 0, 0.0583, 0.1337, 0.2310, … At 0.182
+        // the companded rounding picks code 10 (0.2310), but 9 (0.1337)
+        // reconstructs nearer, so the search moves to it.
+        let tiers = [(1usize, 4u32)];
+        let job = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.0);
+        assert_eq!(job.quant(0, 0.182), 10);
+        assert_eq!(quantize_one(&job, 0, 0.182, 1.0, false), 10);
+        assert_eq!(quantize_one(&job, 0, 0.182, 1.0, true), 9);
+        // A zero scale is the exact-zero centre code, search or not.
+        assert_eq!(quantize_one(&job, 0, 0.3, 0.0, true), 7);
+    }
+
+    #[test]
+    fn quantize_one_lets_a_fired_deadzone_stand() {
+        let tiers = [(1usize, 4u32)];
+        let open = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.0);
+        // Premise: without a deadzone the search takes 0.05 to code 8.
+        assert_eq!(quantize_one(&open, 0, 0.05, 1.0, true), 8);
+        let dz = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.1);
+        // Below the deadzone: the centre, and the search does not undo it.
+        assert_eq!(quantize_one(&dz, 0, 0.05, 1.0, true), 7);
+        assert_eq!(quantize_one(&dz, 0, -0.05, 1.0, true), 7);
+        // Above it the search still runs.
+        assert_eq!(quantize_one(&dz, 0, 0.182, 1.0, true), 9);
+        // The threshold is strict: |value| == deadzone is not deadzoned.
+        let at = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.182);
+        assert_eq!(at.quant(0, 0.182), 10);
+        assert_eq!(quantize_one(&at, 0, 0.182, 1.0, true), 9);
+    }
+
+    #[test]
+    fn quantize_one_keeps_the_companded_code_on_an_exact_tie() {
+        // Exactly representable levels: 0.375 is 0.125 from both 0.25 and
+        // 0.5. The table quantizer rounds the tie away from zero (code 9, 0.5)
+        // and the strict search keeps it rather than stepping down to 8.
+        let mut table = crate::constants::QuantTable::EMPTY;
+        table.levels[..3].copy_from_slice(&[0.25, 0.5, 0.75]);
+        table.len = 3;
+        let tiers = [(1usize, 4u32)];
+        let job = test_job(
+            &[],
+            &tiers,
+            crate::constants::Companding::Table,
+            &table,
+            0.0,
+        );
+        assert_eq!(job.quant(0, 0.375), 9);
+        assert_eq!(quantize_one(&job, 0, 0.375, 1.0, true), 9);
+    }
+
+    #[test]
+    fn quantize_ac_channel_scale_fit_modes() {
+        // 0.1853 sits on the 12/13 boundary of the 4-bit µ-law grid (at a
+        // normalized 0.6174): over the raw scale 0.3 it is 0.6177 (code 13),
+        // over the dequantized 0.3016 it is 0.6144 (code 12).
+        let values = [0.3, -0.12, 0.05, 0.21, -0.27, 0.1853];
+        let raw = 0.3;
+        let tiers = [(values.len(), 4u32)];
+        let job = test_job(&values, &tiers, MU_LAW, &NO_TABLE, 0.0);
+        let fit = |mode: u32| {
+            let t = Tunables {
+                scale_fit: mode,
+                ac_nearest: false,
+                ..Tunables::DEFAULT
+            };
+            quantize_ac_channel(&job, raw, &t)
+        };
+        let codes_at = |s: f64| -> Vec<u32> {
+            values
+                .iter()
+                .map(|&v| compand_quantize(v / s, 4, MU_LAW, 5.0, &NO_TABLE, 0.0))
+                .collect()
+        };
+        // Both nominal modes write round(63 · 0.3 / 0.5) = 38. Mode 0 normalizes
+        // by the raw scale, mode 1 by the scale the decoder will see.
+        let nominal = 38;
+        let deq = dequantize_scale(nominal, 0.5, 6, 0.0);
+        assert_eq!(fit(0), (nominal, codes_at(raw)));
+        assert_eq!(fit(1), (nominal, codes_at(deq)));
+        // Mode 2 searches every code by reconstruction SSE; here it lands
+        // somewhere neither nominal mode does.
+        let (code, codes) = fit(2);
+        assert_eq!(codes, codes_at(dequantize_scale(code, 0.5, 6, 0.0)));
+        assert_ne!((code, codes.clone()), fit(0));
+        assert_ne!((code, codes), fit(1));
+        assert_ne!(fit(0), fit(1), "premise: the two nominal modes differ");
+    }
+
+    #[test]
+    fn scale_search_keeps_the_smaller_code_on_an_exact_tie() {
+        // Levels 0.5 and 1.0 are exact, and dequantize_scale(4) is exactly
+        // 2·dequantize_scale(2), so a lone coefficient equal to
+        // dequantize_scale(2) reconstructs with zero error at code 2 (level
+        // 1.0) and at code 4 (level 0.5). The strict search keeps code 2.
+        let mut table = crate::constants::QuantTable::EMPTY;
+        table.levels[..2].copy_from_slice(&[0.5, 1.0]);
+        table.len = 2;
+        let v = dequantize_scale(2, 0.5, 6, 0.0);
+        assert_eq!(dequantize_scale(4, 0.5, 6, 0.0), 2.0 * v);
+        let values = [v];
+        let tiers = [(1usize, 4u32)];
+        let job = test_job(
+            &values,
+            &tiers,
+            crate::constants::Companding::Table,
+            &table,
+            0.0,
+        );
+        assert_eq!(
+            quantize_ac_channel(&job, v, &Tunables::DEFAULT),
+            (2, vec![9])
+        );
+    }
+
+    // ── Refinement objective ─────────────────────────────────────────────
+
+    #[test]
+    fn refine_gamma_lut_rounds_onto_its_4096_point_grid() {
+        let obj = PixelObjective::new(0, 1.0, 1.0, &[], &[], &[]);
+        // 0.75 · 4095 = 3071.25 → entry 3071.
+        assert_eq!(obj.gamma_of(0.75), srgb_gamma(3071.0 / 4095.0));
+        assert_eq!(obj.gamma_of(0.5), srgb_gamma(2048.0 / 4095.0));
+        assert_eq!(obj.gamma_of(1.0), srgb_gamma(1.0));
+        assert_eq!(obj.gamma_of(2.0), srgb_gamma(1.0));
+        assert_eq!(obj.gamma_of(-0.5), 0.0);
+    }
+
+    #[test]
+    fn refine_objectives_map_into_their_own_spaces() {
+        // An out-of-gamut, over-range triple, so every clip is load-bearing.
+        let (l, a, b) = (1.1, 0.25, -0.2);
+        let clipped = |l: f64, a: f64, b: f64| {
+            let rgb = oklab_to_linear_srgb([clamp01(l), a, b]);
+            linear_rgb_to_oklab(
+                [clamp01(rgb[0]), clamp01(rgb[1]), clamp01(rgb[2])],
+                Gamut::Srgb,
+            )
+        };
+        let c = clipped(l, a, b);
+        assert_ne!(c, [l, a, b], "premise: the clip moves this triple");
+
+        // 1: OKLAB untouched.
+        let o1 = PixelObjective::new(1, 2.0, 3.0, &[], &[], &[]);
+        assert_eq!(o1.map(l, a, b), [l, a, b]);
+        // 2: OKLAB after the L clamp and the gamut clip.
+        let o2 = PixelObjective::new(2, 2.0, 3.0, &[], &[], &[]);
+        assert_eq!(o2.map(l, a, b), c);
+        // 3: the same, with L weighted by wl and both chroma axes by wc.
+        let o3 = PixelObjective::new(3, 2.0, 3.0, &[], &[], &[]);
+        assert_eq!(o3.map(l, a, b), [c[0] * 2.0, c[1] * 3.0, c[2] * 3.0]);
+        // 0: gamma-encoded sRGB through the LUT.
+        let o0 = PixelObjective::new(0, 2.0, 3.0, &[], &[], &[]);
+        let rgb = oklab_to_linear_srgb([clamp01(l), a, b]);
+        assert_eq!(
+            o0.map(l, a, b),
+            [
+                o0.gamma_of(rgb[0]),
+                o0.gamma_of(rgb[1]),
+                o0.gamma_of(rgb[2])
+            ]
+        );
+        // The target is the source mapped the same way.
+        let o = PixelObjective::new(3, 2.0, 3.0, &[l], &[a], &[b]);
+        assert_eq!(o.target, vec![o3.map(l, a, b)]);
+    }
+
+    // ── Sweep-only payload paths through `encode_with` ───────────────────
+
+    #[test]
+    fn interleave_reorders_the_ac_codes_and_nothing_else() {
+        let il = Tunables {
+            interleave: true,
+            ..Tunables::DEFAULT
+        };
+        let d = Tunables::DEFAULT;
+        for (w, h, tier) in [(9u32, 7u32, 1u8), (12, 5, 0), (6, 6, 2)] {
+            let rgba = lever_image(w, h, false, w + h);
+            let plain = encode_with(w, h, &rgba, Gamut::Srgb, &d, tier);
+            let mixed = encode_with(w, h, &rgba, Gamut::Srgb, &il, tier);
+            assert_ne!(plain, mixed, "premise: {w}x{h} tier {tier} reorders");
+
+            // Read the shipped order's codes, then lay them out in the merged
+            // order: that must be the interleaved hash, bit for bit.
+            let shape = ac_shape(&d, false, tier);
+            let order = SelectionOrder::new(plain[1], tier, d.aniso_oblique, d.sel_hv);
+            let (l_sel, c_sel) = (order.take(shape.l_count()), order.take(shape.c_count));
+            let mut pos = prefix_bits(&d) as usize;
+            let mut read = |bits: u32| {
+                let q = crate::bitpack::read_bits(&plain, pos, bits);
+                pos += bits as usize;
+                q
+            };
+            let mut l = Vec::new();
+            for &(count, bits) in &shape.l_tiers {
+                for _ in 0..count {
+                    l.push((bits, read(bits)));
+                }
+            }
+            let a: Vec<u32> = (0..shape.c_count).map(|_| read(shape.c_bits)).collect();
+            let b: Vec<u32> = (0..shape.c_count).map(|_| read(shape.c_bits)).collect();
+            let mut want = vec![0u8; plain.len()];
+            let mut pos = prefix_bits(&d) as usize;
+            for k in 0..pos {
+                if plain[k / 8] & (1 << (k % 8)) != 0 {
+                    want[k / 8] |= 1 << (k % 8);
+                }
+            }
+            for (ch, i) in interleaved_order(&l_sel, &c_sel, shape.l_count(), shape.c_count) {
+                let (bits, q) = match ch {
+                    0 => l[i],
+                    1 => (shape.c_bits, a[i]),
+                    _ => (shape.c_bits, b[i]),
+                };
+                write_bits(&mut want, pos, bits, q);
+                pos += bits as usize;
+            }
+            assert_eq!(mixed.as_ref(), want.as_slice(), "{w}x{h} tier {tier}");
+
+            // And the decoder, told the same, renders the same pixels.
+            assert_eq!(
+                crate::decode::decode_to_with(&mixed, &il, Gamut::Srgb),
+                crate::decode::decode_to_with(&plain, &d, Gamut::Srgb),
+                "{w}x{h} tier {tier}"
+            );
+        }
+        // Alpha mode keeps the sequential layout on both sides.
+        let rgba = lever_image(6, 6, true, 1);
+        let plain = encode_with(6, 6, &rgba, Gamut::Srgb, &d, 1);
+        assert_eq!(encode_with(6, 6, &rgba, Gamut::Srgb, &il, 1), plain);
+        assert_eq!(
+            crate::decode::decode_to_with(&plain, &il, Gamut::Srgb),
+            crate::decode::decode_to_with(&plain, &d, Gamut::Srgb)
+        );
+    }
+
+    /// The alpha scale code of an alpha-mode hash.
+    fn alpha_scale_code(hash: &[u8], t: &Tunables) -> u32 {
+        let pos = prefix_bits(t) + t.alpha_dc_bits;
+        crate::bitpack::read_bits(hash, pos as usize, t.alpha_scale_bits)
+    }
+
+    #[test]
+    fn alpha_scale_code_tops_out_at_its_field() {
+        // A hard alpha edge against a tiny range: the raw alpha scale is far
+        // past `max_alpha_scale`, so both the legacy path (code = round(15 ·
+        // clamp01(scale / range))) and the fitted search (best is the widest
+        // scale) must write the 4-bit field's top code, 15 — not a code that
+        // wraps when it is packed.
+        let (w, h) = (8u32, 8u32);
+        let mut rgba = solid(w, h, 200, 80, 40, 255);
+        for px in rgba.chunks_exact_mut(4).skip(32) {
+            px[3] = 0;
+        }
+        for fit in [false, true] {
+            let t = Tunables {
+                max_alpha_scale: 0.02,
+                alpha_ac_fit: fit,
+                ..Tunables::DEFAULT
+            };
+            let hash = encode_with(w, h, &rgba, Gamut::Srgb, &t, 1);
+            assert_eq!(alpha_scale_code(&hash, &t), 15, "alpha_ac_fit={fit}");
+        }
+    }
+
+    #[test]
+    fn refinement_is_skipped_under_cfl() {
+        // `refine_codes` scores a decoder without the CfL predictor, so the
+        // encoder must not run it when CfL is on.
+        let (w, h) = (11u32, 9u32);
+        let rgba = lever_image(w, h, false, 5);
+        let refine = |t: Tunables| Tunables {
+            refine_passes: 2,
+            refine_dc: true,
+            refine_scale: true,
+            ..t
+        };
+        let d = Tunables::DEFAULT;
+        let cfl = Tunables { cfl_bits: 5, ..d };
+        assert_ne!(
+            encode_with(w, h, &rgba, Gamut::Srgb, &refine(d), 1),
+            encode_with(w, h, &rgba, Gamut::Srgb, &d, 1),
+            "premise: the refinement changes this image's bytes"
+        );
+        assert_eq!(
+            encode_with(w, h, &rgba, Gamut::Srgb, &refine(cfl), 1),
+            encode_with(w, h, &rgba, Gamut::Srgb, &cfl, 1)
+        );
+    }
+
+    #[test]
+    fn debug_coefficients_are_the_ac_over_its_scale() {
+        let t = Tunables::DEFAULT;
+        let rgba = lever_image(9, 7, false, 2);
+        let dump = encode_debug_coefficients(9, 7, &rgba, Gamut::Srgb, &t, 1);
+        let shape = ac_shape(&t, false, 1);
+        assert_eq!(dump.l.len(), shape.l_count());
+        assert_eq!(dump.a.len(), shape.c_count);
+        assert_eq!(dump.b.len(), shape.c_count);
+        assert!(dump.alpha.is_empty(), "opaque: no alpha channel");
+        // The scale is the channel's peak |AC|, so the peak normalizes to
+        // exactly 1 and nothing exceeds it.
+        for (name, ch) in [("l", &dump.l), ("a", &dump.a), ("b", &dump.b)] {
+            let peak = ch.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+            assert_eq!(peak, 1.0, "{name}");
+        }
+        // A solid image has no AC energy: every channel floors to scale 0 and
+        // contributes nothing.
+        let flat =
+            encode_debug_coefficients(4, 4, &solid(4, 4, 90, 90, 90, 255), Gamut::Srgb, &t, 1);
+        assert!(flat.l.is_empty() && flat.a.is_empty() && flat.b.is_empty());
+    }
+
+    #[test]
+    fn resample_is_exact_at_the_source_size_and_flat_for_a_flat_channel() {
+        // With every frequency the source holds, the DCT round trip at the
+        // same size reproduces the channel.
+        let (w, h) = (5usize, 4usize);
+        let chan: Vec<f64> = (0..w * h).map(|p| ((p * 7 % 11) as f64) / 11.0).collect();
+        let same = resample_channel_dct(&chan, w, h, w, h);
+        assert_eq!(same.len(), w * h);
+        for (p, (&got, &want)) in same.iter().zip(&chan).enumerate() {
+            assert!((got - want).abs() < 1e-12, "pixel {p}: {got} vs {want}");
+        }
+        // A constant resamples to the same constant at any size.
+        let flat = resample_channel_dct(&[0.4; 12], 4, 3, 7, 2);
+        assert_eq!(flat.len(), 14);
+        for v in flat {
+            assert!((v - 0.4).abs() < 1e-12, "{v}");
+        }
+    }
+
+    #[test]
+    fn refinement_keeps_a_code_on_an_exact_tie() {
+        // Refinement accepts a move only on a strict improvement. On a solid
+        // image every AC value is zero and each channel's scale code is 0, so
+        // a scale move re-quantizes every AC value to the zero code, and an AC
+        // move at scale 0 adds nothing: each candidate reproduces the current
+        // pixels exactly and ties the running best. The strict `<` keeps the
+        // current code, so the hash is the unrefined one. A `<=` would take
+        // the tied candidate and write a different scale or AC code.
+        for (k, &(r, g, b)) in [(128u8, 64u8, 200u8), (30, 160, 90), (250, 250, 240)]
+            .iter()
+            .enumerate()
+        {
+            let rgba = solid(12, 8, r, g, b, 255);
+            let plain = encode_with(12, 8, &rgba, Gamut::Srgb, &Tunables::DEFAULT, 1);
+            for refine_scale in [true, false] {
+                for refine_obj in 0..4 {
+                    let t = Tunables {
+                        refine_passes: 1,
+                        refine_delta: 2,
+                        refine_dc: false,
+                        refine_scale,
+                        refine_obj,
+                        ..Tunables::DEFAULT
+                    };
+                    let got = encode_with(12, 8, &rgba, Gamut::Srgb, &t, 1);
+                    assert_eq!(
+                        got, plain,
+                        "colour {k}, scale {refine_scale}, obj {refine_obj}"
+                    );
+                }
+            }
+        }
+        // A DC move ties on black under the gamma-sRGB objective (obj 0): one
+        // L or chroma step from black lands every channel within 1e-6 of zero
+        // in linear light, which the 4096-point gamma LUT rounds back to 0.
+        let black = solid(12, 8, 0, 0, 0, 255);
+        let t = Tunables {
+            refine_passes: 1,
+            refine_dc: true,
+            refine_obj: 0,
+            ..Tunables::DEFAULT
+        };
+        assert_eq!(
+            encode_with(12, 8, &black, Gamut::Srgb, &t, 1),
+            encode_with(12, 8, &black, Gamut::Srgb, &Tunables::DEFAULT, 1)
+        );
+    }
+
+    #[test]
+    fn refinement_goldens() {
+        // `band_gain_refine_cfl_and_shared_scale_goldens` runs one pass at
+        // ±1. These pin the rest of the coordinate descent: several passes
+        // (the convergence break), ±2 moves for every code family, the
+        // decoder-raster target (`refine_grid = 1`, which resamples the
+        // source) on strips narrower than that raster, and scale refinement
+        // switched off.
+        let base = Tunables {
+            refine_passes: 3,
+            refine_delta: 2,
+            refine_dc: true,
+            refine_scale: true,
+            w_min_l: 0.6,
+            w_exp_l: 2,
+            ..Tunables::DEFAULT
+        };
+        let grid = Tunables {
+            refine_grid: 1,
+            ..base
+        };
+        let no_scale = Tunables {
+            refine_scale: false,
+            ..base
+        };
+        #[rustfmt::skip]
+        let cases: [(u32, u32, Tunables, [u8; 32]); 5] = [
+            (11, 9, base,
+                [8, 137, 206, 33, 240, 160, 22, 13, 129, 29, 147, 214, 152, 88, 98, 41, 97, 37, 209, 104, 34, 24, 115, 164, 24, 78, 91, 134, 109, 146, 168, 137]),
+            (11, 9, grid,
+                [8, 137, 81, 32, 240, 144, 72, 12, 193, 153, 225, 202, 96, 150, 150, 230, 88, 25, 166, 222, 24, 170, 138, 149, 56, 73, 2, 130, 50, 140, 80, 202]),
+            (1, 12, grid,
+                [8, 13, 86, 148, 177, 145, 84, 72, 233, 209, 24, 205, 222, 221, 221, 221, 221, 221, 221, 221, 157, 75, 82, 27, 181, 109, 67, 146, 144, 75, 181, 109]),
+            (12, 1, grid,
+                [8, 242, 61, 38, 236, 96, 81, 200, 110, 155, 13, 221, 233, 245, 221, 221, 221, 221, 221, 221, 157, 210, 112, 163, 54, 78, 91, 16, 8, 214, 150, 101]),
+            (11, 9, no_scale,
+                [8, 137, 208, 223, 240, 152, 202, 136, 192, 217, 110, 151, 13, 201, 221, 22, 93, 234, 213, 105, 45, 42, 79, 140, 20, 170, 12, 136, 164, 158, 184, 164]),
+        ];
+        for (k, (w, h, t, expected)) in cases.iter().enumerate() {
+            let rgba = lever_image(*w, *h, false, 40 + k as u32);
+            let got = encode_with(*w, *h, &rgba, Gamut::Srgb, t, 1);
+            assert_eq!(got.as_ref(), expected, "case {k}");
+            let plain = encode_with(*w, *h, &rgba, Gamut::Srgb, &Tunables::DEFAULT, 1);
+            assert_ne!(got, plain, "premise: case {k} refines something");
+        }
+        // With `b_scale_from_a` the b channel has no scale of its own, and
+        // scale refinement is skipped rather than moving a shared code.
+        let rgba = lever_image(11, 9, false, 49);
+        let shared = |t: Tunables| Tunables {
+            b_scale_from_a: true,
+            ..t
+        };
+        assert_eq!(
+            encode_with(11, 9, &rgba, Gamut::Srgb, &shared(base), 1),
+            encode_with(11, 9, &rgba, Gamut::Srgb, &shared(no_scale), 1)
+        );
+    }
 }
