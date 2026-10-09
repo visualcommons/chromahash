@@ -1163,6 +1163,62 @@ def validate_cross_implementation_constants():
     )
 
 
+def validate_pseudocode_ac_widths():
+    """Every AC width in spec/README.md's pseudocode comes from `acShape`.
+
+    The parity block above compares constants; it cannot see a width typed as
+    a literal into the §10/§11 pseudocode. That is how the alpha AC loops came
+    to read and write 4 bits each while every shipped row says 3: the width was
+    a number in the text rather than the row's `A_B`. So each AC loop
+    (`for i in 0 .. X_K-1`) must move `X_B` bits — `C_B` for both chroma
+    channels — and each `fitScale` must quantize at its channel's width, and
+    every width symbol used must be one `acShape` binds.
+    """
+    print("\n--- Spec pseudocode: AC widths come from acShape ---")
+    text = _read_source("spec/README.md")
+    if text is None:
+        check(False, "spec/README.md is readable")
+        return
+
+    channel_of = {"L_ac": "L", "a_ac": "C", "b_ac": "C", "A_ac": "A"}
+    width_args = re.compile(
+        r"(?:writeBits\(hash,\s*bitpos,\s*|readBits\(hash,\s*bitpos,\s*|bitpos \+= )(\w+)")
+    bad, loops, fits = [], 0, 0
+    for n, line in enumerate(text.splitlines(), 1):
+        loop = re.search(r"for i in 0 \.\. ([LCA])_K-1:", line)
+        if loop and ("writeBits" in line or "readBits" in line):
+            loops += 1
+            want = f"{loop.group(1)}_B"
+            got = set(width_args.findall(line))
+            # The quantizer's own width, not only the bits written or read:
+            # qAC(value, scale, WIDTH, MU) and muLawDequantize(code, WIDTH, MU).
+            got |= set(re.findall(r"qAC\([^()]*?,\s*(\w+),\s*MU_\w+\)", line))
+            got |= set(re.findall(r"muLawDequantize\(readBits\([^()]*\),\s*(\w+),", line))
+            if got != {want}:
+                bad.append(f"line {n}: AC loop moves {sorted(got)} bits, not {want}")
+        fit = re.search(r"fitScale\((\w+),.*,\s*(\w+)\)\s*$", line)
+        if fit and fit.group(1) in channel_of:
+            fits += 1
+            want = f"{channel_of[fit.group(1)]}_B"
+            if fit.group(2) != want:
+                bad.append(f"line {n}: fitScale({fit.group(1)}) quantizes at "
+                           f"{fit.group(2)}, not {want}")
+
+    bound = set()
+    for m in re.finditer(r"\(([^)]*)\)\s*=\s*acShape\(", text):
+        bound |= {s.strip() for s in m.group(1).split(",")}
+    used = set(re.findall(r"\b([LCA]_B)\b", text))
+    unbound = sorted(used - bound)
+
+    check(loops >= 8 and fits >= 4,
+          f"found the AC loops and fitScale calls to check "
+          f"({loops} loops, {fits} fitScale)")
+    check(not bad, "every AC loop and fitScale uses its channel's acShape width"
+          + ("" if not bad else " — " + "; ".join(bad)))
+    check(not unbound, "every AC width symbol is bound by acShape"
+          + ("" if not unbound else f" — unbound: {', '.join(unbound)}"))
+
+
 if __name__ == "__main__":
     print("ChromaHash Constants Validation")
     print("=" * 60)
@@ -1179,6 +1235,7 @@ if __name__ == "__main__":
     validate_length_formula()
     validate_against_vectors()
     validate_cross_implementation_constants()
+    validate_pseudocode_ac_widths()
 
     print(f"\n{'=' * 60}")
     print(f"Results: {passed} passed, {failed} failed")
