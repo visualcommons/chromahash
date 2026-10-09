@@ -120,6 +120,39 @@ const abs = (n: number): number => Math.abs(n);
  */
 const PARENTHESISED_DELTA = /\(([+−–—-]?[\d.]+)%\)/;
 
+/**
+ * Code 2's ΔE00 margin over the 107 B WebP row of §11.14, as a percentage of
+ * WebP's score. Shared by the two files that quote it. A function declaration
+ * rather than a const, because `cellOf` and the tables it reads are defined
+ * below the register and only called once the checks run.
+ */
+function marginOverWebp(t2: number): number {
+  const webp = cellOf("11.14", 0, "107.0", "ΔE00 ↓");
+  if (webp === null) throw new Error("§11.14 has no 107.0 B WebP row");
+  return ((webp - t2) / webp) * 100;
+}
+
+/**
+ * §7.10's paid CfL row against its `shipped` row, as a signed percentage. The
+ * table measures the paid row against a size-matched control; the +2.11% both
+ * files quote is against `shipped`, which only §7.10's prose states.
+ */
+function cflPaidOverShipped(paid: number): number {
+  const shipped = cellOf("7.10", 0, "shipped", "ΔE00");
+  if (shipped === null) throw new Error("§7.10 has no shipped row");
+  return ((paid - shipped) / shipped) * 100;
+}
+
+/**
+ * How far AVIF at ~1.6 kB leads code 4 on ΔE00 in §11.14, as a percentage of
+ * code 4's score — the "19%" §11.14's own prose gives, recomputed from cells.
+ */
+function avifLeadOverCode4(code4: number): number {
+  const avif = cellOf("11.14", 0, "1595.6", "ΔE00 ↓");
+  if (avif === null) throw new Error("§11.14 has no 1595.6 B AVIF row");
+  return ((code4 - avif) / code4) * 100;
+}
+
 const REGISTER: Claim[] = [
   // ── The v0.7 recipe's holdout verdict ────────────────────────────────────
   // Quoted in three places plus the Rust doc comment. §7.12's `L28C15 stack`
@@ -128,7 +161,7 @@ const REGISTER: Claim[] = [
     file: "README.md",
     what: "the v0.7 recipe on holdout",
     pattern:
-      /worth \*\*−([\d.]+)% mean ΔE00\*\* at the default tier on a never-tuned holdout/,
+      /worth \*\*−([\d.]+)% mean ΔE00\*\* at the default tier on the photographic holdout split/,
     section: "7.12",
     row: "**L28C15 stack**",
     column: "Δ%",
@@ -390,7 +423,8 @@ const REGISTER: Claim[] = [
   {
     file: "spec/RATIONALE.md",
     what: "the 4-bit layout on holdout",
-    pattern: /worth −([\d.]+)% mean ΔE00 on the\nnever-tuned holdout/,
+    pattern:
+      /worth −([\d.]+)% mean ΔE00 on the\nholdout split with every guard/,
     section: "4.5",
     row: "L28@4 C15@3",
     column: "Δ%",
@@ -435,11 +469,16 @@ const REGISTER: Claim[] = [
     // and it is the reason this claim is the one to revisit first if §11.14's
     // scores move. Quoting a second decimal in the README would restore the
     // margin.
-    transform: (t2) => {
-      const webp = cellOf("11.14", 0, "107.0", "ΔE00 ↓");
-      if (webp === null) throw new Error("§11.14 has no 107.0 B WebP row");
-      return ((webp - t2) / webp) * 100;
-    },
+    transform: marginOverWebp,
+  },
+  {
+    file: "spec/README.md",
+    what: "code 2 against size-matched WebP",
+    pattern: /beats size-matched WebP on\nΔE00 by ([\d.]+)%/,
+    section: "11.14",
+    row: "**108**",
+    column: "ΔE00 ↓",
+    transform: marginOverWebp,
   },
   // The spec's case against codes 3–4 at ~1.6 kB. It used to cite round 1's
   // §2 for "even uncoded RGB565 pixels score better than code 4", which §2's
@@ -474,7 +513,8 @@ const REGISTER: Claim[] = [
   {
     file: "spec/README.md",
     what: "the 4-bit layout on holdout",
-    pattern: /beat 26 at 5 by \*\*([\d.]+)% mean ΔE00\*\* on the never-tuned/,
+    pattern:
+      /beat 26 at 5 by \*\*([\d.]+)% mean ΔE00\*\* on the holdout\nsplit/,
     section: "4.5",
     row: "L28@4 C15@3",
     column: "Δ%",
@@ -537,13 +577,26 @@ const REGISTER: Claim[] = [
     column: "vs its own control",
     transform: abs,
   },
-  // The same sentence's other end. Not named in the issue that added this
-  // block, but it is the same cell column one row down, and leaving it unbound
-  // would gate half a range.
+  // The same sentence's other end, and the point between. §7.10's rows use the
+  // old tier numbering (see its head note): "tier 2" is 411 B, code 3, and
+  // "tier 3" is 1624 B, code 4. This entry used to bind "−0.90% at code 3" to
+  // the `tier 3 free` row and passed, because the gate compared the number and
+  // nothing compared the label: the quote had the right figure on the wrong
+  // tier. Each code is now bound in a pattern that names it, to the row that
+  // measures it.
   {
     file: "spec/README.md",
-    what: "CfL with free gains at code 3",
-    pattern: /ΔE00 at 32 B to −([\d.]+)% at code 3/,
+    what: "CfL with free gains at code 3 (411 B)",
+    pattern: /ΔE00 at 32 B, −([\d.]+)% at code 3/,
+    section: "7.10",
+    row: "tier 2 free",
+    column: "vs its own control",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "CfL with free gains at code 4 (1623 B)",
+    pattern: /at code 3 and −([\d.]+)% at code 4\. What refuses/,
     section: "7.10",
     row: "tier 3 free",
     column: "vs its own control",
@@ -562,11 +615,7 @@ const REGISTER: Claim[] = [
     // a size-matched control; the +2.11% is against the `shipped` row above it,
     // which only §7.10's prose states. Recomputed from the two cells, for the
     // same reason as §11.14's WebP margin: the cells are what the sweep emits.
-    transform: (paid) => {
-      const shipped = cellOf("7.10", 0, "shipped", "ΔE00");
-      if (shipped === null) throw new Error("§7.10 has no shipped row");
-      return ((paid - shipped) / shipped) * 100;
-    },
+    transform: cflPaidOverShipped,
   },
   // §11.9 states its best arm only in prose; the one table cell carrying it is
   // §9.5's re-source summary, whose `Wikimedia` column is the current figure.
@@ -589,6 +638,342 @@ const REGISTER: Claim[] = [
     row: "Scalefactor bands, best arm",
     column: "Wikimedia",
     transform: abs,
+  },
+
+  // ── Entropy coding, embedded tiers and the rest of the roadmap, again ────
+  // The 2026-10 audit found the spec's roadmap table still calling entropy
+  // coding "highest-impact … deferred deliberately" beside a summary that
+  // priced it at a few percent, the embedded-prefix cost quoted at 4.21% where
+  // §7.11 measures 4.15%, and RATIONALE.md's future-work list citing figures
+  // the current corpus never produced. None of those figures was registered,
+  // and none has the `% mean ΔE00` shape the scan below looks for, so every one
+  // of them could drift with this gate at exit 0. They are bound here.
+  //
+  // §7.13 states its ΔE00 headroom only in prose; §9.5's re-source table
+  // carries the same two figures as cells, as it does for the scalefactor arm
+  // above, and that is where these bind.
+  // No `abs`: the cell is a positive delta and the quote says "worse", so a
+  // sign flip in §7.11 fails here rather than agreeing in magnitude.
+  {
+    file: "spec/README.md",
+    what: "the 32 B interleaved prefix of a code-2 hash, against native code 1",
+    pattern: /score ([\d.]+)% worse ΔE00 than a native 32-byte encode/,
+    section: "7.11",
+    row: "first 32 B, interleaved",
+    column: "vs native tier 0 (11.481)",
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 32 B, in the roadmap table",
+    pattern: /\*\*−([\d.]+)% ΔE00\*\* at 32 B and \*\*−/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 32 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 108 B, in the roadmap table",
+    pattern: /at 32 B and \*\*−([\d.]+)%\*\* at 108 B/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 108 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 32 B, in the roadmap summary",
+    pattern: /entropy coding buys −([\d.]+)% at 32 B/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 32 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 108 B, in the roadmap summary",
+    pattern: /buys −[\d.]+% at 32 B and −([\d.]+)% at\n108 B/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 108 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 32 B, in §14.1",
+    pattern: /§7\.13: ([\d.]+)% at 32 B/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 32 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 108 B, in §14.1",
+    pattern: /at 32 B, ([\d.]+)%\nat 108 B, on tune/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 108 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "CfL with free gains at 32 B",
+    pattern: /given away free it is −([\d.]+)% ΔE00 at 32 B/,
+    section: "7.10",
+    row: "CfL free (gains not paid for)",
+    column: "vs its own control",
+    transform: abs,
+  },
+  // The old-numbering trap the spec's entry above records: `tier 2` is code 3.
+  {
+    file: "spec/RATIONALE.md",
+    what: "CfL with free gains at code 3 (411 B)",
+    pattern: /ΔE00 at 32 B, −([\d.]+)% at\n\s*code 3/,
+    section: "7.10",
+    row: "tier 2 free",
+    column: "vs its own control",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "CfL with free gains at code 4 (1623 B)",
+    pattern: /code 3 and −([\d.]+)% at code 4 — but/,
+    section: "7.10",
+    row: "tier 3 free",
+    column: "vs its own control",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "CfL with paid gains at 32 B, against the shipped layout",
+    pattern: /signals it costs\n\s*(\+[\d.]+)% at 32 B/,
+    section: "7.10",
+    row: "CfL paid, L24@5 C9@4",
+    column: "ΔE00",
+    transform: cflPaidOverShipped,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the leave-one-image-out coder's AC-bit saving at 32 B",
+    pattern: /saves ([\d.]+)% of the AC bits at 32 B/,
+    section: "7.13",
+    row: "**per-index context backing off to order-0, LOO**",
+    column: "vs fixed",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "entropy coding's ΔE00 headroom at 32 B",
+    pattern: /coefficients that is −([\d.]+)% ΔE00 at 32 B/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 32 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "entropy coding's ΔE00 headroom at 108 B",
+    pattern: /ΔE00 at 32 B and −([\d.]+)% at 108 B \(`EXPERIMENTS/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 108 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "entropy coding's ΔE00 headroom at 108 B, in future work",
+    pattern: /measured only up to code 2, at −([\d.]+)%/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 108 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "AVIF's ΔE00 lead over code 4 at ~1.6 kB",
+    pattern: /AVIF by ([\d.]+)% on ΔE00/,
+    section: "11.14",
+    row: "1623",
+    column: "ΔE00 ↓",
+    transform: avifLeadOverCode4,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the best scalefactor-band arm, in Quantization",
+    pattern: /current corpus its best arm is −([\d.]+)% ΔE00 at code 1/,
+    section: "9.5",
+    row: "Scalefactor bands, best arm",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the best scalefactor-band arm, in the codec audit",
+    pattern: /framings\): −([\d.]+)% at code 1 on the current corpus/,
+    section: "9.5",
+    row: "Scalefactor bands, best arm",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the best scalefactor-band arm, in future work",
+    pattern: /The current figure\n\s*is −([\d.]+)% ΔE00 for the best arm/,
+    section: "9.5",
+    row: "Scalefactor bands, best arm",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the 32 B interleaved prefix, in Architecture",
+    pattern: /interleaved code-2 hash\nscore (\+[\d.]+)% ΔE00/,
+    section: "7.11",
+    row: "first 32 B, interleaved",
+    column: "vs native tier 0 (11.481)",
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the 32 B interleaved prefix, in the codec audit",
+    pattern: /code-2 hash is (\+[\d.]+)% ΔE00 against native code 1/,
+    section: "7.11",
+    row: "first 32 B, interleaved",
+    column: "vs native tier 0 (11.481)",
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the 32 B interleaved prefix, in future work",
+    pattern: /interleaved code-2 hash score (\+[\d.]+)% ΔE00/,
+    section: "7.11",
+    row: "first 32 B, interleaved",
+    column: "vs native tier 0 (11.481)",
+  },
+
+  // ── The holdout2 confirmations (register C1, C2) ─────────────────────────
+  // #120 read the sealed splits once and recorded the outcome in §13.7: the
+  // old holdout's −3.72% replicates in direction at about three-fifths of its
+  // size, and the three alpha replacements replicate out of sample. The files
+  // that quoted the spent holdout now quote these beside it. §13.7's tables
+  // are, in order: C1 (0), the compact tier against ThumbHash (1), C2 at codes
+  // 1 and 0 (2), and C2 at code 2 (3).
+  //
+  // The 2.18% that the same sentences give for "the shipped constants are
+  // better" is §13.7's prose, and is not bound: from the table's rounded
+  // cells it recomputes to 2.17 (0.258 / 11.875), outside the tolerance two
+  // decimal places buy. The 2.22% beside it is the cell, and is bound.
+  // Signed and without `abs`: the claim is that the old row is *worse*.
+  {
+    file: "spec/README.md",
+    what: "the pre-adoption row on holdout2, as the range's upper end",
+    pattern: /measures \*\*[\d.]+–([\d.]+)%\*\*/,
+    section: "13.7",
+    table: 0,
+    row: "code 1: pre-adoption v0.6-derived vs shipped",
+    column: "relative",
+  },
+  {
+    file: "spec/README.md",
+    what: "the pre-adoption row on holdout2",
+    pattern: /the pre-adoption row ([\d.]+)% worse/,
+    section: "13.7",
+    table: 0,
+    row: "code 1: pre-adoption v0.6-derived vs shipped",
+    column: "relative",
+  },
+  {
+    file: "README.md",
+    what: "the pre-adoption row on holdout2, as the range's upper end",
+    pattern: /measures [\d.]+–([\d.]+)% \(the/,
+    section: "13.7",
+    table: 0,
+    row: "code 1: pre-adoption v0.6-derived vs shipped",
+    column: "relative",
+  },
+  {
+    file: "README.md",
+    what: "the pre-adoption row on holdout2",
+    pattern: /the pre-adoption row is ([\d.]+)% worse/,
+    section: "13.7",
+    table: 0,
+    row: "code 1: pre-adoption v0.6-derived vs shipped",
+    column: "relative",
+  },
+  {
+    file: "spec/README.md",
+    what: "the code-1 alpha row on alpha holdout v2",
+    pattern:
+      /measures the row at \*\*−([\d.]+)% mean ΔE00\*\* out of\n\s*sample/,
+    section: "13.7",
+    table: 2,
+    row: "code 1: `A28@3 L22@4 C3@3` vs `A5@4 L20@5 C9@4`",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "README.md",
+    what: "the code-1 alpha row on alpha holdout v2",
+    pattern: /measures the row at \*\*−([\d.]+)% mean ΔE00\*\* out of sample/,
+    section: "13.7",
+    table: 2,
+    row: "code 1: `A28@3 L22@4 C3@3` vs `A5@4 L20@5 C9@4`",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the code-1 alpha row on alpha holdout v2",
+    pattern: /measures the row at −([\d.]+)% mean ΔE00 out of sample/,
+    section: "13.7",
+    table: 2,
+    row: "code 1: `A28@3 L22@4 C3@3` vs `A5@4 L20@5 C9@4`",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the compact alpha row on alpha holdout v2",
+    pattern: /alpha rows at −([\d.]+)% and −[\d.]+%; all three/,
+    section: "13.7",
+    table: 2,
+    row: "code 0: `A16@3 L12@4 C1@3` vs the old compact shape",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the code-2 alpha row on alpha holdout v2",
+    pattern: /alpha rows at −[\d.]+% and −([\d.]+)%; all three/,
+    section: "13.7",
+    table: 3,
+    row: "code 2: the shipped base row vs `A5@4 L20@5 C9@4`",
+    column: "relative",
+    transform: abs,
+  },
+
+  // ── The synthesis window at code 2, §12.3 ────────────────────────────────
+  // RATIONALE.md quoted the lightest taper's paired interval as
+  // [−0.030, +0.011]; #123's 10,000-resample re-derivation moved the lower
+  // bound to −0.028 and nothing noticed, because an interval is not a shape
+  // the scan below looks for. Each bound is now its own claim.
+  {
+    file: "spec/RATIONALE.md",
+    what: "the lightest code-2 taper's paired CI, lower bound",
+    pattern: /a paired CI of\n\[−([\d.]+), \+[\d.]+\]/,
+    section: "12.3",
+    row: "t2 w_min 0.85 exp 1",
+    column: "paired 95% CI",
+    cellPattern: /^\[([+−–—-]?[\d.]+),/,
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the lightest code-2 taper's paired CI, upper bound",
+    pattern: /a paired CI of\n\[−[\d.]+, \+([\d.]+)\]/,
+    section: "12.3",
+    row: "t2 w_min 0.85 exp 1",
+    column: "paired 95% CI",
+    cellPattern: /, ([+−–—-]?[\d.]+)\]$/,
   },
 ];
 
