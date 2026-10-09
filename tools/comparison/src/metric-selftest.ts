@@ -2213,18 +2213,41 @@ console.log(
   "\nverify-benchmark — tolerance, supplements, hosts, provenance, pairs\n",
 );
 
-/** A chromahash-perf/3 run: cells with an interval, pairs and aliases. */
+/** A quiet host's preflight for a run of `rounds` process rounds. */
+const quietPreflight = (
+  rounds = 4,
+): NonNullable<RunDoc["environment"]["preflight"]> => ({
+  loaded: false,
+  maxLoad: 1,
+  loadavgStart: [0.3, 0.4, 0.5],
+  loadavgRounds: Array.from({ length: rounds }, () => [0.4, 0.4, 0.5]),
+  loadavgEnd: [0.9, 0.5, 0.5],
+});
+
+/**
+ * A chromahash-perf/3 run the gate takes as a baseline: four processes of five
+ * blocks, a quiet preflight, a traceable git block. Cells carry an interval,
+ * and the run can carry pairs and aliases. An `environment` override is merged
+ * over the default, preflight included unless it names its own.
+ */
 function run3(
   file: string,
   cells: Record<string, { us: number; ci?: [number, number] }>,
   overrides: Partial<RunDoc> = {},
 ): RunDoc {
+  const { environment, ...rest } = overrides;
   return {
     file,
     schema: "chromahash-perf/3",
     git: { commit: "abc1234", dirty: false, digest: "d".repeat(64) },
-    environment: { cpuModel: "fixture", arch: "x64", cores: 1 },
-    config: { mode: "bounded", reps: 5, processes: 3 },
+    environment: {
+      cpuModel: "fixture",
+      arch: "x64",
+      cores: 1,
+      ...environment,
+      preflight: environment?.preflight ?? quietPreflight(),
+    },
+    config: { mode: "bounded", reps: 5, processes: 4 },
     cells: Object.entries(cells).map(([id, c]) => ({
       id,
       nsPerOp: c.us * 1000,
@@ -2234,7 +2257,7 @@ function run3(
       iters: 1,
       ...(c.ci ? { ci95NsPerOp: [c.ci[0] * 1000, c.ci[1] * 1000] } : {}),
     })) as RunDoc["cells"],
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -2388,7 +2411,7 @@ for (const order of ["full first", "bounded first"] as const) {
       "encode/Rust/t1/100x100/gradient": { us: 2300 },
       "encode/Rust/t3/100x100/gradient": { us: 40000 },
     },
-    { config: { mode: "full", reps: 5, processes: 3 } },
+    { config: { mode: "full", reps: 5, processes: 4 } },
   );
   const R = new Runs(
     order === "full first" ? [full, bounded] : [bounded, full],
@@ -2412,7 +2435,7 @@ for (const order of ["full first", "bounded first"] as const) {
     run3(
       "perf-report-full.json",
       { "encode/Rust/t3/100x100/gradient": { us: 40000 } },
-      { config: { mode: "full", reps: 5, processes: 3 } },
+      { config: { mode: "full", reps: 5, processes: 4 } },
     ),
   ]);
   check(
@@ -2498,7 +2521,7 @@ for (const order of ["full first", "bounded first"] as const) {
           cpuModel: "fixture",
           arch: "x64",
           cores: 1,
-          preflight: { loaded: true },
+          preflight: { ...quietPreflight(), loaded: true },
         },
       },
     ),
@@ -2518,11 +2541,114 @@ for (const order of ["full first", "bounded first"] as const) {
   ]);
   check(
     "a run forced past the load bar, a --quick run, and a host mixing run formats all fail",
-    runFailures(loaded).some((f) => f.column === "preflight.loaded") &&
+    runFailures(loaded).some((f) => f.column === "preflight.load") &&
       quick.loaded.length === 0 &&
       (quick.rejected[0] ?? "").includes("smoke test") &&
+      runFailures(quick).some((f) => f.column === "run") &&
       runFailures(mixed).some((f) => f.column === "schema"),
     `loaded=${details(runFailures(loaded))} quick=${JSON.stringify(quick.rejected)} mixed=${details(runFailures(mixed))}`,
+  );
+}
+
+// V5b. The load bar is the gate's, recomputed from the run's own cores and held
+//      to every reading. `--max-load 50` does not move it, a run that starts
+//      quiet and turns loaded fails, and a /3 run that does not record its
+//      sampling, its source or its host is not read at all — and its absence
+//      is a failure, not a print. A /2 run predates all of it.
+{
+  const on16 = (preflight: NonNullable<RunDoc["environment"]["preflight"]>) =>
+    run3(
+      "perf-report.json",
+      { a: { us: 1 } },
+      {
+        environment: { cpuModel: "fixture", arch: "x64", cores: 16, preflight },
+      },
+    );
+  const quiet = quietPreflight();
+  const loadFails = (pf: NonNullable<RunDoc["environment"]["preflight"]>) =>
+    runFailures(new Runs([on16(pf)])).filter(
+      (f) => f.column === "preflight.load",
+    );
+  const raised = loadFails({
+    ...quiet,
+    maxLoad: 50,
+    loadavgStart: [10.5, 9, 8],
+  });
+  const turned = loadFails({
+    ...quiet,
+    loadavgRounds: [
+      [0.5, 0.5, 0.5],
+      [0.6, 0.5, 0.5],
+      [6.1, 2, 1],
+      [0.7, 1, 1],
+    ],
+  });
+  const atBar = loadFails({ ...quiet, loadavgStart: [2, 2, 2] });
+  const truncated = loadFails({ ...quiet, loadavgRounds: [[0.5, 0.5, 0.5]] });
+  const unreadLoad = loadFails({
+    ...quiet,
+    loadavgRounds: [null, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]],
+  });
+  const endIgnored = loadFails({ ...quiet, loadavgEnd: [14, 6, 3] });
+  const rejectedFor = (o: Partial<RunDoc>, drop?: "preflight"): string => {
+    const full = run3("perf-report-2.json", { a: { us: 1 } }, o);
+    const { preflight: _dropped, ...bare } = full.environment;
+    const doc = drop ? { ...full, environment: bare } : full;
+    const R = new Runs([doc]);
+    return R.loaded.length === 0 &&
+      runFailures(R).some((f) => f.column === "run")
+      ? (R.rejected[0] ?? "")
+      : "";
+  };
+  const thin = rejectedFor({
+    config: { mode: "bounded", reps: 5, processes: 3 },
+  });
+  const odd = rejectedFor({
+    config: { mode: "bounded", reps: 5, processes: 5 },
+  });
+  const fewBlocks = rejectedFor({
+    config: { mode: "bounded", reps: 4, processes: 4 },
+  });
+  const noDigest = rejectedFor({ git: { commit: "abc1234", dirty: false } });
+  const noGit = rejectedFor({ git: undefined as unknown as RunDoc["git"] });
+  const noPreflight = rejectedFor({}, "preflight");
+  const six = new Runs([
+    run3(
+      "perf-report.json",
+      { a: { us: 1 } },
+      {
+        config: { mode: "bounded", reps: 7, processes: 6 },
+        environment: {
+          cpuModel: "fixture",
+          arch: "x64",
+          cores: 1,
+          preflight: quietPreflight(6),
+        },
+      },
+    ),
+  ]);
+  const legacy = new Runs([fixtureRun("perf-report.json", ["a"])]);
+  check(
+    "the load bar is recomputed and held to every round, and a /3 run missing its sampling, git or preflight record is rejected as a failure",
+    raised.length === 1 &&
+      (raised[0]?.detail ?? "").includes("10.50 at the start") &&
+      turned.length === 1 &&
+      (turned[0]?.detail ?? "").includes("round 3") &&
+      atBar.length === 0 &&
+      truncated.length === 1 &&
+      unreadLoad.length === 1 &&
+      endIgnored.length === 0 &&
+      thin.includes("3 process(es)") &&
+      odd.includes("5 process(es)") &&
+      fewBlocks.includes("4 block(s)") &&
+      noDigest.includes("source digest") &&
+      noGit.includes("source digest") &&
+      noPreflight.includes("no preflight") &&
+      six.loaded.length === 1 &&
+      runFailures(six).length === 0 &&
+      legacy.loaded.length === 1 &&
+      runFailures(legacy).length === 0,
+    `raised=${details(raised)} turned=${details(turned)} atBar=${atBar.length} truncated=${truncated.length} unread=${unreadLoad.length} end=${endIgnored.length} thin=${thin} odd=${odd} few=${fewBlocks} noDigest=${noDigest} noGit=${noGit} noPreflight=${noPreflight} six=${details(runFailures(six))}`,
   );
 }
 
@@ -2649,9 +2775,14 @@ for (const order of ["full first", "bounded first"] as const) {
       false,
     ],
     [
-      "legacy, no digest",
-      judgeProvenance({ commit: "e53e6cd" }, view({})).status,
+      "legacy format, no digest",
+      judgeProvenance({ commit: "e53e6cd" }, view({}), true).status,
       false,
+    ],
+    [
+      "current format, no digest",
+      judgeProvenance({ commit: "abc1234", digest: null }, view({})).status,
+      true,
     ],
   ];
   const want = [
@@ -2661,13 +2792,14 @@ for (const order of ["full first", "bounded first"] as const) {
     "unresolved",
     "shallow",
     "legacy",
+    "unrecorded",
   ];
   const wrong = cases.filter(
     ([, status, fails], i) =>
       status !== want[i] || provenanceFails({ status, detail: "" }) !== fails,
   );
   check(
-    "provenance passes by commit or by digest, fails on a mismatch or untraceable sources, and reports legacy and shallow",
+    "provenance passes by commit or by digest, fails on a mismatch, untraceable sources or a missing digest, and reports legacy and shallow",
     wrong.length === 0,
     wrong.length === 0
       ? `${cases.length} cases`

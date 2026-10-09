@@ -12,7 +12,7 @@
  * table bindings and the exit status stay in the CLI.
  */
 
-import { hostKey } from "./perf/host.ts";
+import { defaultMaxLoad, hostKey } from "./perf/host.ts";
 
 // ─── The document, as tables ────────────────────────────────────────────────
 
@@ -267,6 +267,20 @@ export const TOLERANCE = 0.05;
 export const SHARE_FLOOR_POINTS = 0.5;
 
 /**
+ * The least sampling a chromahash-perf/3 run may have and still be a baseline.
+ *
+ * Four processes, an even count: a paired ratio is estimated over AB/BA blocks
+ * of two rounds (`perf/probe.ts`), so an odd count leaves a round out, and with
+ * fewer than four a cell's range across processes holds its median less often
+ * than seven times in eight. Five blocks per process is the driver's default;
+ * fewer and a process's minimum is a small sample of what it could have seen.
+ * The driver lets either be lowered for a smoke test; the gate does not take
+ * the result.
+ */
+export const MIN_PROCESSES = 4;
+export const MIN_REPS = 5;
+
+/**
  * The sweep mode §0's stability claim is about: two independent `bounded`
  * sweeps at one commit. A `full` run is a supplement holding only ids the
  * bounded matrix does not, so it shares no cell with either.
@@ -321,7 +335,13 @@ export interface RunDoc {
     arch: string;
     cores: number;
     os?: string;
-    preflight?: { loaded?: boolean; loadavgStart?: number[] | null };
+    preflight?: {
+      loaded?: boolean;
+      maxLoad?: number;
+      loadavgStart?: number[] | null;
+      loadavgRounds?: (number[] | null)[];
+      loadavgEnd?: number[] | null;
+    };
   };
   config: { mode: string; reps: number; processes?: number };
   cells: Cell[];
@@ -378,6 +398,83 @@ export function hostKeyOf(env: RunDoc["environment"] | undefined): string {
 
 const targetOf = (id: string): string => id.split("/")[1] ?? "";
 
+/**
+ * Why a chromahash-perf/3 run cannot be a baseline at all, or null. A /3 run
+ * must say what it sampled, where it came from and what the host was doing, or
+ * the rules that read those fields pass it by default: a run with no `git`
+ * block was neither dirty nor untraceable, and one with no preflight was never
+ * loaded. /2 predates every one of these fields and is exempt.
+ */
+export function unreadable(doc: RunDoc): string | null {
+  if (doc.schema !== SCHEMA) return null;
+  const processes = doc.config?.processes;
+  const reps = doc.config?.reps;
+  if (
+    processes === undefined ||
+    processes < MIN_PROCESSES ||
+    processes % 2 !== 0
+  ) {
+    return `${processes ?? "no"} process(es) per cell; a baseline needs an even count of at least ${MIN_PROCESSES} — regenerate with the driver's defaults`;
+  }
+  if (reps === undefined || reps < MIN_REPS) {
+    return `${reps ?? "no"} block(s) per process; a baseline needs at least ${MIN_REPS} — regenerate with the driver's defaults`;
+  }
+  const g = doc.git;
+  if (
+    !g ||
+    typeof g.commit !== "string" ||
+    g.commit === "" ||
+    g.commit === "unknown" ||
+    typeof g.digest !== "string" ||
+    typeof g.dirty !== "boolean"
+  ) {
+    return "no git commit, source digest and dirty bit recorded, so the run cannot be traced to a source state";
+  }
+  if (!doc.environment?.preflight) {
+    return "no preflight recorded, so nothing says the host was quiet";
+  }
+  return null;
+}
+
+/**
+ * Why a chromahash-perf/3 run was taken on a loaded host, or null.
+ *
+ * The bar is recomputed from the run's own core count, not read from it: the
+ * driver's `--max-load` moves the bar it refuses at, and a run started under
+ * `--max-load 50` was never `loaded` by its own account. Every reading is held
+ * to it — the start and the start of every process round — so a run that
+ * started quiet and became loaded fails too. The end reading is not: it trails
+ * the run's own last minutes, batch cells included.
+ */
+export function loadProblem(doc: RunDoc): string | null {
+  if (doc.schema !== SCHEMA) return null;
+  const p = doc.environment?.preflight;
+  if (!p) return null;
+  if (p.loaded) {
+    return "taken with --force-loaded above the load bar";
+  }
+  const bar = defaultMaxLoad(doc.environment.cores);
+  const rounds = p.loadavgRounds ?? [];
+  const processes = doc.config?.processes ?? 0;
+  if (rounds.length < processes) {
+    return `load recorded for ${rounds.length} of its ${processes} process rounds`;
+  }
+  const readings: [string, number[] | null | undefined][] = [
+    ["the start", p.loadavgStart],
+    ...rounds.map((l, i): [string, number[] | null] => [`round ${i + 1}`, l]),
+  ];
+  for (const [at, l] of readings) {
+    const load1 = l?.[0];
+    if (load1 === undefined || !Number.isFinite(load1)) {
+      return `no load average recorded at ${at}, so nothing says the host was quiet then`;
+    }
+    if (load1 > bar) {
+      return `1-minute load ${load1.toFixed(2)} at ${at}, above the bar of ${bar.toFixed(2)} for ${doc.environment.cores} threads`;
+    }
+  }
+  return null;
+}
+
 /** Lookup order inside one host: the bounded runs as listed, then the supplement. */
 const modeRank = (d: RunDoc): number =>
   d.config?.mode === STABILITY_MODE
@@ -429,7 +526,7 @@ export class Runs {
   readonly overlaps: string[] = [];
   /** A run filed under a host directory its environment does not match. */
   readonly misfiled: string[] = [];
-  /** A run the driver was forced to take on a loaded host. */
+  /** A run taken on a loaded host, by its own record (`loadProblem`). */
   readonly loadedRuns: string[] = [];
   readonly dirty: string[] = [];
   /** Runs rejected outright, with the reason. */
@@ -480,6 +577,11 @@ export class Runs {
         );
         continue;
       }
+      const why = unreadable(doc);
+      if (why !== null) {
+        this.rejected.push(`${file}: ${why}`);
+        continue;
+      }
       const own = hostKeyOf(doc.environment);
       const hostDir = doc.hostDir ?? own;
       if (hostDir !== own) {
@@ -518,7 +620,8 @@ export class Runs {
       const key = this.runKey(doc);
       this.loaded.push(doc);
       if (doc.git?.dirty) this.dirty.push(key);
-      if (doc.environment?.preflight?.loaded) this.loadedRuns.push(key);
+      const loadedBy = loadProblem(doc);
+      if (loadedBy !== null) this.loadedRuns.push(`${key}: ${loadedBy}`);
       for (const [alias, id] of Object.entries(doc.aliases ?? {})) {
         if (!this.aliases.has(alias)) this.aliases.set(alias, id);
       }
@@ -788,12 +891,22 @@ export function runFailures(R: Runs): Failure[] {
     "misfiled",
   );
   add(
-    "preflight.loaded",
-    "a run started below the load bar",
+    "preflight.load",
+    "every round started below the load bar",
     R.loadedRuns,
-    (f) =>
-      `${f} was taken with --force-loaded above the load bar, so it is about the host's other work — re-run on a quiet host`,
+    (s) =>
+      `${s} — so its figures are about the host's other work; re-run on a quiet host (benchmark:session waits for one)`,
     "loaded",
+  );
+  // A run the gate would not read is a baseline that is not there. Printing it
+  // and carrying on let a --quick or a /1 run sit in perf-report-2.json while
+  // the stability check reported one run committed and §0 said so.
+  add(
+    "run",
+    "a run the gate can read as a baseline",
+    R.rejected,
+    (s) => s,
+    "rejected",
   );
   for (const [host, list] of R.hosts) {
     const schemas = new Set(list.map((d) => d.schema));

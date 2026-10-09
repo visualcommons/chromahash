@@ -58,6 +58,7 @@ import {
   DECODE_STAGES_BASELINE,
   type Estimate,
   type Failure,
+  LEGACY_SCHEMA,
   type ProseClaim,
   type ProseEdit,
   type Resolve,
@@ -1299,7 +1300,11 @@ if (!values.section || values.section === "0") {
 const view = gitView(REPO_ROOT);
 console.log("\nProvenance:");
 for (const r of runs.loaded) {
-  const v = judgeProvenance(r.git ?? { commit: "(none)" }, view);
+  const v = judgeProvenance(
+    r.git ?? { commit: "(none)" },
+    view,
+    r.schema === LEGACY_SCHEMA,
+  );
   console.log(
     `  ${v.status.toUpperCase().padEnd(10)} ${r.hostDir}/${r.file}: ${v.detail}`,
   );
@@ -1324,9 +1329,13 @@ for (const [file, stages] of [
     const key = `${cell.git?.rev}|${cell.git?.digest ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    // A stage cell recorded before digests is legacy: the stage schema did
+    // not change when the recorder started writing one. A new cell without a
+    // digest is caught by the landing rule below, which needs HEAD's.
     const v = judgeProvenance(
       { commit: cell.git?.rev ?? "(none)", digest: cell.git?.digest ?? null },
       view,
+      true,
     );
     console.log(`  ${v.status.toUpperCase().padEnd(10)} ${file}: ${v.detail}`);
     if (provenanceFails(v)) {

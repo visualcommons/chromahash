@@ -14,7 +14,9 @@
  *   --full          the cells only the exhaustive matrix has; a supplement to
  *                   the bounded run, never an override (plan.ts)
  *   --processes P   independent processes per cell, interleaved round-robin
- *                   across cells (default 3; 1 for --quick)
+ *                   across cells (default 4; 1 for --quick). The gate takes
+ *                   an even count of at least 4 as a baseline, and at least
+ *                   5 blocks (--reps); fewer is for smoke tests
  *   --reps N        timed blocks per process (default 5; 1 for --quick)
  *   --pin CPULIST   run every harness under `taskset -c CPULIST`
  *   --max-load L    refuse to start above this 1-minute load average
@@ -100,7 +102,12 @@ const FULL = flag("--full") && !QUICK;
 const MODE: Mode = QUICK ? "quick" : FULL ? "full" : "bounded";
 const MAX_CELL_MS = int("--max-cell-ms", 5000);
 const REPS = int("--reps", QUICK ? 1 : 5);
-const PROCESSES = int("--processes", QUICK ? 1 : 3);
+const PROCESSES = int("--processes", QUICK ? 1 : 4);
+if (!QUICK && (PROCESSES < 4 || PROCESSES % 2 !== 0 || REPS < 5)) {
+  process.stderr.write(
+    `perf: WARNING ${PROCESSES} process(es) x ${REPS} block(s): verify:benchmark takes a run as a baseline only with an even process count of at least 4 and at least 5 blocks\n`,
+  );
+}
 const PIN = value("--pin");
 const FORCE_LOADED = flag("--force-loaded");
 const GATE_MAX_LOAD = defaultMaxLoad(os.cpus().length);

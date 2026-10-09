@@ -132,6 +132,8 @@ export type ProvenanceStatus =
   | "digest"
   /** No digest recorded — a run from before digests. Reported, never failed. */
   | "legacy"
+  /** No digest recorded by a format that always records one. */
+  | "unrecorded"
   /** Cannot search: a shallow clone. Reported as a skip. */
   | "shallow"
   /** The commit is reachable and its sources do not match the digest. */
@@ -146,17 +148,22 @@ export interface ProvenanceVerdict {
 
 /** Whether a verdict fails the gate. */
 export const provenanceFails = (v: ProvenanceVerdict): boolean =>
-  v.status === "mismatch" || v.status === "unresolved";
+  v.status === "mismatch" ||
+  v.status === "unresolved" ||
+  v.status === "unrecorded";
 
 /**
  * The rule §0 states. A recorded digest is checked against the recorded commit
  * when that commit is an ancestor of HEAD, and otherwise searched for in HEAD's
- * history. A run with no digest predates the rule: the gate says what it could
- * and could not establish and does not fail it.
+ * history. A run with no digest predates the rule — but only a run whose format
+ * predates it (`legacy: true`) may say so: the gate says what it could and
+ * could not establish about one and does not fail it. Any other run without a
+ * digest is `unrecorded`, and fails.
  */
 export function judgeProvenance(
   rec: { commit: string; digest?: string | null },
   view: GitView,
+  legacy = false,
 ): ProvenanceVerdict {
   const search = (digest: string): string | null => {
     for (const c of view.history()) {
@@ -166,6 +173,12 @@ export function judgeProvenance(
   };
   const ancestor = view.isAncestor(rec.commit);
 
+  if (!rec.digest && !legacy) {
+    return {
+      status: "unrecorded",
+      detail: `no source digest recorded for commit ${rec.commit}, and this run's format always records one — it cannot be traced after a squash merge; regenerate it`,
+    };
+  }
   if (!rec.digest) {
     if (ancestor === true) {
       return {
