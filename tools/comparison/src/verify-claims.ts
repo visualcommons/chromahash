@@ -120,6 +120,29 @@ const abs = (n: number): number => Math.abs(n);
  */
 const PARENTHESISED_DELTA = /\(([+−–—-]?[\d.]+)%\)/;
 
+/**
+ * Code 2's ΔE00 margin over the 107 B WebP row of §11.14, as a percentage of
+ * WebP's score. Shared by the two files that quote it. A function declaration
+ * rather than a const, because `cellOf` and the tables it reads are defined
+ * below the register and only called once the checks run.
+ */
+function marginOverWebp(t2: number): number {
+  const webp = cellOf("11.14", 0, "107.0", "ΔE00 ↓");
+  if (webp === null) throw new Error("§11.14 has no 107.0 B WebP row");
+  return ((webp - t2) / webp) * 100;
+}
+
+/**
+ * §7.10's paid CfL row against its `shipped` row, as a signed percentage. The
+ * table measures the paid row against a size-matched control; the +2.11% both
+ * files quote is against `shipped`, which only §7.10's prose states.
+ */
+function cflPaidOverShipped(paid: number): number {
+  const shipped = cellOf("7.10", 0, "shipped", "ΔE00");
+  if (shipped === null) throw new Error("§7.10 has no shipped row");
+  return ((paid - shipped) / shipped) * 100;
+}
+
 const REGISTER: Claim[] = [
   // ── The v0.7 recipe's holdout verdict ────────────────────────────────────
   // Quoted in three places plus the Rust doc comment. §7.12's `L28C15 stack`
@@ -435,11 +458,16 @@ const REGISTER: Claim[] = [
     // and it is the reason this claim is the one to revisit first if §11.14's
     // scores move. Quoting a second decimal in the README would restore the
     // margin.
-    transform: (t2) => {
-      const webp = cellOf("11.14", 0, "107.0", "ΔE00 ↓");
-      if (webp === null) throw new Error("§11.14 has no 107.0 B WebP row");
-      return ((webp - t2) / webp) * 100;
-    },
+    transform: marginOverWebp,
+  },
+  {
+    file: "spec/README.md",
+    what: "code 2 against size-matched WebP",
+    pattern: /beats size-matched WebP on\nΔE00 by ([\d.]+)%/,
+    section: "11.14",
+    row: "**108**",
+    column: "ΔE00 ↓",
+    transform: marginOverWebp,
   },
   // The spec's case against codes 3–4 at ~1.6 kB. It used to cite round 1's
   // §2 for "even uncoded RGB565 pixels score better than code 4", which §2's
@@ -538,13 +566,26 @@ const REGISTER: Claim[] = [
     column: "vs its own control",
     transform: abs,
   },
-  // The same sentence's other end. Not named in the issue that added this
-  // block, but it is the same cell column one row down, and leaving it unbound
-  // would gate half a range.
+  // The same sentence's other end, and the point between. §7.10's rows use the
+  // old tier numbering (see its head note): "tier 2" is 411 B, code 3, and
+  // "tier 3" is 1624 B, code 4. This entry used to bind "−0.90% at code 3" to
+  // the `tier 3 free` row and passed, because the gate compared the number and
+  // nothing compared the label: the quote had the right figure on the wrong
+  // tier. Each code is now bound in a pattern that names it, to the row that
+  // measures it.
   {
     file: "spec/README.md",
-    what: "CfL with free gains at code 3",
-    pattern: /ΔE00 at 32 B to −([\d.]+)% at code 3/,
+    what: "CfL with free gains at code 3 (411 B)",
+    pattern: /ΔE00 at 32 B, −([\d.]+)% at code 3/,
+    section: "7.10",
+    row: "tier 2 free",
+    column: "vs its own control",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "CfL with free gains at code 4 (1623 B)",
+    pattern: /at code 3 and −([\d.]+)% at code 4\. What refuses/,
     section: "7.10",
     row: "tier 3 free",
     column: "vs its own control",
@@ -563,11 +604,7 @@ const REGISTER: Claim[] = [
     // a size-matched control; the +2.11% is against the `shipped` row above it,
     // which only §7.10's prose states. Recomputed from the two cells, for the
     // same reason as §11.14's WebP margin: the cells are what the sweep emits.
-    transform: (paid) => {
-      const shipped = cellOf("7.10", 0, "shipped", "ΔE00");
-      if (shipped === null) throw new Error("§7.10 has no shipped row");
-      return ((paid - shipped) / shipped) * 100;
-    },
+    transform: cflPaidOverShipped,
   },
   // §11.9 states its best arm only in prose; the one table cell carrying it is
   // §9.5's re-source summary, whose `Wikimedia` column is the current figure.
@@ -588,6 +625,83 @@ const REGISTER: Claim[] = [
       /frequency-weighted quantization is −([\d.]+)% and below threshold/,
     section: "9.5",
     row: "Scalefactor bands, best arm",
+    column: "Wikimedia",
+    transform: abs,
+  },
+
+  // ── Entropy coding, embedded tiers and the rest of the roadmap, again ────
+  // The 2026-10 audit found the spec's roadmap table still calling entropy
+  // coding "highest-impact … deferred deliberately" beside a summary that
+  // priced it at a few percent, the embedded-prefix cost quoted at 4.21% where
+  // §7.11 measures 4.15%, and RATIONALE.md's future-work list citing figures
+  // the current corpus never produced. None of those figures was registered,
+  // and none has the `% mean ΔE00` shape the scan below looks for, so every one
+  // of them could drift with this gate at exit 0. They are bound here.
+  //
+  // §7.13 states its ΔE00 headroom only in prose; §9.5's re-source table
+  // carries the same two figures as cells, as it does for the scalefactor arm
+  // above, and that is where these bind.
+  // No `abs`: the cell is a positive delta and the quote says "worse", so a
+  // sign flip in §7.11 fails here rather than agreeing in magnitude.
+  {
+    file: "spec/README.md",
+    what: "the 32 B interleaved prefix of a code-2 hash, against native code 1",
+    pattern: /score ([\d.]+)% worse ΔE00 than a native 32-byte encode/,
+    section: "7.11",
+    row: "first 32 B, interleaved",
+    column: "vs native tier 0 (11.481)",
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 32 B, in the roadmap table",
+    pattern: /\*\*−([\d.]+)% ΔE00\*\* at 32 B and \*\*−/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 32 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 108 B, in the roadmap table",
+    pattern: /at 32 B and \*\*−([\d.]+)%\*\* at 108 B/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 108 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 32 B, in the roadmap summary",
+    pattern: /entropy coding buys −([\d.]+)% at 32 B/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 32 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 108 B, in the roadmap summary",
+    pattern: /buys −[\d.]+% at 32 B and −([\d.]+)% at\n108 B/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 108 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 32 B, in §14.1",
+    pattern: /§7\.13: ([\d.]+)% at 32 B/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 32 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/README.md",
+    what: "entropy coding's ΔE00 headroom at 108 B, in §14.1",
+    pattern: /at 32 B, ([\d.]+)%\nat 108 B, on tune/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 108 B",
     column: "Wikimedia",
     transform: abs,
   },
