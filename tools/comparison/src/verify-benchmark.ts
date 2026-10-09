@@ -79,6 +79,7 @@ import {
   checkSweepClaims,
   checkTable,
   clean,
+  fixRefusal,
   noiseFailures,
   parseDecodeStages,
   parseStages,
@@ -1261,10 +1262,21 @@ for (const binding of BINDINGS) {
   }
 }
 
+/**
+ * Failures in the committed runs rather than in the document. Each is also a
+ * failure of the gate; collected apart so `--fix` can refuse to write while
+ * any stands (`fixRefusal`).
+ */
+const runLevel: Failure[] = [];
+const runFail = (...fs: Failure[]) => {
+  runLevel.push(...fs);
+  failures.push(...fs);
+};
+
 // The committed runs themselves: dirty, duplicated, spread past one host's
 // bar, a supplement overriding the bounded runs, one measurement disagreeing
-// with itself under two names, misfiled, or forced past the load bar.
-failures.push(...runFailures(runs));
+// with itself under two names, misfiled, loaded, or rejected.
+runFail(...runFailures(runs));
 
 // Every host's stability pair is checked, and a host the document reads must
 // have one; §0's row speaks for the primary's.
@@ -1281,7 +1293,7 @@ for (const host of runs.hosts.keys()) {
     `Host stability (§0) ${host}${host === runs.primary ? " [primary]" : ""}: ${s.status.toUpperCase()} — ${detail}`,
   );
 }
-failures.push(...stabilityFailures(runs));
+runFail(...stabilityFailures(runs));
 if (!values.section || values.section === "0") {
   failures.push(...checkStabilityClaim(doc, stability));
 }
@@ -1300,7 +1312,7 @@ for (const r of runs.loaded) {
     `  ${v.status.toUpperCase().padEnd(10)} ${r.hostDir}/${r.file}: ${v.detail}`,
   );
   if (provenanceFails(v)) {
-    failures.push({
+    runFail({
       where: `baselines/hosts/${r.hostDir}/${r.file}`,
       column: "provenance",
       row: r.git?.commit ?? "—",
@@ -1330,7 +1342,7 @@ for (const [file, stages] of [
     );
     console.log(`  ${v.status.toUpperCase().padEnd(10)} ${file}: ${v.detail}`);
     if (provenanceFails(v)) {
-      failures.push({
+      runFail({
         where: file,
         column: "provenance",
         row: cell.git?.rev ?? "—",
@@ -1347,7 +1359,7 @@ console.log();
 // figures derived from its table.
 let proseChecked = 0;
 if (STAGES) {
-  failures.push(...checkStagesProvenance(STAGES));
+  runFail(...checkStagesProvenance(STAGES));
   const prose = checkProseClaims(doc, STAGES, PROSE_CLAIMS);
   failures.push(...prose.failures);
   proseEdits.push(...prose.edits);
@@ -1359,7 +1371,7 @@ if (STAGES) {
 // recorded stages as rows, and the prose figures derived from it.
 let decodeProseChecked = 0;
 if (decodeStagesBound && DECODE_STAGES) {
-  failures.push(...checkDecodeStagesProvenance(DECODE_STAGES));
+  runFail(...checkDecodeStagesProvenance(DECODE_STAGES));
   const table = tables.find((t) => t.section === "1.1" && t.index === 0);
   if (table) {
     const where = `§1.1 Where decode time goes (line ${table.line})`;
@@ -1441,9 +1453,17 @@ if (!values.section) {
 }
 
 // Every binding and claim has resolved by now, so `touched` is complete.
-failures.push(...noiseFailures(runs));
+runFail(...noiseFailures(runs));
 
 if (values.fix) {
+  const refusal = fixRefusal(runLevel);
+  if (refusal !== null) {
+    for (const f of runLevel) {
+      console.log(`  ${f.where}: ${f.column} — ${f.detail ?? f.measured}`);
+    }
+    console.log(`\n${refusal}`);
+    process.exit(1);
+  }
   if (edits.length === 0 && proseEdits.length === 0) {
     console.log("Nothing to rewrite — every bound value is within its band.");
     process.exit(0);

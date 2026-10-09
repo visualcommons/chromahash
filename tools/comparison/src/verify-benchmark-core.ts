@@ -1057,6 +1057,26 @@ export function noiseFailures(R: Runs): Failure[] {
   });
 }
 
+/**
+ * Why `--fix` must not write, or null.
+ *
+ * `--fix` rewrites the document to agree with the committed runs. When the
+ * runs themselves fail — dirty, loaded, unstable, untraceable, rejected — that
+ * agreement is with numbers the gate has just refused, and the rewrite would
+ * launder them into the document as if they had passed: the next run would
+ * see a document that "agrees" and only the run-level failures left. So it
+ * refuses, and says which failures to clear first.
+ */
+export function fixRefusal(runLevel: readonly Failure[]): string | null {
+  if (runLevel.length === 0) return null;
+  const kinds = [...new Set(runLevel.map((f) => f.column))].sort();
+  return [
+    `Refusing --fix: ${runLevel.length} failure(s) are in the committed runs themselves (${kinds.join(", ")}),`,
+    "so the figures it would write are ones the gate does not accept. Clear those",
+    "first — re-measure, or remove the run — then fix the document against what is left.",
+  ].join("\n");
+}
+
 export class MissingCell extends Error {
   constructor(
     readonly id: string,

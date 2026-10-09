@@ -177,6 +177,7 @@ import {
   checkSweepClaims,
   runFailures,
   stabilityFailures,
+  fixRefusal,
   type Edit,
   type Failure,
   type ProseClaim,
@@ -2726,6 +2727,33 @@ for (const order of ["full first", "bounded first"] as const) {
       legacy.loaded.length === 1 &&
       runFailures(legacy).length === 0,
     `raised=${details(raised)} turned=${details(turned)} atBar=${atBar.length} truncated=${truncated.length} unread=${unreadLoad.length} end=${endIgnored.length} thin=${thin} odd=${odd} few=${fewBlocks} noDigest=${noDigest} noGit=${noGit} noPreflight=${noPreflight} six=${details(runFailures(six))}`,
+  );
+}
+
+// V5c. --fix refuses while the committed runs themselves fail: rewriting the
+//      document to agree with a run the gate rejects would launder it.
+{
+  const loaded = new Runs([
+    run3(
+      "perf-report.json",
+      { a: { us: 1 } },
+      {
+        environment: {
+          cpuModel: "fixture",
+          arch: "x64",
+          cores: 1,
+          preflight: { ...quietPreflight(), loaded: true },
+        },
+      },
+    ),
+  ]);
+  const clean = new Runs([run3("perf-report.json", { a: { us: 1 } })]);
+  const refused = fixRefusal(runFailures(loaded));
+  check(
+    "--fix refuses while a committed run fails, and names what to clear",
+    refused?.includes("preflight.load") === true &&
+      fixRefusal(runFailures(clean)) === null,
+    String(refused),
   );
 }
 
