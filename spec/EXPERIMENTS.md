@@ -3759,8 +3759,8 @@ sit within +1.0% of the incumbent's mean. Nothing related either number to the
 number of images that has to resolve it. This section does, from the spread of
 the paired differences the committed tune sweeps already carry. It re-scores
 nothing and reads no sealed image: the holdout2 sizes are the pin tables'
-counts, 14 pinned alpha images, and while the photographic half is unpinned
-the 32 candidates #103 lists. `mise run mde` prints it, and
+counts, 14 alpha images and the 32 photographs #103 pinned. `mise run mde`
+prints it, and
 `verify:experiments` binds both tables below.
 
 **Method.** Every arm of every committed photographic and alpha tune sweep is
