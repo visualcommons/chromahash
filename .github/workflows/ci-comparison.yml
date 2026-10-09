@@ -73,7 +73,13 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
+      # Full history: verify:benchmark traces each committed perf run to its
+      # source state, and a squash-merged run's commit is gone — it finds the
+      # sources by digest in master's history instead, which a depth-1 clone
+      # does not have (spec/PERFORMANCE.md §0, perf/provenance.ts).
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -136,9 +142,12 @@ jobs:
       # broke that property shipped past a green run once already, because the
       # suite exercised a single upscale factor; it now sweeps the decode sizes
       # the real lineup produces. It also asserts verify:benchmark's pass, skip
-      # and fail rules against fixture runs, and the perf driver's absent/broken
-      # probe classification against real spawns: the gate's run below only
-      # exercises the one state the committed baseline happens to be in.
+      # and fail rules against fixture runs — the ±5%/interval band, the full
+      # run as a supplement, per-host stability, provenance by source digest,
+      # paired ratios — the perf driver's plan and statistics, and its
+      # absent/broken probe classification against real spawns: the gate's run
+      # below only exercises the one state the committed baseline happens to
+      # be in.
       - name: The locally-computed metrics hold their defining properties
         run: node tools/comparison/dist/metric-selftest.js
 
@@ -201,24 +210,24 @@ jobs:
           grep -qF "natural/LICENSES.md is up to date" <<<"$out" || { echo "natural file not reported current"; exit 1; }
 
       # Reads spec/PERFORMANCE.md and the committed runs under baselines/ only —
-      # no harness, no toolchain.
+      # no harness, no toolchain — plus git history, to trace each run's
+      # provenance by commit or by source digest.
       #
-      # `continue-on-error` because six of PERFORMANCE.md's cells are still
-      # placeholders — §2's tier-3/4 encode and §3's 128/1024 rows, which the
-      # `bounded` matrix does not produce. A baseline IS now committed and 216
-      # values are checked against it, so this is six cells from green rather
-      # than the whole document — plus §12.4's 34 lever cells, whose arms the
-      # bounded matrix gained after that baseline was taken; the next bounded
-      # run on a quiet host fills them.
+      # `continue-on-error` because the document still carries placeholders no
+      # committed run can fill: §2's tier-3/4 encode, §3's 128/1024 rows,
+      # §12.4's lever cells, and the prose figures bound to them, each written
+      # TBD and failed by name. §0 of PERFORMANCE.md counts them, and the gate
+      # checks that count. Every other value is checked against the committed
+      # baseline — within its interval or ±5% — so this is a named list of
+      # cells from green, not a drifted document.
       #
-      # An earlier version of this comment said to remove the line "in the same
-      # change that commits the baseline". That was not achievable as written:
-      # §7 and §8 carry Swift rows, Swift's binding needs an xcframework only
-      # `xcodebuild` can assemble, and this job runs on ubuntu-latest — so a
-      # Linux runner could never satisfy the gate. The gate now reports an
-      # unreachable target's rows as unavailable rather than failed, which is
-      # what makes green reachable here at all. `mise run benchmark:full` closes
-      # the remaining six.
+      # One `mise run benchmark:session` on a quiet host closes all of them;
+      # drop this line in the change that commits its runs. Swift's rows in §7
+      # and §8 are not among them: its binding needs an xcframework only
+      # `xcodebuild` can assemble, and the gate reports a target no run could
+      # reach as unavailable rather than failed — which is what makes green
+      # reachable on ubuntu-latest at all. A macOS session would commit its own
+      # baselines/hosts/<host>/ set rather than fail a spread against Linux.
       #
       # Until then a drifted document must not mask a rate-distortion
       # regression: this step used to run first and take rd-gate down with it.
