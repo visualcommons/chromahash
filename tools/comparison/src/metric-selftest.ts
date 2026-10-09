@@ -63,7 +63,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
@@ -133,6 +133,24 @@ import {
 } from "./stats.ts";
 import { classifyProbe, repoRelative } from "./perf/availability.ts";
 import {
+  type Preflight,
+  defaultMaxLoad,
+  hostKey,
+  judgePreflight,
+  mayStart,
+  parseLoadavg,
+} from "./perf/host.ts";
+import { planMatrix, planRun, roundOrder } from "./perf/plan.ts";
+import { cellStats, pairStats } from "./perf/probe.ts";
+import {
+  type GitView,
+  MEASUREMENT_OUTPUTS,
+  MEASURED_PATHS,
+  judgeProvenance,
+  provenanceFails,
+} from "./perf/provenance.ts";
+import { allTargets } from "./perf/targets.ts";
+import {
   type TableRegisterInput,
   tableRegisterProblems,
 } from "./experiments-register.ts";
@@ -144,8 +162,18 @@ import {
 } from "./results.ts";
 import {
   type Binding,
+  type ClaimContext,
+  CROSS_RUN_TOLERANCE,
   type Counters,
   type DecodeStageCell,
+  type DocNumber,
+  type SweepClaim,
+  TOLERANCE,
+  type Verdict,
+  agreement,
+  applyEdits,
+  checkSweepClaims,
+  runFailures,
   type Edit,
   type Failure,
   type ProseClaim,
@@ -167,6 +195,8 @@ import {
 } from "./verify-benchmark-core.ts";
 
 let failures = 0;
+
+const REPO_ROOT_FOR_SELFTEST = path.resolve(import.meta.dirname, "../../..");
 
 function check(name: string, ok: boolean, detail: string): void {
   if (ok) {
@@ -1381,7 +1411,9 @@ function gate(
     checked: 0,
     unbound: 0,
     placeholders: 0,
+    pending: 0,
     unavailable: 0,
+    tolerated: 0,
   };
   const edits: Edit[] = [];
   const R = new Runs(runs);
@@ -1709,7 +1741,9 @@ const stabilityDoc = (cell: string): string =>
 
 // S4. Spread is pairwise. With the full sweep read first, the two bounded runs
 //     were each compared with it and never with each other, so a pair 18.5%
-//     apart — each under 10% from the full sweep — passed unnoticed.
+//     apart — each under 10% from the full sweep — passed unnoticed. (A full
+//     run holding bounded ids is itself a failure now, and the bounded value
+//     is the one read: see V3.)
 {
   const R = new Runs([
     timedRun(
@@ -1730,28 +1764,42 @@ const stabilityDoc = (cell: string): string =>
       (R.crossRunSpread[0] ?? "").includes("perf-report-2.json says 920.0") &&
       s.status === "fail" &&
       s.runs.join() === "perf-report.json,perf-report-2.json" &&
-      R.us("encode/Rust/t1") === 1000,
+      R.overlaps.length === 2 &&
+      R.us("encode/Rust/t1") === 1090,
     `spread=${JSON.stringify(R.crossRunSpread)} status=${s.status} runs=${s.runs.join()}`,
   );
 }
 
 // S5. The claim is one commit on one host measured twice. Agreeing runs from
-//     two commits, or two CPUs, do not substantiate it.
-for (const [label, overrides, needle] of [
+//     two commits, from two CPUs filed under one host's directory, or from two
+//     machines with one CPU model, do not substantiate it.
+const FIXTURE_HOST = "unknown-x64-fixture";
+for (const [label, first, overrides, needle] of [
   [
     "different commits",
+    {},
     { git: { commit: "def5678", dirty: false } },
     "different commits",
   ],
   [
+    "different CPUs under one host directory",
+    {},
+    {
+      environment: { cpuModel: "other", arch: "x64", cores: 1 },
+      hostDir: FIXTURE_HOST,
+    },
     "different CPUs",
-    { environment: { cpuModel: "other", arch: "x64", cores: 1 } },
-    "different CPUs",
+  ],
+  [
+    "different machines",
+    { host: { id: FIXTURE_HOST, machine: "aaaaaaaaaaaa" } },
+    { host: { id: FIXTURE_HOST, machine: "bbbbbbbbbbbb" } },
+    "different machines",
   ],
 ] as const) {
   const s = checkStability(
     new Runs([
-      timedRun("perf-report.json", { "encode/Rust/t1": 1000 }),
+      timedRun("perf-report.json", { "encode/Rust/t1": 1000 }, first),
       timedRun("perf-report-2.json", { "encode/Rust/t1": 1000 }, overrides),
     ]),
   );
@@ -1883,9 +1931,11 @@ for (const [label, overrides, needle] of [
 }
 
 // B13. Prose claims: the figure must be quoted exactly once and agree with the
-//      cells it sums to the precision it is written at. The sum case is the
-//      historical slip — 5.43 + 6.91 + 4.17 = 16.51, which "16.5" states and
-//      "16.6" (the parts rounded first, then added) does not.
+//      cells it sums, by the share rule — within half a point. The sum is the historical slip — 5.43 + 6.91 + 4.17 = 16.51,
+//      which "16.5" states and "16.6" (the parts rounded first, then added)
+//      does not exactly. Under the band, a 0.09-point slip is inside what a
+//      re-recording moves a share by, and passes; 0.7 points does not, and
+//      --fix rewrites it at the precision written.
 {
   const stages: Record<string, StageCell> = {
     "512x512-t1": {
@@ -1905,8 +1955,13 @@ for (const [label, overrides, needle] of [
     stages,
     [claim],
   );
-  const wrong = checkProseClaims(
+  const slip = checkProseClaims(
     "So the colour pipeline is 16.6% here.",
+    stages,
+    [claim],
+  );
+  const wrong = checkProseClaims(
+    "So the colour pipeline is 17.2% here.",
     stages,
     [claim],
   );
@@ -1922,18 +1977,25 @@ for (const [label, overrides, needle] of [
     [claim],
   );
   check(
-    "a prose figure is checked once, at its own precision, and a missing or doubled sentence fails",
+    "a prose figure is checked once, within the share band, and a missing or doubled sentence fails",
     right.checked === 1 &&
       right.failures.length === 0 &&
+      slip.failures.length === 0 &&
       wrong.failures.length === 1 &&
       wrong.failures[0]?.measured === "16.51%" &&
-      finer.failures.length === 1 &&
+      wrong.edits.length === 1 &&
+      wrong.edits[0]?.text === "16.5" &&
+      "So the colour pipeline is 17.2% here.".slice(
+        wrong.edits[0]?.index ?? 0,
+        (wrong.edits[0]?.index ?? 0) + (wrong.edits[0]?.length ?? 0),
+      ) === "17.2" &&
+      finer.failures.length === 0 &&
       gone.failures.length === 1 &&
       (gone.failures[0]?.detail ?? "").includes("edited without updating") &&
       gone.checked === 0 &&
       twice.failures.length === 1 &&
       (twice.failures[0]?.detail ?? "").includes("must name one figure"),
-    `right=${right.failures.length} wrong=${details(wrong.failures)} finer=${finer.failures.length} gone=${gone.failures.length} twice=${twice.failures.length}`,
+    `right=${right.failures.length} slip=${slip.failures.length} wrong=${details(wrong.failures)} edits=${JSON.stringify(wrong.edits)} finer=${finer.failures.length} gone=${gone.failures.length} twice=${twice.failures.length}`,
   );
 }
 
@@ -2143,6 +2205,697 @@ for (const [label, overrides, needle] of [
       extra.length === 1 &&
       (extra[0]?.detail ?? "").includes("in the table but not recorded: idct"),
     `ok=${ok.length} omits=${details(omits)} extra=${details(extra)}`,
+  );
+}
+
+console.log(
+  "\nverify-benchmark — tolerance, supplements, hosts, provenance, pairs\n",
+);
+
+/** A chromahash-perf/3 run: cells with an interval, pairs and aliases. */
+function run3(
+  file: string,
+  cells: Record<string, { us: number; ci?: [number, number] }>,
+  overrides: Partial<RunDoc> = {},
+): RunDoc {
+  return {
+    file,
+    schema: "chromahash-perf/3",
+    git: { commit: "abc1234", dirty: false, digest: "d".repeat(64) },
+    environment: { cpuModel: "fixture", arch: "x64", cores: 1 },
+    config: { mode: "bounded", reps: 5, processes: 3 },
+    cells: Object.entries(cells).map(([id, c]) => ({
+      id,
+      nsPerOp: c.us * 1000,
+      medianNsPerOp: c.us * 1000,
+      iqrPct: 0,
+      noisy: false,
+      iters: 1,
+      ...(c.ci ? { ci95NsPerOp: [c.ci[0] * 1000, c.ci[1] * 1000] } : {}),
+    })) as RunDoc["cells"],
+    ...overrides,
+  };
+}
+
+const num = (
+  value: number,
+  unit: DocNumber["unit"],
+  decimals: number,
+): DocNumber => ({ value, unit, decimals });
+const est = (value: number, interval: [number, number] | null = null) => ({
+  value,
+  interval,
+});
+
+// V1. The agreement rule: exact, then the interval, then the ±TOLERANCE band;
+//     a share by half a point; a timing difference by TOLERANCE on its ratio.
+{
+  const cases: [string, Verdict, Verdict][] = [
+    ["exact", agreement(num(2.46, "ms", 2), est(2461)).verdict, "exact"],
+    [
+      "4% off, no interval",
+      agreement(num(2.56, "ms", 2), est(2461)).verdict,
+      "band",
+    ],
+    [
+      "6% off, no interval",
+      agreement(num(2.61, "ms", 2), est(2461)).verdict,
+      "outside",
+    ],
+    [
+      "15% off, inside the interval",
+      agreement(num(2.83, "ms", 2), est(2461, [2300, 2900])).verdict,
+      "interval",
+    ],
+    [
+      "15% off, outside the interval",
+      agreement(num(2.83, "ms", 2), est(2461, [2400, 2500])).verdict,
+      "outside",
+    ],
+    [
+      "ratio 4% off",
+      agreement(num(3.83, "ratio", 2), est(3.68)).verdict,
+      "band",
+    ],
+    [
+      "ratio 8% off",
+      agreement(num(3.98, "ratio", 2), est(3.68)).verdict,
+      "outside",
+    ],
+    [
+      "share 0.4 points",
+      agreement(num(57.6, "percent", 1), est(57.2), "share").verdict,
+      "band",
+    ],
+    [
+      "share 0.7 points of a large share",
+      agreement(num(57.9, "percent", 1), est(57.2), "share").verdict,
+      "outside",
+    ],
+    [
+      "share, whole percent, rounding",
+      agreement(num(66, "percent", 0), est(66.6), "share").verdict,
+      "band",
+    ],
+    [
+      "difference 4 points",
+      agreement(num(-32.3, "percent", 1), est(-36.3)).verdict,
+      "band",
+    ],
+    [
+      "difference 7 points",
+      agreement(num(-29.3, "percent", 1), est(-36.3)).verdict,
+      "outside",
+    ],
+  ];
+  const wrong = cases.filter(([, got, want]) => got !== want);
+  check(
+    `a value passes exactly, inside its interval, or within ±${TOLERANCE * 100}% — and fails outside all three`,
+    TOLERANCE <= CROSS_RUN_TOLERANCE && wrong.length === 0,
+    wrong.length === 0
+      ? `${cases.length} cases`
+      : wrong.map(([n, got, want]) => `${n}: ${got}, want ${want}`).join("; "),
+  );
+}
+
+// V2. Through checkTable: an in-band value passes and is counted as tolerated,
+//     an out-of-band one fails with a --fix edit, and only that one is edited.
+//     So a second run on a stable host rewrites almost nothing.
+{
+  const table = parseTables(
+    fixtureTable([
+      ["Rust", "1.04 ms"],
+      ["Go", "1.20 ms"],
+    ]),
+  )[0];
+  const failures: Failure[] = [];
+  const counters: Counters = {
+    checked: 0,
+    unbound: 0,
+    placeholders: 0,
+    pending: 0,
+    unavailable: 0,
+    tolerated: 0,
+  };
+  const edits: Edit[] = [];
+  const R = new Runs([
+    run3("perf-report.json", {
+      "encode/Rust/t1": { us: 1000 },
+      "encode/Go/t1": { us: 1000 },
+    }),
+  ]);
+  const binding: Binding = {
+    ...FIXTURE_BINDING,
+    columns: {
+      "encode t1": (row, RR) =>
+        RR.est(`encode/${clean(row("implementation"))}/t1`),
+    },
+  };
+  if (table) checkTable(binding, table, R, failures, counters, edits);
+  const fixed = applyEdits(
+    fixtureTable([
+      ["Rust", "1.04 ms"],
+      ["Go", "1.20 ms"],
+    ]),
+    edits,
+    [],
+  );
+  check(
+    "--fix rewrites only the cell outside its band",
+    counters.checked === 2 &&
+      counters.tolerated === 1 &&
+      failures.length === 1 &&
+      failures[0]?.row === "Go" &&
+      edits.length === 1 &&
+      fixed.includes("| Rust | 1.04 ms |") &&
+      fixed.includes("| Go | 1.00 ms |"),
+    `checked=${counters.checked} tolerated=${counters.tolerated} failures=${details(failures)} edits=${JSON.stringify(edits)}`,
+  );
+}
+
+// V3. Full is a supplement. A full run's own ids fill what the bounded runs
+//     lack; an id both hold is read from the bounded run, in either file order,
+//     and the overlap fails the gate. That is what stops filling six cells
+//     from re-baselining every other.
+for (const order of ["full first", "bounded first"] as const) {
+  const bounded = run3("perf-report.json", {
+    "encode/Rust/t1/100x100/gradient": { us: 2460 },
+  });
+  const full = run3(
+    "perf-report-full.json",
+    {
+      "encode/Rust/t1/100x100/gradient": { us: 2300 },
+      "encode/Rust/t3/100x100/gradient": { us: 40000 },
+    },
+    { config: { mode: "full", reps: 5, processes: 3 } },
+  );
+  const R = new Runs(
+    order === "full first" ? [full, bounded] : [bounded, full],
+  );
+  const fails = runFailures(R);
+  check(
+    `the bounded run is authoritative over the full supplement (${order})`,
+    R.us("encode/Rust/t1/100x100/gradient") === 2460 &&
+      R.us("encode/Rust/t3/100x100/gradient") === 40000 &&
+      R.overlaps.length === 1 &&
+      fails.some((f) => f.column === "supplement"),
+    `t1=${R.us("encode/Rust/t1/100x100/gradient")} overlaps=${JSON.stringify(R.overlaps)}`,
+  );
+}
+{
+  // A clean supplement shares nothing, so nothing fails and nothing spreads.
+  const R = new Runs([
+    run3("perf-report.json", {
+      "encode/Rust/t1/100x100/gradient": { us: 2460 },
+    }),
+    run3(
+      "perf-report-full.json",
+      { "encode/Rust/t3/100x100/gradient": { us: 40000 } },
+      { config: { mode: "full", reps: 5, processes: 3 } },
+    ),
+  ]);
+  check(
+    "a full run holding only its own ids passes",
+    runFailures(R).length === 0 && R.crossRunSpread.length === 0,
+    details(runFailures(R)),
+  );
+}
+
+// V4. Per-host baselines. A macOS run 30% away from Linux on a shared cell is
+//     another host, not a spread; it fills Swift, which Linux recorded absent,
+//     and nothing Linux measured. The stability pair is the primary host's.
+{
+  const linux = (file: string, us: number): RunDoc =>
+    run3(
+      file,
+      { "encode/Rust/t1": { us }, "decode/Rust/t1": { us: 300 } },
+      {
+        environment: { os: "linux", cpuModel: "Ryzen", arch: "x64", cores: 16 },
+        unavailable: [{ target: "Swift", reason: "ENOENT", kind: "absent" }],
+      },
+    );
+  const mac = run3(
+    "perf-report.json",
+    { "encode/Rust/t1": { us: 1300 }, "encode/Swift/t1": { us: 1310 } },
+    {
+      environment: {
+        os: "darwin",
+        cpuModel: "M3 Pro",
+        arch: "arm64",
+        cores: 12,
+      },
+    },
+  );
+  const R = new Runs(
+    [linux("perf-report.json", 1000), linux("perf-report-2.json", 1020), mac],
+    { primary: "linux-x64-ryzen" },
+  );
+  const s = checkStability(R);
+  const sMac = checkStability(R, "darwin-arm64-m3-pro");
+  check(
+    "hosts are keyed, compared only with themselves, and a secondary host fills only what the primary cannot",
+    R.hosts.size === 2 &&
+      R.crossRunSpread.length === 0 &&
+      s.status === "pass" &&
+      s.shared === 2 &&
+      sMac.status === "skip" &&
+      R.us("encode/Rust/t1") === 1000 &&
+      R.us("encode/Swift/t1") === 1310 &&
+      !R.unavailable.has("Swift") &&
+      runFailures(R).length === 0,
+    `hosts=${[...R.hosts.keys()].join(",")} spread=${JSON.stringify(R.crossRunSpread)} primary=${s.status}/${s.shared} mac=${sMac.status} rust=${R.us("encode/Rust/t1")}`,
+  );
+  const misfiled = new Runs([{ ...mac, hostDir: "linux-x64-ryzen" }]);
+  check(
+    "a run committed under another host's directory fails",
+    runFailures(misfiled).some((f) => f.column === "host"),
+    JSON.stringify(misfiled.misfiled),
+  );
+  check(
+    "the host key of the committed baseline is the directory it was moved to",
+    hostKey({
+      os: "linux",
+      arch: "x64",
+      cpuModel: "AMD Ryzen 7 7800X3D 8-Core Processor",
+    }) === "linux-x64-amd-ryzen-7-7800x3d-8-core-processor",
+    hostKey({
+      os: "linux",
+      arch: "x64",
+      cpuModel: "AMD Ryzen 7 7800X3D 8-Core Processor",
+    }),
+  );
+}
+
+// V5. Loaded, quick and mixed-schema runs are refused as baselines.
+{
+  const loaded = new Runs([
+    run3(
+      "perf-report.json",
+      { a: { us: 1 } },
+      {
+        environment: {
+          cpuModel: "fixture",
+          arch: "x64",
+          cores: 1,
+          preflight: { loaded: true },
+        },
+      },
+    ),
+  ]);
+  const quick = new Runs([
+    run3(
+      "perf-report.json",
+      { a: { us: 1 } },
+      {
+        config: { mode: "quick", reps: 1, processes: 1 },
+      },
+    ),
+  ]);
+  const mixed = new Runs([
+    run3("perf-report.json", { a: { us: 1 } }),
+    fixtureRun("perf-report-2.json", ["a"]),
+  ]);
+  check(
+    "a run forced past the load bar, a --quick run, and a host mixing run formats all fail",
+    runFailures(loaded).some((f) => f.column === "preflight.loaded") &&
+      quick.loaded.length === 0 &&
+      (quick.rejected[0] ?? "").includes("smoke test") &&
+      runFailures(mixed).some((f) => f.column === "schema"),
+    `loaded=${details(runFailures(loaded))} quick=${JSON.stringify(quick.rejected)} mixed=${details(runFailures(mixed))}`,
+  );
+}
+
+// V6. Aliases: one measurement under two names. A /3 run resolves `…/shipped`
+//     to its base; an old run that holds both is checked for agreeing.
+{
+  const alias = "encode/Rust/t1/100x100/gradient/shipped";
+  const base = "encode/Rust/t1/100x100/gradient";
+  const R3 = new Runs([
+    run3(
+      "perf-report.json",
+      { [base]: { us: 2460 } },
+      { aliases: { [alias]: base } },
+    ),
+  ]);
+  const plannerAliases = planMatrix("bounded", allTargets()).aliases;
+  const agreeing = new Runs(
+    [timedRun("perf-report.json", { [base]: 2461, [alias]: 2446 })],
+    { aliases: plannerAliases },
+  );
+  const apart = new Runs(
+    [timedRun("perf-report.json", { [base]: 2461, [alias]: 2000 })],
+    { aliases: plannerAliases },
+  );
+  check(
+    "a shipped arm is its base cell, and an old run's two copies must agree",
+    R3.has(alias) &&
+      R3.us(alias) === 2460 &&
+      plannerAliases[alias] === base &&
+      agreeing.aliasDisagreements.length === 0 &&
+      agreeing.us(alias) === 2446 &&
+      apart.aliasDisagreements.length === 1 &&
+      runFailures(apart).some((f) => f.column === "alias"),
+    `r3=${R3.has(alias)} agree=${JSON.stringify(agreeing.aliasDisagreements)} apart=${JSON.stringify(apart.aliasDisagreements)}`,
+  );
+}
+
+// V7. Paired ratios. A run's own pair record is read, interval and all; with
+//     none, the ratio of the two cells, with no interval.
+{
+  const b = "encode/Rust/t1/512x512/gradient";
+  const a = `${b}/accel all`;
+  const paired = new Runs([
+    run3(
+      "perf-report.json",
+      { [b]: { us: 46700 }, [a]: { us: 20000 } },
+      { pairs: [{ base: b, arm: a, ratio: 2.4, ci95: [2.35, 2.45] }] },
+    ),
+  ]);
+  const unpaired = new Runs([
+    run3("perf-report.json", { [b]: { us: 46700 }, [a]: { us: 20000 } }),
+  ]);
+  const p = paired.ratio(b, a);
+  const u = unpaired.ratio(b, a);
+  check(
+    "a speedup is the run's paired record where it has one",
+    p.value === 2.4 &&
+      p.interval?.[0] === 2.35 &&
+      Math.abs(u.value - 2.335) < 1e-9 &&
+      u.interval === null,
+    `paired=${JSON.stringify(p)} unpaired=${JSON.stringify(u)}`,
+  );
+}
+
+// V8. Provenance by digest. The rule §0 states, against a fake repository.
+{
+  const view = (o: {
+    ancestors?: string[];
+    present?: Record<string, string>;
+    history?: string[];
+    shallow?: boolean;
+  }): GitView => ({
+    isAncestor: (c) =>
+      o.present?.[c] === undefined ? null : (o.ancestors ?? []).includes(c),
+    digestAt: (c) => o.present?.[c] ?? null,
+    history: () => o.history ?? [],
+    shallow: o.shallow ?? false,
+  });
+  const D = "a".repeat(64);
+  const E = "b".repeat(64);
+  const cases: [
+    string,
+    ReturnType<typeof judgeProvenance>["status"],
+    boolean,
+  ][] = [
+    [
+      "ancestor with its digest",
+      judgeProvenance(
+        { commit: "c1", digest: D },
+        view({ ancestors: ["c1"], present: { c1: D } }),
+      ).status,
+      false,
+    ],
+    [
+      "ancestor with another digest",
+      judgeProvenance(
+        { commit: "c1", digest: D },
+        view({ ancestors: ["c1"], present: { c1: E } }),
+      ).status,
+      true,
+    ],
+    [
+      "squash-merged, sources on master",
+      judgeProvenance(
+        { commit: "gone", digest: D },
+        view({ present: { s1: E, s2: D }, history: ["s1", "s2"] }),
+      ).status,
+      false,
+    ],
+    [
+      "squash-merged, sources nowhere",
+      judgeProvenance(
+        { commit: "gone", digest: D },
+        view({ present: { s1: E }, history: ["s1"] }),
+      ).status,
+      true,
+    ],
+    [
+      "shallow clone",
+      judgeProvenance(
+        { commit: "gone", digest: D },
+        view({ present: { s1: E }, history: ["s1"], shallow: true }),
+      ).status,
+      false,
+    ],
+    [
+      "legacy, no digest",
+      judgeProvenance({ commit: "e53e6cd" }, view({})).status,
+      false,
+    ],
+  ];
+  const want = [
+    "commit",
+    "mismatch",
+    "digest",
+    "unresolved",
+    "shallow",
+    "legacy",
+  ];
+  const wrong = cases.filter(
+    ([, status, fails], i) =>
+      status !== want[i] || provenanceFails({ status, detail: "" }) !== fails,
+  );
+  check(
+    "provenance passes by commit or by digest, fails on a mismatch or untraceable sources, and reports legacy and shallow",
+    wrong.length === 0,
+    wrong.length === 0
+      ? `${cases.length} cases`
+      : wrong.map(([n, s]) => `${n}: ${s}`).join("; "),
+  );
+}
+
+// V9. The digest is computed over the same paths, and the same outputs are
+//     excluded, by both recorders: the TypeScript driver and the stage
+//     recorder in Python. Two lists that drift apart make one recorder's
+//     runs untraceable by the other's rule.
+{
+  const py = readFileSync(
+    path.join(REPO_ROOT_FOR_SELFTEST, "tools/benchmark/record_stages.py"),
+    "utf8",
+  );
+  const tuple = (name: string): string[] => {
+    const m = new RegExp(`${name} = \\(([^)]*)\\)`).exec(py);
+    return [...(m?.[1] ?? "").matchAll(/"([^"]+)"/g)].map(
+      (x) => x[1] as string,
+    );
+  };
+  const pyPaths = tuple("MEASURED_PATHS");
+  const pyOutputs = tuple("MEASUREMENT_OUTPUTS");
+  check(
+    "the driver and the stage recorder digest the same sources and ignore the same outputs",
+    pyPaths.join() === MEASURED_PATHS.join() &&
+      pyOutputs.join() === MEASUREMENT_OUTPUTS.join(),
+    `py=${pyPaths.join(",")} | ${pyOutputs.join(",")}`,
+  );
+}
+
+// V10. The plan: full is disjoint from bounded and holds the cells only it
+//      can produce; every shipped arm is an alias; every other arm is paired;
+//      and rounds alternate direction with each unit's cells adjacent.
+{
+  const all = allTargets();
+  const bounded = planRun("bounded", all, all);
+  const full = planRun("full", all, all);
+  const bIds = new Set(bounded.cells.map((c) => c.id));
+  const overlap = full.cells.filter((c) => bIds.has(c.id)).map((c) => c.id);
+  const needed = [
+    "encode/Rust/t3/100x100/gradient",
+    "encode/Rust/t1/128x128/gradient",
+    "encode/Rust/t1/1024x1024/gradient",
+  ];
+  const fullIds = new Set(full.cells.map((c) => c.id));
+  const shippedCells = bounded.cells.filter((c) => c.id.endsWith("/shipped"));
+  const levers = bounded.cells.filter((c) => c.tune !== null);
+  const unpaired = levers.filter(
+    (c) => !bounded.pairs.some((p) => p.arm === c.id),
+  );
+  const r0 = roundOrder(bounded, 0).map((c) => c.id);
+  const r1 = roundOrder(bounded, 1).map((c) => c.id);
+  const base = "encode/Rust/t1/512x512/gradient";
+  const arm = `${base}/accel_quant_table`;
+  const unit = bounded.unitOf.get(base);
+  const unitIdx = r0
+    .map((id, i) => (bounded.unitOf.get(id) === unit ? i : -1))
+    .filter((i) => i >= 0);
+  const contiguous =
+    unitIdx.length > 1 &&
+    unitIdx.every((v, i) => i === 0 || v === (unitIdx[i - 1] as number) + 1);
+  check(
+    "full is a supplement, shipped is an alias, every lever is paired, and rounds interleave units in alternating order",
+    overlap.length === 0 &&
+      needed.every((id) => fullIds.has(id)) &&
+      bIds.has("encode/Rust/t4/100x100/gradient") &&
+      shippedCells.length === 0 &&
+      Object.keys(bounded.aliases).length === 7 &&
+      unpaired.length === 0 &&
+      bounded.pairs.some(
+        (p) =>
+          p.base === `${base}/refine_passes=1` &&
+          p.arm === `${base}/refine_passes=1 accel_sse_early_exit`,
+      ) &&
+      contiguous &&
+      r1.join() === [...r0].reverse().join() &&
+      r0.indexOf(base) < r0.indexOf(arm) &&
+      r1.indexOf(base) > r1.indexOf(arm),
+    `overlap=${overlap.join(",")} shipped=${shippedCells.length} aliases=${Object.keys(bounded.aliases).length} unpaired=${unpaired.map((c) => c.id).join(",")} contiguous=${contiguous}`,
+  );
+}
+
+// V11. Per-process statistics: the reported cost is the median of the
+//      process minima, and a paired ratio is the median of per-round ratios,
+//      skipping a round either member missed.
+{
+  const s = cellStats([
+    [105, 100, 110],
+    [120, 130, 125],
+    [98, 99, 101],
+  ]);
+  const p = pairStats([200, 210, undefined, 190], [100, 100, 80, 100]);
+  check(
+    "a cell reports the median of its process minima, and a pair the median of its per-round ratios",
+    s.nsPerOp === 100 &&
+      s.processMinNsPerOp.join() === "100,120,98" &&
+      Math.abs(s.spreadPct - 22 / 98) < 1e-12 &&
+      s.noisy &&
+      s.ci95NsPerOp[0] >= 98 &&
+      s.ci95NsPerOp[1] <= 120 &&
+      p !== null &&
+      p.ratios.join() === "2,2.1,1.9" &&
+      p.ratio === 2,
+    `nsPerOp=${s.nsPerOp} mins=${s.processMinNsPerOp} ci=${s.ci95NsPerOp} pair=${JSON.stringify(p)}`,
+  );
+}
+
+// V12. Preflight: refuse a loaded host unless forced, and mark a forced run.
+{
+  const base: Preflight = {
+    loadavgStart: [30.2, 28, 25],
+    loadavgRounds: [],
+    loadavgEnd: null,
+    maxLoad: defaultMaxLoad(16),
+    loaded: false,
+    governor: "powersave",
+    boost: "on",
+    boostSource: null,
+    smt: "on",
+    scalingDriver: null,
+    energyPerformancePreference: null,
+    warnings: [],
+  };
+  const refused = judgePreflight(base, false);
+  const forced = judgePreflight(base, true);
+  const quiet = judgePreflight(
+    { ...base, loadavgStart: [0.4, 0.5, 0.6] },
+    false,
+  );
+  check(
+    "a loaded host is refused unless forced, a forced run is marked loaded, and root-only settings only warn",
+    defaultMaxLoad(16) === 2 &&
+      defaultMaxLoad(4) === 1 &&
+      !mayStart(refused, false) &&
+      !refused.loaded &&
+      mayStart(forced, true) &&
+      forced.loaded &&
+      mayStart(quiet, false) &&
+      !quiet.loaded &&
+      quiet.warnings.length === 3 &&
+      parseLoadavg("0.52 0.58 0.59 1/1234 5678")?.join() === "0.52,0.58,0.59" &&
+      parseLoadavg("garbage") === null,
+    `refused=${mayStart(refused, false)} forced=${forced.loaded} quiet=${JSON.stringify(quiet.warnings)}`,
+  );
+}
+
+// V13. Sweep prose: a TBD with a committed cell is a placeholder --fix fills;
+//      a TBD without one is pending; a number in band passes; one out of band
+//      fails with an edit; a sentence speaking for several cells holds all.
+{
+  const R = new Runs([
+    run3("perf-report.json", {
+      "decode/Rust/t4/natural": { us: 233797 },
+      "a/1": { us: 100 },
+      "a/2": { us: 104 },
+      "a/3": { us: 140 },
+    }),
+  ]);
+  const ctx: ClaimContext = {
+    counters: {
+      checked: 0,
+      unbound: 0,
+      placeholders: 0,
+      pending: 0,
+      unavailable: 0,
+      tolerated: 0,
+    },
+    stability: checkStability(R),
+  };
+  const claim = (
+    pattern: RegExp,
+    resolve: SweepClaim["resolve"],
+  ): SweepClaim => ({
+    what: "x",
+    pattern,
+    unit: "ms",
+    decimals: 0,
+    resolve,
+  });
+  const decode = claim(/prices at (TBD|[\d.]+) ms/, (RR) =>
+    RR.est("decode/Rust/t4/natural"),
+  );
+  const tbd = checkSweepClaims("§2 prices at TBD ms", R, ctx, [decode]);
+  const pending = checkSweepClaims("x is TBD ms", R, ctx, [
+    claim(/is (TBD|[\d.]+) ms/, (RR) => RR.est("missing/cell")),
+  ]);
+  const inBand = checkSweepClaims("§2 prices at 240 ms", R, ctx, [decode]);
+  const outBand = checkSweepClaims("§2 prices at 260 ms", R, ctx, [decode]);
+  const flat = (text: string) =>
+    checkSweepClaims(text, R, ctx, [
+      {
+        what: "flat",
+        pattern: /all (TBD|[\d.]+) us/,
+        unit: "us",
+        decimals: 0,
+        resolve: (RR) => ["a/1", "a/2", "a/3"].map((id) => RR.est(id)),
+      },
+    ]);
+  const wrapped = checkSweepClaims("§2 prices\n> at 234 ms", R, ctx, [decode]);
+  const widest: SweepClaim = {
+    what: "widest",
+    pattern: /widest (TBD|[\d.]+)%/,
+    unit: "count",
+    decimals: 1,
+    resolve: () => 5.2,
+  };
+  const countRight = checkSweepClaims("widest 5.2%", R, ctx, [widest]);
+  const countWrong = checkSweepClaims("widest 5.0%", R, ctx, [widest]);
+  const countFill = checkSweepClaims("widest TBD%", R, ctx, [widest]);
+  const filled = applyEdits("§2 prices at TBD ms", [], tbd.edits);
+  check(
+    "a sweep figure is filled from a TBD, pending without a cell, banded, and held for every cell it speaks for",
+    tbd.placeholders === 1 &&
+      filled === "§2 prices at 234 ms" &&
+      pending.pending === 1 &&
+      pending.edits.length === 0 &&
+      inBand.failures.length === 0 &&
+      inBand.checked === 1 &&
+      outBand.failures.length === 1 &&
+      outBand.edits[0]?.text === "234" &&
+      flat("all 104 us").failures.length === 1 &&
+      flat("all 104 us").failures[0]?.detail?.includes("1 of the 3") === true &&
+      wrapped.failures.length === 0 &&
+      countRight.failures.length === 0 &&
+      countWrong.failures.length === 1 &&
+      countFill.edits[0]?.text === "5.2",
+    `tbd=${JSON.stringify(tbd.edits)} pending=${pending.pending} in=${details(inBand.failures)} out=${JSON.stringify(outBand.edits)} flat=${details(flat("all 104 us").failures)} wrapped=${details(wrapped.failures)}`,
   );
 }
 

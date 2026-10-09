@@ -16,51 +16,74 @@
  *
  * This closes the loop. Tables are parsed out of the document, so no number is
  * transcribed twice; only the *binding* — which cell a column means — is
- * written by hand below. A documented value passes when it equals the cell
- * value rounded to the precision the document itself uses, so the check is
- * exact rather than tolerance-based, and tightening a figure in the document
- * tightens the assertion with it.
+ * written by hand below. A documented value passes when it lies inside the
+ * cell's interval across processes, or within `TOLERANCE` of the committed run
+ * (`agreement` in verify-benchmark-core.ts). It used to have to equal the
+ * run's rounded output exactly, which made every re-measurement rewrite the
+ * whole document: the diff of a re-run was noise, and a figure that really
+ * moved could not be seen in it.
  *
  * Usage:
- *   node dist/verify-benchmark.js                # every bound table
+ *   node dist/verify-benchmark.js                # every bound table and figure
  *   node dist/verify-benchmark.js --list-unbound # tables with no binding, and why
+ *   node dist/verify-benchmark.js --list-cells   # every cell id the runs provide
  *   node dist/verify-benchmark.js --section 7
- *   node dist/verify-benchmark.js --fix          # rewrite cells from the runs
+ *   node dist/verify-benchmark.js --fix          # rewrite out-of-band figures
  *
  * Exit status is non-zero on any disagreement, so `mise run verify:benchmark`
  * gates a documentation change the way `mise run rd:gate` gates a quality one.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { planMatrix } from "./perf/plan.ts";
+import {
+  gitView,
+  judgeProvenance,
+  provenanceFails,
+} from "./perf/provenance.ts";
+import { allTargets } from "./perf/targets.ts";
 import {
   type Binding,
+  type ClaimContext,
   CROSS_RUN_TOLERANCE,
+  type Counters,
   DECODE_STAGES_BASELINE,
-  type Edit,
+  type Estimate,
   type Failure,
   type ProseClaim,
+  type ProseEdit,
   type Resolve,
   type RunDoc,
   Runs,
   STABILITY_MODE,
   STAGES_BASELINE,
   type StageCell,
+  type SweepClaim,
+  TOLERANCE,
+  applyEdits,
   bare,
   MissingCell,
-  cells,
   checkDecodeStagesProvenance,
   checkProseClaims,
   checkStability,
   checkStabilityClaim,
   checkStageRowCoverage,
   checkStagesProvenance,
+  checkSweepClaims,
   checkTable,
   clean,
   parseDecodeStages,
   parseStages,
   parseTables,
+  runFailures,
 } from "./verify-benchmark-core.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
@@ -68,15 +91,28 @@ const DOC = path.join(REPO_ROOT, "spec/PERFORMANCE.md");
 const BASELINE_DIR = path.join(REPO_ROOT, "tools/comparison/baselines");
 
 /**
- * The committed runs, in the order a lookup prefers them. `perf-report-2.json`
- * is the second independent bounded sweep §0's stability claim needs: no
- * documented figure is read from it (every cell it holds, `perf-report.json`
- * holds first), but every shared cell is compared against the other runs.
+ * The committed sweeps live per host: `baselines/hosts/<host>/`, where `<host>`
+ * is the run's OS, architecture and CPU model, slugged (`perf/host.ts`). The
+ * cross-run spread and §0's stability check compare runs of one host only, so
+ * a macOS run can be committed as its own set — the one place Swift can be
+ * measured — without failing a spread against Linux it was never meant to
+ * match.
+ *
+ * `PRIMARY` names the host the document is measured on. Its bounded runs are
+ * authoritative; its full run supplements them; another host is read only for
+ * a target the primary host recorded absent.
+ */
+const HOSTS_DIR = path.join(BASELINE_DIR, "hosts");
+const PRIMARY_FILE = path.join(HOSTS_DIR, "PRIMARY");
+
+/**
+ * The files a host directory may hold, in the order a lookup prefers them:
+ * the bounded pair §0's stability claim needs, then the full supplement.
  */
 const BASELINES = [
-  "perf-report-full.json",
   "perf-report.json",
   "perf-report-2.json",
+  "perf-report-full.json",
 ] as const;
 
 // ─── Bindings ───────────────────────────────────────────────────────────────
@@ -112,14 +148,33 @@ function sizeOf(raw: string): number | null {
   return m?.[1] && m[1] === m[2] ? Number.parseInt(m[1], 10) : null;
 }
 
-const ratio = (slow: number, fast: number): number => slow / fast;
+/** Scale an estimate and its interval by a constant. */
+const scaled = (e: Estimate, k: number): Estimate => ({
+  value: e.value * k,
+  interval: e.interval ? [e.interval[0] * k, e.interval[1] * k] : null,
+});
+
+/**
+ * A lever's time relative to its base, in percent: −36.3% is 0.637× the base.
+ * Read off the paired ratio (base ÷ arm) where the run recorded one, interval
+ * and all.
+ */
+const vsBase = (r: Estimate): Estimate => {
+  const pct = (x: number) => (1 / x - 1) * 100;
+  return {
+    value: pct(r.value),
+    interval: r.interval
+      ? [pct(Math.max(...r.interval)), pct(Math.min(...r.interval))]
+      : null,
+  };
+};
 
 /** A lever's cell id, keyed by the arm label the driver records. */
 const armId = (n: number, arm: string): string =>
   `encode/Rust/t1/${n}x${n}/gradient/${bare(arm)}`;
 
-function timeOr<T>(R: Runs, id: string): number | null {
-  return R.has(id) ? R.us(id) : null;
+function timeOr(R: Runs, id: string): Estimate | null {
+  return R.has(id) ? R.est(id) : null;
 }
 
 /**
@@ -363,6 +418,54 @@ const PROSE_CLAIMS: ProseClaim[] = [
     stages: ["oklab_forward"],
   },
   {
+    what: "§1: `dct_forward`'s share at 512x512 t1, quoted in prose",
+    pattern: /encode, ([\d.]+)% at 512×512, and/,
+    cell: "512x512-t1",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§5: `oklab_forward`, the stage SIMD covers",
+    pattern: /prices that stage at \*\*([\d.]+)%\*\* of a 512×512 encode/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§5: the SIMD ceiling",
+    pattern: /So the ceiling was ([\d.]+)%/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§6: `dct_forward`'s share, against the SIMD stage",
+    pattern: /at ([\d.]+)% of the work rather than/,
+    cell: "512x512-t1",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§6: `oklab_forward`'s share, the stage SIMD covers",
+    pattern: /on the ([\d.]+)% stage `simd` covers/,
+    cell: "512x512-t1",
+    stages: ["oklab_forward"],
+  },
+  {
+    what: "§10 lever 1: `dct_forward` at 512x512 t1",
+    pattern: /§1 puts it at ([\d.]+)% of a 512×512 encode/,
+    cell: "512x512-t1",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§10 lever 1: `dct_forward` at 512x512 t4",
+    pattern: /of a 512×512 encode and ([\d.]+)%\s+at tier 4/,
+    cell: "512x512-t4",
+    stages: ["dct_forward"],
+  },
+  {
+    what: "§12 summary: `dct_forward` at 512x512 t1, restated",
+    pattern: /the forward DCT is \*\*([\d.]+)%\*\* of a 512×512/,
+    cell: "512x512-t1",
+    stages: ["dct_forward"],
+  },
+  {
     what: "§10 lever 6: the pipeline share, restated",
     pattern: /for a stage §1 prices at ([\d.]+)%/,
     cell: "512x512-t1",
@@ -375,6 +478,7 @@ const BINDINGS: Binding[] = [
     section: "1",
     index: 0,
     title: "Where encode time goes (shares of one encode)",
+    rule: "share",
     columns: Object.fromEntries(
       Object.entries(STAGE_COLUMNS).map(([header, key]) => [
         header,
@@ -399,6 +503,7 @@ const BINDINGS: Binding[] = [
     section: "1.1",
     index: 0,
     title: "Where decode time goes (shares of one decode)",
+    rule: "share",
     // Unlike §1, a row or column that resolves to nothing fails rather than
     // counting as deliberately unbound: every cell in this table is a share,
     // so there is no cell here that could legitimately be unbound.
@@ -428,11 +533,11 @@ const BINDINGS: Binding[] = [
       },
       encode: (row, R) => {
         const t = tierOf(row("tier"));
-        return t === null ? null : R.us(`encode/Rust/t${t}/100x100/gradient`);
+        return t === null ? null : R.est(`encode/Rust/t${t}/100x100/gradient`);
       },
       decode: (row, R) => {
         const t = tierOf(row("tier"));
-        return t === null ? null : R.us(`decode/Rust/t${t}/natural`);
+        return t === null ? null : R.est(`decode/Rust/t${t}/natural`);
       },
     },
   },
@@ -443,18 +548,18 @@ const BINDINGS: Binding[] = [
     columns: {
       natural: (row, R) => {
         const t = tierOf(row("tier"));
-        return t === null ? null : R.us(`decode/Rust/t${t}/natural`);
+        return t === null ? null : R.est(`decode/Rust/t${t}/natural`);
       },
       "capped 32×32": (row, R) => {
         const t = tierOf(row("tier"));
-        return t === null ? null : R.us(`decode/Rust/t${t}/capped32`);
+        return t === null ? null : R.est(`decode/Rust/t${t}/capped32`);
       },
       saving: (row, R) => {
         const t = tierOf(row("tier"));
         if (t === null) return null;
-        return ratio(
-          R.us(`decode/Rust/t${t}/natural`),
-          R.us(`decode/Rust/t${t}/capped32`),
+        return R.ratio(
+          `decode/Rust/t${t}/natural`,
+          `decode/Rust/t${t}/capped32`,
         );
       },
     },
@@ -466,7 +571,7 @@ const BINDINGS: Binding[] = [
     columns: {
       encode: (row, R) => {
         const n = sizeOf(row("source"));
-        return n === null ? null : R.us(`encode/Rust/t1/${n}x${n}/gradient`);
+        return n === null ? null : R.est(`encode/Rust/t1/${n}x${n}/gradient`);
       },
       "per megapixel": (row, R) => {
         const n = sizeOf(row("source"));
@@ -474,7 +579,10 @@ const BINDINGS: Binding[] = [
         // Microseconds per megapixel. Return it unconverted: agrees() applies
         // the column's own unit (the document writes ms), and a conversion here
         // as well would divide by 1000 twice.
-        return R.us(`encode/Rust/t1/${n}x${n}/gradient`) / ((n * n) / 1e6);
+        return scaled(
+          R.est(`encode/Rust/t1/${n}x${n}/gradient`),
+          1e6 / (n * n),
+        );
       },
     },
   },
@@ -488,7 +596,7 @@ const BINDINGS: Binding[] = [
         const arm = armId(100, row("lever"));
         const base = armId(100, "shipped");
         if (!R.has(arm) || !R.has(base)) return null;
-        return ((R.us(arm) - R.us(base)) / R.us(base)) * 100;
+        return vsBase(R.ratio(base, arm));
       },
     },
   },
@@ -516,22 +624,22 @@ const BINDINGS: Binding[] = [
         const t = tierOf(row("tier"));
         return n === null || t === null
           ? null
-          : R.us(`encode/Rust/t${t}/${n}x${n}/gradient`);
+          : R.est(`encode/Rust/t${t}/${n}x${n}/gradient`);
       },
       scalar: (row, R) => {
         const n = sizeOf(row("source"));
         const t = tierOf(row("tier"));
         return n === null || t === null
           ? null
-          : R.us(`encode/Rust (scalar)/t${t}/${n}x${n}/gradient`);
+          : R.est(`encode/Rust (scalar)/t${t}/${n}x${n}/gradient`);
       },
       gain: (row, R) => {
         const n = sizeOf(row("source"));
         const t = tierOf(row("tier"));
         if (n === null || t === null) return null;
-        return ratio(
-          R.us(`encode/Rust (scalar)/t${t}/${n}x${n}/gradient`),
-          R.us(`encode/Rust/t${t}/${n}x${n}/gradient`),
+        return R.ratio(
+          `encode/Rust (scalar)/t${t}/${n}x${n}/gradient`,
+          `encode/Rust/t${t}/${n}x${n}/gradient`,
         );
       },
     },
@@ -555,7 +663,7 @@ const BINDINGS: Binding[] = [
         const direct = armId(n, "shipped");
         const sep = armId(n, "dct_separable");
         if (!R.has(direct) || !R.has(sep)) return null;
-        return ratio(R.us(direct), R.us(sep));
+        return R.ratio(direct, sep);
       },
     },
   },
@@ -576,7 +684,7 @@ const BINDINGS: Binding[] = [
           const base = arm.startsWith("refine_passes=1 ")
             ? "refine_passes=1"
             : "shipped";
-          return ratio(R.us(armId(n, base)), R.us(armId(n, arm)));
+          return R.ratio(armId(n, base), armId(n, arm));
         },
       ]),
     ) as Record<string, Resolve>,
@@ -587,13 +695,13 @@ const BINDINGS: Binding[] = [
     title: "§12.1's encode levers, built: tier 4 at 100x100",
     columns: {
       encode: (row, R) =>
-        R.us(`encode/Rust/t4/100x100/gradient/${clean(row("lever"))}`),
+        R.est(`encode/Rust/t4/100x100/gradient/${clean(row("lever"))}`),
       speedup: (row, R) => {
         const arm = clean(row("lever"));
         if (arm === "shipped") return null;
-        return ratio(
-          R.us("encode/Rust/t4/100x100/gradient/shipped"),
-          R.us(`encode/Rust/t4/100x100/gradient/${arm}`),
+        return R.ratio(
+          "encode/Rust/t4/100x100/gradient/shipped",
+          `encode/Rust/t4/100x100/gradient/${arm}`,
         );
       },
     },
@@ -612,9 +720,9 @@ const BINDINGS: Binding[] = [
       ).map(([header, raster]) => [
         header,
         (row: (h: string) => string, R: Runs) =>
-          ratio(
-            R.us(`decode/Rust/${raster}/shipped`),
-            R.us(`decode/Rust/${raster}/${clean(row("lever"))}`),
+          R.ratio(
+            `decode/Rust/${raster}/shipped`,
+            `decode/Rust/${raster}/${clean(row("lever"))}`,
           ),
       ]),
     ) as Record<string, Resolve>,
@@ -639,9 +747,10 @@ const BINDINGS: Binding[] = [
       "1 thread": (row, R) => batch(row("implementation"), R, "1"),
       auto: (row, R) => batch(row("implementation"), R, "auto"),
       scaling: (row, R) => {
-        const one = batch(row("implementation"), R, "1");
-        const auto = batch(row("implementation"), R, "auto");
-        return one === null || auto === null ? null : ratio(one, auto);
+        const t = clean(row("implementation"));
+        const one = `batch/${t}/t1/100x100/threads=1`;
+        const auto = `batch/${t}/t1/100x100/threads=auto`;
+        return R.has(one) && R.has(auto) ? R.ratio(one, auto) : null;
       },
     },
   },
@@ -653,7 +762,7 @@ function impl(
   R: Runs,
   op: "encode" | "decode",
   tier: number,
-): number | null {
+): Estimate | null {
   const t = clean(raw);
   const id =
     op === "encode"
@@ -662,10 +771,296 @@ function impl(
   return timeOr(R, id);
 }
 
-function batch(raw: string, R: Runs, threads: string): number | null {
+function batch(raw: string, R: Runs, threads: string): Estimate | null {
   const id = `batch/${clean(raw)}/t1/100x100/threads=${threads}`;
   const us = timeOr(R, id);
-  return us === null ? null : us / BATCH_COUNT;
+  return us === null ? null : scaled(us, 1 / BATCH_COUNT);
+}
+
+// ─── Figures the prose derives from the sweeps ──────────────────────────────
+//
+// The sentences under §2–§6 and in §10–§12 restate table figures — §5's 2%,
+// §6's 34.0 ms and 38×, §2's 234 ms — and nothing checked them, so a
+// re-measurement that moved a table left its sentences behind. Each is bound
+// here the way PROSE_CLAIMS binds §1's. Where the figure needs a measurement
+// no committed run holds yet, the document writes TBD and the gate fails on
+// it by name (`checkSweepClaims`).
+
+const t1 = (n: number) => `encode/Rust/t1/${n}x${n}/gradient`;
+const scalarT1 = (n: number) => `encode/Rust (scalar)/t1/${n}x${n}/gradient`;
+const gain = (R: Runs, n: number): Estimate => R.ratio(scalarT1(n), t1(n));
+const asPct = (e: Estimate): Estimate => ({
+  value: (e.value - 1) * 100,
+  interval: e.interval
+    ? [(e.interval[0] - 1) * 100, (e.interval[1] - 1) * 100]
+    : null,
+});
+/** A difference of two cells, in µs: an absolute saving. No interval. */
+const saving = (R: Runs, slow: string, fast: string): number =>
+  R.us(slow) - R.us(fast);
+const FIG = String.raw`(TBD|[\d.]+)`;
+
+const SWEEP_CLAIMS: SweepClaim[] = [
+  {
+    what: "§5: the SIMD gain, flat across sizes",
+    pattern: new RegExp(
+      String.raw`\*\*${FIG}%, and flat across every size measured`,
+    ),
+    unit: "percent",
+    decimals: 0,
+    resolve: (R) => [100, 256, 512].map((n) => asPct(gain(R, n))),
+  },
+  {
+    what: "§5: the measured SIMD gain at 512x512",
+    pattern: new RegExp(String.raw`the\s+measured gain is ${FIG}%`),
+    unit: "percent",
+    decimals: 0,
+    resolve: (R) => asPct(gain(R, 512)),
+  },
+  {
+    what: "§5: every tier-1 SIMD gain lands on one ratio",
+    pattern: new RegExp(String.raw`would not all land on\s+${FIG}×`),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) => [100, 256, 512].map((n) => gain(R, n)),
+  },
+  {
+    what: "§6: the separable speedup at 100x100",
+    pattern: new RegExp(
+      String.raw`${FIG}× → (?:TBD|[\d.]+)× → (?:TBD|[\d.]+)×`,
+    ),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) => R.ratio(t1(100), `${t1(100)}/dct_separable`),
+  },
+  {
+    what: "§6: the separable speedup at 256x256",
+    pattern: new RegExp(
+      String.raw`(?:TBD|[\d.]+)× → ${FIG}× → (?:TBD|[\d.]+)×`,
+    ),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) => R.ratio(t1(256), `${t1(256)}/dct_separable`),
+  },
+  {
+    what: "§6: the separable speedup at 512x512",
+    pattern: new RegExp(
+      String.raw`(?:TBD|[\d.]+)× → (?:TBD|[\d.]+)× → ${FIG}×`,
+    ),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) => R.ratio(t1(512), `${t1(512)}/dct_separable`),
+  },
+  {
+    what: "§6: the separable DCT's absolute saving at 512x512",
+    pattern: new RegExp(String.raw`takes \*\*${FIG} ms off an encode`),
+    unit: "ms",
+    decimals: 1,
+    resolve: (R) => saving(R, t1(512), `${t1(512)}/dct_separable`),
+  },
+  {
+    what: "§6: the simd feature's absolute saving at 512x512",
+    pattern: new RegExp(String.raw`\`simd\` feature takes ${FIG} ms\*\*`),
+    unit: "ms",
+    decimals: 1,
+    resolve: (R) => saving(R, scalarT1(512), t1(512)),
+  },
+  {
+    what: "§6: the separable saving over the simd saving",
+    pattern: new RegExp(String.raw`${FIG}× the absolute saving`),
+    unit: "ratio",
+    decimals: 0,
+    resolve: (R) =>
+      saving(R, t1(512), `${t1(512)}/dct_separable`) /
+      saving(R, scalarT1(512), t1(512)),
+  },
+  {
+    what: "§6: the only byte-identical speedup measured so far",
+    pattern: new RegExp(
+      String.raw`byte-identical speedup §5 measures is ${FIG}%`,
+    ),
+    unit: "percent",
+    decimals: 0,
+    resolve: (R) => asPct(gain(R, 512)),
+  },
+  {
+    what: "§10 item 2: the separable speedup, restated",
+    pattern: new RegExp(String.raw`\*\*${FIG}× at 512×512\*\*, now measured`),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) => R.ratio(t1(512), `${t1(512)}/dct_separable`),
+  },
+  {
+    what: "§12.2 item 8: the separable speedup, restated",
+    pattern: new RegExp(String.raw`§6 measures \*\*${FIG}× at 512×512\*\*`),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) => R.ratio(t1(512), `${t1(512)}/dct_separable`),
+  },
+  {
+    what: "§12.2 item 9: one 512x512 encode",
+    pattern: new RegExp(String.raw`— ${FIG} ms for one 512×512 image`),
+    unit: "ms",
+    decimals: 1,
+    resolve: (R) => R.est(t1(512)),
+  },
+  {
+    what: "§12 summary: the simd feature's gain, restated",
+    pattern: new RegExp(String.raw`feature buys \*\*${FIG}×\*\* because`),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) => gain(R, 512),
+  },
+  {
+    what: "§12.1 item 4(b): §2's tier-4 decode, restated",
+    pattern: new RegExp(String.raw`the operation §2 prices at ${FIG} ms`),
+    unit: "ms",
+    decimals: 0,
+    resolve: (R) => R.est("decode/Rust/t4/natural"),
+  },
+  {
+    what: "§12.3: §2's tier-4 decode, restated",
+    pattern: new RegExp(String.raw`§2's ${FIG} ms is still the only measured`),
+    unit: "ms",
+    decimals: 0,
+    resolve: (R) => R.est("decode/Rust/t4/natural"),
+  },
+  {
+    what: "§12.1 item 5: refine_passes=1 at 100x100",
+    pattern: new RegExp(String.raw`refinement at \*\*${FIG}–`),
+    unit: "ms",
+    decimals: 0,
+    resolve: (R) => R.est(`${t1(100)}/refine_passes=1`),
+  },
+  {
+    what: "§12.1 item 5: refine_passes=2 at 100x100",
+    pattern: new RegExp(
+      String.raw`refinement at \*\*(?:TBD|[\d.]+)–${FIG} ms against`,
+    ),
+    unit: "ms",
+    decimals: 0,
+    resolve: (R) => R.est(`${t1(100)}/refine_passes=2`),
+  },
+  {
+    what: "§12.1 item 5: the shipped 100x100 encode",
+    pattern: new RegExp(String.raw`ms against ${FIG} ms shipped\*\*`),
+    unit: "ms",
+    decimals: 2,
+    resolve: (R) => R.est(t1(100)),
+  },
+  // #95: §12.1's prose after its table and §12.3's first bullet, restated
+  // from §12.4's measured speedups rather than from §1's stage shares.
+  {
+    what: "§12.1: accel_quant_table at 100x100, measured",
+    pattern: new RegExp(
+      String.raw`\`accel_quant_table\` makes a 100×100 tier-1 encode \*\*${FIG}×\*\*`,
+    ),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) => R.ratio(t1(100), `${t1(100)}/accel_quant_table`),
+  },
+  {
+    what: "§12.1: accel_quant_table at 512x512, measured",
+    pattern: new RegExp(String.raw`and a 512×512 one \*\*${FIG}×\*\*`),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) => R.ratio(t1(512), `${t1(512)}/accel_quant_table`),
+  },
+  {
+    what: "§12.1: accel_quant_table at tier 4, measured",
+    pattern: new RegExp(String.raw`at tier 4 it is \*\*${FIG}×\*\*`),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) =>
+      R.ratio(
+        "encode/Rust/t4/100x100/gradient",
+        "encode/Rust/t4/100x100/gradient/accel_quant_table",
+      ),
+  },
+  {
+    what: "§12.1: accel_word_bitpack at 100x100, measured",
+    pattern: new RegExp(
+      String.raw`\`accel_word_bitpack\`, measures \*\*${FIG}×\*\*`,
+    ),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) => R.ratio(t1(100), `${t1(100)}/accel_word_bitpack`),
+  },
+  {
+    what: "§12.3: every encode lever together at 512x512, measured",
+    pattern: new RegExp(
+      String.raw`all seven levers together measure \*\*${FIG}×\*\*`,
+    ),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) => R.ratio(t1(512), `${t1(512)}/accel all`),
+  },
+  {
+    what: "§12.3: every lever together on a tier-1 decode, measured",
+    pattern: new RegExp(
+      String.raw`on a 512×512 encode and \*\*${FIG}×\*\* on a default-tier decode`,
+    ),
+    unit: "ratio",
+    decimals: 2,
+    resolve: (R) =>
+      R.ratio("decode/Rust/t1/natural", "decode/Rust/t1/natural/accel all"),
+  },
+  // §0: the host-stability pair's own figures. The pair §0 describes from
+  // 2026-09 was never committed, so its figures are no longer quoted; these
+  // read the committed pair's, and are TBD until there is one.
+  {
+    what: "§0: cells the committed bounded pair shares",
+    pattern: new RegExp(String.raw`at one commit share \*\*${FIG} cells\*\*`),
+    unit: "count",
+    decimals: 0,
+    resolve: (_R, ctx) =>
+      ctx.stability.status === "pass" ? ctx.stability.shared : null,
+  },
+  {
+    what: "§0: the committed bounded pair's widest spread",
+    pattern: new RegExp(String.raw`the widest \*\*${FIG}%\*\* apart`),
+    unit: "count",
+    decimals: 1,
+    resolve: (_R, ctx) =>
+      ctx.stability.status === "pass" && ctx.stability.widest !== null
+        ? Number((ctx.stability.widest * 100).toFixed(1))
+        : null,
+  },
+];
+
+/**
+ * §0's own counts: how much of the document the gate checks, and how much it
+ * cannot yet. Counted as they will stand after `--fix`, so the rewrite a fix
+ * makes to them is the one that is then true.
+ */
+function countClaims(pendingProse: number): SweepClaim[] {
+  return [
+    {
+      what: "§0: values checked against a committed run",
+      pattern: new RegExp(
+        String.raw`\*\*${FIG} of this document's values are checked`,
+      ),
+      unit: "count",
+      decimals: 0,
+      resolve: (_R, ctx) => ctx.counters.checked + ctx.counters.placeholders,
+    },
+    {
+      what: "§0: table cells no committed run can fill",
+      pattern: new RegExp(
+        String.raw`\*\*${FIG} table cells\*\* are placeholders`,
+      ),
+      unit: "count",
+      decimals: 0,
+      resolve: (_R, ctx) => ctx.counters.pending,
+    },
+    {
+      what: "§0: prose figures no committed run can fill",
+      pattern: new RegExp(String.raw`\*\*${FIG} figures in the prose\*\*`),
+      unit: "count",
+      decimals: 0,
+      resolve: () => pendingProse,
+    },
+  ];
 }
 
 // ─── Entry point ────────────────────────────────────────────────────────────
@@ -695,24 +1090,65 @@ if (values["list-unbound"]) {
   process.exit(0);
 }
 
+// A sweep committed at the old flat path is a baseline the gate would not
+// read; say where it goes rather than report the document unmeasured.
+const stray = BASELINES.filter((f) => existsSync(path.join(BASELINE_DIR, f)));
+if (stray.length > 0) {
+  console.error(
+    [
+      `Found ${stray.map((f) => `baselines/${f}`).join(", ")} at the old flat path.`,
+      "Committed sweeps now live per host, under baselines/hosts/<host>/, where",
+      "<host> is the run's own `host.id` (`mise run benchmark:session` puts them there).",
+    ].join("\n"),
+  );
+  process.exit(1);
+}
+
+const hostDirs = existsSync(HOSTS_DIR)
+  ? readdirSync(HOSTS_DIR)
+      .filter((d) => statSync(path.join(HOSTS_DIR, d)).isDirectory())
+      .sort()
+  : [];
+const primary = existsSync(PRIMARY_FILE)
+  ? readFileSync(PRIMARY_FILE, "utf8").trim()
+  : undefined;
+if (primary !== undefined && !hostDirs.includes(primary)) {
+  console.error(
+    `baselines/hosts/PRIMARY names ${primary}, which has no directory under baselines/hosts/.`,
+  );
+  process.exit(1);
+}
+const ordered = primary
+  ? [primary, ...hostDirs.filter((h) => h !== primary)]
+  : hostDirs;
+
 const runs = new Runs(
-  BASELINES.filter((file) => existsSync(path.join(BASELINE_DIR, file))).map(
-    (file) => ({
+  ordered.flatMap((host) =>
+    BASELINES.filter((file) =>
+      existsSync(path.join(HOSTS_DIR, host, file)),
+    ).map((file) => ({
       ...(JSON.parse(
-        readFileSync(path.join(BASELINE_DIR, file), "utf8"),
+        readFileSync(path.join(HOSTS_DIR, host, file), "utf8"),
       ) as RunDoc),
       file,
-    }),
+      hostDir: host,
+    })),
   ),
+  {
+    ...(primary ? { primary } : {}),
+    // Older runs recorded `…/shipped` as a cell of its own; the planner's
+    // alias map says which cell each such name is.
+    aliases: planMatrix("bounded", allTargets()).aliases,
+  },
 );
 for (const r of runs.rejected) console.error(`Rejected ${r}`);
 if (runs.loaded.length === 0) {
   console.error(
     [
-      "No committed perf run found. Expected one of:",
-      ...BASELINES.map((b) => `  tools/comparison/baselines/${b}`),
+      "No committed perf run found. Expected, under tools/comparison/baselines/hosts/<host>/:",
+      ...BASELINES.map((b) => `  ${b}`),
       "",
-      "Generate with `mise run benchmark` / `mise run benchmark:full`.",
+      "Generate with `mise run benchmark:session`.",
     ].join("\n"),
   );
   process.exit(1);
@@ -723,10 +1159,15 @@ if (values["list-cells"]) {
   process.exit(0);
 }
 
-console.log("Committed runs:");
+console.log(`Committed runs (primary host ${runs.primary}):`);
 for (const r of runs.loaded) {
+  const cfg = r.config;
+  const sampling =
+    cfg?.processes !== undefined
+      ? `${cfg.processes} process(es) x ${cfg.reps} block(s)`
+      : `1 process x ${cfg?.reps} block(s)`;
   console.log(
-    `  ${r.file}: ${r.cells.length} cells, mode=${r.config?.mode}, ` +
+    `  ${r.hostDir}/${r.file}: ${r.cells.length} cells, mode=${cfg?.mode}, ${r.schema}, ${sampling}, ` +
       `${r.environment?.cpuModel} (${r.environment?.arch}, ${r.environment?.cores} cores), ` +
       `commit ${r.git?.commit}${r.git?.dirty ? " DIRTY" : ""}`,
   );
@@ -734,8 +1175,16 @@ for (const r of runs.loaded) {
 console.log();
 
 const failures: Failure[] = [];
-const counters = { checked: 0, unbound: 0, placeholders: 0, unavailable: 0 };
-const edits: Edit[] = [];
+const counters: Counters = {
+  checked: 0,
+  unbound: 0,
+  placeholders: 0,
+  pending: 0,
+  unavailable: 0,
+  tolerated: 0,
+};
+const edits: Parameters<typeof applyEdits>[1][number][] = [];
+const proseEdits: ProseEdit[] = [];
 const missingTables: string[] = [];
 
 // §1's baseline is a hard requirement whenever §1 is in the binding set, and it
@@ -811,113 +1260,97 @@ for (const binding of BINDINGS) {
   }
 }
 
-// A dirty tree means the numbers cannot be traced back to a source state, which
-// is how the 2026-08-29 baseline came to disagree with the document it backed.
-for (const file of runs.dirty) {
-  failures.push({
-    where: `baselines/${file}`,
-    column: "git.dirty",
-    row: "—",
-    documented: "clean tree",
-    measured: "dirty",
-    detail: "regenerate from a committed tree so the run traces to a revision",
-  });
-}
-for (const c of runs.duplicates) {
-  failures.push({
-    where: "committed runs",
-    column: "integrity",
-    row: "—",
-    documented: "one value per cell id",
-    measured: "duplicate",
-    detail: c,
-  });
-}
+// The committed runs themselves: dirty, duplicated, spread past one host's
+// bar, a supplement overriding the bounded runs, one measurement disagreeing
+// with itself under two names, misfiled, or forced past the load bar.
+failures.push(...runFailures(runs));
 
-// Two committed runs of the same cell disagreeing by more than §0's bar means
-// the host did not hold its clock still, and every figure drawn from either run
-// is no tighter than that. This used to be a printed warning, which left §0's
-// stability claim resting on the maintainer's word; it now fails the gate.
+// Every host's stability pair is checked; §0's row speaks for the primary's.
 const spreadPct = (CROSS_RUN_TOLERANCE * 100).toFixed(0);
-for (const c of runs.crossRunSpread) {
-  failures.push({
-    where: "committed runs",
-    column: "cross-run spread",
-    row: c.split(":")[0] ?? "—",
-    documented: `within ${spreadPct}% across runs`,
-    measured: "outside",
-    detail: c,
-  });
-}
-
-// §0's host-stability claim: two bounded sweeps at one commit. With fewer than
-// two committed the check is skipped and said to be; with two it must pass,
-// and §0's table row must say what the check says.
 const stability = checkStability(runs);
-const stabilityWidest =
-  stability.widest === null
-    ? ""
-    : `, widest ${(stability.widest * 100).toFixed(1)}%`;
-const stabilityDetail =
-  stability.status === "skip"
-    ? stability.problems.join("; ")
-    : `${stability.runs.join(" vs ")}: ${stability.shared} shared cells${stabilityWidest}`;
-console.log(
-  `Host stability (§0): ${stability.status.toUpperCase()} — ${stabilityDetail}`,
-);
-console.log();
-if (stability.status === "fail") {
-  failures.push({
-    where: "committed runs",
-    column: "host stability",
-    row: stability.runs.join(" vs "),
-    documented: `two ${STABILITY_MODE} runs, one commit, within ${spreadPct}%`,
-    measured: "fail",
-    detail: stability.problems.join("; "),
-  });
+for (const host of runs.hosts.keys()) {
+  const s = host === runs.primary ? stability : checkStability(runs, host);
+  const widest =
+    s.widest === null ? "" : `, widest ${(s.widest * 100).toFixed(1)}%`;
+  const detail =
+    s.status === "skip"
+      ? s.problems.join("; ")
+      : `${s.runs.join(" vs ")}: ${s.shared} shared cells${widest}`;
+  console.log(
+    `Host stability (§0) ${host}${host === runs.primary ? " [primary]" : ""}: ${s.status.toUpperCase()} — ${detail}`,
+  );
+  if (s.status === "fail") {
+    failures.push({
+      where: "committed runs",
+      column: "host stability",
+      row: `${host}: ${s.runs.join(" vs ")}`,
+      documented: `two ${STABILITY_MODE} runs, one commit, within ${spreadPct}%`,
+      measured: "fail",
+      detail: s.problems.join("; "),
+    });
+  }
 }
 if (!values.section || values.section === "0") {
   failures.push(...checkStabilityClaim(doc, stability));
 }
 
-if (values.fix) {
-  if (edits.length === 0) {
-    console.log("Nothing to rewrite — every bound value already agrees.");
-    process.exit(0);
-  }
-  const lines = doc.split("\n");
-  // Group by line so a row with several rewritten columns is rebuilt once.
-  const byLine = new Map<number, Edit[]>();
-  for (const e of edits) {
-    const list = byLine.get(e.line);
-    if (list) list.push(e);
-    else byLine.set(e.line, [e]);
-  }
-  for (const [line, group] of byLine) {
-    const raw = lines[line];
-    if (raw === undefined) continue;
-    // Keep the row's own leading whitespace and outer pipes.
-    const indent = raw.slice(0, raw.length - raw.trimStart().length);
-    const parts = cells(raw);
-    for (const e of group) parts[e.cellIndex] = e.text;
-    lines[line] = `${indent}| ${parts.join(" | ")} |`;
-  }
-  writeFileSync(DOC, lines.join("\n"));
+// Provenance, by commit where the commit is reachable and by the digest of
+// its measured sources where it is not (`perf/provenance.ts`).
+const view = gitView(REPO_ROOT);
+console.log("\nProvenance:");
+for (const r of runs.loaded) {
+  const v = judgeProvenance(r.git ?? { commit: "(none)" }, view);
   console.log(
-    `Rewrote ${edits.length} cell(s) across ${byLine.size} row(s) in ${path.relative(REPO_ROOT, DOC)}.`,
+    `  ${v.status.toUpperCase().padEnd(10)} ${r.hostDir}/${r.file}: ${v.detail}`,
   );
-  console.log("Re-run without --fix to confirm, and review the diff.");
-  process.exit(0);
+  if (provenanceFails(v)) {
+    failures.push({
+      where: `baselines/hosts/${r.hostDir}/${r.file}`,
+      column: "provenance",
+      row: r.git?.commit ?? "—",
+      documented: "a commit, or the sources of one, in HEAD's history",
+      measured: v.status,
+      detail: v.detail,
+    });
+  }
 }
+for (const [file, stages] of [
+  [STAGES_BASELINE, STAGES],
+  [DECODE_STAGES_BASELINE, DECODE_STAGES],
+] as const) {
+  if (!stages) continue;
+  const seen = new Set<string>();
+  for (const cell of Object.values(stages) as StageCell[]) {
+    const key = `${cell.git?.rev}|${cell.git?.digest ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const v = judgeProvenance(
+      { commit: cell.git?.rev ?? "(none)", digest: cell.git?.digest ?? null },
+      view,
+    );
+    console.log(`  ${v.status.toUpperCase().padEnd(10)} ${file}: ${v.detail}`);
+    if (provenanceFails(v)) {
+      failures.push({
+        where: file,
+        column: "provenance",
+        row: cell.git?.rev ?? "—",
+        documented: "a commit, or the sources of one, in HEAD's history",
+        measured: v.status,
+        detail: v.detail,
+      });
+    }
+  }
+}
+console.log();
 
 // §1's provenance (one clean commit across all three columns) and the prose
-// figures derived from its table: `checkStagesProvenance` and
-// `checkProseClaims` in verify-benchmark-core.ts.
+// figures derived from its table.
 let proseChecked = 0;
 if (STAGES) {
   failures.push(...checkStagesProvenance(STAGES));
   const prose = checkProseClaims(doc, STAGES, PROSE_CLAIMS);
   failures.push(...prose.failures);
+  proseEdits.push(...prose.edits);
   proseChecked = prose.checked;
 }
 
@@ -987,14 +1420,46 @@ if (decodeStagesBound && DECODE_STAGES) {
     DECODE_STAGES_BASELINE,
   );
   failures.push(...prose.failures);
+  proseEdits.push(...prose.edits);
   decodeProseChecked = prose.checked;
+}
+
+// The sweep-derived prose, then §0's counts of everything above. Only on a
+// whole-document run: a count of one section's cells is not §0's count.
+let sweepChecked = 0;
+let sweepPending = 0;
+if (!values.section) {
+  const ctx: ClaimContext = { counters, stability };
+  const sweep = checkSweepClaims(doc, runs, ctx, SWEEP_CLAIMS);
+  const counts = checkSweepClaims(doc, runs, ctx, countClaims(sweep.pending));
+  for (const r of [sweep, counts]) {
+    failures.push(...r.failures);
+    proseEdits.push(...r.edits);
+  }
+  sweepChecked = sweep.checked + counts.checked;
+  sweepPending = sweep.pending;
+}
+
+if (values.fix) {
+  if (edits.length === 0 && proseEdits.length === 0) {
+    console.log("Nothing to rewrite — every bound value is within its band.");
+    process.exit(0);
+  }
+  writeFileSync(DOC, applyEdits(doc, edits, proseEdits));
+  console.log(
+    `Rewrote ${edits.length} table cell(s) and ${proseEdits.length} prose figure(s) in ${path.relative(REPO_ROOT, DOC)} — only those outside their interval and the ±${(TOLERANCE * 100).toFixed(0)}% band, and the placeholders a committed run can fill.`,
+  );
+  console.log("Re-run without --fix to confirm, and review the diff.");
+  process.exit(0);
 }
 
 console.log(
   `Checked ${counters.checked} documented value(s) against the committed runs` +
+    ` (${counters.tolerated} within the interval or the ±${(TOLERANCE * 100).toFixed(0)}% band rather than exact)` +
     `; ${counters.unbound} deliberately unbound` +
     `${counters.unavailable > 0 ? `, ${counters.unavailable} on targets this run could not reach` : ""}` +
-    `${counters.placeholders > 0 ? `, ${counters.placeholders} placeholder(s) not yet measured` : ""}.`,
+    `${counters.placeholders > 0 ? `, ${counters.placeholders} placeholder(s) a committed run can fill` : ""}` +
+    `${counters.pending > 0 ? `, ${counters.pending} placeholder(s) no committed run can fill yet` : ""}.`,
 );
 console.log(
   `Checked ${proseChecked} figure(s) the prose derives from §1's table.`,
@@ -1002,6 +1467,16 @@ console.log(
 console.log(
   `Checked ${decodeProseChecked} figure(s) the prose derives from §1.1's table.`,
 );
+console.log(
+  `Checked ${sweepChecked} figure(s) the prose derives from the sweeps` +
+    `${sweepPending > 0 ? `; ${sweepPending} still TBD` : ""}.`,
+);
+const noisy = runs.noisyTouched();
+if (noisy.length > 0) {
+  console.log(
+    `  NOISY  ${noisy.length} bound cell(s) the driver flagged noisy (process minima or blocks spread past 5%): ${noisy.join(", ")}`,
+  );
+}
 const UNAVAILABLE_NOTE =
   '               a cell marked "<host> only" is skipped, not failed — a target no\n' +
   "               committed run reached cannot be asked to document a number. A cell\n" +

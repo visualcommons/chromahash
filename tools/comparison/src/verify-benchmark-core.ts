@@ -12,6 +12,8 @@
  * table bindings and the exit status stay in the CLI.
  */
 
+import { hostKey } from "./perf/host.ts";
+
 // ─── The document, as tables ────────────────────────────────────────────────
 
 export interface DocTable {
@@ -80,9 +82,9 @@ export function parseTables(markdown: string): DocTable[] {
 
 // ─── A documented number ────────────────────────────────────────────────────
 
-type Unit = "us" | "ms" | "s" | "ratio" | "percent";
+export type Unit = "us" | "ms" | "s" | "ratio" | "percent";
 
-interface DocNumber {
+export interface DocNumber {
   value: number;
   unit: Unit;
   /** Decimal places the document used, which is the precision it is held to. */
@@ -216,23 +218,71 @@ const PER_US: Record<string, number> = { us: 1, ms: 1e3, s: 1e6 };
 
 // ─── The committed runs ─────────────────────────────────────────────────────
 
-/** The run format this document's figures are defined against. */
-export const SCHEMA = "chromahash-perf/2";
+/**
+ * The run format this document's figures are defined against: per-process
+ * sampling, the median of each cell's process minima (`perf/probe.ts`).
+ */
+export const SCHEMA = "chromahash-perf/3";
 
 /**
- * Two runs of the same cell agree to within this much on a host fit to publish
- * from — §0's bar. Applied only *between* the committed runs, never to accept a
- * documented number: those are checked exactly. Any shared cell further apart
- * than this fails the gate.
+ * The previous format: one process per cell, its minimum block reported. Still
+ * read, because the committed baseline is one and a re-measurement replaces it
+ * rather than a schema bump orphaning it; its cells carry no interval, so they
+ * are held to the ±TOLERANCE band alone.
+ */
+export const LEGACY_SCHEMA = "chromahash-perf/2";
+
+/**
+ * Two runs of the same cell on one host agree to within this much on a host fit
+ * to publish from — §0's bar. Applied *between* the committed runs of one host,
+ * never across hosts and never to accept a documented number.
  */
 export const CROSS_RUN_TOLERANCE = 0.1;
 
 /**
+ * How far a documented figure may sit from the committed run and still pass,
+ * when it is not inside the cell's own interval.
+ *
+ * Half of §0's 10% host bar. A documented figure is transcribed from one run,
+ * and §0's procedure commits a second that may sit anywhere within 10% of the
+ * first; holding the document to the run *exactly* made every re-measurement
+ * rewrite nearly every value, so the diff of a re-run was noise and a real
+ * change could not be seen in it. 5% absorbs the motion of nearly every cell
+ * between two sweeps the host bar accepts — the one pair this document has
+ * evidence for spread at most 5.5%, with almost every cell far tighter — while
+ * a change the size of the bar itself still fails. It is the resolution of the
+ * document, stated: a ratio claim within 5% of 1, such as §5's SIMD gain, is
+ * checked only to that resolution.
+ */
+export const TOLERANCE = 0.05;
+
+/**
+ * A stage share (§1, §1.1) passes within half a point, whatever its size. A
+ * share is a ratio inside one process; §1 records that two recordings back to
+ * back agreed within 0.4 points on every share, so half a point is what a
+ * re-recording should clear without a rewrite. Not relative: 5% of a 57% share
+ * is three points, which is the size of the load burst §1 says moved
+ * `ac_quantize` — a change, not noise.
+ */
+export const SHARE_FLOOR_POINTS = 0.5;
+
+/**
  * The sweep mode §0's stability claim is about: two independent `bounded`
- * sweeps at one commit. A `--full` sweep is compared with them for spread like
- * any other run, but it is not one of the pair.
+ * sweeps at one commit. A `full` run is a supplement holding only ids the
+ * bounded matrix does not, so it shares no cell with either.
  */
 export const STABILITY_MODE = "bounded";
+export const SUPPLEMENT_MODE = "full";
+
+/** A measured value with the interval the run recorded for it, if any. */
+export interface Estimate {
+  value: number;
+  /** Bootstrap 95% interval across processes; null for a chromahash-perf/2 cell. */
+  interval: [number, number] | null;
+}
+
+export const isEstimate = (v: unknown): v is Estimate =>
+  typeof v === "object" && v !== null && "value" in v && "interval" in v;
 
 interface Cell {
   id: string;
@@ -242,15 +292,43 @@ interface Cell {
   iqrPct: number;
   noisy: boolean;
   iters: number;
+  /** chromahash-perf/3: the interval of `nsPerOp` across processes. */
+  ci95NsPerOp?: [number, number];
+  processMinNsPerOp?: number[];
+}
+
+export interface PairRecord {
+  base: string;
+  arm: string;
+  ratio: number;
+  ci95: [number, number];
+  ratios?: number[];
 }
 
 export interface RunDoc {
   file: string;
+  /**
+   * The directory the run was committed under, `baselines/hosts/<host>/`.
+   * Set by the loader; a fixture may leave it out, and it is then derived from
+   * the run's own environment.
+   */
+  hostDir?: string;
   schema: string;
-  git: { commit: string; dirty: boolean };
-  environment: { cpuModel: string; arch: string; cores: number };
-  config: { mode: string; reps: number };
+  git: { commit: string; dirty: boolean; digest?: string | null };
+  host?: { id: string; machine: string };
+  environment: {
+    cpuModel: string;
+    arch: string;
+    cores: number;
+    os?: string;
+    preflight?: { loaded?: boolean; loadavgStart?: number[] | null };
+  };
+  config: { mode: string; reps: number; processes?: number };
   cells: Cell[];
+  /** chromahash-perf/3: paired ratios, base over arm. */
+  pairs?: PairRecord[];
+  /** chromahash-perf/3: names that are another cell's measurement. */
+  aliases?: Record<string, string>;
   /**
    * Targets the driver could not run, with the reason it recorded. Swift is the
    * permanent case: its binding consumes a UniFFI xcframework only `xcodebuild`
@@ -289,26 +367,75 @@ export function classify(kind: string | undefined): Availability {
   return kind === "absent" || kind === "broken" ? kind : "unclassified";
 }
 
+/** A host's key: OS, architecture and CPU model, slugged (`perf/host.ts`). */
+export function hostKeyOf(env: RunDoc["environment"] | undefined): string {
+  return hostKey({
+    os: env?.os ?? "unknown",
+    arch: env?.arch ?? "unknown",
+    cpuModel: env?.cpuModel ?? "unknown",
+  });
+}
+
+const targetOf = (id: string): string => id.split("/")[1] ?? "";
+
+/** Lookup order inside one host: the bounded runs as listed, then the supplement. */
+const modeRank = (d: RunDoc): number =>
+  d.config?.mode === STABILITY_MODE
+    ? 0
+    : d.config?.mode === SUPPLEMENT_MODE
+      ? 1
+      : 2;
+
+export interface RunsOptions {
+  /** The host the document is measured on. Default: the first run's. */
+  primary?: string;
+  /**
+   * Names that are another cell's measurement, for runs too old to record their
+   * own (`perf/plan.ts`'s aliases). A chromahash-perf/3 run carries them.
+   */
+  aliases?: Readonly<Record<string, string>>;
+}
+
 export class Runs {
   private readonly byId = new Map<
     string,
-    { us: number; cell: Cell; from: string }
+    { us: number; cell: Cell; from: string; interval: [number, number] | null }
   >();
   /** Every loaded run's own value for each of its cells, by file. */
   private readonly perRun = new Map<string, Map<string, number>>();
+  private readonly pairById = new Map<string, PairRecord & { from: string }>();
+  private readonly aliases = new Map<string, string>();
   readonly loaded: RunDoc[] = [];
+  /** The loaded runs grouped by host, in lookup order within each. */
+  readonly hosts = new Map<string, RunDoc[]>();
+  readonly primary: string;
   /**
-   * Same id, two runs, further apart than `CROSS_RUN_TOLERANCE`: the host did
-   * not hold its clock still across them. Compared across every pair of loaded
-   * runs, not against whichever run happened to be read first — with three
-   * runs, the second and third were otherwise never compared with each other.
+   * Same id, two runs of one host, further apart than `CROSS_RUN_TOLERANCE`:
+   * the host did not hold its clock still across them. Compared across every
+   * pair of a host's runs; runs of different hosts are never compared — a
+   * macOS run and a Linux run of one cell disagreeing is not news.
    */
   readonly crossRunSpread: string[] = [];
   /** Same id twice inside one run: an integrity bug in the driver. */
   readonly duplicates: string[] = [];
+  /**
+   * One measurement under two names (`…/gradient` and `…/gradient/shipped`),
+   * recorded as two cells by a run older than the alias, and disagreeing by
+   * more than CROSS_RUN_TOLERANCE: the document would publish two different
+   * figures for one piece of work.
+   */
+  readonly aliasDisagreements: string[] = [];
+  /** A supplement re-measuring ids its host's bounded runs hold. */
+  readonly overlaps: string[] = [];
+  /** A run filed under a host directory its environment does not match. */
+  readonly misfiled: string[] = [];
+  /** A run the driver was forced to take on a loaded host. */
+  readonly loadedRuns: string[] = [];
   readonly dirty: string[] = [];
   /** Runs rejected outright, with the reason. */
   readonly rejected: string[] = [];
+  /** Every id a binding asked for, so the gate can list the noisy ones. */
+  readonly touched = new Set<string>();
   /**
    * Targets no loaded run could measure.
    *
@@ -321,27 +448,80 @@ export class Runs {
   readonly unavailable = new Map<string, Unavailable>();
 
   /**
-   * The committed runs, parsed, in the order a lookup prefers them. Each is
-   * tagged with the baseline file it was read from; reading them is the CLI's
+   * The committed runs, parsed. Each is tagged with the baseline file it was
+   * read from and, by the CLI, the host directory; reading them is the CLI's
    * job, so a fixture can stand in for a file.
+   *
+   * **Lookup.** The primary host's bounded runs, in the order given, are
+   * authoritative; its supplement (`full`) is consulted only for ids no bounded
+   * run holds, and is *failed* for holding any it does. Other hosts are
+   * consulted only for targets the primary host recorded absent — a macOS run
+   * fills the Swift rows and nothing else.
    */
-  constructor(docs: RunDoc[]) {
+  constructor(docs: RunDoc[], opts: RunsOptions = {}) {
+    for (const [alias, id] of Object.entries(opts.aliases ?? {})) {
+      this.aliases.set(alias, id);
+    }
+    const accepted: RunDoc[] = [];
     for (const doc of docs) {
       const file = doc.file;
-
       // chromahash-perf/1 reported the median as a cell's headline figure; /2
-      // reports the minimum. Binding this document to a /1 run would compare
-      // numbers that do not mean the same thing, and a --fix against one would
-      // quietly write medians into a document that says minima.
-      if (doc.schema !== SCHEMA) {
+      // the minimum of one process; /3 the median of per-process minima. /1
+      // means something else and is refused; /2 is read, held to the band.
+      if (doc.schema !== SCHEMA && doc.schema !== LEGACY_SCHEMA) {
         this.rejected.push(
           `${file}: schema ${doc.schema ?? "(none)"}, expected ${SCHEMA} — regenerate with \`mise run benchmark\``,
         );
         continue;
       }
+      if (doc.config?.mode === "quick") {
+        this.rejected.push(
+          `${file}: a --quick run is a one-rep smoke test of the bench contract, not a baseline`,
+        );
+        continue;
+      }
+      const own = hostKeyOf(doc.environment);
+      const hostDir = doc.hostDir ?? own;
+      if (hostDir !== own) {
+        this.misfiled.push(
+          `${hostDir}/${file}: recorded on ${own}, committed under ${hostDir}`,
+        );
+      }
+      accepted.push({ ...doc, hostDir });
+    }
 
+    for (const doc of accepted) {
+      const host = doc.hostDir as string;
+      const list = this.hosts.get(host) ?? [];
+      list.push(doc);
+      this.hosts.set(host, list);
+    }
+    for (const [host, list] of this.hosts) {
+      this.hosts.set(
+        host,
+        list
+          .map((d, i) => ({ d, i }))
+          .sort((a, b) => modeRank(a.d) - modeRank(b.d) || a.i - b.i)
+          .map((x) => x.d),
+      );
+    }
+    this.primary = opts.primary ?? accepted[0]?.hostDir ?? "";
+    const primaryFirst = [
+      ...(this.hosts.get(this.primary) ?? []),
+      ...[...this.hosts.entries()]
+        .filter(([h]) => h !== this.primary)
+        .flatMap(([, l]) => l),
+    ];
+
+    for (const doc of primaryFirst) {
+      const file = doc.file;
+      const key = this.runKey(doc);
       this.loaded.push(doc);
-      if (doc.git?.dirty) this.dirty.push(file);
+      if (doc.git?.dirty) this.dirty.push(key);
+      if (doc.environment?.preflight?.loaded) this.loadedRuns.push(key);
+      for (const [alias, id] of Object.entries(doc.aliases ?? {})) {
+        if (!this.aliases.has(alias)) this.aliases.set(alias, id);
+      }
       for (const u of doc.unavailable ?? []) {
         const prior = this.unavailable.get(u.target);
         // A `broken` probe outranks an `absent` one: if any run got far enough
@@ -363,64 +543,169 @@ export class Runs {
           this.duplicates.push(`${file}: duplicate cell id ${c.id}`);
           continue;
         }
-        const us = (c.nsPerOp ?? c.medianNsPerOp) / 1000;
-        own.set(c.id, us);
-        for (const [other, cellsOf] of this.perRun) {
-          const theirs = cellsOf.get(c.id);
-          if (theirs === undefined) continue;
-          const delta = spread(theirs, us);
-          if (delta > CROSS_RUN_TOLERANCE) {
-            this.crossRunSpread.push(
-              `${c.id}: ${other} says ${theirs.toFixed(1)} us, ` +
-                `${file} says ${us.toFixed(1)} us (${(delta * 100).toFixed(1)}% apart)`,
+        own.set(c.id, (c.nsPerOp ?? c.medianNsPerOp) / 1000);
+      }
+      this.perRun.set(key, own);
+    }
+
+    // Spread and overlap, host by host.
+    for (const [host, list] of this.hosts) {
+      for (let i = 0; i < list.length; i++) {
+        const a = list[i] as RunDoc;
+        const ca = this.perRun.get(this.runKey(a)) ?? new Map();
+        for (let j = i + 1; j < list.length; j++) {
+          const b = list[j] as RunDoc;
+          const cb = this.perRun.get(this.runKey(b)) ?? new Map();
+          const supplement =
+            [a, b].filter((d) => d.config?.mode === SUPPLEMENT_MODE).length ===
+            1;
+          const shared: string[] = [];
+          for (const [id, us] of ca) {
+            const theirs = cb.get(id);
+            if (theirs === undefined) continue;
+            shared.push(id);
+            const delta = spread(us, theirs);
+            if (delta > CROSS_RUN_TOLERANCE) {
+              this.crossRunSpread.push(
+                `${id}: ${a.file} says ${us.toFixed(1)} us, ` +
+                  `${b.file} says ${theirs.toFixed(1)} us (${(delta * 100).toFixed(1)}% apart, ${host})`,
+              );
+            }
+          }
+          if (supplement && shared.length > 0) {
+            const [full, bounded] =
+              a.config?.mode === SUPPLEMENT_MODE ? [a, b] : [b, a];
+            this.overlaps.push(
+              `${host}: ${full.file} re-measures ${shared.length} id(s) ${bounded.file} holds (e.g. ${shared[0]}) — a full run is a supplement; regenerate it with the current driver, which measures only ids the bounded matrix does not`,
             );
           }
         }
-        if (!this.byId.has(c.id)) {
-          this.byId.set(c.id, { us, cell: c, from: file });
+      }
+    }
+
+    // One measurement under two names, recorded twice by an old run.
+    for (const doc of this.loaded) {
+      const own = this.perRun.get(this.runKey(doc)) ?? new Map();
+      for (const [alias, id] of this.aliases) {
+        const a = own.get(alias);
+        const b = own.get(id);
+        if (a === undefined || b === undefined) continue;
+        const d = spread(a, b);
+        if (d > CROSS_RUN_TOLERANCE) {
+          this.aliasDisagreements.push(
+            `${doc.file}: ${alias} says ${a.toFixed(1)} us and ${id} says ${b.toFixed(1)} us (${(d * 100).toFixed(1)}% apart) — one encode, measured twice`,
+          );
         }
       }
-      this.perRun.set(file, own);
+    }
+
+    // The primary host is authoritative; another host fills a cell only for a
+    // target the primary recorded absent and measured nothing of.
+    const primaryRuns = this.hosts.get(this.primary) ?? [];
+    const primaryTargets = new Set(
+      primaryRuns.flatMap((d) => d.cells.map((c) => targetOf(c.id))),
+    );
+    const primaryAbsent = new Set(
+      primaryRuns
+        .flatMap((d) => d.unavailable ?? [])
+        .filter((u) => classify(u.kind) === "absent")
+        .map((u) => u.target)
+        .filter((t) => !primaryTargets.has(t)),
+    );
+    for (const doc of primaryFirst) {
+      const isPrimary = doc.hostDir === this.primary;
+      for (const c of doc.cells) {
+        if (this.byId.has(c.id)) continue;
+        if (!isPrimary && !primaryAbsent.has(targetOf(c.id))) continue;
+        const ci = c.ci95NsPerOp;
+        this.byId.set(c.id, {
+          us: (c.nsPerOp ?? c.medianNsPerOp) / 1000,
+          cell: c,
+          from: this.runKey(doc),
+          interval:
+            doc.schema === SCHEMA && ci ? [ci[0] / 1000, ci[1] / 1000] : null,
+        });
+      }
+      for (const p of doc.pairs ?? []) {
+        const id = `${p.base}|${p.arm}`;
+        const base = this.byId.get(p.base);
+        // A pair is read from the run its base cell is read from, so a ratio
+        // never mixes one run's numerator with another's denominator.
+        if (!this.pairById.has(id) && base?.from === this.runKey(doc)) {
+          this.pairById.set(id, { ...p, from: this.runKey(doc) });
+        }
+      }
     }
 
     // "The union of what was measured wins over any single run's gap" — as a
-    // second pass, over every cell of every loaded run.
-    //
-    // It used to run inline: a file's `unavailable` entries went in, then that
-    // file's cells came out again. The result depended on the order `BASELINES`
-    // lists the files. With `["perf-report-full.json", "perf-report.json"]`, a
-    // target the full sweep measured and the bounded one did not was inserted
-    // by the bounded run *after* the full run's cells had already been walked,
-    // so it stayed marked unavailable while committed cells held it — and the
-    // gate then skipped, or failed, rows it had the measurement for. That is
-    // the exact shape of taking the full sweep on macOS (Swift present) and the
-    // bounded one on Linux (Swift absent).
+    // second pass, over every cell any host supplied. Order-independent: a
+    // target one run measured and another recorded absent is measured.
     for (const id of this.byId.keys()) {
-      this.unavailable.delete(id.split("/")[1] ?? "");
+      this.unavailable.delete(targetOf(id));
     }
   }
 
+  /** How a run is named in messages: its file, under its host if there are several. */
+  runKey(doc: RunDoc): string {
+    return this.hosts.size > 1 ? `${doc.hostDir}/${doc.file}` : doc.file;
+  }
+
+  private resolveId(id: string): string {
+    return this.byId.has(id) ? id : (this.aliases.get(id) ?? id);
+  }
+
   has(id: string): boolean {
-    return this.byId.has(id);
+    return this.byId.has(this.resolveId(id));
   }
 
   /** Whether any committed run holds a cell for this target, at any id. */
   measuredTarget(target: string): boolean {
     for (const id of this.byId.keys()) {
-      if ((id.split("/")[1] ?? "") === target) return true;
+      if (targetOf(id) === target) return true;
     }
     return false;
   }
 
-  /** Median microseconds per op. Throws if the id is not in any committed run. */
+  /** Microseconds per op. Throws if the id is not in any committed run. */
   us(id: string): number {
-    const hit = this.byId.get(id);
+    return this.est(id).value;
+  }
+
+  /** Microseconds per op with its interval. Throws if the id is not committed. */
+  est(id: string): Estimate {
+    const real = this.resolveId(id);
+    this.touched.add(real);
+    const hit = this.byId.get(real);
     if (!hit) throw new MissingCell(id);
-    return hit.us;
+    return { value: hit.us, interval: hit.interval };
+  }
+
+  /**
+   * `base` time over `arm` time. The run's own paired record when it has one —
+   * a ratio taken process by process, with its interval — and otherwise the
+   * ratio of the two cells, with none.
+   */
+  ratio(base: string, arm: string): Estimate {
+    const b = this.resolveId(base);
+    const a = this.resolveId(arm);
+    const pair = this.pairById.get(`${b}|${a}`);
+    if (pair) {
+      this.touched.add(b);
+      this.touched.add(a);
+      return { value: pair.ratio, interval: pair.ci95 };
+    }
+    return { value: this.us(b) / this.us(a), interval: null };
   }
 
   cell(id: string): Cell | null {
-    return this.byId.get(id)?.cell ?? null;
+    return this.byId.get(this.resolveId(id))?.cell ?? null;
+  }
+
+  /** Every id a binding resolved whose cell the driver flagged noisy. */
+  noisyTouched(): string[] {
+    return [...this.touched]
+      .filter((id) => this.byId.get(id)?.cell.noisy)
+      .sort();
   }
 
   get ids(): string[] {
@@ -431,6 +716,99 @@ export class Runs {
   cellsOf(file: string): ReadonlyMap<string, number> | undefined {
     return this.perRun.get(file);
   }
+}
+
+/**
+ * Everything about the committed runs themselves — not the document — that
+ * fails the gate. Split out of the CLI so the selftest can drive each.
+ */
+export function runFailures(R: Runs): Failure[] {
+  const out: Failure[] = [];
+  const add = (
+    column: string,
+    documented: string,
+    items: string[],
+    detail: (s: string) => string,
+    measured = "",
+  ) => {
+    for (const s of items) {
+      out.push({
+        where: "committed runs",
+        column,
+        row: s.split(":")[0] ?? "—",
+        documented,
+        measured: measured || column,
+        detail: detail(s),
+      });
+    }
+  };
+  // A dirty tree means the numbers cannot be traced back to a source state,
+  // which is how the 2026-08-29 baseline came to disagree with its document.
+  add(
+    "git.dirty",
+    "clean tree",
+    R.dirty,
+    (f) =>
+      `${f}: regenerate from a committed tree so the run traces to a revision`,
+    "dirty",
+  );
+  add(
+    "integrity",
+    "one value per cell id",
+    R.duplicates,
+    (s) => s,
+    "duplicate",
+  );
+  add(
+    "cross-run spread",
+    `within ${(CROSS_RUN_TOLERANCE * 100).toFixed(0)}% across one host's runs`,
+    R.crossRunSpread,
+    (s) => s,
+    "outside",
+  );
+  add(
+    "supplement",
+    "full holds only ids bounded does not",
+    R.overlaps,
+    (s) => s,
+    "overlap",
+  );
+  add(
+    "alias",
+    "one figure per measurement",
+    R.aliasDisagreements,
+    (s) => s,
+    "disagree",
+  );
+  add(
+    "host",
+    "baselines/hosts/<the run's own host>/",
+    R.misfiled,
+    (s) => s,
+    "misfiled",
+  );
+  add(
+    "preflight.loaded",
+    "a run started below the load bar",
+    R.loadedRuns,
+    (f) =>
+      `${f} was taken with --force-loaded above the load bar, so it is about the host's other work — re-run on a quiet host`,
+    "loaded",
+  );
+  for (const [host, list] of R.hosts) {
+    const schemas = new Set(list.map((d) => d.schema));
+    if (schemas.size > 1) {
+      out.push({
+        where: "committed runs",
+        column: "schema",
+        row: host,
+        documented: "one schema per host",
+        measured: [...schemas].join(", "),
+        detail: `${host} mixes run formats; the reported value of a cell means a different statistic in each, so a re-measurement replaces the whole set`,
+      });
+    }
+  }
+  return out;
 }
 
 export class MissingCell extends Error {
@@ -450,17 +828,20 @@ export function spread(a: number, b: number): number {
 // agreed within `CROSS_RUN_TOLERANCE` on every shared cell. That claim used to
 // stand on the maintainer's word: one sweep was committed, the gate had no slot
 // for a second, and the spread it computed was printed as a warning. It is now
-// a result with three outcomes, and §0's own table row is held to it.
+// a result with three outcomes per host, and §0's own table row is held to the
+// primary host's.
 
 export interface Stability {
   /**
-   * `pass` — two bounded runs, one commit, one CPU, at least one shared cell,
+   * `pass` — two bounded runs, one commit, one host, at least one shared cell,
    *          none further apart than the tolerance.
    * `skip` — fewer than two bounded runs committed: nothing to compare, and the
    *          gate says so rather than reporting agreement.
    * `fail` — two are committed and they do not substantiate the claim.
    */
   status: "pass" | "skip" | "fail";
+  /** The host checked. */
+  host: string;
   /** The bounded runs compared, by file. */
   runs: string[];
   /** Cells every compared run holds. */
@@ -471,17 +852,21 @@ export interface Stability {
   problems: string[];
 }
 
-export function checkStability(R: Runs): Stability {
-  const bounded = R.loaded.filter((d) => d.config?.mode === STABILITY_MODE);
+/** The stability check for one host; the primary host by default. */
+export function checkStability(R: Runs, host: string = R.primary): Stability {
+  const bounded = (R.hosts.get(host) ?? []).filter(
+    (d) => d.config?.mode === STABILITY_MODE,
+  );
   const runs = bounded.map((d) => d.file);
   if (bounded.length < 2) {
     return {
       status: "skip",
+      host,
       runs,
       shared: 0,
       widest: null,
       problems: [
-        `${bounded.length} ${STABILITY_MODE} run(s) committed; the check needs two`,
+        `${bounded.length} ${STABILITY_MODE} run(s) committed for ${host}; the check needs two`,
       ],
     };
   }
@@ -501,8 +886,18 @@ export function checkStability(R: Runs): Stability {
       `the ${STABILITY_MODE} runs are from different CPUs (${list}); the claim is about one host`,
     );
   }
+  const machines = new Set(
+    bounded.map((d) => d.host?.machine).filter((m) => m !== undefined),
+  );
+  if (machines.size > 1) {
+    problems.push(
+      `the ${STABILITY_MODE} runs are from different machines with one CPU model (${[...machines].join(", ")}); the claim is about one host`,
+    );
+  }
 
-  const maps = runs.map((f) => R.cellsOf(f) ?? new Map<string, number>());
+  const maps = bounded.map(
+    (d) => R.cellsOf(R.runKey(d)) ?? new Map<string, number>(),
+  );
   const [first, ...rest] = maps;
   let shared = 0;
   let outside = 0;
@@ -531,6 +926,7 @@ export function checkStability(R: Runs): Stability {
 
   return {
     status: problems.length > 0 ? "fail" : "pass",
+    host,
     runs,
     shared,
     widest,
@@ -638,7 +1034,13 @@ export function checkStabilityClaim(doc: string, s: Stability): Failure[] {
 
 /** Reads a named column out of the row being checked. */
 export type Row = (column: string) => string;
-export type Resolve = (row: Row, R: Runs) => number | null;
+/**
+ * A resolver returns the measured value of one cell: microseconds for a time
+ * column, a bare number for a ratio or a percentage, or an `Estimate` carrying
+ * the interval the run recorded for it. Null marks the cell deliberately
+ * unbound.
+ */
+export type Resolve = (row: Row, R: Runs) => number | Estimate | null;
 
 export interface Binding {
   section: string;
@@ -646,6 +1048,12 @@ export interface Binding {
   title: string;
   /** Column header (exact) -> resolver. Unlisted columns are not checked. */
   columns: Record<string, Resolve>;
+  /**
+   * `share`: a percentage column is a stage share and passes within
+   * SHARE_FLOOR_POINTS. Otherwise a percentage is a difference between two
+   * timings (§4's "vs shipped") and passes within TOLERANCE of its ratio.
+   */
+  rule?: "share";
 }
 
 /**
@@ -666,7 +1074,7 @@ export const STAGES_SCHEMA = "chromahash-perf-stages/1";
 export interface StageCell {
   ns: Record<string, number>;
   sharePct: Record<string, number>;
-  git: { rev: string; dirty: boolean };
+  git: { rev: string; dirty: boolean; digest?: string | null };
 }
 
 /**
@@ -818,35 +1226,72 @@ export interface Edit {
 export interface Counters {
   checked: number;
   unbound: number;
+  /** TBD cells a committed run can fill: `--fix` writes them. */
   placeholders: number;
+  /** TBD cells no committed run can fill yet. */
+  pending: number;
   unavailable: number;
+  /** Checked values that passed on the interval or the band, not exactly. */
+  tolerated: number;
 }
 
 /**
- * A documented value passes when it equals the measured value rounded to the
- * precision the document used. Rounding rather than a tolerance means the
- * assertion tightens automatically as the document quotes more digits, and a
- * figure written to three significant digits is not held to five.
+ * How a documented value was found to agree with its cell, or that it did not.
+ *
+ *  - `exact`    — it is the measured value, rounded to the precision written.
+ *  - `interval` — it lies inside the cell's own interval across processes
+ *                 (widened by half the last written digit, for the rounding).
+ *  - `band`     — it lies within TOLERANCE of the measured value: within
+ *                 SHARE_FLOOR_POINTS for a stage
+ *                 share, and within TOLERANCE × 100 points for a percentage
+ *                 that is a difference of two timings.
+ *  - `outside`  — none of these; `--fix` rewrites it.
+ *
+ * Until the methods revision this was `exact` alone, against one run's rounded
+ * output, so a re-run moved most values in the document and `--fix` rewrote
+ * them all. The rule is now what the measurement can support: a value inside
+ * the cell's interval or the band is as good as the run can say it is, and
+ * only a value outside both is a disagreement.
  */
-function agrees(
+export type Verdict = "exact" | "interval" | "band" | "outside";
+
+export function agreement(
   doc: DocNumber,
-  measuredUs: number,
-): { ok: boolean; shown: string } {
-  const measured = TIME_UNITS.has(doc.unit)
-    ? measuredUs / (PER_US[doc.unit] ?? 1)
-    : measuredUs;
-  const rounded = Number(measured.toFixed(doc.decimals));
-  const suffix =
-    doc.unit === "ratio"
-      ? "×"
-      : doc.unit === "percent"
-        ? "%"
-        : ` ${doc.unit === "us" ? "µs" : doc.unit}`;
+  measured: Estimate,
+  rule: "share" | "default" = "default",
+): { verdict: Verdict; shown: string } {
+  const scale = TIME_UNITS.has(doc.unit) ? (PER_US[doc.unit] ?? 1) : 1;
+  const m = measured.value / scale;
+  const rounded = Number(m.toFixed(doc.decimals));
+  const shown = `${rounded.toFixed(doc.decimals)}${suffixOf(doc.unit)}`;
+  if (Math.abs(rounded - doc.value) < 1e-9) return { verdict: "exact", shown };
+  const half = 0.5 * 10 ** -doc.decimals;
+  const iv = measured.interval;
+  if (iv) {
+    const lo = Math.min(iv[0], iv[1]) / scale;
+    const hi = Math.max(iv[0], iv[1]) / scale;
+    if (doc.value >= lo - half && doc.value <= hi + half) {
+      return { verdict: "interval", shown };
+    }
+  }
+  const tol =
+    doc.unit === "percent"
+      ? rule === "share"
+        ? SHARE_FLOOR_POINTS
+        : TOLERANCE * 100
+      : TOLERANCE * Math.abs(m);
   return {
-    ok: Math.abs(rounded - doc.value) < 1e-9,
-    shown: `${rounded.toFixed(doc.decimals)}${suffix}`,
+    verdict: Math.abs(doc.value - m) <= tol + half + 1e-12 ? "band" : "outside",
+    shown,
   };
 }
+
+const suffixOf = (unit: Unit): string =>
+  unit === "ratio"
+    ? "×"
+    : unit === "percent"
+      ? "%"
+      : ` ${unit === "us" ? "µs" : unit}`;
 
 /**
  * Render a measured value the way the document writes that column: same unit,
@@ -857,13 +1302,7 @@ function formatLike(doc: DocNumber, measuredUs: number, raw: string): string {
   const measured = TIME_UNITS.has(doc.unit)
     ? measuredUs / (PER_US[doc.unit] ?? 1)
     : measuredUs;
-  const suffix =
-    doc.unit === "ratio"
-      ? "×"
-      : doc.unit === "percent"
-        ? "%"
-        : ` ${doc.unit === "us" ? "µs" : doc.unit}`;
-  const body = `${measured.toFixed(doc.decimals)}${suffix}`;
+  const body = `${measured.toFixed(doc.decimals)}${suffixOf(doc.unit)}`;
   // Preserve bold emphasis, which the document uses to mark a headline figure.
   return /^\*\*.*\*\*$/.test(raw.trim()) ? `**${body}**` : body;
 }
@@ -987,9 +1426,9 @@ export function checkTable(
       }
       if (!doc) continue;
 
-      let expected: number | null;
+      let resolved: number | Estimate | null;
       try {
-        expected = resolve(row, R);
+        resolved = resolve(row, R);
       } catch (e) {
         if (e instanceof MissingCell) {
           failures.push({
@@ -1000,14 +1439,19 @@ export function checkTable(
             measured: "—",
             detail: e.message,
           });
+          if (placeholder) counters.pending++;
           continue;
         }
         throw e;
       }
-      if (expected === null) {
+      if (resolved === null) {
         counters.unbound++;
         continue;
       }
+      const measured: Estimate = isEstimate(resolved)
+        ? resolved
+        : { value: resolved, interval: null };
+      const expected = measured.value;
 
       // A placeholder is a bound cell whose number has not been measured yet.
       // It always fails, so a document cannot be published still carrying one,
@@ -1031,8 +1475,11 @@ export function checkTable(
       }
 
       counters.checked++;
-      const verdict = agrees(doc, expected);
-      if (!verdict.ok) {
+      const verdict = agreement(doc, measured, binding.rule ?? "default");
+      if (verdict.verdict === "interval" || verdict.verdict === "band") {
+        counters.tolerated++;
+      }
+      if (verdict.verdict === "outside") {
         edits.push({
           line: sourceLine,
           cellIndex: i,
@@ -1257,37 +1704,101 @@ export function checkStageRowCoverage(
   return failures;
 }
 
+/** One figure `--fix` will rewrite in prose: a character range of the document. */
+export interface ProseEdit {
+  index: number;
+  length: number;
+  text: string;
+}
+
+/** Find a claim's one match, with the capture group's offset for `--fix`. */
+function matchOnce(
+  doc: string,
+  pattern: RegExp,
+): { count: number; text?: string; index?: number } {
+  const flags = new Set([...pattern.flags, "g", "d"]);
+  const all = [
+    ...doc.matchAll(new RegExp(pattern.source, [...flags].join(""))),
+  ];
+  if (all.length !== 1) return { count: all.length };
+  const m = all[0] as RegExpMatchArray & { indices?: [number, number][] };
+  const span = m.indices?.[1];
+  return span && m[1] !== undefined
+    ? { count: 1, text: m[1], index: span[0] }
+    : { count: 1 };
+}
+
+const placesOf = (text: string): number => {
+  const dot = text.indexOf(".");
+  return dot < 0 ? 0 : text.length - dot - 1;
+};
+
 /**
- * The prose figures §1 derives from its own table. Checked against the same
- * baseline the table is checked against, and to the precision the sentence
- * itself claims — the same tolerance rule the cells use, so tightening a figure
- * in the document tightens the assertion on it.
+ * Apply prose edits and table edits to the document. Prose first, in reverse
+ * order of position, so no edit moves another's offset; neither kind adds or
+ * removes a line, so the table edits' line numbers still hold.
+ */
+export function applyEdits(
+  doc: string,
+  edits: readonly Edit[],
+  prose: readonly ProseEdit[],
+): string {
+  let text = doc;
+  for (const e of [...prose].sort((a, b) => b.index - a.index)) {
+    text = text.slice(0, e.index) + e.text + text.slice(e.index + e.length);
+  }
+  const lines = text.split("\n");
+  const byLine = new Map<number, Edit[]>();
+  for (const e of edits) {
+    const list = byLine.get(e.line);
+    if (list) list.push(e);
+    else byLine.set(e.line, [e]);
+  }
+  for (const [line, group] of byLine) {
+    const raw = lines[line];
+    if (raw === undefined) continue;
+    // Keep the row's own leading whitespace and outer pipes.
+    const indent = raw.slice(0, raw.length - raw.trimStart().length);
+    const parts = cells(raw);
+    for (const e of group) parts[e.cellIndex] = e.text;
+    lines[line] = `${indent}| ${parts.join(" | ")} |`;
+  }
+  return lines.join("\n");
+}
+
+/**
+ * The prose figures §1 and §1.1 derive from their tables. Checked against the
+ * same baseline the table is, by the same share rule (`agreement`): within
+ * SHARE_FLOOR_POINTS — so a re-recording that moves a
+ * share by a few tenths of a point does not rewrite every sentence quoting it,
+ * and one that moves it further does.
  */
 export function checkProseClaims(
   doc: string,
   stages: Record<string, StageCell>,
   claims: readonly ProseClaim[],
   baseline: string = STAGES_BASELINE,
-): { failures: Failure[]; checked: number } {
+): { failures: Failure[]; checked: number; edits: ProseEdit[] } {
   const failures: Failure[] = [];
+  const edits: ProseEdit[] = [];
   let checked = 0;
   for (const claim of claims) {
-    const all = [...doc.matchAll(new RegExp(claim.pattern, "g"))];
-    if (all.length !== 1) {
+    const hit = matchOnce(doc, claim.pattern);
+    if (hit.count !== 1) {
       failures.push({
         where: "PERFORMANCE.md prose",
         column: claim.what,
         row: "—",
-        documented: `${all.length} match(es)`,
+        documented: `${hit.count} match(es)`,
         measured: "—",
         detail:
-          all.length === 0
+          hit.count === 0
             ? "the sentence was edited without updating its binding here, so the figure is no longer checked"
             : "the pattern must name one figure",
       });
       continue;
     }
-    const quotedRaw = all[0]?.[1];
+    const quotedRaw = hit.text;
     if (quotedRaw === undefined) continue;
     // A claim bound to a cell or stage the baseline does not hold is a figure
     // nothing checks, and it used to be skipped without a word — so a claim
@@ -1323,11 +1834,14 @@ export function checkProseClaims(
     }
     let expected = 0;
     for (const st of claim.stages) expected += cell.sharePct[st] ?? 0;
-    const dot = quotedRaw.indexOf(".");
-    const places = dot < 0 ? 0 : quotedRaw.length - dot - 1;
-    const tol = 0.5 * 10 ** -places;
+    const places = placesOf(quotedRaw);
     checked++;
-    if (Math.abs(expected - quoted) > tol) {
+    const v = agreement(
+      { value: quoted, unit: "percent", decimals: places },
+      { value: expected, interval: null },
+      "share",
+    );
+    if (v.verdict === "outside") {
       failures.push({
         where: "PERFORMANCE.md prose",
         column: claim.what,
@@ -1336,7 +1850,206 @@ export function checkProseClaims(
         measured: `${expected.toFixed(Math.max(places, 2))}%`,
         detail: `from ${claim.cell} in ${baseline}`,
       });
+      if (hit.index !== undefined) {
+        edits.push({
+          index: hit.index,
+          length: quotedRaw.length,
+          text: expected.toFixed(places),
+        });
+      }
     }
   }
-  return { failures, checked };
+  return { failures, checked, edits };
+}
+
+// ─── Figures the prose derives from the sweeps ──────────────────────────────
+
+/** What a sweep claim's resolver can see beyond the runs. */
+export interface ClaimContext {
+  /** The table counters, as they will stand once `--fix` has run. */
+  counters: Counters;
+  stability: Stability;
+}
+
+/**
+ * A figure a sentence derives from the perf runs — a time, a ratio, a gain —
+ * rather than from §1's or §1.1's stage shares. §5's "2%", §6's "34.0 ms" and
+ * "38×", §2's 234 ms restated in §12, §0's own counts: each was a number
+ * transcribed from a table and checked by nothing, so a re-measurement that
+ * moved the table left the sentence stating the old figure.
+ *
+ * The pattern's one capture group holds the figure, or `TBD` where the
+ * measurement it restates does not exist yet. A TBD fails loudly — it is a
+ * figure the document has promised and not delivered — and `--fix` fills it
+ * the moment a committed run can.
+ */
+export interface SweepClaim {
+  what: string;
+  /** Must match exactly once in the document; group 1 is the figure or TBD. */
+  pattern: RegExp;
+  /**
+   * `count` is exact; the rest are held to `agreement`'s rule. `percent` is a
+   * difference of two timings (a gain of 2% is a ratio of 1.02).
+   */
+  unit: "us" | "ms" | "ratio" | "percent" | "count";
+  /** Decimals `--fix` writes in place of a TBD. */
+  decimals: number;
+  /**
+   * The measured value; several when the sentence claims one figure for each
+   * ("flat across every size"), and every one must agree. Throws MissingCell
+   * when a cell is not committed.
+   */
+  resolve: (
+    R: Runs,
+    ctx: ClaimContext,
+  ) => number | Estimate | (number | Estimate)[] | null;
+}
+
+export function checkSweepClaims(
+  doc: string,
+  R: Runs,
+  ctx: ClaimContext,
+  claims: readonly SweepClaim[],
+): {
+  failures: Failure[];
+  checked: number;
+  pending: number;
+  placeholders: number;
+  edits: ProseEdit[];
+} {
+  const failures: Failure[] = [];
+  const edits: ProseEdit[] = [];
+  let checked = 0;
+  let pending = 0;
+  let placeholders = 0;
+  const where = "PERFORMANCE.md prose";
+  for (const claim of claims) {
+    // A sentence wraps wherever the prose reflows it, so a space in the
+    // pattern matches any run of whitespace, line breaks and blockquote markers included.
+    const hit = matchOnce(
+      doc,
+      new RegExp(
+        claim.pattern.source.replace(/ /g, String.raw`[\s>]+`),
+        claim.pattern.flags,
+      ),
+    );
+    if (hit.count !== 1 || hit.text === undefined) {
+      failures.push({
+        where,
+        column: claim.what,
+        row: "—",
+        documented: `${hit.count} match(es)`,
+        measured: "—",
+        detail:
+          hit.count === 0
+            ? "the sentence was edited without updating its binding here, so the figure is no longer checked"
+            : "the pattern must name one figure",
+      });
+      continue;
+    }
+    const raw = hit.text;
+    const tbd = /^TBD$/i.test(raw.trim());
+    let resolved: ReturnType<SweepClaim["resolve"]>;
+    try {
+      resolved = claim.resolve(R, ctx);
+    } catch (e) {
+      if (!(e instanceof MissingCell)) throw e;
+      if (tbd) pending++;
+      failures.push({
+        where,
+        column: claim.what,
+        row: "—",
+        documented: raw,
+        measured: "—",
+        detail: tbd
+          ? `placeholder — ${e.message}; the next committed run fills it with --fix`
+          : e.message,
+      });
+      continue;
+    }
+    if (resolved === null) {
+      if (tbd) pending++;
+      failures.push({
+        where,
+        column: claim.what,
+        row: "—",
+        documented: raw,
+        measured: "—",
+        detail: tbd
+          ? "placeholder — not measurable from the committed runs yet"
+          : "nothing committed backs this figure",
+      });
+      continue;
+    }
+    const values = (Array.isArray(resolved) ? resolved : [resolved]).map(
+      (v): Estimate => (isEstimate(v) ? v : { value: v, interval: null }),
+    );
+    const sorted = values.map((v) => v.value).sort((a, b) => a - b);
+    const central = sorted[Math.floor((sorted.length - 1) / 2)] ?? Number.NaN;
+    const places = tbd ? claim.decimals : placesOf(raw);
+    // Resolvers return microseconds for a time; the sentence is in its unit.
+    const written = (v: number) =>
+      (claim.unit === "ms" ? v / 1e3 : v).toFixed(places);
+    if (tbd) {
+      placeholders++;
+      failures.push({
+        where,
+        column: claim.what,
+        row: "—",
+        documented: raw,
+        measured: written(central),
+        detail: "placeholder — run with --fix against a committed run",
+      });
+      edits.push({
+        index: hit.index as number,
+        length: raw.length,
+        text: written(central),
+      });
+      continue;
+    }
+    const quoted = Number(raw.replace(/,/g, ""));
+    if (!Number.isFinite(quoted)) {
+      failures.push({
+        where,
+        column: claim.what,
+        row: "—",
+        documented: raw,
+        measured: "—",
+        detail: "captured text is not a number",
+      });
+      continue;
+    }
+    checked++;
+    const off = values.filter((v) => {
+      // A count is exact at the precision written: "128 cells", "5.2%".
+      if (claim.unit === "count") {
+        return Number(v.value.toFixed(places)) !== quoted;
+      }
+      const unit: Unit = claim.unit === "percent" ? "percent" : claim.unit;
+      return (
+        agreement({ value: quoted, unit, decimals: places }, v).verdict ===
+        "outside"
+      );
+    });
+    if (off.length > 0) {
+      failures.push({
+        where,
+        column: claim.what,
+        row: "—",
+        documented: raw,
+        measured: values.map((v) => written(v.value)).join(", "),
+        ...(values.length > 1
+          ? {
+              detail: `${off.length} of the ${values.length} figures this sentence speaks for are outside the band`,
+            }
+          : {}),
+      });
+      edits.push({
+        index: hit.index as number,
+        length: raw.length,
+        text: written(central),
+      });
+    }
+  }
+  return { failures, checked, pending, placeholders, edits };
 }
