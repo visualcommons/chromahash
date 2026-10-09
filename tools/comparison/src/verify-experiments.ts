@@ -100,6 +100,7 @@ import {
   readResult,
   summarize,
 } from "./results.ts";
+import { type SpreadData, mdeTableCells, readSpread } from "./mde-core.ts";
 import { bootstrapCI } from "./stats.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
@@ -480,7 +481,23 @@ interface SummaryBinding extends CommonBinding {
   columns: Partial<Record<string, keyof InferenceSummary>>;
 }
 
-type Binding = RowBinding | ColumnBinding | RatioBinding | SummaryBinding;
+/**
+ * A table of minimum detectable effects (§13.6), whose rows are splits or
+ * corpora rather than arms. `rows` maps each doc row label to a key of
+ * {@link mdeTableCells}, and `columns` each header to a cell of that row.
+ */
+interface MdeBinding extends CommonBinding {
+  kind: "mde";
+  rows: Record<string, string>;
+  columns: Partial<Record<string, string>>;
+}
+
+type Binding =
+  | RowBinding
+  | ColumnBinding
+  | RatioBinding
+  | SummaryBinding
+  | MdeBinding;
 
 /** The label of a summary table's row that sums every committed sweep. */
 const ALL_SWEEPS = "all committed sweeps";
@@ -532,6 +549,54 @@ function checkSummaryTable(
         },
         row[i] ?? "",
         summary[key],
+        failures,
+        stats,
+      );
+    }
+  }
+  return null;
+}
+
+let spreadCache: Map<string, Record<string, number | string>> | undefined;
+
+function checkMdeTable(
+  b: MdeBinding,
+  table: DocTable,
+  failures: Failure[],
+  stats: Stats,
+): string | null {
+  if (!spreadCache) {
+    let data: SpreadData;
+    try {
+      data = readSpread(resultsDir);
+    } catch (e) {
+      return (e as Error).message;
+    }
+    spreadCache = mdeTableCells(data);
+  }
+  for (const [rowIndex, row] of table.rows.entries()) {
+    const label = (row[0] ?? "").replace(/[*`]/g, "").trim();
+    const key = Object.entries(b.rows).find(
+      ([doc]) => normalize(doc) === normalize(label),
+    )?.[1];
+    if (key === undefined) return `row "${label}" is not in the binding`;
+    const cells = spreadCache.get(key);
+    if (!cells) return `no MDE row "${key}"`;
+    for (const [i, header] of table.header.entries()) {
+      const cell = b.columns[header];
+      if (!cell) continue;
+      const measured = cells[cell];
+      if (measured === undefined) return `no MDE cell "${cell}" in "${key}"`;
+      compare(
+        {
+          section: b.section,
+          table: table.index,
+          row: label,
+          column: header,
+          fix: { line: table.line, rowIndex, colIndex: i },
+        },
+        row[i] ?? "",
+        measured,
         failures,
         stats,
       );
@@ -2194,6 +2259,47 @@ const BINDINGS: Binding[] = [
       "FAIL on means, not shown on CI": "meansFailCiNot",
     },
   },
+
+  // §13.6 — the minimum detectable ΔE00 effect per split, from the paired
+  // spread of every committed tune sweep (`mise run mde`). A re-run of any tune
+  // sweep moves it, and so does pinning the photographic holdout2.
+  {
+    kind: "mde",
+    section: "13.6",
+    table: 0,
+    rows: {
+      "photo tune, all arms": "photo tune|all",
+      "photo tune, within 3%": "photo tune|near",
+      "photo holdout2, all arms": "photo holdout2|all",
+      "photo holdout2, within 3%": "photo holdout2|near",
+      "alpha tune, all arms": "alpha tune|all",
+      "alpha tune, within 3%": "alpha tune|near",
+      "alpha holdout2, all arms": "alpha holdout2|all",
+      "alpha holdout2, within 3%": "alpha holdout2|near",
+    },
+    columns: {
+      n: "n",
+      arms: "arms",
+      "MDE, m = 1": "m1",
+      "IQR, m = 1": "m1Iqr",
+      "MDE, m = 2": "m2",
+      "IQR, m = 2": "m2Iqr",
+      "R2's 1% met": "r2Met",
+      "R1's 3% resolved": "r1Resolved",
+    },
+  },
+  {
+    kind: "mde",
+    section: "13.6",
+    table: 1,
+    rows: { photo: "incumbent|photo", alpha: "incumbent|alpha" },
+    columns: {
+      incumbents: "incumbents",
+      "median incumbent ΔE00": "mean",
+      "R2's 1.0% in ΔE00": "abs1",
+      "R1's 3.0% in ΔE00": "abs3",
+    },
+  },
 ];
 
 /**
@@ -2223,7 +2329,7 @@ interface Coverage {
 function coverageOf(b: Binding, table: DocTable): Coverage {
   const base = { section: b.section, table: b.table ?? 0 };
 
-  if (b.kind === "rows" || b.kind === "summary") {
+  if (b.kind === "rows" || b.kind === "summary" || b.kind === "mde") {
     const labelCol = b.kind === "rows" ? (b.labelColumn ?? 0) : 0;
     const covered: string[] = [];
     const uncovered: string[] = [];
@@ -2333,6 +2439,9 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
  * and §7.12's ladders gained their pre-adoption and Δ rows (22 → 66, 28 → 56);
  * §11.3 table 1's αMAE cell that read FAIL now holds a number (+1); and §11.14
  * gained the ~1.6 kB neighbourhood (+25).
+ *
+ * §13.6 added two tables of minimum detectable effects: 8 rows × 8 and
+ * 2 rows × 4.
  */
 const EXPECTED_CELLS: Record<string, number> = {
   "1#0": 26,
@@ -2378,6 +2487,8 @@ const EXPECTED_CELLS: Record<string, number> = {
   "13.1#1": 20,
   "13.2#0": 15,
   "13.5#0": 72,
+  "13.6#0": 64,
+  "13.6#1": 8,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
@@ -2559,7 +2670,9 @@ for (const binding of BINDINGS) {
         ? checkRatioTable(binding, table, failures, stats)
         : binding.kind === "summary"
           ? checkSummaryTable(binding, table, failures, stats)
-          : checkColumnTable(binding, table, failures, stats);
+          : binding.kind === "mde"
+            ? checkMdeTable(binding, table, failures, stats)
+            : checkColumnTable(binding, table, failures, stats);
   if (problem) {
     skipped.push(`§${binding.section} table ${binding.table ?? 0}: ${problem}`);
     skippedTables.add(key);

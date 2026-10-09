@@ -756,6 +756,10 @@ mise run arms --summary                                                 # §13.5
 mise run arms --seed-sensitivity                                        # §13.5
 mise run arms --resample-change                                         # §13.5
 
+# The minimum detectable ΔE00 effect per split, from the same committed tune
+# results' paired spread. Re-scores nothing and reads no sealed image (§13.6).
+mise run mde                                                            # §13.6
+
 # Check the tables in this file against the results above
 mise run verify:experiments
 mise run verify:experiments --list-unbound
@@ -3745,3 +3749,102 @@ this n no tier's coefficient is distinguishable from zero. The chroma axis
 reaches the threshold at codes 0–2, but only code 2's +0.53 survives Holm. ΔE00's
 correlation with detail reaches it at codes 2, 3 and 4 (+0.40, +0.51, +0.61),
 and survives Holm at codes 3 and 4. Reproduce with the §6 `stratify` lines.
+
+### 13.6 What each split can detect (2026-10)
+
+[`V0.8-DECISIONS.md`](V0.8-DECISIONS.md) fixes its thresholds before any
+holdout is read. R1 asks for a ΔE00 improvement of at least 3.0% that is also
+significant after Holm, and R2 for the upper bound of the paired 95% interval to
+sit within +1.0% of the incumbent's mean. Nothing related either number to the
+number of images that has to resolve it. This section does, from the spread of
+the paired differences the committed tune sweeps already carry. It re-scores
+nothing and reads no sealed image: the holdout2 sizes are the pin tables'
+counts, 14 pinned alpha images, and while the photographic half is unpinned
+the 32 candidates #103 lists. `mise run mde` prints it, and
+`verify:experiments` binds both tables below.
+
+**Method.** Every arm of every committed photographic and alpha tune sweep is
+taken against its own incumbent, if it spends the incumbent's bytes on every
+image: the register compares arms at one tier. Arms at another budget are left
+out, and so are arms bit-identical to their incumbent. For each comparison,
+σ_rel is the standard deviation of the per-image difference (n − 1
+denominator) over the incumbent's mean. The smallest relative effect a split of
+n images detects at two-sided α = 0.05 with power 0.8 is then
+
+  MDE = (z₁₋α/(2m) + z₀.₈) · σ_rel / √n
+
+where m is the Holm family. m = 1 is a single holdout arm. m = 2 is the
+register's two-arm cap, at Holm's first step α/2, which the better arm's p
+must clear. At m = 1 the same expression is also the smallest R2 margin that a
+truly equal arm meets with probability 0.8: R2 reads the one-sided 97.5% bound
+and is not Holm-adjusted.
+
+The spread of a difference grows with the difference. An arm 20% worse than its
+incumbent is worse by more on some images than on others. So each split has two
+rows. `all arms` is every comparison. `within 3%` keeps the comparisons whose
+mean effect is within 3% of the incumbent, which are the arms a 1% or 3%
+threshold actually has to resolve. "R2's 1% met" is the share of comparisons
+whose MDE at m = 1 is at most 1%. "R1's 3% resolved" is the share whose MDE at
+m = 2 is at most 3%.
+
+| split | n | arms | MDE, m = 1 | IQR, m = 1 | MDE, m = 2 | IQR, m = 2 | R2's 1% met | R1's 3% resolved |
+|---|---|---|---|---|---|---|---|---|
+| photo tune, all arms | 31 | 242 | 0.98% | [0.42%, 1.47%] | 1.08% | [0.46%, 1.61%] | 50% | 93% |
+| photo tune, within 3% | 31 | 218 | 0.91% | [0.39%, 1.28%] | 1.00% | [0.43%, 1.41%] | 56% | 97% |
+| photo holdout2, all arms | 32 | 242 | 0.97% | [0.41%, 1.44%] | 1.07% | [0.45%, 1.59%] | 52% | 94% |
+| photo holdout2, within 3% | 32 | 218 | 0.89% | [0.38%, 1.26%] | 0.98% | [0.42%, 1.39%] | 57% | 98% |
+| alpha tune, all arms | 16 | 189 | 6.41% | [2.44%, 7.65%] | 7.06% | [2.68%, 8.42%] | 9% | 26% |
+| alpha tune, within 3% | 16 | 58 | 1.45% | [0.94%, 1.97%] | 1.59% | [1.03%, 2.17%] | 29% | 83% |
+| alpha holdout2, all arms | 14 | 189 | 6.86% | [2.61%, 8.18%] | 7.54% | [2.87%, 9.00%] | 8% | 25% |
+| alpha holdout2, within 3% | 14 | 58 | 1.55% | [1.00%, 2.11%] | 1.70% | [1.10%, 2.32%] | 26% | 81% |
+
+The two thresholds in ΔE00, at the median incumbent of the same sweeps:
+
+| corpus | incumbents | median incumbent ΔE00 | R2's 1.0% in ΔE00 | R1's 3.0% in ΔE00 |
+|---|---|---|---|---|
+| photo | 31 | 11.481 | 0.115 | 0.344 |
+| alpha | 10 | 15.689 | 0.157 | 0.471 |
+
+What it says:
+
+1. **On the photographic splits, R1 is not short of power.** A true 3%
+   improvement is resolved after Holm at m = 2 for nearly every near-threshold
+   arm, at n = 31 and at n = 32 alike. What binds in R1 is its first condition,
+   the point estimate. An arm whose true improvement is exactly 3.0% has a point
+   estimate at or above 3.0% only about half the time, so R1 passes arms whose
+   true effect is comfortably above 3%, not arms at 3%.
+2. **R2's 1% margin is about the photographic median MDE.** For roughly half
+   the near-threshold photographic comparisons, a truly equal arm meets the
+   margin with probability 0.8. For the rest, an R2 entry can fail because 32
+   images cannot resolve 1%, not because the arm is worse. One percent is about
+   a tenth of a ΔE00 unit there (the table above).
+3. **The alpha holdout is the small split.** At n = 14 the near-threshold
+   median MDE is about 1.7 times the photographic one. R1's 3% is still
+   resolved for most near-threshold arms, but R2's 1% is met for only about a
+   quarter of them. The register applies R1, not R2, on the alpha split today
+   (C2, D6). An R2 rule there would need a margin nearer 2%, or it would fail
+   most arms that are in fact equal. C2 also runs every arm of two committed
+   sweeps rather than one or two chosen ones, so its Holm family is larger
+   than the m = 2 column assumes, and its MDE larger with it, through
+   z₁₋α/(2m). Its replacements were measured at effects far above either
+   threshold (§11.3's −17.10%), so that bites only on its smaller comparisons.
+4. **Read the near-threshold rows, not the all-arms rows, to plan.** The alpha
+   sweeps hold many layouts far from their incumbent, so their all-arms spread
+   is about four times the near-threshold one. Those rows bound the worst case.
+   They are not what a candidate near the threshold faces.
+
+**Assumptions.** The MDE is a normal approximation. Under the Student-t
+approximation on n − 1 df, which `mise run mde` prints beside it, the medians
+rise by about 4–5% at n = 31 and 32, and by about 8–11% at n = 14. The register does not
+decide on this formula. It decides on the percentile bootstrap, now at 10,000
+resamples (§13.5). That interval's standard error is the plug-in
+SD·√((n − 1)/n)/√n, narrower than the normal-theory one, so at n = 14 the
+bootstrap interval is somewhat anti-conservative, and the t figure is the
+closer guide. The images are treated as independent draws. Arms of one sweep
+share images and an incumbent, so the comparisons above are not independent
+samples of σ, and the median and IQR describe the committed record rather than
+a population. The tune split's spread is assumed to carry over to the holdout.
+The holdout2 lists were drawn by axis quota (#103: nine smartphone, six
+skin-tone and four chroma-floor images among the 32), so their spread may
+differ, and no tool reads them to check. The power is 0.8 and α is 0.05;
+`mise run mde --power 0.9` or `--alpha` restate the tables at other values.
