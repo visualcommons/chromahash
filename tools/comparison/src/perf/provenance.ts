@@ -12,12 +12,19 @@
  *
  * A squash merge discards the commit and keeps the trees. So a run now also
  * records a **digest of the sources that determine the measurement** — a
- * SHA-256 over `git ls-tree --full-tree <commit> -- MEASURED_PATHS` — and the
- * gate verifies provenance by that digest when the commit itself is not
- * reachable: a run is traceable if some commit in `HEAD`'s history has the same
- * measured sources. The squash commit that landed the measured branch does,
- * provided `master`'s measured sources did not move between the measurement and
- * the merge.
+ * SHA-256 over every file `git ls-tree -r` lists under MEASURED_PATHS, less
+ * documentation (`isDocumentation`) — and the gate verifies provenance by that
+ * digest when the commit itself is not reachable: a run is traceable if some
+ * commit in `HEAD`'s history has the same measured sources. The squash commit
+ * that landed the measured branch does, provided `master`'s measured sources
+ * did not move between the measurement and the merge.
+ *
+ * That proviso used to be checked only after the merge, when it was too late:
+ * a run measured on a branch passed while the PR was open, and failed on
+ * `master` once a PR that moved the measured sources merged first. So a change
+ * that *adds or changes* a baseline must now carry HEAD's own sources
+ * (`judgeLanding`): in CI, HEAD is the PR merged into the current `master`, so a
+ * stale run fails before the merge, and the fix is to rebase and re-measure.
  *
  * `tools/benchmark/record_stages.py` computes the same digest over the same
  * paths for §1 and §1.1; `metric-selftest.ts` asserts the two lists agree.
@@ -29,13 +36,23 @@ import { createHash } from "node:crypto";
 /**
  * The paths whose content decides what a perf cell measures: the core and
  * every binding a harness drives, the harnesses' own sources, the driver and
- * its statistics, and the stage recorder. Repo-root-relative, sorted.
+ * its statistics, the stage recorder, and the tasks that build and run them —
+ * `.mise.toml` holds every harness's build flags (`build:benchmark`,
+ * `build:benchmark:scalar`, the `bench-internals` feature), and
+ * `mise-tasks/benchmark/` the session and stage tasks. Repo-root-relative,
+ * sorted.
+ *
+ * `.mise.toml` is whole: a change to an unrelated task there invalidates a
+ * baseline it did not affect. That costs a re-measurement now and then; leaving
+ * it out let a change to a harness's build flags keep the old baseline.
  */
 export const MEASURED_PATHS = [
+  ".mise.toml",
   "Package.swift",
   "bindings",
   "csharp",
   "go",
+  "mise-tasks/benchmark",
   "python",
   "rust",
   "swift",
@@ -44,6 +61,41 @@ export const MEASURED_PATHS = [
   "tools/comparison/src/stats.ts",
   "typescript",
 ] as const;
+
+/**
+ * Files under MEASURED_PATHS that cannot change a measurement: Markdown and
+ * reStructuredText, and anything under a `docs/` directory. A README edit in
+ * `rust/` used to change the digest and so orphan every baseline taken before
+ * it. `record_stages.py` applies the same rule; the selftest checks the two
+ * digests agree on HEAD.
+ */
+export const isDocumentation = (repoPath: string): boolean =>
+  /\.(md|markdown|rst)$/i.test(repoPath) ||
+  repoPath.split("/").includes("docs");
+
+/**
+ * The digest of a `git ls-tree -r -z` listing: SHA-256 over each kept entry
+ * (`<mode> <type> <object>\t<path>`) followed by a newline, in git's order,
+ * documentation dropped. Null for a listing with nothing left in it.
+ */
+export function digestOfListing(listing: Buffer): string | null {
+  const hash = createHash("sha256");
+  let kept = 0;
+  let start = 0;
+  for (let i = 0; i <= listing.length; i++) {
+    if (i < listing.length && listing[i] !== 0) continue;
+    const entry = listing.subarray(start, i);
+    start = i + 1;
+    if (entry.length === 0) continue;
+    const tab = entry.indexOf(9);
+    const repoPath = entry.subarray(tab + 1).toString("utf8");
+    if (tab < 0 || isDocumentation(repoPath)) continue;
+    hash.update(entry);
+    hash.update("\n");
+    kept++;
+  }
+  return kept === 0 ? null : hash.digest("hex");
+}
 
 /**
  * What the recorders write into the tree, and so what their dirty probes
@@ -57,6 +109,18 @@ export const MEASUREMENT_OUTPUTS = [
   "tools/comparison/baselines/perf-decode-stages.json",
   "tools/comparison/baselines/perf-stages.json",
 ] as const;
+
+function gitRaw(root: string, args: string[]): Buffer | null {
+  try {
+    return execFileSync("git", args, {
+      cwd: root,
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch {
+    return null;
+  }
+}
 
 function git(root: string, args: string[]): string | null {
   try {
@@ -73,15 +137,16 @@ function git(root: string, args: string[]): string | null {
 
 /** The digest of `rev`'s measured sources, or null if `rev` is not here. */
 export function sourceDigest(root: string, rev: string): string | null {
-  const listing = git(root, [
+  const listing = gitRaw(root, [
     "ls-tree",
+    "-r",
+    "-z",
     "--full-tree",
     rev,
     "--",
     ...MEASURED_PATHS,
   ]);
-  if (listing === null || listing === "") return null;
-  return createHash("sha256").update(listing).digest("hex");
+  return listing === null ? null : digestOfListing(listing);
 }
 
 /**
@@ -138,6 +203,8 @@ export type ProvenanceStatus =
   | "shallow"
   /** The commit is reachable and its sources do not match the digest. */
   | "mismatch"
+  /** A baseline this change adds or changes, measured on other sources than HEAD's. */
+  | "stale"
   /** Nothing reachable carries the recorded sources. */
   | "unresolved";
 
@@ -150,7 +217,93 @@ export interface ProvenanceVerdict {
 export const provenanceFails = (v: ProvenanceVerdict): boolean =>
   v.status === "mismatch" ||
   v.status === "unresolved" ||
-  v.status === "unrecorded";
+  v.status === "unrecorded" ||
+  v.status === "stale";
+
+/**
+ * The landing rule: a baseline this change adds or changes must have been
+ * measured on HEAD's own measured sources. Null for a baseline the change does
+ * not touch, which the ordinary rule (`judgeProvenance`) covers.
+ *
+ * Why HEAD and not "some commit in history": the history rule passes a run
+ * while its PR is open and fails it on `master` if another PR moved the
+ * measured sources in between, because the squash commit then carries sources
+ * nobody measured. Holding a *new* baseline to HEAD — which in CI is the PR
+ * merged into the current `master` — moves that failure before the merge.
+ */
+export function judgeLanding(
+  rec: { digest?: string | null },
+  landing: { isNew: boolean; headDigest: string | null; base: string },
+): ProvenanceVerdict | null {
+  if (!landing.isNew) return null;
+  if (rec.digest && rec.digest === landing.headDigest) {
+    return {
+      status: "commit",
+      detail: `new since ${landing.base}, and measured on HEAD's own sources`,
+    };
+  }
+  return {
+    status: "stale",
+    detail: `new since ${landing.base}, but measured on sources ${rec.digest ? rec.digest.slice(0, 12) : "(no digest)"}, and HEAD's are ${landing.headDigest?.slice(0, 12) ?? "(none)"} — the measured sources moved after the run (a rebase onto master, or a later commit here); re-measure at HEAD`,
+  };
+}
+
+/** What the landing rule needs from the repository. */
+export interface LandingView {
+  /** The ref the change is measured against, or null when none resolves. */
+  base: string | null;
+  headDigest: string | null;
+  /** Whether the working-tree file's content is absent from `base`'s baselines. */
+  isNewFile(repoPath: string): boolean;
+  /** The file's content at `base`, or null if it did not exist there. */
+  atBase(repoPath: string): string | null;
+}
+
+/**
+ * The real repository's landing view. The base is `VERIFY_BENCHMARK_BASE` when
+ * set, and otherwise where HEAD left `origin/master` (or `master`): on a PR's
+ * merge commit in CI that is `master` itself, and on `master` it is HEAD, so
+ * nothing there is new. A file is new when its blob is nowhere under the
+ * base's `tools/comparison/baselines/`, so a baseline moved unchanged is not.
+ */
+export function landingView(root: string): LandingView {
+  const explicit = process.env.VERIFY_BENCHMARK_BASE;
+  const resolve = (ref: string): string | null =>
+    git(root, ["merge-base", "HEAD", ref])?.trim() || null;
+  const base = explicit
+    ? (git(root, ["rev-parse", "--verify", `${explicit}^{commit}`])?.trim() ??
+      null)
+    : (resolve("origin/master") ?? resolve("master"));
+  let blobs: Set<string> | null = null;
+  return {
+    base: base ? base.slice(0, 7) : null,
+    headDigest: sourceDigest(root, "HEAD"),
+    isNewFile(repoPath) {
+      if (base === null) return false;
+      if (blobs === null) {
+        const listing =
+          git(root, [
+            "ls-tree",
+            "-r",
+            base,
+            "--",
+            "tools/comparison/baselines",
+          ]) ?? "";
+        blobs = new Set(
+          listing
+            .split("\n")
+            .map((l) => l.split(/\s+/)[2])
+            .filter((b): b is string => !!b),
+        );
+      }
+      const blob = git(root, ["hash-object", "--", repoPath])?.trim();
+      return blob !== undefined && !blobs.has(blob);
+    },
+    atBase(repoPath) {
+      return base === null ? null : git(root, ["show", `${base}:${repoPath}`]);
+    },
+  };
+}
 
 /**
  * The rule §0 states. A recorded digest is checked against the recorded commit

@@ -222,16 +222,38 @@ class RecordStagesTest(unittest.TestCase):
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "sources")
         listing = subprocess.run(
-            [*GIT, "ls-tree", "--full-tree", "HEAD", "--", "rust"],
+            [*GIT, "ls-tree", "-r", "-z", "--full-tree", "HEAD", "--", "rust"],
             cwd=self.repo,
             capture_output=True,
             check=True,
         ).stdout
+        expected = hashlib.sha256(
+            b"".join(e + b"\n" for e in listing.split(b"\0") if e)
+        ).hexdigest()
         self.record(512, 512, 1)
-        self.assertEqual(
-            self.load()["cells"]["512x512-t1"]["git"]["digest"],
-            hashlib.sha256(listing).hexdigest(),
-        )
+        self.assertEqual(self.load()["cells"]["512x512-t1"]["git"]["digest"], expected)
+
+    def test_documentation_does_not_move_the_digest(self) -> None:
+        # A README or a docs/ page beside the sources is not a source: editing
+        # one must not orphan a baseline.
+        (self.repo / "rust").mkdir()
+        (self.repo / "rust" / "lib.rs").write_text("fn main() {}\n", encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "sources")
+        self.record(100, 100, 1)
+        before = self.load()["cells"]["100x100-t1"]["git"]["digest"]
+        (self.repo / "rust" / "README.md").write_text("# rust\n", encoding="utf-8")
+        (self.repo / "rust" / "docs").mkdir()
+        (self.repo / "rust" / "docs" / "notes.txt").write_text("notes\n", encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "docs")
+        self.record(512, 512, 1)
+        self.assertEqual(self.load()["cells"]["512x512-t1"]["git"]["digest"], before)
+        (self.repo / "rust" / "lib.rs").write_text("fn main() { }\n", encoding="utf-8")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "source")
+        self.record(512, 512, 4)
+        self.assertNotEqual(self.load()["cells"]["512x512-t4"]["git"]["digest"], before)
 
     # ─── --decode: PERFORMANCE.md §1.1 ─────────────────────────────────────
 

@@ -230,16 +230,23 @@ until then.
 so the commit a run was taken at is unreachable from `master` once it lands:
 the committed baseline records `e53e6cd`, the stage files `4d68c1f` and
 `8f5f4d1`, and none is an ancestor of `master`. Every recorder now also
-records a SHA-256 of `git ls-tree` over the sources that decide a measurement
-(`rust/`, `bindings/`, every harness's language directory, the driver and the
-stage recorder; `perf/provenance.ts` lists them). The gate accepts a run whose
-commit is an ancestor of `HEAD` and has that digest, or — when the commit is not
-reachable — whose digest some commit in `HEAD`'s history has. So: **measure on
-a branch rebased onto `master`, and land it before `master`'s measured
-sources move**, or the gate cannot find the sources and fails the run. A run
-from before digests is reported (`LEGACY`) and not failed; for `e53e6cd`, whose
-object a clone that fetched its PR ref holds, the gate finds its sources are
-`ec2b290`'s.
+records a SHA-256 over the files that decide a measurement (`rust/`,
+`bindings/`, every harness's language directory, the driver and the stage
+recorder, and the tasks that build and run them — `.mise.toml` and
+`mise-tasks/benchmark/`; `perf/provenance.ts` lists them), less documentation:
+a README or a `docs/` page cannot move a figure, so editing one does not orphan
+a baseline. The gate accepts a run whose commit is an ancestor of `HEAD` and
+has that digest, or — when the commit is not reachable — whose digest some
+commit in `HEAD`'s history has. So: **measure on a branch rebased onto
+`master`, and land it before `master`'s measured sources move.** That is now
+checked before the merge rather than discovered after it: a change that adds
+or changes a baseline must have measured it on `HEAD`'s own sources, and in CI
+`HEAD` is the pull request merged into the current `master`, so a run that went
+stale while its PR was open fails there, and the fix is to rebase and
+re-measure. A run from before digests is reported (`LEGACY`) and not failed.
+`e53e6cd`'s harness sources are `ec2b290`'s, but its branch's `.mise.toml` and
+`mise-tasks/benchmark/stages` never reached `master` in that form, so under the
+current digest it is traceable only by its PR ref.
 
 **Methods revisions.** `chromahash-perf/1` reported each cell's median block.
 `chromahash-perf/2` (2026-09) reported the minimum block of one process, on

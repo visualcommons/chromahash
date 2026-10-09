@@ -45,8 +45,11 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { planMatrix } from "./perf/plan.ts";
 import {
+  type ProvenanceVerdict,
   gitView,
+  judgeLanding,
   judgeProvenance,
+  landingView,
   provenanceFails,
 } from "./perf/provenance.ts";
 import { allTargets } from "./perf/targets.ts";
@@ -1350,6 +1353,72 @@ for (const [file, stages] of [
         measured: v.status,
         detail: v.detail,
       });
+    }
+  }
+}
+
+// The landing rule: a baseline this change adds or changes must carry HEAD's
+// own measured sources, so a run gone stale while its PR was open fails
+// before the merge rather than on master after it (`judgeLanding`).
+const landing = landingView(REPO_ROOT);
+const landed = (where: string, row: string, v: ProvenanceVerdict | null) => {
+  if (v === null) return;
+  console.log(
+    `  ${`LANDING ${v.status}`.toUpperCase().padEnd(10)} ${where}: ${v.detail}`,
+  );
+  if (provenanceFails(v)) {
+    runFail({
+      where,
+      column: "landing",
+      row,
+      documented: "a new baseline measured on HEAD's sources",
+      measured: v.status,
+      detail: v.detail,
+    });
+  }
+};
+if (landing.base === null) {
+  console.log(
+    "  SKIP       landing rule: neither origin/master nor master resolves, so nothing says which baselines are new (set VERIFY_BENCHMARK_BASE)",
+  );
+} else {
+  for (const r of runs.loaded) {
+    const repoPath = `tools/comparison/baselines/hosts/${r.hostDir}/${r.file}`;
+    landed(
+      `baselines/hosts/${r.hostDir}/${r.file}`,
+      r.git?.commit ?? "—",
+      judgeLanding(r.git ?? {}, {
+        isNew: landing.isNewFile(repoPath),
+        headDigest: landing.headDigest,
+        base: landing.base,
+      }),
+    );
+  }
+  // A stage file is merged cell by cell, so it is the cells that are new.
+  for (const [file, stages, parse] of [
+    [STAGES_BASELINE, STAGES, parseStages],
+    [DECODE_STAGES_BASELINE, DECODE_STAGES, parseDecodeStages],
+  ] as const) {
+    if (!stages) continue;
+    const before =
+      parse(landing.atBase(`tools/comparison/baselines/${file}`)).cells ?? {};
+    const key = (c: StageCell) => `${c.git?.rev}|${c.git?.digest ?? ""}`;
+    const old = new Set(
+      Object.values(before as Record<string, StageCell>).map(key),
+    );
+    const seen = new Set<string>();
+    for (const cell of Object.values(stages) as StageCell[]) {
+      const k = key(cell);
+      if (old.has(k) || seen.has(k)) continue;
+      seen.add(k);
+      landed(
+        file,
+        cell.git?.rev ?? "—",
+        judgeLanding(
+          { digest: cell.git?.digest ?? null },
+          { isNew: true, headDigest: landing.headDigest, base: landing.base },
+        ),
+      );
     }
   }
 }

@@ -51,16 +51,19 @@ MEASUREMENT_OUTPUTS = (
     "tools/comparison/baselines/perf-stages.json",
 )
 
-# The sources that decide what a measurement measures. A cell records a digest
-# of them at HEAD, so `verify:benchmark` can trace it after a squash merge has
-# made its commit unreachable: some commit in master's history has the same
-# sources. Kept identical to MEASURED_PATHS in
+# The sources that decide what a measurement measures, including the tasks that
+# build and run it (`.mise.toml`, `mise-tasks/benchmark`). A cell records a
+# digest of them at HEAD, so `verify:benchmark` can trace it after a squash
+# merge has made its commit unreachable: some commit in master's history has the
+# same sources. Kept identical to MEASURED_PATHS in
 # tools/comparison/src/perf/provenance.ts, which `selftest:metrics` asserts.
 MEASURED_PATHS = (
+    ".mise.toml",
     "Package.swift",
     "bindings",
     "csharp",
     "go",
+    "mise-tasks/benchmark",
     "python",
     "rust",
     "swift",
@@ -69,6 +72,18 @@ MEASURED_PATHS = (
     "tools/comparison/src/stats.ts",
     "typescript",
 )
+
+# Files under MEASURED_PATHS that cannot change a measurement, and so do not
+# enter the digest: a README edit must not orphan a baseline. The same rule as
+# `isDocumentation` in provenance.ts; `selftest:metrics` checks the two digests
+# agree on HEAD.
+DOCUMENTATION = re.compile(r"\.(md|markdown|rst)$", re.IGNORECASE)
+
+
+def is_documentation(path: str) -> bool:
+    """Whether a repo path is documentation: Markdown, reStructuredText, or under docs/."""
+    return DOCUMENTATION.search(path) is not None or "docs" in path.split("/")
+
 
 # Provenance is recorded so `verify:benchmark` can refuse a baseline that cannot
 # be traced to a source state. The recorder's own artifacts are excluded from the
@@ -94,15 +109,29 @@ def git(*args: str) -> str:
 
 
 def source_digest(rev: str = "HEAD") -> str | None:
-    """SHA-256 of `git ls-tree --full-tree REV -- MEASURED_PATHS`, as provenance.ts has it."""
+    """SHA-256 over `git ls-tree -r -z` of MEASURED_PATHS, less documentation.
+
+    The same digest as `sourceDigest` in provenance.ts.
+
+    Each kept entry (`<mode> <type> <object>\\t<path>`) is hashed followed by a
+    newline, in git's order. None when nothing is left to digest.
+    """
     listing = subprocess.run(
-        ["git", "ls-tree", "--full-tree", rev, "--", *MEASURED_PATHS],
+        ["git", "ls-tree", "-r", "-z", "--full-tree", rev, "--", *MEASURED_PATHS],
         capture_output=True,
         check=False,
     )
-    if listing.returncode != 0 or not listing.stdout:
+    if listing.returncode != 0:
         return None
-    return hashlib.sha256(listing.stdout).hexdigest()
+    kept = [
+        entry
+        for entry in listing.stdout.split(b"\0")
+        if b"\t" in entry
+        and not is_documentation(entry.split(b"\t", 1)[1].decode("utf-8", "replace"))
+    ]
+    if not kept:
+        return None
+    return hashlib.sha256(b"".join(entry + b"\n" for entry in kept)).hexdigest()
 
 
 def provenance(out: str) -> dict[str, object]:

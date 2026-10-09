@@ -147,8 +147,12 @@ import {
   type GitView,
   MEASUREMENT_OUTPUTS,
   MEASURED_PATHS,
+  digestOfListing,
+  isDocumentation,
+  judgeLanding,
   judgeProvenance,
   provenanceFails,
+  sourceDigest,
 } from "./perf/provenance.ts";
 import { allTargets } from "./perf/targets.ts";
 import {
@@ -2969,11 +2973,89 @@ for (const order of ["full first", "bounded first"] as const) {
   };
   const pyPaths = tuple("MEASURED_PATHS");
   const pyOutputs = tuple("MEASUREMENT_OUTPUTS");
+  // The digests themselves, not just the lists: both recorders on HEAD. The
+  // listing walk, the documentation rule and the byte framing must all agree,
+  // or a stage cell and a sweep taken at one commit trace to different sources.
+  const pyRun = spawnSync(
+    "python3",
+    [
+      "-I",
+      "-c",
+      "import sys; sys.path.insert(0, 'tools/benchmark'); import record_stages; print(record_stages.source_digest())",
+    ],
+    { cwd: REPO_ROOT_FOR_SELFTEST, encoding: "utf8" },
+  );
+  const pyDigest = pyRun.stdout?.trim() ?? "";
+  const tsDigest = sourceDigest(REPO_ROOT_FOR_SELFTEST, "HEAD");
   check(
-    "the driver and the stage recorder digest the same sources and ignore the same outputs",
+    "the driver and the stage recorder digest the same sources, the same way, and ignore the same outputs",
     pyPaths.join() === MEASURED_PATHS.join() &&
-      pyOutputs.join() === MEASUREMENT_OUTPUTS.join(),
-    `py=${pyPaths.join(",")} | ${pyOutputs.join(",")}`,
+      pyOutputs.join() === MEASUREMENT_OUTPUTS.join() &&
+      MEASURED_PATHS.includes(".mise.toml") &&
+      MEASURED_PATHS.includes("mise-tasks/benchmark") &&
+      tsDigest !== null &&
+      pyDigest === tsDigest,
+    `py=${pyPaths.join(",")} | ${pyOutputs.join(",")} | digest ts=${tsDigest?.slice(0, 12)} py=${pyDigest.slice(0, 12) || pyRun.stderr?.slice(0, 200)}`,
+  );
+}
+
+// V9b. Documentation is not a measured source, and a baseline this change
+//      adds must carry HEAD's own sources (the landing rule).
+{
+  const docs = [
+    "rust/README.md",
+    "bindings/uniffi/README.MD",
+    "python/docs/api.txt",
+    "go/notes.rst",
+  ];
+  const sources = [
+    "rust/src/encode.rs",
+    "rust/Cargo.toml",
+    "python/requirements.txt",
+    "bindings/c/CMakeLists.txt",
+    "rust/docsgen.rs",
+  ];
+  const entry = (p: string, obj: string) =>
+    Buffer.from(`100644 blob ${obj}\t${p}`);
+  const listing = (...es: Buffer[]) =>
+    Buffer.concat(es.flatMap((e) => [e, Buffer.from([0])]));
+  const withReadme = digestOfListing(
+    listing(entry("rust/README.md", "a1"), entry("rust/lib.rs", "b2")),
+  );
+  const without = digestOfListing(listing(entry("rust/lib.rs", "b2")));
+  const changed = digestOfListing(listing(entry("rust/lib.rs", "c3")));
+  const D = "a".repeat(64);
+  const E = "b".repeat(64);
+  const untouched = judgeLanding(
+    { digest: E },
+    { isNew: false, headDigest: D, base: "base123" },
+  );
+  const current = judgeLanding(
+    { digest: D },
+    { isNew: true, headDigest: D, base: "base123" },
+  );
+  const stale = judgeLanding(
+    { digest: E },
+    { isNew: true, headDigest: D, base: "base123" },
+  );
+  const noDigest = judgeLanding(
+    { digest: null },
+    { isNew: true, headDigest: D, base: "base123" },
+  );
+  check(
+    "documentation does not enter the digest, and a new baseline fails unless measured on HEAD's sources",
+    docs.every(isDocumentation) &&
+      !sources.some(isDocumentation) &&
+      withReadme === without &&
+      without !== changed &&
+      digestOfListing(listing(entry("rust/README.md", "a1"))) === null &&
+      untouched === null &&
+      current?.status === "commit" &&
+      stale !== null &&
+      provenanceFails(stale) &&
+      noDigest !== null &&
+      provenanceFails(noDigest),
+    `docs=${docs.filter((d) => !isDocumentation(d))} sources=${sources.filter(isDocumentation)} readme=${withReadme === without} stale=${stale?.detail}`,
   );
 }
 
