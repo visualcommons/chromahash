@@ -5,13 +5,15 @@
 **Status:** Stable
 **Date:** 2026-09-01
 
-> **What "Stable" means here.** Every constant this format ships has a measurement behind
-> it on the current corpora, taken on a tune split and validated once on a never-tuned
-> holdout (`EXPERIMENTS.md` §11). The wire format freezes **at the 0.7.1 release**: from
-> that tag on, a change to it increments the `version` field. 0.7.1 is tagged and
-> published, so v1 is live and the bitstream is frozen (§13). It does **not** mean every
-> language binding has caught up — the Rust core is the reference and the bindings
-> follow it.
+> **What "Stable" means here.** The wire format froze **at the 0.7.1 release**: from that
+> tag on, any change to it increments the `version` field (§2.5, §13). Every constant it
+> ships has evidence on a tune split (`EXPERIMENTS.md` §7–§11), with one exception:
+> `SEL_HV = 0.15` was selected on the old holdout, and on the current tune corpus `hv = 0`
+> is ahead of it (`EXPERIMENTS.md` §11.5). Out-of-sample confirmation of all of them is
+> pending: that holdout informed a decision in every round and is spent
+> (`EXPERIMENTS.md` §11.12), so register entries C1 (photographic) and C2 (alpha) in
+> [`V0.8-DECISIONS.md`](V0.8-DECISIONS.md) re-read them once on new sealed splits. A
+> failed confirmation opens a new register entry; it does not by itself change v1.
 
 > ChromaHash is a compact, self-describing Low Quality Image Placeholder (LQIP)
 > format designed for professional photo management at scale. It encodes a
@@ -793,10 +795,11 @@ from the code-2 row that codes 2–4 scale.
 | Alpha AC | — | 3 b (all 16) | — | 3 b (all 28) | — | 3 b (all 112) |
 
 Code 1 trades precision for count because at 32 bytes that is measurably the better
-buy — 28 luma coefficients at 4 bits beat 26 at 5 by **2.09% mean ΔE00** on the never-tuned
-holdout split, with every guard metric improving (`EXPERIMENTS.md` §4.5; on tune it is
-0.9%, §4.2). By code 2 the budget is loose enough that the 5-bit split wins again for the
-opaque row — at 108 bytes the same swap is +2.0% the *wrong* way.
+buy — 28 luma coefficients at 4 bits beat 26 at 5 by **2.09% mean ΔE00** on the holdout
+split, with every guard metric improving (`EXPERIMENTS.md` §4.5; on tune it is
+0.9%, §4.2; that holdout has since been spent, §11.12). By code 2 the budget is loose
+enough that the 5-bit split wins again for the opaque row —
+at 108 bytes the same swap is +2.0% the *wrong* way.
 
 The alpha rows do not follow the opaque ones. Alpha AC is 3 bits at every tier — 2 bits
 fails the Butteraugli guard at any count — and it takes the largest share of the alpha
@@ -1223,12 +1226,16 @@ SEL_HV             = 0.15    # Selection weight: horizontal/vertical bias (§6.2
 SEL_Q              = 12      # Fixed-point shift the selection order is defined on
 ```
 
-These values were locked by coordinate-descent sweeps against the reference comparison
-corpus (74 images: 43 synthetic dimension/alpha/color/gamut fixtures plus 31 curated
-photographs), optimizing mean CIEDE2000 with SSIMULACRA2/Butteraugli/DSSIM as guards,
-and validated on a never-tuned 32-image holdout split (Kodak24 plus held-out curated
-photographs). `spec/EXPERIMENTS.md` records the measurements, including the ones that
-were rejected.
+These values were chosen by sweeps on the comparison corpus's **tune** split (synthetic
+dimension/alpha/color/gamut fixtures plus 31 photographs, re-sourced from Wikimedia
+Commons in 2026-09; the alpha and graphic corpora have tune splits of their own),
+optimizing mean CIEDE2000 with SSIMULACRA2/Butteraugli/DSSIM as guards. They were then
+checked on a 32-image photographic holdout (Kodak24 plus eight held-out photographs), but
+that split informed a decision in every round — `SEL_HV` was selected on it — so it is
+not out-of-sample evidence. It has been retired into a second tuning split, `tune2`, and
+the out-of-sample confirmation of these constants waits on the sealed `holdout2` split
+(`V0.8-DECISIONS.md` C1 and C2; `EXPERIMENTS.md` §9.5, §11.12). `spec/EXPERIMENTS.md`
+records the measurements, including the ones that were rejected.
 
 ### 12.2 M2 — LMS (cube-root) → OKLAB
 
@@ -1478,7 +1485,9 @@ compatibility** with the v0.6 bitstream. The framing changes are:
   render resolution. It fills the gap the format could not previously express —
   ThumbHash's size, inside the range where no real codec exists (WebP's floor is ~48 B,
   AVIF's ~465 B) — and beats ThumbHash on ΔE00, SSIMULACRA2, Butteraugli *and* DSSIM on
-  the never-tuned holdout split. Codes `5..=7` remain reserved.
+  the 32-image holdout split (`EXPERIMENTS.md` §11.14). That split has since been spent
+  (`EXPERIMENTS.md` §11.12), so the result awaits re-confirmation under
+  `V0.8-DECISIONS.md` C1. Codes `5..=7` remain reserved.
 - **Structural validation, no checksum (§2.6).** Decodability is established by validating
   version, tier, reserved bit, and the deterministic length — failing fast — rather than by
   a CRC.
@@ -1507,8 +1516,11 @@ compatibility** with the v0.6 bitstream. The framing changes are:
   and the wire layout are untouched.
 
 Together the four constants-level and encoder-side changes above are worth **−3.72% mean
-ΔE00** at the default tier on a never-tuned holdout split, with SSIMULACRA2, Butteraugli and DSSIM
-all improving. `spec/EXPERIMENTS.md` §8 records the measurements and what was rejected.
+ΔE00** at the default tier on the holdout split, with SSIMULACRA2, Butteraugli and DSSIM
+all improving (`EXPERIMENTS.md` §7.12). That split has since been spent — it is where
+`sel_hv = 0.15` was selected (`EXPERIMENTS.md` §11.12) — so this is not an out-of-sample
+figure; `V0.8-DECISIONS.md` C1 re-reads it on a sealed split. `spec/EXPERIMENTS.md` §8
+records the measurements and what was rejected.
 The equal-quality byte saving this paragraph used to quote (the optimized 32-byte encode
 matching the v0.6 constants at 40 bytes) was withdrawn for want of a pre-adoption ladder on
 the current corpus, and has since been re-measured in `EXPERIMENTS.md` §7.12: on the

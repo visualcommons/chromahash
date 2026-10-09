@@ -474,7 +474,8 @@ const REGISTER: Claim[] = [
   {
     file: "spec/README.md",
     what: "the 4-bit layout on holdout",
-    pattern: /beat 26 at 5 by \*\*([\d.]+)% mean ΔE00\*\* on the never-tuned/,
+    pattern:
+      /beat 26 at 5 by \*\*([\d.]+)% mean ΔE00\*\* on the holdout\nsplit/,
     section: "4.5",
     row: "L28@4 C15@3",
     column: "Δ%",
