@@ -2940,7 +2940,7 @@ Deliberately unchanged, each with the number that left it alone:
 
 | Kept | Why |
 |---|---|
-| `sel_hv = 0.15` | 0.30 was better on two tune corpora and **worse on holdout** (§11.12); on the current corpus it is worse on tune too, and `hv = 0` is better — unvalidated on holdout (§11.5). Confirmed on `holdout2` (§13.7): neither 0.30 nor 0 is distinguishable from 0.15 |
+| `sel_hv = 0.15` | 0.30 was better on two tune corpora and **worse on holdout** (§11.12); on the current corpus it is worse on tune too, and `hv = 0` is better — unvalidated on holdout (§11.5). Stands under R1 on `holdout2` (§13.7): neither 0.30 nor 0 is distinguishable from 0.15 |
 | `aniso_oblique = 1.2` | Isotropic is statistically indistinguishable on tune and worse on holdout (§11.5, §11.12) |
 | µ-law µ_L = 5 / µ_C = 8 | Every alternative family is worse, including corpus-trained codebooks (§11.6) |
 | No deadzone | +0.08% once the knob could move the output (§11.7) |
@@ -3790,8 +3790,9 @@ n images detects at two-sided α = 0.05 with power 0.8 is then
   MDE = (z₁₋α/(2m) + z₀.₈) · σ_rel / √n
 
 where m is the Holm family. m = 1 is a single holdout arm. m = 2 is the
-register's two-arm cap, at Holm's first step α/2, which the better arm's p
-must clear. At m = 1 the same expression is also the smallest R2 margin that a
+register's default two-arm cap, at Holm's first step α/2, which the better
+arm's p must clear. The confirmations froze larger families (C1 m = 8, C2
+m = 4), and the same formula scales the m = 1 rows to them (§13.7). At m = 1 the same expression is also the smallest R2 margin that a
 truly equal arm meets with probability 0.8: R2 reads the one-sided 97.5% bound
 and is not Holm-adjusted.
 
@@ -3839,10 +3840,9 @@ What it says:
    resolved for most near-threshold arms, but R2's 1% is met for only about a
    quarter of them. The register applies R1, not R2, on the alpha split today
    (C2, D6). An R2 rule there would need a margin nearer 2%, or it would fail
-   most arms that are in fact equal. C2 also runs every arm of two committed
-   sweeps rather than one or two chosen ones, so its Holm family is larger
-   than the m = 2 column assumes, and its MDE larger with it, through
-   z₁₋α/(2m). Its replacements were measured at effects far above either
+   most arms that are in fact equal. C2's freeze judges four named
+   comparisons, so its Holm family is m = 4, larger than the m = 2 column
+   assumes, and its MDE larger with it, through z₁₋α/(2m). Its replacements were measured at effects far above either
    threshold (§11.3's −17.10%), so that bites only on its smaller comparisons.
 4. **Read the near-threshold rows, not the all-arms rows, to plan.** The alpha
    sweeps hold many layouts far from their incumbent, so their all-arms spread
@@ -3893,16 +3893,26 @@ all eight comparisons).**
 
 The shipped incumbents score 11.617 at code 1 and 12.468 at code 0. No
 comparison clears R1's first condition, a 3% improvement, so **the shipped
-constants stand at both codes**. The MDE the freeze quoted for this family is
-1.14%, so this verdict also excludes an improvement of 3% or more; it does not
-merely fail to show one. Three readings go beyond the verdict:
+constants stand under R1 at both codes**. The intervals, not the MDE, bound
+what this rules out. Every judged comparison's 95% interval lies above −3% of
+its baseline (the closest, `L26@3 C6@3`, reaches −0.282 against a 3% line at
+−0.374), so the data exclude an improvement of 3% or more. The 1.14% MDE the
+freeze quoted is a pre-data statement of power and excludes nothing by
+itself. Medians, reported beside the means (register Q9), tell the same
+story: 11.809 for the code-1 incumbent against 11.751–12.040 for its
+alternatives, and 12.662 for the code-0 incumbent against 12.655–13.296. Three
+readings go beyond the verdict:
 
 1. **`sel_hv = 0.15` now has out-of-sample evidence.** Neither 0.30 nor 0 is
-   distinguishable from it (+0.02% and −0.11%, both intervals straddling
-   zero). `hv = 0` cleared zero on tune (§11.5) and does not here.
-2. **The adoption replicates.** The pre-adoption v0.6-derived row is 2.22%
-   worse, significant after Holm, and fails its guards: §8's gain holds on
-   photographs nothing had tuned on.
+   distinguishable from it: +0.02% and −0.11%, both intervals straddling zero
+   and lying within about ±0.5% of the incumbent's 11.617. `hv = 0` cleared
+   zero on tune (§11.5) and does not here.
+2. **The adoption replicates in direction, not in size.** The pre-adoption
+   v0.6-derived row is 2.22% worse than the shipped constants, significant
+   after Holm, and fails its guards. Equivalently, the shipped constants are
+   2.18% better, against the −3.72% §7.12 and §8 measured on the old holdout.
+   §8's gain holds on photographs nothing had tuned on, at about three-fifths
+   of its old size.
 3. **One compact layout is better, below the bar.** `L26@3 C6@3` is 1.50%
    better than the shipped `L19@4 C6@3`. That is significant after Holm, every
    guard is `ok` on intervals, and no seed moves it. §11.10 called the compact
@@ -3910,8 +3920,11 @@ merely fail to show one. Three readings go beyond the verdict:
    way. It is under R1's 3%, so it changes nothing in 1.0, and a reopening
    would start from it.
 
-**The compact tier's admission holds out of sample.** In `rd-budget` on the
-same split, the shipped compact row beats ThumbHash on all four metrics:
+**The compact tier's admission holds, on point means, as the criterion is
+written.** In `rd-budget` on the same split, the shipped compact row's mean
+beats ThumbHash's on all four metrics. Three of the four differences exclude
+zero on the paired interval. DSSIM's does not: 0.2802 against 0.2819, with a
+paired Δ of [−0.0043, +0.0006]. On DSSIM the two are indistinguishable.
 
 | | bytes | ΔE00 ↓ | SSIM2 ↑ | Butter ↓ | DSSIM ↓ |
 |---|---|---|---|---|---|
@@ -3920,9 +3933,10 @@ same split, the shipped compact row beats ThumbHash on all four metrics:
 
 **The smartphone stratum, reported and not judged (register Q12).** The
 smartphone-camera images are harder: the incumbent's mean ΔE00 is 13.178 on
-the nine `sealed-phone-*` images against 11.006 on the other 23. The
-constants' ordering does not change within the stratum. At code 1, `sel_hv=0`
-is −0.03%, `sel_hv=0.30` −0.11% and isotropic +0.96% on the phone images. At
+the nine `sealed-phone-*` images against 11.006 on the other 23. On the phone
+images both `sel_hv` alternatives sit marginally ahead of 0.15 (`sel_hv=0`
+−0.03%, `sel_hv=0.30` −0.11%) and isotropic is +0.96%. Over all 32, 0.30 is
+behind. At
 code 0, `L26@3 C6@3` is −0.71% there and −1.86% on the rest. Nine images resolve
 none of these; the stratum is a description, not a test.
 
@@ -3931,25 +3945,52 @@ all four comparisons).**
 
 | comparison (replacement vs the row it replaced) | ΔE00 | 95% CI of Δ | relative | p Holm | guards (CI) |
 |---|---|---|---|---|---|
-| code 1: `A28@3 L22@4 C3@3` vs `A5@4 L20@5 C9@4` | −2.110 | [−3.326, −1.280] | −13.66% | 0.0008 | ok |
-| code 0: `A16@3 L12@4 C1@3` vs the old compact shape | −1.592 | [−2.822, −0.758] | −10.19% | 0.0008 | ok |
+| code 1: `A28@3 L22@4 C3@3` vs `A5@4 L20@5 C9@4` | −2.110 | [−3.326, −1.280] | −13.66% | ≤ 0.0008 | ok |
+| code 0: `A16@3 L12@4 C1@3` vs the old compact shape | −1.592 | [−2.822, −0.758] | −10.19% | ≤ 0.0008 | ok |
 | `alpha_ac_fit` on vs off, code 1 | +0.040 | [−0.124, +0.183] | +0.30% | 0.5927 | inconclusive |
 
 The fourth comparison reads `alpha-tier1` rather than `v07-holdout-alpha`:
 
 | comparison (replacement vs the row it replaced) | ΔE00 | 95% CI of Δ | relative | p Holm | guards (CI) |
 |---|---|---|---|---|---|
-| code 2: the shipped base row vs `A5@4 L20@5 C9@4` | −1.132 | [−1.852, −0.550] | −8.99% | 0.0008 | ok |
+| code 2: the shipped base row vs `A5@4 L20@5 C9@4` | −1.132 | [−1.852, −0.550] | −8.99% | ≤ 0.0008 | ok |
 
 **All three replacements replicate under R1**, and `alpha_ac_fit = false`
 stands. The code-1 row's −13.66% sits near its tune figure (−17.10%, §11.3) and
 the retired split's unreproducible −16.2%. The code-2 base row's −8.99% sits
 near its tune −11.95% (§11.11). This is the out-of-sample evidence the alpha
-allocation lost in #83.
+allocation lost in #83. Two cautions apply at n = 14:
+- "≤ 0.0008" is the bootstrap's resolution floor, 2/(B+1) after Holm, not an
+  exact p.
+- The percentile bootstrap is anti-conservative at this size: code 1's upper
+  bound is −1.280 by bootstrap against −0.883 by paired t.
 
-**Condition 4.** Re-derived under 20 other bootstrap seeds, none of the 25
-ΔE00 intervals in the three sweep results changes whether it excludes zero,
-and no Holm verdict turns; the largest bound move is 0.059 ΔE00.
+The verdicts do not depend on either: 14 of 14 and 13 of 14 images improve.
+None of §11.11's equal-budget alternatives beats the shipped code-2 row here
+(the best, `A16@4 L14@4 C9@4`, is −0.58%), and the off-budget `C2@4` arm is
+−2.54% at Holm p 0.39.
+
+**Condition 4.** `mise run register-verdict C1|C2 --seeds 20` re-derives each
+judged comparison under 20 other bootstrap seeds. Each is taken against its
+named baseline, with the entry-family Holm and every guard interval re-drawn.
+No R1 outcome turns in either entry.
+
+**Deviations from the frozen procedure, recorded rather than hidden.**
+1. **Guards against a named baseline.** The freeze said conditions 1–3 "come
+   from `mise run arms`", whose guard table covers row 0 only. Applying the
+   same `guardVerdictOnIntervals` rule to a named baseline was written down
+   after the reads, in `register-verdict`. It is the same rule at the same
+   tolerances. C2's compact comparison passes partly on it.
+2. **The first condition-4 check used the wrong family.** As first recorded,
+   condition 4 came from `arms --seed-sensitivity`, which compares every arm
+   with row 0 across the whole sweep. That is not the frozen baselines or
+   family, and it re-draws no guard. The check above replaces it. No outcome
+   changes.
+3. **C2's code-2 comparison was narrowed at the freeze.** C2's Arms field
+   names the code-2 base row against §11.11's equal-budget arms. The freeze
+   judged the shipped row against the row it replaced, as for the other
+   replacements, and reports the equal-budget arms (above). The narrowing was
+   made before the read.
 
 Both entries are therefore `decided`, and the 1.0 freeze (`V0.8-DECISIONS.md`
 A1) stands on them.
