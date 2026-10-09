@@ -1632,6 +1632,8 @@ frequency-normalized decoding.
 | **Gamut clip** | Out-of-sRGB OKLAB values are clipped per-channel in linear sRGB (relative-colorimetric, §12.6) — the same mapping a display applies, so saturated wide-gamut solids render at full in-gamut saturation rather than desaturated. |
 | **No progressive decode** | The whole hash must be received before decoding. Never a practical bottleneck at these sizes; embedded/progressive tiers are a future direction (§15). |
 | **Codes 3–4 are not a rate–distortion claim** | See below. |
+| **Alpha at codes 3–4 is inherited, not measured** | Alpha-mode codes 3–4 scale the code-2 alpha row by `4^(level)`. That row was measured at code 2 only (`EXPERIMENTS.md` §11.11); whether codes 3–4 want a different alpha/chroma split was registered (`V0.8-DECISIONS.md` D6) and closed unmeasured by the 1.0 freeze. |
+| **Metric-validated, not perceptually validated** | Every constant here was chosen and confirmed on image-quality metrics (ΔE00 primary; SSIMULACRA2, Butteraugli, DSSIM as guards). None of those metrics has been validated against human judgement at placeholder fidelity (`V0.8-DECISIONS.md`, "The ceiling on every artifact claim: U19"). |
 
 ### 14.1 What codes 3 and 4 are for
 
