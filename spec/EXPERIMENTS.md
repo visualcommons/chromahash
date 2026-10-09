@@ -36,9 +36,8 @@ tune and validated on holdout, per the pre-registered rule in `RATIONALE.md`.
 > `--split holdout` refuses a photographic corpus. The figures stay as what
 > was measured, and their committed `*-holdout.json` results still bind them.
 > The out-of-sample split for v0.8 is **`holdout2`**: new Commons photographs
-> selected on covariates alone, with no encoder run on them, and pinned only
-> once their list is approved. Until then it holds no image, and every tool
-> that is asked for it says so. It is sealed: no tool reads it until
+> selected on covariates alone, with no encoder run on them. Its 32 images were
+> pinned once their list was approved (#103, 2026-10-09). It is sealed: no tool reads it until
 > `spec/V0.8-DECISIONS.md` records the decision being answered as frozen,
 > and then only once. §6 and §11.12 give the mechanics. The alpha holdout,
 > retired in #83 when one of its images was deleted, went the same way (#93):
@@ -2770,11 +2769,11 @@ split read once, not a rewording (#76).
   result or recorded decision has read.
 - **The replacement is `holdout2`**, sealed. Its images are chosen on
   covariates alone — the §9.1 axes plus the smartphone snapshots §9.4 lists as
-  missing — with no encoder run on a candidate, and nothing is pinned until
-  the list is approved. The 32 candidates, the protocol that drew them in a
+  missing — with no encoder run on a candidate, and nothing pinned until
+  the list was approved. The 32 candidates, the protocol that drew them in a
   seeded order under thresholds fixed beforehand, and their covariates
-  (`corpus-covariates.ts`) are in #103, which pins them once approved. Once
-  pinned, `sweep` and `rd-budget` read it only with
+  (`corpus-covariates.ts`) are in #103, which pinned all 32 on approval
+  (2026-10-09). Now pinned, `sweep` and `rd-budget` read it only with
   `--split holdout2 --decision <ID>`, only when `spec/V0.8-DECISIONS.md`
   records that decision as frozen (its criterion approved, and not yet
   answered), only whole, and only once: a second run under the same result
