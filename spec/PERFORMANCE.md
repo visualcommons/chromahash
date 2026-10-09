@@ -11,164 +11,313 @@ nothing joined them. The cost of every encoder-only lever was unknown, the
 dominant cost driver was never varied, and the shipped `simd` feature had never
 been measured at all.
 
-Numbers here are produced by `mise run benchmark` and `mise run benchmark:full`
-(driver: `tools/comparison/src/perf/`). Each harness times its own loop
-in-process, so no reported figure includes process startup, and the reported
-cost of a cell is the **minimum** over its timed blocks — every source of error
-in a wall-clock benchmark is one-sided, so the minimum is the sample least
-contaminated by the host.
+Numbers here are produced by `mise run benchmark:session` (driver:
+`tools/comparison/src/perf/`). Each harness times its own loop in-process, so no
+reported figure includes process startup. Each cell is timed in several
+independent processes, each reporting the **minimum** over its timed blocks —
+every source of error in a wall-clock benchmark is one-sided, so the minimum is
+the sample least contaminated by the host — and the reported cost is the
+**median of those per-process minima**, beside their range. §0 states the
+method and its revisions.
 
 Every table below is bound to a cell in a committed run, and
 `mise run verify:benchmark` checks each one. A figure that cannot be traced to a
 cell cannot be published here.
 
-> ### Measured 2026-09, except six cells and §12.4's levers
+> ### Measured 2026-09, except the cells named below
 >
-> **216 of this document's values are now checked against a committed run**, on
-> an AMD Ryzen 7 7800X3D (16 threads, Linux), from a clean tree. Six are not,
-> and neither are §12.4's 34, which are newer than the run; all of them are
-> named below rather than left for a reader to find.
+> **216 of this document's values are checked against a committed run**, on
+> an AMD Ryzen 7 7800X3D (16 threads, Linux), from a clean tree.
+> **40 table cells** are placeholders no committed run can fill yet, and so
+> are **8 figures in the prose** that depend on them; all of them are named
+> below rather than left for a reader to find.
 >
-> The previous revision carried `TBD` throughout, and the reason is worth
-> keeping: the runs behind the revision before *that* were not reproducible. The
-> committed baseline was a `bounded` sweep taken from a dirty tree while §2–§6
-> quoted a `--full` sweep that was never committed, and checked cell by cell
-> `verify:benchmark` found **50 disagreements in 89 values**, two tables with no
-> measured cell at all, and six duplicate cell ids. That baseline was removed
-> rather than corrected.
+> The revision before last carried `TBD` throughout, and the reason is worth
+> keeping: the runs behind the revision before *that* were not reproducible.
+> The committed baseline was a `bounded` sweep taken from a dirty tree while
+> §2–§6 quoted a `--full` sweep that was never committed, and checked cell by
+> cell `verify:benchmark` found **50 disagreements in 89 values**, two tables
+> with no measured cell at all, and six duplicate cell ids. That baseline was
+> removed rather than corrected.
 >
 > Re-measuring is a deliberate act, on a host that can hold a clock still — and
 > the host is part of the result, so it is stated. An Apple M3 Pro laptop was
 > tried and **rejected**: the same cell across fresh processes spanned 34%, the
 > host drifted ~25% over a few hours, and two independent full sweeps sharing 99
 > cells disagreed by more than 10% on 22 of them. The same bar was applied to
-> this host before anything was published: two independent bounded sweeps at the
-> same commit shared 100 cells, none disagreed by more than 10%, the widest was
-> 5.5%, and the driver flagged a single cell as noisy
-> (`batch/Kotlin/threads=auto`, a JVM thread-pool figure).
->
-> **That last check is not reproducible from this tree, and it is the weakest
-> evidence in the document.** Read it as a statement about the host at the time
-> of measurement, not as a result you can re-derive here. Precisely:
+> this host in 2026-09, by two bounded sweeps at one commit of which only one
+> was committed — so their agreement is a statement about the host at the time,
+> and its figures are no longer quoted here. The bar is now checked rather than
+> asserted: the two bounded sweeps committed at one commit share **TBD cells**,
+> the widest **TBD%** apart, and those placeholders are filled by the session
+> that commits the pair.
 >
 > | Claim | Reproducible from the tree? |
 > |---|---|
-> | Every table below equals a cell in `baselines/perf-report.json`, `baselines/perf-stages.json` and `baselines/perf-decode-stages.json` | **Yes** — `mise run verify:benchmark`, cell by cell, exactly |
+> | Every table below agrees with a cell in `baselines/hosts/<host>/perf-report*.json`, `baselines/perf-stages.json` and `baselines/perf-decode-stages.json`, within the cell's range or ±5% | **Yes** — `mise run verify:benchmark`, cell by cell |
 > | The M3 Pro's 34% / ~25% / 22-of-99 figures | **No.** That host's runs were never committed, and the machine was rejected rather than published |
 > | This host's cross-run agreement | **No.** Only one of the two bounded sweeps is committed, so `verify:benchmark`'s host-stability check has nothing to compare and reports itself `SKIP` |
 >
-> The gate now has the slot and the rule; what it lacks is the second run. It
-> reads `baselines/perf-report-full.json`, `baselines/perf-report.json` and
-> `baselines/perf-report-2.json`, and **fails** on any cell two of them share
-> that is more than 10% apart — the spread used to be printed as a warning. The
-> stability check itself needs two `bounded` runs at one commit on one CPU,
-> sharing at least one cell, and it holds the row above to its result in both
-> directions: "Yes" fails unless the check passes and the row quotes its
-> figures (`N shared cells`, `widest X.X%`), and "No" fails once it passes.
-> Until a second bounded sweep is committed the cross-run agreement above stands
-> on the maintainer's word and nothing else — which is exactly the standard §11
-> indicts `spec/README` §14 for, kept here only because it is *labelled* rather
-> than presented as a checked result. **The 10%-spread bar remains the rule for
-> publishing a new host; what this tree can prove is that the numbers match one
-> committed run.**
+> The gate has the slot and the rule; what it lacks is the second run. It
+> reads `baselines/hosts/<host>/perf-report.json`, `perf-report-2.json` and
+> `perf-report-full.json`, and **fails** on any cell two of one host's runs
+> share that is more than 10% apart. The stability check needs two `bounded`
+> runs at one commit on one host, sharing at least one cell, and it holds the
+> row above to its result in both directions: "Yes" fails unless the check
+> passes and the row quotes its figures (`N shared cells`, `widest X.X%`), and
+> "No" fails once it passes. Until a second bounded sweep is committed the
+> cross-run agreement stands on the maintainer's word and nothing else — which
+> is exactly the standard §11 indicts `spec/README` §14 for, kept here only
+> because it is *labelled* rather than presented as a checked result.
 >
 > **That committed run was annotated after it ran, in two fields that are not
-> measurements.** `baselines/perf-report.json` records commit `e53e6cd` with
-> `dirty: false`, and every cell in it is that run's output, unedited. Its one
-> `unavailable` entry, Swift's, was then changed by hand twice: the `reason` lost
-> the measuring checkout's absolute path (it now reads `spawnSync
-> .build/release/ChromaHashCLI ENOENT`), and `kind: "absent"` was added. The
-> driver at `e53e6cd` could write neither — it recorded no `kind` and quoted the
-> absolute path — so the file is not byte-for-byte what that commit produces.
-> Both edits are what the current driver (`perf/availability.ts`) writes for the
-> same probe outcome: the `ENOENT` kept in the reason is the evidence for
-> `absent`, and the redaction removes nothing else. The run was kept rather than
-> re-measured because the host is no longer quiet, and a re-run would replace a
-> sweep that met the 10% bar with one that has not been tested against it. The
-> next pair of `mise run benchmark` runs on a quiet host replaces it with two
-> unannotated files, and the gate now tests them against that bar.
+> measurements.** `baselines/hosts/linux-x64-amd-ryzen-7-7800x3d-8-core-processor/perf-report.json`
+> records commit `e53e6cd` with `dirty: false`, and every cell in it is that
+> run's output, unedited. Its one `unavailable` entry, Swift's, was then
+> changed by hand twice: the `reason` lost the measuring checkout's absolute
+> path (it now reads `spawnSync .build/release/ChromaHashCLI ENOENT`), and
+> `kind: "absent"` was added. The driver at `e53e6cd` could write neither — it
+> recorded no `kind` and quoted the absolute path — so the file is not
+> byte-for-byte what that commit produces. Both edits are what the driver writes
+> for the same probe outcome: the `ENOENT` kept in the reason is the evidence
+> for `absent`, and the redaction removes nothing else. The file was later
+> moved, unchanged, from `baselines/perf-report.json` into its host's
+> directory. It is a `chromahash-perf/2` run — one process per cell — and the
+> gate reads it as one (below). The next `benchmark:session` on a quiet host
+> replaces it with unannotated files, and the gate tests them against the bar.
 >
-> **What is still missing, and the one command that closes it:**
+> **What is still missing:**
 >
 > | Cells | Why |
 > |---|---|
-> | §2's tier-3 and tier-4 **encode** at 100×100 | the `bounded` matrix stops at tier 2 |
-> | §3's **128×128 and 1024×1024** rows | `bounded` measures 64/100/256/512 |
-> | §12.4's **34 lever cells** | the `bounded` matrix records them now, but its arms were added after the committed run was taken, and the host was not quiet enough to take another |
-> | §7 and §8's **Swift** rows | its binding consumes a UniFFI xcframework only `xcodebuild` can assemble, so it is empty on **every** run made off macOS — `ci-swift.yml` on `macos-latest` is where Swift is measured. These are marked *macOS only* rather than `TBD`: they are not pending anybody's run. |
+> | §2's tier-3 **encode** at 100×100 | only the full supplement measures tier 3 |
+> | §2's tier-4 **encode** at 100×100 | the bounded matrix now measures it, as the base of §12.4's tier-4 levers; the committed run predates that |
+> | §3's **128×128 and 1024×1024** rows | only the full supplement measures them |
+> | §12.4's lever cells | the bounded matrix records them, but its arms were added after the committed run was taken, and the host was not quiet enough to take another |
+> | §0's stability figures, and §12.1's and §12.3's measured restatements | prose bound to the cells above and to the committed pair, written `TBD` until they exist |
+> | §7 and §8's **Swift** rows | its binding consumes a UniFFI xcframework only `xcodebuild` can assemble, so it is empty on **every** run made off macOS — `ci-swift.yml` on `macos-latest` is where Swift is measured. These are marked *macOS only* rather than `TBD`: they are not pending anybody's run, and a macOS session commits its own host directory (below) |
 >
-> The first two groups need `mise run benchmark:full`, whose exhaustive matrix
-> takes hours; the third needs only the bounded pair below; the fourth cannot
-> be produced on this platform at all.
->
-> **`mise run verify:benchmark` therefore still fails**, on those six
-> placeholders and §12.4's 34 cells and nothing else, so `ci-comparison.yml`
-> keeps `continue-on-error`. Note what that
-> means for the comment beside it, which says to remove the line "in the same
-> change that commits the baseline": a Linux runner can never satisfy this gate
-> while the Swift rows are bound, so the gate now reports an unreachable
-> target's rows as **unavailable** rather than failed. Forty cells short of
-> green, every one of them named here, is a state worth naming; sixty-eight
-> unnamed ones was not.
->
-> To fill the rest in:
->
-> ```bash
-> mise run benchmark          # -> tools/comparison/output/perf/perf.json
-> mise run benchmark -- --out tools/comparison/output/perf/perf-2.json
-> mise run benchmark:full     # -> tools/comparison/output/perf/perf-full.json
->
-> # §1's three columns. Each is its own invocation and each writes the committed
-> # baseline directly, so there is no `cp` for these.
-> mise run benchmark:stages 100 100 1
-> mise run benchmark:stages 512 512 1
-> mise run benchmark:stages 512 512 4
->
-> # §1.1's three columns, the same way.
-> mise run benchmark:decode-stages 100 100 1 2000
-> mise run benchmark:decode-stages 100 100 4 20
-> mise run benchmark:decode-stages 100 100 4 200 32x32
->
-> cp tools/comparison/output/perf/perf.json      tools/comparison/baselines/perf-report.json
-> cp tools/comparison/output/perf/perf-2.json    tools/comparison/baselines/perf-report-2.json
-> cp tools/comparison/output/perf/perf-full.json tools/comparison/baselines/perf-report-full.json
-> mise run verify:benchmark -- --fix   # rewrites every TBD from the runs
-> mise run verify:benchmark            # must pass
-> ```
->
-> The two bounded runs are the host-stability pair: independent processes, one
-> commit, one host. Once both are committed, `verify:benchmark` prints `Host
-> stability (§0): PASS` with the shared-cell count and the widest spread, and
-> fails until the reproducibility row above says **Yes** and quotes both.
->
-> **The order is load-bearing, and it is the reason `benchmark:stages` sits in
-> the middle.** Every recorder here stamps its output with `git.dirty`, and the
-> gate fails a run that carries it. `benchmark`/`benchmark:full` write to the
-> ignored `output/`, so they leave the tree clean — but they must therefore go
-> *first*, before anything else has dirtied it. `benchmark:stages` and
-> `benchmark:decode-stages` write tracked files, and their shared recorder
-> excludes exactly those two files from its probe, so the six invocations do
-> not dirty each other but a copied-in `perf-report.json` would dirty all six.
-> Hence: sweeps, then stages, then the copies.
->
-> This block previously omitted `benchmark:stages` altogether, so following the
-> documented procedure left §1's baseline untouched at whatever revision it was
-> last recorded at — the one table in the document with no way to notice.
->
-> The `cp` lines **rename** as they copy, and that is not cosmetic: the gate
-> reads `baselines/perf-report-full.json`, `baselines/perf-report.json` and
-> `baselines/perf-report-2.json` and ignores anything else in the directory
-> (`verify-benchmark.ts`). This block used
-> to say `cp …/perf*.json tools/comparison/baselines/`, which lands the files
-> under their output names, leaves the gate reading nothing, and reports the
-> document as unmeasured with no hint as to why. `TESTING.md` had it right.
->
-> Run it on a quiet machine, from a clean tree — every recorder stamps
-> `git.dirty`, and the gate fails on a run that cannot be traced to a revision.
-> That now includes §1 and §1.1: `benchmark:stages` and
-> `benchmark:decode-stages` commit `perf-stages.json` and
-> `perf-decode-stages.json`, and `verify:benchmark` checks their provenance
-> alongside the sweeps'.
+> **`mise run verify:benchmark` therefore still fails**, on those placeholders
+> and nothing else, so `ci-comparison.yml` keeps `continue-on-error`. A Linux
+> runner can never satisfy this gate while the Swift rows are bound, so the
+> gate reports an unreachable target's rows as **unavailable** rather than
+> failed. One command fills the rest: `mise run benchmark:session`, on a quiet
+> host, from a clean tree — §0 below.
+
+## 0. Procedure and methods
+
+**The session.** One command re-measures the document, after the root-only
+steps that hold a clock still. The driver never runs `sudo`; these are yours:
+
+```bash
+# On the measuring host, as root, once per boot. Each sysfs switch exists only
+# for the frequency driver that owns it.
+echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+echo 0 | sudo tee /sys/devices/system/cpu/cpufreq/boost           # acpi-cpufreq, amd-pstate passive
+echo 0 | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/boost      # amd-pstate active (per policy)
+echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo   # intel_pstate
+# Optional: SMT off, or pin the harnesses to one thread per core below.
+echo off | sudo tee /sys/devices/system/cpu/smt/control
+
+mise run benchmark:session                  # or: mise run benchmark:session --pin 2,4,6,8
+```
+
+It runs, in order: a preflight; two `bounded` sweeps (the host-stability
+pair); the `full` supplement; `benchmark:stages` for §1's three columns
+(`100 100 1`, `512 512 1`, `512 512 4`) and `benchmark:decode-stages` for
+§1.1's (`100 100 1 2000`, `100 100 4 20`, `100 100 4 200 32x32`); a copy of
+the sweeps into `baselines/hosts/<host>/`; `verify:benchmark --fix`; and
+`verify:benchmark`, whose status it exits with. Review the diff, set §0's
+stability row to **Yes** with the figures the gate prints, and commit.
+`--scratch DIR` runs only the sweeps, into `DIR`, to smoke-test the procedure;
+every other flag is passed to the sweeps.
+
+It decides, before measuring, whose document this is. `baselines/hosts/PRIMARY`
+names the host the figures speak for, and a session changes it only when told
+to with `--set-primary` (or when there is none yet). On any other host the
+session commits a secondary set — read only for the targets the primary
+records absent, which is how a macOS session fills the Swift rows — and leaves
+PRIMARY, the stage files and the document's figures alone; it used to repoint
+PRIMARY at whichever host ran last.
+
+The order is no longer load-bearing. This block used to be fifteen commands —
+sweeps first, then stages, then the copies — because every recorder stamped
+`git.dirty` and a copied-in baseline dirtied every recording after it. Every
+recorder now leaves the measurement outputs (`baselines/hosts/`, the two stage
+files) out of its dirty probe: an output is not a source.
+
+**Preflight and load.** Before measuring, the driver reads the load average
+(Linux and macOS), the cpufreq governor, boost (the global switch,
+`intel_pstate/no_turbo`, or amd-pstate's per-policy `boost`) and SMT. The bar
+is a 1-minute load of one runnable task per eight hardware threads, never
+below 1. The session **waits** for the load to fall under it — after the
+build, before each sweep and **before every process round**, and before the
+stages — for up to `--load-timeout` seconds (default 1800) each time, and
+stops with what it saw if it does not. Refusing instead stopped the session at
+its second sweep: the 1-minute average decays over about a minute, so it is
+still high after the build and after each round's `threads=auto` batch cells.
+Run alone, the driver refuses a loaded host unless given `--wait-for-load`;
+`--force-loaded` starts anyway and marks the run `loaded`. A governor other
+than `performance`, boost on and SMT on are reported, not refused — they need
+root. All of it, with `rustc --version`, the kernel, the seconds waited, and
+the load average at the start, at every process round and at the end, is
+recorded in the run's `environment.preflight`. `--pin CPULIST` runs every
+harness under `taskset -c`.
+
+The gate does not take the driver's word for it. It recomputes the bar from
+the run's own core count — so `--max-load 50` does not move it — and holds the
+start and every round to it, so a run that started quiet and became loaded
+fails. (The end reading is recorded and not held: it trails the run's own
+batch cells.) It rejects, as a failure rather than a printed note, a `/3` run
+with fewer than four processes, an odd number, or fewer than five blocks; one
+with no git commit, digest and dirty bit; one with no preflight; and any
+`--quick` or `/1` run, under any file name.
+
+**Method (`chromahash-perf/3`).** One pilot sizes a cell's timed block to
+about 200 ms. The cell is then measured in **P independent processes**
+(`--processes`, default 4) of five timed blocks each (`--reps`), after the
+harness's warmup; each process reports its minimum block, and the cell
+reports the **median of the per-process minima**. Processes are interleaved
+**round-robin** across every cell, so a drift over the sweep lands on every
+cell a little instead of on whichever ran last.
+
+Beside the median the run records the **range** of the process minima — not a
+confidence interval. The range of n independent draws holds their median with
+probability 1 − 2^(1−n): 87.5% at four processes, 75% at three. The run stores
+that coverage beside the range. An earlier draft of this revision called the
+range a "bootstrap 95% interval", which with three processes it could not be.
+A cell is **noisy** when its process minima spread more than 5%. Its range then
+never widens what a documented value may be, so it is checked on the band
+alone. A bound cell whose processes spread more than the 10% host bar
+**fails**: within one run it has already broken the bar two runs are held to.
+No `/3` figure is drawn by bootstrap, so the resample count `stats.ts`
+defaults to does not reach this document. The committed `/2` baseline's
+`ci95NsPerOp` fields were bootstrap draws at 1,000 resamples — `stats.ts`'s
+default at `e53e6cd`, whatever it is now, and not re-drawn since.
+They describe the median of one process's blocks, and the gate reads none of
+them.
+
+A ratio is measured as one. A lever and the cell it is divided into — every
+§4 and §12.4 arm and its base, §6's separable DCT, §5's scalar and SIMD
+builds, §2's natural and capped decodes, §8's one-thread and auto batches —
+form a unit whose processes run back to back, in reverse order every other
+round: rounds 0 and 1 run a pair A B, then B A, and so do rounds 2 and 3. The
+run stores each such ratio as a **paired record**. The record holds each
+round's base minimum over that round's arm minimum, and the ratio is their
+**geometric mean over complete A B / B A blocks**. Whatever running second does
+to a member multiplies one order's ratio by about what it divides the other's
+by, so the order effect cancels. The record also holds each block's ratio, the
+blocks' range (two blocks cover the median half the time, so this is a range
+too) and their spread. A pair whose blocks spread past 5% gets no range
+acceptance, and one whose blocks spread past 10% fails, as for a cell. The
+ratio used to be the median of the rounds. With three rounds (A B, B A, A B)
+that is an A B round, carrying any order effect whole, which is why the count
+is now even. These records are what §2's saving, §4's "vs shipped", §5's gain,
+§6's and §12.4's speedups and §8's scaling read. A `/3` run without the record
+for a ratio it publishes is missing a measurement and fails; only a `/2` run,
+which recorded no pairs, is read as a ratio of two cells.
+
+**One measurement, one cell.** A lever table's `shipped` arm is the base cell
+under another name — `encode/Rust/t1/100x100/gradient/shipped` is
+`encode/Rust/t1/100x100/gradient`, and `decode/Rust/t1/natural/shipped` is
+`decode/Rust/t1/natural` — so it is now recorded as an alias and measured
+once. They used to be measured twice and quoted from different cells in
+different sections; a run old enough to hold both is checked for the two
+agreeing within 10%.
+
+**The full run is a supplement.** `--full` measures only the cell ids the
+bounded matrix does not hold — tier 3 and 4 across languages, the 128×128 and
+1024×1024 sources, two, four and eight batch threads — so committing it fills
+the cells only it can produce and re-baselines nothing. It used to re-measure
+every bounded id as well, and the gate preferred its value, so filling six
+cells rewrote two hundred. The gate fails a full run that holds a bounded id.
+
+**What it costs.** By the harness's own budget (pilot, warmup, blocks), a
+bounded sweep at four processes on this host is about twenty minutes, up from
+about seven for one process per cell, and the full supplement about a quarter
+of an hour. The load waits add a few minutes per sweep, mostly after rounds
+that end in the `threads=auto` batch cells. A whole session, builds and stage
+recordings included, is about an hour and a half. These are estimates from
+that budget, not measurements; each run records its own `wallSeconds` and the
+seconds it waited.
+
+**How a figure is checked.** A documented value passes when it is the
+measured value rounded as written, when it lies inside the cell's range, or
+when it is within **±5%** of the committed run. The 5% is half of the 10% host
+bar, and it is a resolution chosen rather than a noise level measured: a
+figure is rewritten only when it moved more than half of what the bar lets
+two runs of the host differ by, and a change the size of the bar always is.
+How many figures a re-run on this host moves past it is not known yet — the
+one pair of sweeps this host has compared was never committed, so that
+agreement is unverified — and the first committed pair will say. A stage share
+passes within half a point, whatever its size: §1 records two
+recordings back to back agreeing within 0.4 points. A percentage that is a
+difference of two timings (§4's "vs shipped", §5's "2%") is held to the same 5%
+on the ratio it stands for — §4's −36.3% is 0.637×, so ±3.2 points. A ratio or
+timing percentage that states a direction must also keep it: a figure written
+as a speedup fails against a measured slowdown however small the difference,
+and `--fix` writes the measured side; one that rounds to 1× or 0% as written
+states none. `--fix` rewrites only what is outside, and refuses to write at
+all while the committed runs themselves fail (dirty, loaded, rejected,
+unstable, untraceable): agreeing with a run the gate refused would carry its
+figures into the document. That is the document's
+resolution, stated: a claim within 5% of 1 — §5's SIMD gain — is checked to
+"within 5%" and to its sign, no finer. Every figure the prose restates is bound
+the same way, and one that needs a measurement nobody has committed is written
+`TBD` and fails by name.
+
+**Per-host baselines.** Sweeps are committed under `baselines/hosts/<host>/`,
+where `<host>` is the run's OS, architecture and CPU model, slugged; each run
+also records a one-way hash of the machine id, and two machines with one CPU
+model fail the stability check. `baselines/hosts/PRIMARY` names the host this
+document is measured on: its bounded runs are authoritative and its full run
+supplements them. Spread and stability are checked within a host, never
+across, so a macOS session can commit `baselines/hosts/darwin-arm64-…/` beside
+this one, and is read only for targets the primary host records absent —
+which is how the Swift rows will be filled, and why they stay *macOS only*
+until then. Any host whose cells are read must have a passing stability pair
+of its own, the secondary as much as the primary; only a host whose runs are
+all the legacy `/2` format — the committed one, labelled "No" above — is
+exempt.
+
+**Provenance survives a squash merge.** Pull requests here are squash-merged,
+so the commit a run was taken at is unreachable from `master` once it lands:
+the committed baseline records `e53e6cd`, the stage files `4d68c1f` and
+`8f5f4d1`, and none is an ancestor of `master`. Every recorder now also
+records a SHA-256 over the files that decide a measurement (`rust/`,
+`bindings/`, every harness's language directory, the driver and the stage
+recorder, and the tasks that build and run them — `.mise.toml` and
+`mise-tasks/benchmark/`; `perf/provenance.ts` lists them), less documentation:
+a README or a `docs/` page cannot move a figure, so editing one does not orphan
+a baseline. The gate accepts a run whose commit is an ancestor of `HEAD` and
+has that digest, or — when the commit is not reachable — whose digest some
+commit in `HEAD`'s history has. So: **measure on a branch rebased onto
+`master`, and land it before `master`'s measured sources move.** That is now
+checked before the merge rather than discovered after it: a change that adds
+or changes a baseline must have measured it on `HEAD`'s own sources, and in CI
+`HEAD` is the pull request merged into the current `master`, so a run that went
+stale while its PR was open fails there, and the fix is to rebase and
+re-measure. A run from before digests is reported (`LEGACY`) and not failed.
+`e53e6cd`'s harness sources are `ec2b290`'s, but its branch's `.mise.toml` and
+`mise-tasks/benchmark/stages` never reached `master` in that form, so under the
+current digest it is traceable only by its PR ref.
+
+**Methods revisions.** `chromahash-perf/1` reported each cell's median block.
+`chromahash-perf/2` (2026-09) reported the minimum block of one process, on
+the one-sided-error argument above: on the rejected M3 Pro, ten fresh
+processes timing one cell put the minimum within 0.1% while the median of the
+same blocks spanned 34%. `chromahash-perf/3` (this revision) samples
+processes, not only blocks: the minimum of one process left the variance
+between processes — a different core, heap layout or moment in the host's
+thermal cycle — unsampled, its "interval" was a CI of the median of its
+blocks rather than of the figure reported, and its `noisy` flag was never
+read. It also pairs ratios over A B / B A blocks, makes `--full` a
+supplement, keys baselines by host, records the host's state and a source
+digest, and checks documented figures against a range or a band instead of
+exactly. The gate reads `/2` and `/3`, and a host's runs must share one. A
+`/2` cell has no range, so it is held to the ±5% band alone; the gate lists
+every bound cell the driver flagged noisy, and holds `/2` to none of the `/3`
+record requirements above, which it predates.
 
 ---
 
@@ -488,10 +637,10 @@ at 79% of the work rather than on the 6.9% stage `simd` covers.
 
 That it is also the only *large* lever requiring a format change is the tension
 §12 exists to lay out. Stated precisely, because the temptation is to overstate
-it: **the only byte-identical speedup this document has measured is 2%, and the
-only large one measured at all costs a version bump.** §12.1 lists seven
-byte-identical candidates that are located and sized but not built, so what is
-missing is a measurement of them, not an argument for them.
+it: **the only byte-identical speedup §5 measures is 2%, and the only large
+one measured at all costs a version bump.** §12.1's seven byte-identical
+candidates are now built (§12.4), so what is missing is their measurement, not
+an argument for them.
 
 **On byte-identity, precisely.** Reassociating floating-point addition is not
 guaranteed to preserve quantized codes. Over 40 encodings spanning all five
@@ -705,6 +854,13 @@ largest: they sit inside `ac_quantize`, which is 37.2% of a thumbnail encode
 and 1.9% of a photograph. That is the shape §4 already documents for the
 encoder-only *quality* levers, and it applies to their cost too.
 
+**Measured (§12.4).** `accel_quant_table` makes a 100×100 tier-1 encode **TBD×**
+faster and a 512×512 one **TBD×**; at tier 4 it is **TBD×**, where the
+quantizer searches ~16× the coefficients over the same source. Item 7,
+`accel_word_bitpack`, measures **TBD×** at 100×100, against a `pack` stage that
+rounds to nothing in §1. Each is a paired ratio from §12.4's tables, and each
+reads `TBD` — failing the gate by name — until a committed run holds it.
+
 **37.2% is now the stage these two levers act in, not a bucket they share.**
 Until §1 marked it, the only figure was `quantize_and_pack`'s 37.5% — a
 residual that also held the DC search, the bit packing and the buffer frees,
@@ -713,7 +869,7 @@ item 7 acts in `pack`, which rounds to **0.0%** in every column of §1 — it wa
 listed for completeness, and its stage confirms it — and the DC search, which
 no lever touches, is `dc_search` at 0.2%. A stage is still a ceiling, not a
 speedup: how much of `ac_quantize` items 1 and 2 remove is §12.4's to measure,
-and **nothing in §12.1 is measured yet** (§12.3).
+and the figures above are that measurement, pending (§12.3).
 
 ### 12.2 Format changes — v0.8 work
 
@@ -724,13 +880,13 @@ and **nothing in §12.1 is measured yet** (§12.3).
 
 ### 12.3 What this list does not claim
 
-* **No entry here is yet measured as an implemented speedup** except #8, which
-  is prototyped behind `Tunables::dct_separable`. Items 1–7 are now *built*
-  (§12.4), each behind its own flag and each held to the shipped bytes, and
-  §12.4's tables are bound to the perf cells that will time them — but no
-  committed run holds those cells yet, so the figures there are placeholders
-  and the stage shares above are still the only size any of them has. A stage
-  share bounds a lever; it does not deliver one.
+* **Items 1–7 are built and bound; their measurement is pending.** #8 is
+  prototyped behind `Tunables::dct_separable`; items 1–7 are built (§12.4),
+  each behind its own flag and each held to the shipped bytes. Measured, all
+  seven levers together measure **TBD×** on a 512×512 encode and **TBD×** on a
+  default-tier decode. Until a committed run holds §12.4's cells those are
+  placeholders that fail the gate, and the stage shares above are the only
+  size any lever has. A stage share bounds a lever; it does not deliver one.
 * **The byte-identical column is an argument, not a proof** — and for items
   1–7 it is no longer only an argument. §12.4 lists what now checks "did not
   move" for each; "cannot move" and "did not move" are different claims, and
@@ -784,13 +940,15 @@ the ones this file already holds every lever to.
 
 **What each buys: bound, not yet measured.** Every cell below is a
 `verify:benchmark` binding to a perf arm the bounded sweep now records
-(`perf/matrix.ts`: `TUNE_ARMS`, `TIER4_ACCEL_ARMS`, `DECODE_ACCEL_ARMS`), each
-lever against a `shipped` cell from the same sweep. None is filled, because no
+(`perf/matrix.ts`: `TUNE_ARMS`, `TIER4_ACCEL_ARMS`, `DECODE_ACCEL_ARMS`), and
+each speedup is the sweep's paired record for that lever — its process minima
+divided round by round into its base's, timed back to back (§0) — not a ratio
+of two cells measured minutes apart. None is filled, because no
 committed run holds those cells: the host this revision was written on was
 under sustained load, and §0's rule is that a wall-clock figure is published
-from a host that holds a clock still. The next pair of §0's `mise run
-benchmark` runs fills them with `--fix`, and until then the gate reports each
-as missing rather than passing it.
+from a host that holds a clock still. §0's `mise run benchmark:session`
+fills them with `--fix`, and until then the gate reports each as missing
+rather than passing it.
 
 Speedup at tier 1 (shipped time ÷ lever time; the early exit is divided into
 `refine_passes=1`, the only encode it can shorten):

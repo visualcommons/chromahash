@@ -123,8 +123,9 @@ mise run verify:sweep-labels # every enforceable sweep arm sets the constants it
 mise run corpus:licenses -- --check   # corpus attribution vs the pin tables
 mise run verify:benchmark   # every number in spec/PERFORMANCE.md vs the committed runs
 mise run mutants:rust       # full mutation sweep of the core (slow)
-mise run benchmark          # the perf sweep behind spec/PERFORMANCE.md
-mise run benchmark:full     # the same sweep, exhaustive matrix (hours)
+mise run benchmark:session  # re-measure spec/PERFORMANCE.md end to end (about 1.5 h)
+mise run benchmark          # one bounded perf sweep
+mise run benchmark:full     # the cells only the exhaustive matrix has (a supplement)
 mise run benchmark:stages   # where encode time goes, stage by stage
 ```
 
@@ -172,46 +173,82 @@ it can run where the sweeps cannot.
 > `--list-unbound-columns` gives the breakdown. Every unchecked column is either
 > bound or listed in `UNBOUND_COLUMN_NOTES` with the reason.
 
-> **`verify:benchmark` fails on 40 cells — six, plus §12.4's 34 — and its CI job is still red.** A
-> baseline is now committed and **216 values are checked against it**; what is
-> left is §2's tier-3/4 encode and §3's 128/1024 rows, which the `bounded`
-> matrix does not produce — `mise run benchmark:full` is what closes them. It
-> also fails on §12.4's 34 lever cells, which the bounded matrix records but
-> the committed baseline predates. Do not bisect it and do not silence it; see
-> the banner at the top of `spec/PERFORMANCE.md`, which names them all.
+> **`verify:benchmark` fails on its placeholders, and its CI job is still
+> red.** A baseline is committed and every value in `spec/PERFORMANCE.md` that
+> it can back is checked against it; what is left are cells it cannot fill —
+> §2's tier-3 and tier-4 encode, §3's 128/1024 rows, §12.4's lever cells — and
+> the prose figures that restate them, each written `TBD` and failed by name.
+> §0 of `spec/PERFORMANCE.md` states the current counts (the gate checks them)
+> and names every cell. Do not bisect it and do not silence it: one
+> `mise run benchmark:session` on a quiet host closes all of them.
 >
 > Swift's rows in §7 and §8 are a different case and are **not** counted as
 > failures: its binding consumes an xcframework only `xcodebuild` can assemble,
 > so those rows are empty on every run made off macOS. The gate reports an
 > unreachable target as *unavailable* rather than missing — without which no
-> Linux runner could ever pass it, and the CI comment saying to remove
-> `continue-on-error` "in the same change that commits the baseline" would have
-> been unachievable as written.
+> Linux runner could ever pass it.
 
 **Re-measuring is a deliberate act.** The perf sweep is the one gate whose
 output depends on the machine, so a re-measurement is reviewed the way a test
-vector regeneration is:
+vector regeneration is. After the root-only steps `spec/PERFORMANCE.md` §0
+lists (governor `performance`, boost off — the driver never runs `sudo`):
 
 ```bash
-mise run benchmark
-mise run benchmark -- --out tools/comparison/output/perf/perf-2.json
-mise run benchmark:full
-cp tools/comparison/output/perf/perf.json      tools/comparison/baselines/perf-report.json
-cp tools/comparison/output/perf/perf-2.json    tools/comparison/baselines/perf-report-2.json
-cp tools/comparison/output/perf/perf-full.json tools/comparison/baselines/perf-report-full.json
-mise run verify:benchmark -- --fix   # rewrite the document's cells from the runs
-mise run verify:benchmark            # must pass
+mise run benchmark:session            # preflight, bounded x2, full supplement,
+                                      # stages, copy, verify:benchmark --fix, verify:benchmark
+mise run benchmark:session --pin 2,4,6,8                  # the same, pinned with taskset
+mise run benchmark:session --set-primary                  # and make this host the document's
+mise run benchmark:session --scratch /tmp/s --quick       # smoke-test the procedure only
 ```
 
-Run it on a quiet machine from a clean tree: the driver records `git.dirty` and
-the gate refuses a run that cannot be traced to a revision. The gate also
-**fails** when any two committed runs disagree by more than 10% on a shared
-cell, which is the measuring host's reproducibility floor — no figure in the
-document is tighter than it. The two bounded runs are §0's host-stability pair:
-they must be at one commit on one CPU, and §0's reproducibility row must say
-what the check says (`Host stability (§0): PASS | SKIP | FAIL`). A laptop
-is usually not good enough; an Apple M3 Pro measured the same cell across fresh
-processes with a 34% spread and drifted ~25% over a few hours.
+Run it from a clean tree, on a branch rebased onto `master`, and land it
+before `master`'s measured sources move. The session waits out the load
+rather than refusing it (`--load-timeout`, default 1800 s each time), and
+changes `baselines/hosts/PRIMARY` only with `--set-primary`; on another host
+it commits a secondary set and skips the stage files. What the gate holds a
+run to:
+
+- **The host.** The bar is a 1-minute load of one task per eight hardware
+  threads. The gate recomputes it from the run's own core count and holds the
+  start and every process round to it, whatever `--max-load` the driver was
+  given, so a run that turns loaded midway fails. Governor, boost, SMT,
+  kernel, rustc, the load at every round and the seconds waited are recorded
+  in `environment.preflight`.
+- **The record.** A `/3` run needs an even count of at least four processes,
+  at least five blocks, a git commit and digest, and a preflight, or it is
+  rejected. A rejected run (including `--quick` and `/1`) is a failure, not a
+  note.
+- **The method.** Each cell is four independent processes (`--processes`),
+  interleaved round-robin across cells. The reported cost is the median of the
+  per-process minima, beside their *range* (87.5% coverage of the median at
+  four, not a 95% interval). A cell whose processes spread past 5% is checked
+  on the band alone; past 10% it fails. A lever, the `simd` build, a capped
+  decode and a batch thread count are each a *paired* ratio against their
+  base: the geometric mean over A B / B A blocks, so an order effect cancels.
+  A `/3` run missing a pair it publishes fails.
+- **The supplement.** `benchmark:full` measures only ids the bounded matrix
+  does not hold; the gate fails a full run holding one.
+- **Per host.** Sweeps live in `baselines/hosts/<os>-<arch>-<cpu>/`;
+  `baselines/hosts/PRIMARY` names the host the document speaks for. The 10%
+  cross-run spread and §0's stability pair (two bounded runs, one commit, one
+  host) are checked within a host, never across, so a macOS session can commit
+  its own set; it fills only the targets the primary host recorded absent, and
+  needs its own passing pair to be read at all.
+- **Tolerance.** A documented value passes inside its cell's range or within
+  ±5% of the committed run (a timing percentage within 5% of its ratio, a
+  stage share within half a point). A stated speedup or slowdown must also
+  keep its sign. `--fix` rewrites only what is outside, and refuses to write
+  while the committed runs themselves fail.
+- **Provenance.** Every recorder writes its commit and a digest of the measured
+  sources, `.mise.toml` and `mise-tasks/benchmark/` included and documentation
+  excluded (`perf/provenance.ts`). The gate accepts the commit when it is an
+  ancestor of `HEAD`, and otherwise any commit in `HEAD`'s history with the
+  same sources, which is what survives a squash merge. A baseline the change
+  adds must carry `HEAD`'s own digest, so a run gone stale while its PR was
+  open fails before the merge.
+
+A laptop is usually not good enough; an Apple M3 Pro measured the same cell
+across fresh processes with a 34% spread and drifted ~25% over a few hours.
 
 > **`mise run test` does not run the per-backend SIMD differential tests.**
 > `test:rust` is a plain `cargo test`, so the `simd-diff-tests` feature is off
