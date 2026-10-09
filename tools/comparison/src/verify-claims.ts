@@ -161,7 +161,7 @@ const REGISTER: Claim[] = [
     file: "README.md",
     what: "the v0.7 recipe on holdout",
     pattern:
-      /worth \*\*−([\d.]+)% mean ΔE00\*\* at the default tier on a never-tuned holdout/,
+      /worth \*\*−([\d.]+)% mean ΔE00\*\* at the default tier on the photographic holdout split/,
     section: "7.12",
     row: "**L28C15 stack**",
     column: "Δ%",
