@@ -849,6 +849,132 @@ const REGISTER: Claim[] = [
     row: "first 32 B, interleaved",
     column: "vs native tier 0 (11.481)",
   },
+
+  // ── The holdout2 confirmations (register C1, C2) ─────────────────────────
+  // #120 read the sealed splits once and recorded the outcome in §13.7: the
+  // old holdout's −3.72% replicates in direction at about three-fifths of its
+  // size, and the three alpha replacements replicate out of sample. The files
+  // that quoted the spent holdout now quote these beside it. §13.7's tables
+  // are, in order: C1 (0), the compact tier against ThumbHash (1), C2 at codes
+  // 1 and 0 (2), and C2 at code 2 (3).
+  //
+  // The 2.18% that the same sentences give for "the shipped constants are
+  // better" is §13.7's prose, and is not bound: from the table's rounded
+  // cells it recomputes to 2.17 (0.258 / 11.875), outside the tolerance two
+  // decimal places buy. The 2.22% beside it is the cell, and is bound.
+  // Signed and without `abs`: the claim is that the old row is *worse*.
+  {
+    file: "spec/README.md",
+    what: "the pre-adoption row on holdout2, as the range's upper end",
+    pattern: /measures \*\*[\d.]+–([\d.]+)%\*\*/,
+    section: "13.7",
+    table: 0,
+    row: "code 1: pre-adoption v0.6-derived vs shipped",
+    column: "relative",
+  },
+  {
+    file: "spec/README.md",
+    what: "the pre-adoption row on holdout2",
+    pattern: /the pre-adoption row ([\d.]+)% worse/,
+    section: "13.7",
+    table: 0,
+    row: "code 1: pre-adoption v0.6-derived vs shipped",
+    column: "relative",
+  },
+  {
+    file: "README.md",
+    what: "the pre-adoption row on holdout2, as the range's upper end",
+    pattern: /measures [\d.]+–([\d.]+)% \(the/,
+    section: "13.7",
+    table: 0,
+    row: "code 1: pre-adoption v0.6-derived vs shipped",
+    column: "relative",
+  },
+  {
+    file: "README.md",
+    what: "the pre-adoption row on holdout2",
+    pattern: /the pre-adoption row is ([\d.]+)% worse/,
+    section: "13.7",
+    table: 0,
+    row: "code 1: pre-adoption v0.6-derived vs shipped",
+    column: "relative",
+  },
+  {
+    file: "spec/README.md",
+    what: "the code-1 alpha row on alpha holdout v2",
+    pattern:
+      /measures the row at \*\*−([\d.]+)% mean ΔE00\*\* out of\n\s*sample/,
+    section: "13.7",
+    table: 2,
+    row: "code 1: `A28@3 L22@4 C3@3` vs `A5@4 L20@5 C9@4`",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "README.md",
+    what: "the code-1 alpha row on alpha holdout v2",
+    pattern: /measures the row at \*\*−([\d.]+)% mean ΔE00\*\* out of sample/,
+    section: "13.7",
+    table: 2,
+    row: "code 1: `A28@3 L22@4 C3@3` vs `A5@4 L20@5 C9@4`",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the code-1 alpha row on alpha holdout v2",
+    pattern: /measures the row at −([\d.]+)% mean ΔE00 out of sample/,
+    section: "13.7",
+    table: 2,
+    row: "code 1: `A28@3 L22@4 C3@3` vs `A5@4 L20@5 C9@4`",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the compact alpha row on alpha holdout v2",
+    pattern: /alpha rows at −([\d.]+)% and −[\d.]+%; all three/,
+    section: "13.7",
+    table: 2,
+    row: "code 0: `A16@3 L12@4 C1@3` vs the old compact shape",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the code-2 alpha row on alpha holdout v2",
+    pattern: /alpha rows at −[\d.]+% and −([\d.]+)%; all three/,
+    section: "13.7",
+    table: 3,
+    row: "code 2: the shipped base row vs `A5@4 L20@5 C9@4`",
+    column: "relative",
+    transform: abs,
+  },
+
+  // ── The synthesis window at code 2, §12.3 ────────────────────────────────
+  // RATIONALE.md quoted the lightest taper's paired interval as
+  // [−0.030, +0.011]; #123's 10,000-resample re-derivation moved the lower
+  // bound to −0.028 and nothing noticed, because an interval is not a shape
+  // the scan below looks for. Each bound is now its own claim.
+  {
+    file: "spec/RATIONALE.md",
+    what: "the lightest code-2 taper's paired CI, lower bound",
+    pattern: /a paired CI of\n\[−([\d.]+), \+[\d.]+\]/,
+    section: "12.3",
+    row: "t2 w_min 0.85 exp 1",
+    column: "paired 95% CI",
+    cellPattern: /^\[([+−–—-]?[\d.]+),/,
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the lightest code-2 taper's paired CI, upper bound",
+    pattern: /a paired CI of\n\[−[\d.]+, \+([\d.]+)\]/,
+    section: "12.3",
+    row: "t2 w_min 0.85 exp 1",
+    column: "paired 95% CI",
+    cellPattern: /, ([+−–—-]?[\d.]+)\]$/,
+  },
 ];
 
 // ─── Resolving a cell ───────────────────────────────────────────────────────

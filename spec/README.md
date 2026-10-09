@@ -7,13 +7,14 @@
 
 > **What "Stable" means here.** The wire format froze **at the 0.7.1 release**: from that
 > tag on, any change to it increments the `version` field (§2.5, §13). Every constant it
-> ships has evidence on a tune split (`EXPERIMENTS.md` §7–§11), with one exception:
-> `SEL_HV = 0.15` was selected on the old holdout, and on the current tune corpus `hv = 0`
-> is ahead of it (`EXPERIMENTS.md` §11.5). Out-of-sample confirmation of all of them is
-> pending: that holdout informed a decision in every round and is spent
-> (`EXPERIMENTS.md` §11.12), so register entries C1 (photographic) and C2 (alpha) in
-> [`V0.8-DECISIONS.md`](V0.8-DECISIONS.md) re-read them once on new sealed splits. A
-> failed confirmation opens a new register entry; it does not by itself change v1.
+> ships has evidence on a tune split (`EXPERIMENTS.md` §7–§11), except the two selection
+> weights: on the current tune corpus `ANISO_OBLIQUE = 1.2` / `SEL_HV = 0.15` are
+> indistinguishable from isotropic and `hv = 0` is ahead, so their case rested on the old
+> holdout, which `SEL_HV` was selected on (`EXPERIMENTS.md` §11.5, §11.12). That holdout
+> is spent. Register entries C1 (photographic) and C2 (alpha) in
+> [`V0.8-DECISIONS.md`](V0.8-DECISIONS.md) re-read the shipped constants once on new
+> sealed splits, and both are decided: every shipped constant stands under R1
+> (`EXPERIMENTS.md` §13.7).
 
 > ChromaHash is a compact, self-describing Low Quality Image Placeholder (LQIP)
 > format designed for professional photo management at scale. It encodes a
@@ -1232,10 +1233,11 @@ Commons in 2026-09; the alpha and graphic corpora have tune splits of their own)
 optimizing mean CIEDE2000 with SSIMULACRA2/Butteraugli/DSSIM as guards. They were then
 checked on a 32-image photographic holdout (Kodak24 plus eight held-out photographs), but
 that split informed a decision in every round — `SEL_HV` was selected on it — so it is
-not out-of-sample evidence. It has been retired into a second tuning split, `tune2`, and
-the out-of-sample confirmation of these constants waits on the sealed `holdout2` split
-(`V0.8-DECISIONS.md` C1 and C2; `EXPERIMENTS.md` §9.5, §11.12). `spec/EXPERIMENTS.md`
-records the measurements, including the ones that were rejected.
+not out-of-sample evidence. It has been retired into a second tuning split, `tune2`. The
+sealed `holdout2` split, read once, is the out-of-sample check, and on it every one of
+these constants stands under R1 (`V0.8-DECISIONS.md` C1 and C2;
+`EXPERIMENTS.md` §11.12, §13.7). `spec/EXPERIMENTS.md` records the measurements,
+including the ones that were rejected.
 
 ### 12.2 M2 — LMS (cube-root) → OKLAB
 
@@ -1486,8 +1488,9 @@ compatibility** with the v0.6 bitstream. The framing changes are:
   ThumbHash's size, inside the range where no real codec exists (WebP's floor is ~48 B,
   AVIF's ~465 B) — and beats ThumbHash on ΔE00, SSIMULACRA2, Butteraugli *and* DSSIM on
   the 32-image holdout split (`EXPERIMENTS.md` §11.14). That split has since been spent
-  (`EXPERIMENTS.md` §11.12), so the result awaits re-confirmation under
-  `V0.8-DECISIONS.md` C1. Codes `5..=7` remain reserved.
+  (`EXPERIMENTS.md` §11.12). On the sealed `holdout2` the compact row still beats
+  ThumbHash on all four metric means, though on DSSIM the paired interval includes zero
+  (`EXPERIMENTS.md` §13.7, `V0.8-DECISIONS.md` C1). Codes `5..=7` remain reserved.
 - **Structural validation, no checksum (§2.6).** Decodability is established by validating
   version, tier, reserved bit, and the deterministic length — failing fast — rather than by
   a CRC.
@@ -1503,7 +1506,9 @@ compatibility** with the v0.6 bitstream. The framing changes are:
   tune corpus, where every one of its 16 images improves (`EXPERIMENTS.md` §11.3). That is
   in-sample evidence. The never-tuned alpha holdout that put it at −16.2% mean ΔE00 with
   every guard improving has been retired — one of its images was deleted from Wikimedia
-  Commons — so that figure can no longer be reproduced (`EXPERIMENTS.md` §11.12).
+  Commons — so that figure can no longer be reproduced (`EXPERIMENTS.md` §11.12). Its
+  sealed replacement, alpha holdout v2, measures the row at **−13.66% mean ΔE00** out of
+  sample, and it stands under R1 (`EXPERIMENTS.md` §13.7, `V0.8-DECISIONS.md` C2).
   Alpha-mode byte lengths above code 1 change slightly as a result (code 2: 104 → 103 B).
 - **Weighted selection order (§6.2).** The transmission order is the priority order scaled
   by `(1 + 1.2·sin²2θ)(1 + 0.15·cos2θ)` — a perceptual reordering that spends the budget
@@ -1519,8 +1524,11 @@ Together the four constants-level and encoder-side changes above are worth **−
 ΔE00** at the default tier on the holdout split, with SSIMULACRA2, Butteraugli and DSSIM
 all improving (`EXPERIMENTS.md` §7.12). That split has since been spent — it is where
 `sel_hv = 0.15` was selected (`EXPERIMENTS.md` §11.12) — so this is not an out-of-sample
-figure; `V0.8-DECISIONS.md` C1 re-reads it on a sealed split. `spec/EXPERIMENTS.md` §8
-records the measurements and what was rejected.
+figure. On the sealed `holdout2` the same comparison measures **2.18–2.22%** — the shipped
+constants 2.18% better, the pre-adoption row 2.22% worse — the same direction at about
+three-fifths of the size, and the shipped constants stand under R1 (`EXPERIMENTS.md`
+§13.7, `V0.8-DECISIONS.md` C1). `spec/EXPERIMENTS.md` §8 records the measurements and what
+was rejected.
 The equal-quality byte saving this paragraph used to quote (the optimized 32-byte encode
 matching the v0.6 constants at 40 bytes) was withdrawn for want of a pre-adoption ladder on
 the current corpus, and has since been re-measured in `EXPERIMENTS.md` §7.12: on the
@@ -1642,7 +1650,7 @@ frequency-normalized decoding.
 | **Extreme ratios** | Ratios beyond 16:1 clamp to 16:1. Rare in photography. |
 | **Wide-gamut DC clipping** | The DC chroma range covers the OKLAB hull of sRGB ∪ Display P3 ∪ Adobe RGB (§7.1), so only sources wider than that union — some BT.2020 / ProPhoto inputs — clip at encode (§5.1), and no display can show those anyway. Decoding into Display P3 or Adobe RGB is already a caller option (§11, §12.5), not a format break. |
 | **Gamut clip** | Out-of-sRGB OKLAB values are clipped per-channel in linear sRGB (relative-colorimetric, §12.6) — the same mapping a display applies, so saturated wide-gamut solids render at full in-gamut saturation rather than desaturated. |
-| **No progressive decode** | The whole hash must be received before decoding. Never a practical bottleneck at these sizes; embedded/progressive tiers are a future direction (§15). |
+| **No progressive decode** | The whole hash must be received before decoding. Never a practical bottleneck at these sizes; embedded/progressive tiers were measured and are not adopted in 1.0 (§15). |
 | **Codes 3–4 are not a rate–distortion claim** | See below. |
 | **Alpha at codes 3–4 is inherited, not measured** | Alpha-mode codes 3–4 scale the code-2 alpha row by `4^(level)`. That row was measured at code 2 only (`EXPERIMENTS.md` §11.11); whether codes 3–4 want a different alpha/chroma split was registered (`V0.8-DECISIONS.md` D6) and closed unmeasured by the 1.0 freeze. |
 | **Metric-validated, not perceptually validated** | Every constant here was chosen and confirmed on image-quality metrics (ΔE00 primary; SSIMULACRA2, Butteraugli, DSSIM as guards). None of those metrics has been validated against human judgement at placeholder fidelity (`V0.8-DECISIONS.md`, "The ceiling on every artifact claim: U19"). |
@@ -1693,11 +1701,11 @@ is a few hundred bytes and the target is intentionally low-pass.
 | Edge-preserving filter (EPF) | Adaptive deringing loop filter | **Reject** — a blurred placeholder has few edges to preserve. |
 | DC image + DC predictors | Separate DC plane with spatial predictors | **N/A** — chromahash has a single average-color DC per channel, already chosen by the decode-aware DC search (§10.3). |
 | **Quantization weighting matrices (HVS/CSF)** | Frequency-dependent quant step | **Built as scalefactor bands; below threshold, not adopted** — `EXPERIMENTS.md` §11.9 measured a frequency-shaped scale split on the current corpus: the best arm is −0.14% ΔE00, far under the ≥3% retune rule and unable to pay for signalling it. This row read "evaluate / adopt" until that sweep ran, and is kept as the prediction it scored against. |
-| **Entropy coding (rANS + context modeling + clustering, HybridUint tokens)** | Adaptive entropy coding of quantized coefficients | **Measured; a few percent, and an open v0.8 decision rather than the largest win** — `EXPERIMENTS.md` §7.13 coded the AC stream with a real adaptive coder, scored leave-one-image-out so the coder's tables are paid for, and spent the bits it saved on more coefficients: **−1.6% ΔE00** at 32 B and **−4.8%** at 108 B, on tune only, each against the best layout the fixed-width fields can reach at the same budget rather than against the shipped layout. The coder was a measurement tool outside the format, and adopting one would also cost the O(1) length check that *is* this format's validity check (§2.6). Whether that trade pays at codes 2–4 is entry D1 of [`V0.8-DECISIONS.md`](V0.8-DECISIONS.md); codes 0 and 1 are outside it, code 1's estimate being below the 3% retune rule before any holdout shrinkage. This row read "**Highest-impact v0.8+** — fixed-width µ-law leaves the most on the table … deferred deliberately" until that experiment was run, and is kept as the prediction it scored against. |
+| **Entropy coding (rANS + context modeling + clustering, HybridUint tokens)** | Adaptive entropy coding of quantized coefficients | **Measured; a few percent, and not adopted in 1.0** — `EXPERIMENTS.md` §7.13 coded the AC stream with a real adaptive coder, scored leave-one-image-out so the coder's tables are paid for, and spent the bits it saved on more coefficients: **−1.6% ΔE00** at 32 B and **−4.8%** at 108 B, on tune only, each against the best layout the fixed-width fields can reach at the same budget rather than against the shipped layout. The coder was a measurement tool outside the format, and adopting one would also cost the O(1) length check that *is* this format's validity check (§2.6). Entry D1 of [`V0.8-DECISIONS.md`](V0.8-DECISIONS.md) registered the trade for codes 2–4 and decided it under the 1.0 freeze (A1): not adopted, because the O(1) length check stays a format invariant (A2); reopening it takes a new wire generation. This row read "**Highest-impact v0.8+** — fixed-width µ-law leaves the most on the table … deferred deliberately" until that experiment was run, and is kept as the prediction it scored against. |
 | Coefficient ordering / scan + nonzero context | Frequency-ordered scan, run/EOB modeling | **Already frequency-ordered** — the top-K isotropic selection is exactly this; pairs naturally with entropy coding when added. |
 | Patches / splines / dots | Reference repeated elements / smooth gradients / point sources | **Reject** — no repeated elements or point sources in a placeholder; the DCT already models smooth gradients compactly. |
 | Noise synthesis | Add a per-image perceptual noise model at decode | **Low-priority option** — a few bits of noise amplitude could add cheap perceptual texture; minor. |
-| **Progressive / responsive passes** | DC-first, then refinement passes (embedded scalability) | **Built; an operational feature, not a quality one** — `EXPERIMENTS.md` §7.11 implemented embedded tiers (interleaved AC codes, any prefix decodable). The first 32 bytes of a 108-byte hash score 4.15% worse ΔE00 than a native 32-byte encode (tune), so one stored hash can serve both sizes at that price. This row read "compelling v0.8 direction" until that sweep ran; whether the operational gain is worth ~4% is a v0.8 decision (`V0.8-DECISIONS.md` D2), not a measurement. |
+| **Progressive / responsive passes** | DC-first, then refinement passes (embedded scalability) | **Built; an operational feature, not a quality one** — `EXPERIMENTS.md` §7.11 implemented embedded tiers (interleaved AC codes, any prefix decodable). The first 32 bytes of a 108-byte hash score 4.15% worse ΔE00 than a native 32-byte encode (tune), so one stored hash can serve both sizes at that price. This row read "compelling v0.8 direction" until that sweep ran; `V0.8-DECISIONS.md` D2 decided it under the 1.0 freeze: not adopted, because interleaving would reorder the payload of every published v1 hash. |
 | Upsampling (2×/4×/8×) | Store small, upsample at decode with a fixed kernel | **Already covered** — the DCT renders at any target size and `decodeCapped` band-limits (§6.4, §11.3). |
 
 **Summary of the roadmap, as written for v1 — and how it scored.** The four directions
@@ -1709,7 +1717,7 @@ frequency-weighted quantization is −0.14% and below threshold (§11.9), embedd
 cost ~4% against a native encode at the same 32 bytes and are an operational feature
 rather than a quality one (§7.11), and entropy coding buys −1.6% at 32 B and −4.8% at
 108 B, at the cost of the O(1) length check that *is* this format's validity check
-(§7.13, §2.6; `V0.8-DECISIONS.md` D1). The list is kept as written so the predictions can be read against
+(§7.13, §2.6), and is not adopted in 1.0 (`V0.8-DECISIONS.md` D1). The list is kept as written so the predictions can be read against
 the outcomes; `EXPERIMENTS.md` §11.13 and §12 carry the current one.
 
 ---
