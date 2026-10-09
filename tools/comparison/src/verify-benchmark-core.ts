@@ -335,9 +335,22 @@ export function processSpread(c: Cell): number | null {
 export interface PairRecord {
   base: string;
   arm: string;
+  /** The geometric mean over complete AB/BA blocks (`perf/probe.ts`). */
   ratio: number;
-  ci95: [number, number];
-  ratios?: number[];
+  /** The lowest and highest block ratio. */
+  range: [number, number];
+  coverage?: number;
+  /** Per complete block; the spread is recomputed from these. */
+  blocks?: number[];
+  ratios?: (number | null)[];
+}
+
+/** How far a pair's block ratios spread; null with fewer than two blocks. */
+export function blockSpread(p: PairRecord): number | null {
+  const b = p.blocks;
+  if (!b || b.length < 2) return null;
+  const lo = Math.min(...b);
+  return lo > 0 ? (Math.max(...b) - lo) / lo : null;
 }
 
 export interface RunDoc {
@@ -561,6 +574,8 @@ export class Runs {
   readonly rejected: string[] = [];
   /** Every id a binding asked for, so the gate can list the noisy ones. */
   readonly touched = new Set<string>();
+  /** Every paired record a binding resolved, by `base|arm`. */
+  private readonly touchedPairs = new Set<string>();
   /**
    * Targets no loaded run could measure.
    *
@@ -827,7 +842,14 @@ export class Runs {
     if (pair) {
       this.touched.add(b);
       this.touched.add(a);
-      return { value: pair.ratio, interval: pair.ci95 };
+      this.touchedPairs.add(`${b}|${a}`);
+      const spread = blockSpread(pair);
+      return {
+        value: pair.ratio,
+        // A noisy pair's range does not widen acceptance, as for a cell.
+        interval:
+          pair.range && spread !== null && spread <= NOISY ? pair.range : null,
+      };
     }
     return { value: this.us(b) / this.us(a), interval: null };
   }
@@ -864,6 +886,15 @@ export class Runs {
       const spread = this.byId.get(id)?.spread;
       if (spread != null && spread > CROSS_RUN_TOLERANCE) {
         out.push({ id, spread });
+      }
+    }
+    // A ratio whose AB/BA blocks disagree past the bar is as unreproducible as
+    // a cell whose processes do, even when both cells are steady on their own.
+    for (const key of [...this.touchedPairs].sort()) {
+      const pair = this.pairById.get(key);
+      const spread = pair ? blockSpread(pair) : null;
+      if (spread !== null && spread > CROSS_RUN_TOLERANCE) {
+        out.push({ id: key.replace("|", " / "), spread });
       }
     }
     return out;
@@ -988,14 +1019,20 @@ export function runFailures(R: Runs): Failure[] {
  * they asked for.
  */
 export function noiseFailures(R: Runs): Failure[] {
-  return R.unstableTouched().map(({ id, spread }) => ({
-    where: "committed runs",
-    column: "process spread",
-    row: id,
-    documented: `processes within ${(CROSS_RUN_TOLERANCE * 100).toFixed(0)}% of each other`,
-    measured: `${(spread * 100).toFixed(1)}% apart`,
-    detail: `a bound cell whose own processes spread past the ${(CROSS_RUN_TOLERANCE * 100).toFixed(0)}% host bar cannot back a figure — re-measure on a quieter host`,
-  }));
+  const bar = `${(CROSS_RUN_TOLERANCE * 100).toFixed(0)}%`;
+  return R.unstableTouched().map(({ id, spread }) => {
+    const pair = id.includes(" / ");
+    return {
+      where: "committed runs",
+      column: pair ? "block spread" : "process spread",
+      row: id,
+      documented: `${pair ? "AB/BA blocks" : "processes"} within ${bar} of each other`,
+      measured: `${(spread * 100).toFixed(1)}% apart`,
+      detail: pair
+        ? `a bound ratio whose AB/BA blocks spread past the ${bar} host bar cannot back a figure — re-measure on a quieter host`
+        : `a bound cell whose own processes spread past the ${bar} host bar cannot back a figure — re-measure on a quieter host`,
+    };
+  });
 }
 
 export class MissingCell extends Error {

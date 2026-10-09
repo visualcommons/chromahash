@@ -29,7 +29,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { bootstrapCIOf, median, quantile } from "../stats.ts";
+import { median, quantile } from "../stats.ts";
 import type { Target } from "./targets.ts";
 
 /** Target wall-time of one timed block. Long enough to swamp clock granularity. */
@@ -260,39 +260,75 @@ export function cellStats(samples: number[][]): CellStats {
 }
 
 export interface PairStats {
-  /** base ÷ arm for each round both were measured in, in round order. */
-  readonly ratios: number[];
-  /** The median of the per-round ratios. */
+  /** base ÷ arm for each round, in round order; null where a member failed. */
+  readonly ratios: (number | null)[];
+  /**
+   * One ratio per complete AB/BA block — rounds 2k and 2k+1, which ran the
+   * pair in opposite orders — as the geometric mean of the two.
+   */
+  readonly blocks: number[];
+  /** The geometric mean over every complete block's rounds. */
   readonly ratio: number;
-  /** Bootstrap 95% interval of `ratio` across rounds; a point for one. */
-  readonly ci95: [number, number];
+  /** The lowest and highest block ratio. */
+  readonly range: [number, number];
+  /** `rangeCoverage(blocks)`: 50% for two blocks. A range, not an interval. */
+  readonly coverage: number;
+  /** (max − min) / min over the block ratios. */
+  readonly spreadPct: number;
+  /** `spreadPct` past NOISY. */
+  readonly noisy: boolean;
 }
 
 /**
- * A paired ratio: each round's base minimum over the same round's arm minimum,
- * then the median over rounds. Pairing is what makes the interval honest — the
- * rounds are where the host's drift lives, and a per-round ratio cancels
- * whatever the two members shared — and the runner keeps the two adjacent
- * within a round so they share as much as possible.
+ * A paired ratio, base time over arm time, estimated so that an order effect
+ * cancels rather than survives.
  *
- * `undefined` entries are rounds a member failed in; those rounds are dropped
- * rather than paired with a neighbour.
+ * The runner reverses each unit every other round (`plan.ts` `roundOrder`), so
+ * rounds 0 and 1 run a pair as A B and then B A, rounds 2 and 3 as A B and B A
+ * again. Whatever running second does to a member — a warmer cache, a hotter
+ * core, a drift across the unit — multiplies the round's ratio by some (1 + d)
+ * in one order and divides it by about that in the other, so the geometric
+ * mean of a block's two rounds cancels it, and the geometric mean of complete
+ * blocks is the estimate. It used to be the median of the per-round ratios,
+ * which with three rounds (A B, B A, A B) is an A B round, carrying the order
+ * effect whole. That is why the driver now takes an even number of rounds, and
+ * why a block missing either round is left out rather than half-counted.
+ *
+ * `undefined` entries are rounds a member failed in. Null if no block is
+ * complete: one round, as in `--quick`, is not a paired measurement.
  */
 export function pairStats(
   base: readonly (number | undefined)[],
   arm: readonly (number | undefined)[],
 ): PairStats | null {
-  const ratios: number[] = [];
-  for (let i = 0; i < Math.min(base.length, arm.length); i++) {
+  const rounds = Math.max(base.length, arm.length);
+  const ratios: (number | null)[] = [];
+  for (let i = 0; i < rounds; i++) {
     const b = base[i];
     const a = arm[i];
-    if (b !== undefined && a !== undefined && a > 0) ratios.push(b / a);
+    ratios.push(b !== undefined && a !== undefined && a > 0 ? b / a : null);
   }
-  if (ratios.length === 0) return null;
-  const ratio = median(ratios);
+  const blocks: number[] = [];
+  const logs: number[] = [];
+  for (let k = 0; k + 1 < ratios.length; k += 2) {
+    const ab = ratios[k];
+    const ba = ratios[k + 1];
+    if (ab == null || ba == null) continue;
+    blocks.push(Math.sqrt(ab * ba));
+    logs.push(Math.log(ab), Math.log(ba));
+  }
+  if (blocks.length === 0) return null;
+  const ratio = Math.exp(logs.reduce((s, l) => s + l, 0) / logs.length);
+  const lo = Math.min(...blocks);
+  const hi = Math.max(...blocks);
+  const spreadPct = lo > 0 ? (hi - lo) / lo : 0;
   return {
     ratios,
+    blocks,
     ratio,
-    ci95: ratios.length > 1 ? bootstrapCIOf(ratios, median) : [ratio, ratio],
+    range: [lo, hi],
+    coverage: rangeCoverage(blocks.length),
+    spreadPct,
+    noisy: spreadPct > NOISY,
   };
 }

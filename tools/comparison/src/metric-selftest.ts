@@ -2705,7 +2705,17 @@ for (const order of ["full first", "bounded first"] as const) {
     run3(
       "perf-report.json",
       { [b]: { us: 46700 }, [a]: { us: 20000 } },
-      { pairs: [{ base: b, arm: a, ratio: 2.4, ci95: [2.35, 2.45] }] },
+      {
+        pairs: [
+          {
+            base: b,
+            arm: a,
+            ratio: 2.4,
+            range: [2.35, 2.45],
+            blocks: [2.35, 2.45],
+          },
+        ],
+      },
     ),
   ]);
   const unpaired = new Runs([
@@ -2713,13 +2723,32 @@ for (const order of ["full first", "bounded first"] as const) {
   ]);
   const p = paired.ratio(b, a);
   const u = unpaired.ratio(b, a);
+  // Two AB/BA blocks 25% apart: the ratio is unreproducible even though each
+  // cell is steady, so its range accepts nothing and the gate fails it.
+  const split = new Runs([
+    run3(
+      "perf-report.json",
+      { [b]: { us: 46700 }, [a]: { us: 20000 } },
+      {
+        pairs: [
+          { base: b, arm: a, ratio: 2.24, range: [2, 2.5], blocks: [2, 2.5] },
+        ],
+      },
+    ),
+  ]);
+  const s = split.ratio(b, a);
+  const splitFails = noiseFailures(split);
   check(
-    "a speedup is the run's paired record where it has one",
+    "a speedup is the run's paired record where it has one, and blocks that disagree past the bar fail",
     p.value === 2.4 &&
       p.interval?.[0] === 2.35 &&
+      noiseFailures(paired).length === 0 &&
       Math.abs(u.value - 2.335) < 1e-9 &&
-      u.interval === null,
-    `paired=${JSON.stringify(p)} unpaired=${JSON.stringify(u)}`,
+      u.interval === null &&
+      s.interval === null &&
+      splitFails.length === 1 &&
+      (splitFails[0]?.row ?? "").includes(" / "),
+    `paired=${JSON.stringify(p)} unpaired=${JSON.stringify(u)} split=${JSON.stringify(s)} ${details(splitFails)}`,
   );
 }
 
@@ -2898,8 +2927,8 @@ for (const order of ["full first", "bounded first"] as const) {
 //      process minima, beside their range — labelled with the chance it holds
 //      the median, 1 − 2^(1−n), not as a 95% interval — and noisy means the
 //      minima disagree, not that one process's blocks scatter. A paired ratio
-//      is the median of per-round ratios, skipping a round either member
-//      missed.
+//      is the geometric mean over complete AB/BA blocks, so an order effect
+//      cancels, and a block missing either round is dropped whole.
 {
   const s = cellStats([
     [105, 100, 110],
@@ -2913,8 +2942,26 @@ for (const order of ["full first", "bounded first"] as const) {
     [103, 104, 103],
   ]);
   const p = pairStats([200, 210, undefined, 190], [100, 100, 80, 100]);
+  // Base takes 200, arm 100: a true ratio of 2. Whichever member runs second
+  // in its unit is 4% slower. Rounds alternate A B, B A (roundOrder).
+  const second = 1.04;
+  const ordered = (rounds: number) => {
+    const base: number[] = [];
+    const arm: number[] = [];
+    for (let r = 0; r < rounds; r++) {
+      const baseFirst = r % 2 === 0;
+      base.push(baseFirst ? 200 : 200 * second);
+      arm.push(baseFirst ? 100 * second : 100);
+    }
+    return pairStats(base, arm);
+  };
+  const fourRounds = ordered(4);
+  const threeRounds = ordered(3);
+  const oneRound = pairStats([200], [100]);
+  // What the old estimator, a median of per-round ratios, made of three.
+  const oldThree = [200 / 104, 208 / 100, 200 / 104].sort((x, y) => x - y)[1];
   check(
-    "a cell reports the median of its process minima, and a pair the median of its per-round ratios",
+    "a cell reports the median of its process minima beside their labelled range, and a pair cancels its order effect over AB/BA blocks",
     s.nsPerOp === 100 &&
       s.processMinNsPerOp.join() === "100,120,98" &&
       Math.abs(s.spreadPct - 22 / 98) < 1e-12 &&
@@ -2926,8 +2973,19 @@ for (const order of ["full first", "bounded first"] as const) {
       four.iqrPct > 0.05 &&
       !four.noisy &&
       p !== null &&
-      p.ratios.join() === "2,2.1,1.9" &&
-      p.ratio === 2,
+      p.ratios.join() === "2,2.1,,1.9" &&
+      p.blocks.length === 1 &&
+      Math.abs(p.ratio - Math.sqrt(2 * 2.1)) < 1e-12 &&
+      fourRounds !== null &&
+      Math.abs(fourRounds.ratio - 2) < 1e-12 &&
+      fourRounds.blocks.length === 2 &&
+      fourRounds.coverage === 0.5 &&
+      !fourRounds.noisy &&
+      threeRounds !== null &&
+      Math.abs(threeRounds.ratio - 2) < 1e-12 &&
+      threeRounds.blocks.length === 1 &&
+      Math.abs((oldThree ?? 0) - 2) > 0.07 &&
+      oneRound === null,
     `nsPerOp=${s.nsPerOp} mins=${s.processMinNsPerOp} range=${s.rangeNsPerOp}@${s.rangeCoverage} four=${four.nsPerOp}/${four.iqrPct}/${four.noisy} pair=${JSON.stringify(p)}`,
   );
 }
