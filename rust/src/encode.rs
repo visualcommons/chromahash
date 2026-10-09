@@ -2831,6 +2831,55 @@ mod tests {
     }
 
     #[test]
+    fn refinement_keeps_a_code_on_an_exact_tie() {
+        // Refinement accepts a move only on a strict improvement. On a solid
+        // image every AC value is zero and each channel's scale code is 0, so
+        // a scale move re-quantizes every AC value to the zero code, and an AC
+        // move at scale 0 adds nothing: each candidate reproduces the current
+        // pixels exactly and ties the running best. The strict `<` keeps the
+        // current code, so the hash is the unrefined one. A `<=` would take
+        // the tied candidate and write a different scale or AC code.
+        for (k, &(r, g, b)) in [(128u8, 64u8, 200u8), (30, 160, 90), (250, 250, 240)]
+            .iter()
+            .enumerate()
+        {
+            let rgba = solid(12, 8, r, g, b, 255);
+            let plain = encode_with(12, 8, &rgba, Gamut::Srgb, &Tunables::DEFAULT, 1);
+            for refine_scale in [true, false] {
+                for refine_obj in 0..4 {
+                    let t = Tunables {
+                        refine_passes: 1,
+                        refine_delta: 2,
+                        refine_dc: false,
+                        refine_scale,
+                        refine_obj,
+                        ..Tunables::DEFAULT
+                    };
+                    let got = encode_with(12, 8, &rgba, Gamut::Srgb, &t, 1);
+                    assert_eq!(
+                        got, plain,
+                        "colour {k}, scale {refine_scale}, obj {refine_obj}"
+                    );
+                }
+            }
+        }
+        // A DC move ties on black under the gamma-sRGB objective (obj 0): one
+        // L or chroma step from black lands every channel within 1e-6 of zero
+        // in linear light, which the 4096-point gamma LUT rounds back to 0.
+        let black = solid(12, 8, 0, 0, 0, 255);
+        let t = Tunables {
+            refine_passes: 1,
+            refine_dc: true,
+            refine_obj: 0,
+            ..Tunables::DEFAULT
+        };
+        assert_eq!(
+            encode_with(12, 8, &black, Gamut::Srgb, &t, 1),
+            encode_with(12, 8, &black, Gamut::Srgb, &Tunables::DEFAULT, 1)
+        );
+    }
+
+    #[test]
     fn refinement_goldens() {
         // `band_gain_refine_cfl_and_shared_scale_goldens` runs one pass at
         // ±1. These pin the rest of the coordinate descent: several passes

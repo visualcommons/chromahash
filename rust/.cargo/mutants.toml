@@ -203,34 +203,64 @@ exclude_re = [
     # the same render.
     "src/decode.rs:360:42: replace > with >= in render_at_size",
 
-    # ── `refine_codes`: research-only, deliberately excluded ────────────────
+    # ── `refine_codes`: research-only, mostly unproven ─────────────────────
     #
     # Pixel-domain refinement is off in `Tunables::DEFAULT` (`refine_passes =
     # 0`) and reachable only through the comparison harness's sweep. Its code
-    # paths are pinned by `refinement_goldens` and
+    # paths are pinned by `refinement_goldens`,
     # `band_gain_refine_cfl_and_shared_scale_goldens` (passes, ±2 moves, DC and
-    # scale refinement, the decoder-raster target, the convergence break); what
-    # those leave is below.
-    #
+    # scale refinement, the decoder-raster target, the convergence break) and
+    # `refinement_keeps_a_code_on_an_exact_tie` (a tie with the current code
+    # keeps it, for scale, DC and AC moves). What those leave is below. Only
+    # the first entry is a proof; the rest are excluded as unproven,
+    # research-only.
+
     # Equivalent: the `live` test is `cx < src.0 && cy < src.1 && cx < w &&
     # cy < h`. With `refine_grid = 0`, (w, h) *is* src, so `cx < w` repeats
     # `cx < src.0`; with `refine_grid = 1`, (w, h) is the decoder raster the
     # selection is drawn from, so every selected pair has cx < w and cy < h.
     # Either way the last two conjuncts never decide, and `<=` cannot differ.
-    "src/encode.rs:1106:(40|50): replace < with <= in refine_codes",
-    # Research-only, not proven: `cx <= src.0` also refines the one frequency a
-    # source exactly cx pixels wide cannot hold (refine_grid = 1 on a strip).
-    # That basis carries no source energy, so moving its code away from zero
-    # has not lowered the objective on any image tried, and the strict
-    # improvement test never accepts it.
+    "src/encode.rs:1106:40: replace < with <= in refine_codes",
+    "src/encode.rs:1106:50: replace < with <= in refine_codes",
+    # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT):
+    # `cx <= src.0` also refines the one frequency a source exactly cx pixels
+    # wide cannot hold (refine_grid = 1 on a strip). That basis carries no
+    # source energy, so moving its code away from zero has not lowered the
+    # objective on any image tried, and the strict improvement test never
+    # accepts it. Not proven.
     "src/encode.rs:1106:12: replace < with <= in refine_codes",
-    # Research-only, tie order: each candidate set is symmetric ({±1, ±2} for
-    # scale, {±1} for DC, ±d for AC), so `cur + d` → `cur - d` only reorders
-    # it, and every acceptance test is a strict `<`. These change the result
-    # only on an exact tie in pixel-domain SSE between two distinct codes,
-    # which no golden produces; `==` in the DC second-candidate test likewise
-    # differs only when both DC neighbours improve and the second wins.
-    "src/encode.rs:(1149|1188|1229):(44|48): replace \\+ with - in refine_codes",
-    "src/encode.rs:(1167|1200|1241):(59|63|80|84|85): replace < with <= in refine_codes",
-    "src/encode.rs:1200:80: replace < with == in refine_codes",
+    # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT): tie
+    # order between two improving candidates. Each candidate set is symmetric
+    # ({±1, ±2} for scale, {±1} for DC, ±d for AC), so `cur + d` → `cur - d`
+    # only reorders it, and `<=` in the second-candidate test (`e < be`) only
+    # changes which of two equally improving candidates wins. Both differ
+    # only when two distinct codes give exactly the same pixel-domain SSE
+    # *below* the current one. No fixture here produces that, and none is
+    # proven impossible: the gamma-LUT objective (0) and the clipped ones (2,
+    # 3) are flat in places, so such a tie may be reachable.
+    "src/encode.rs:1149:44: replace \\+ with - in refine_codes",
+    "src/encode.rs:1188:44: replace \\+ with - in refine_codes",
+    "src/encode.rs:1229:48: replace \\+ with - in refine_codes",
+    "src/encode.rs:1167:85: replace < with <= in refine_codes",
+    "src/encode.rs:1241:84: replace < with <= in refine_codes",
+    # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT): the DC
+    # second-candidate test `e < be`. `==` is not a tie-order change: it
+    # differs whenever both DC neighbours strictly improve and the second is
+    # strictly better, and `<=` whenever both improve equally.
+    #
+    # For refine_obj = 1 (plain OKLAB SSE) both are equivalent. A DC move adds
+    # the same delta to every pixel of one channel, the DC grid is uniform
+    # (step s), and that channel's SSE is a quadratic in the delta, so over N
+    # pixels f(cur + 1) + f(cur - 1) - 2·f(cur) = 2·N·s² > 0, far above
+    # rounding error. The two neighbours cannot both be below f(cur), the
+    # second test is never reached with a strict improvement in hand, and
+    # `<`, `<=` and `==` all answer false. (This assumes accel_sse_early_exit
+    # off; with it on, the second candidate's SSE may be a partial sum, which
+    # `==`/`<=` could match only if it landed exactly on `be`.)
+    #
+    # For refine_obj = 0, 2 and 3 it is *not* equivalent: the clip and the
+    # gamma LUT break the quadratic, so both neighbours can improve, and
+    # these mutants would pick the wrong one. Excluded only because the
+    # whole function is research-only.
+    "src/encode.rs:1200:80: replace < with (<=|==) in refine_codes",
 ]
