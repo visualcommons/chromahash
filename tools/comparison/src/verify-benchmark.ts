@@ -81,6 +81,7 @@ import {
   checkSweepClaims,
   checkTable,
   clean,
+  noiseFailures,
   parseDecodeStages,
   parseStages,
   parseTables,
@@ -1449,6 +1450,9 @@ if (!values.section) {
   sweepPending = sweep.pending;
 }
 
+// Every binding and claim has resolved by now, so `touched` is complete.
+failures.push(...noiseFailures(runs));
+
 if (values.fix) {
   if (edits.length === 0 && proseEdits.length === 0) {
     console.log("Nothing to rewrite — every bound value is within its band.");
@@ -1483,7 +1487,7 @@ console.log(
 const noisy = runs.noisyTouched();
 if (noisy.length > 0) {
   console.log(
-    `  NOISY  ${noisy.length} bound cell(s) the driver flagged noisy (process minima or blocks spread past 5%): ${noisy.join(", ")}`,
+    `  NOISY  ${noisy.length} bound cell(s) whose processes spread past 5%, checked on the ±5% band alone (their range never widens it): ${noisy.join(", ")}`,
   );
 }
 const UNAVAILABLE_NOTE =

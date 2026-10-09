@@ -189,6 +189,7 @@ import {
   checkStagesProvenance,
   checkTable,
   clean,
+  noiseFailures,
   parseDecodeStages,
   parseStages,
   parseTables,
@@ -2226,13 +2227,14 @@ const quietPreflight = (
 
 /**
  * A chromahash-perf/3 run the gate takes as a baseline: four processes of five
- * blocks, a quiet preflight, a traceable git block. Cells carry an interval,
- * and the run can carry pairs and aliases. An `environment` override is merged
- * over the default, preflight included unless it names its own.
+ * blocks, a quiet preflight, a traceable git block. A cell may give its
+ * process minima (µs), from which its range is derived as the driver derives
+ * it, and the run can carry pairs and aliases. An `environment` override is
+ * merged over the default, preflight included unless it names its own.
  */
 function run3(
   file: string,
-  cells: Record<string, { us: number; ci?: [number, number] }>,
+  cells: Record<string, { us: number; mins?: number[] }>,
   overrides: Partial<RunDoc> = {},
 ): RunDoc {
   const { environment, ...rest } = overrides;
@@ -2255,7 +2257,15 @@ function run3(
       iqrPct: 0,
       noisy: false,
       iters: 1,
-      ...(c.ci ? { ci95NsPerOp: [c.ci[0] * 1000, c.ci[1] * 1000] } : {}),
+      ...(c.mins
+        ? {
+            processMinNsPerOp: c.mins.map((m) => m * 1000),
+            rangeNsPerOp: [
+              Math.min(...c.mins) * 1000,
+              Math.max(...c.mins) * 1000,
+            ],
+          }
+        : {}),
     })) as RunDoc["cells"],
     ...rest,
   };
@@ -2885,13 +2895,22 @@ for (const order of ["full first", "bounded first"] as const) {
 }
 
 // V11. Per-process statistics: the reported cost is the median of the
-//      process minima, and a paired ratio is the median of per-round ratios,
-//      skipping a round either member missed.
+//      process minima, beside their range — labelled with the chance it holds
+//      the median, 1 − 2^(1−n), not as a 95% interval — and noisy means the
+//      minima disagree, not that one process's blocks scatter. A paired ratio
+//      is the median of per-round ratios, skipping a round either member
+//      missed.
 {
   const s = cellStats([
     [105, 100, 110],
     [120, 130, 125],
     [98, 99, 101],
+  ]);
+  const four = cellStats([
+    [100, 140, 101],
+    [102, 103, 160],
+    [101, 101, 101],
+    [103, 104, 103],
   ]);
   const p = pairStats([200, 210, undefined, 190], [100, 100, 80, 100]);
   check(
@@ -2900,12 +2919,48 @@ for (const order of ["full first", "bounded first"] as const) {
       s.processMinNsPerOp.join() === "100,120,98" &&
       Math.abs(s.spreadPct - 22 / 98) < 1e-12 &&
       s.noisy &&
-      s.ci95NsPerOp[0] >= 98 &&
-      s.ci95NsPerOp[1] <= 120 &&
+      s.rangeNsPerOp.join() === "98,120" &&
+      s.rangeCoverage === 0.75 &&
+      four.rangeCoverage === 0.875 &&
+      four.nsPerOp === 101.5 &&
+      four.iqrPct > 0.05 &&
+      !four.noisy &&
       p !== null &&
       p.ratios.join() === "2,2.1,1.9" &&
       p.ratio === 2,
-    `nsPerOp=${s.nsPerOp} mins=${s.processMinNsPerOp} ci=${s.ci95NsPerOp} pair=${JSON.stringify(p)}`,
+    `nsPerOp=${s.nsPerOp} mins=${s.processMinNsPerOp} range=${s.rangeNsPerOp}@${s.rangeCoverage} four=${four.nsPerOp}/${four.iqrPct}/${four.noisy} pair=${JSON.stringify(p)}`,
+  );
+}
+
+// V11b. The gate's side of noise. A quiet cell's range may accept a value; a
+//       noisy one's (processes past 5% apart) may not, so a value inside a
+//       wide range but outside the band fails; and a bound cell whose
+//       processes spread past the 10% host bar fails outright.
+{
+  const quiet = "encode/Rust/t1";
+  const wide = "encode/Go/t1";
+  const R = new Runs([
+    run3("perf-report.json", {
+      [quiet]: { us: 1015, mins: [1000, 1010, 1020, 1030] },
+      [wide]: { us: 1000, mins: [940, 1000, 1000, 1060] },
+    }),
+  ]);
+  const q = R.est(quiet);
+  const w = R.est(wide);
+  const verdict = agreement(num(1.055, "ms", 3), w).verdict;
+  const unstable = noiseFailures(R);
+  const legacy = new Runs([fixtureRun("perf-report.json", ["x"])]);
+  legacy.est("x");
+  check(
+    "a noisy cell's range never widens acceptance, and a bound cell spread past the host bar fails",
+    q.interval?.join() === "1000,1030" &&
+      w.interval === null &&
+      verdict === "outside" &&
+      R.noisyTouched().join() === wide &&
+      unstable.length === 1 &&
+      unstable[0]?.row === wide &&
+      noiseFailures(legacy).length === 0,
+    `quiet=${JSON.stringify(q)} wide=${JSON.stringify(w)} verdict=${verdict} unstable=${details(unstable)}`,
   );
 }
 

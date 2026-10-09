@@ -13,11 +13,19 @@
  * processes — a different heap layout, a different core, a different moment in
  * the host's thermal cycle — was never sampled, and the "CI" beside it was an
  * interval on the median of those blocks, not on the figure reported. A cell is
- * now P processes (default 3), each still reporting the minimum of its blocks,
- * and the reported cost is the **median of the per-process minima**, with a
- * bootstrap interval across processes. The runner interleaves the processes of
- * every cell round-robin (`plan.ts`, `roundOrder`), so a drift over the sweep
- * spreads across every cell instead of landing on whichever ran last.
+ * now P processes (default 4), each still reporting the minimum of its blocks,
+ * and the reported cost is the **median of the per-process minima**, beside the
+ * range of those minima. The runner interleaves the processes of every cell
+ * round-robin (`plan.ts`, `roundOrder`), so a drift over the sweep spreads
+ * across every cell instead of landing on whichever ran last.
+ *
+ * **The range is not a 95% interval.** It was stored as a "bootstrap 95%
+ * interval" across processes, but a percentile bootstrap of the median of
+ * three values can only return values among those three, so it was in effect
+ * their range — and the range of n independent draws contains their median
+ * with probability 1 − 2^(1−n): 75% at three processes, 87.5% at four. It is
+ * now stored as what it is, with that coverage beside it, and nothing here
+ * draws a bootstrap.
  */
 
 import { spawnSync } from "node:child_process";
@@ -40,11 +48,24 @@ const RECALIBRATE_BELOW = 0.5;
 export const WARMUP_MS = { native: 500, managed: 2000 } as const;
 
 /**
- * A cell is noisy when its process minima spread further than this, or when a
- * typical process's blocks do: past 5% it cannot tell a regression from its
- * host. The gate lists every bound cell that is.
+ * A cell is noisy when its process minima spread further than this: past 5%
+ * the processes do not agree on the figure to the resolution the document is
+ * checked at. The gate never lets a noisy cell's range widen what it accepts,
+ * and fails a bound cell whose processes spread past the 10% host bar.
+ *
+ * Spread across processes only. A process's own blocks can scatter — a managed
+ * runtime's collector lands on some of them — without moving its minimum,
+ * which is what is reported; their IQR is recorded, and not held to this.
  */
 export const NOISY = 0.05;
+
+/**
+ * The chance that the range of n independent draws contains the median of the
+ * distribution they are drawn from: 1 − 2·(1/2)^n. Distribution-free; 0 for a
+ * single draw, whose "range" is a point.
+ */
+export const rangeCoverage = (n: number): number =>
+  n < 2 ? 0 : 1 - 2 * 0.5 ** n;
 
 export interface CellRequest {
   readonly target: Target;
@@ -186,16 +207,26 @@ export interface CellStats {
    * one, and is what a second run on the same host reproduces.
    */
   readonly nsPerOp: number;
-  /** Bootstrap 95% interval of `nsPerOp` across processes; a point for one. */
-  readonly ci95NsPerOp: [number, number];
+  /**
+   * The lowest and highest process minimum: the range `nsPerOp` sits in.
+   * Contains the true median with probability `rangeCoverage` — 87.5% at four
+   * processes — and is labelled as a range, not a confidence interval.
+   */
+  readonly rangeNsPerOp: [number, number];
+  /** `rangeCoverage(processes)`: how often a range like this holds the median. */
+  readonly rangeCoverage: number;
   /** Median of every block of every process. Reported, not used. */
   readonly medianNsPerOp: number;
   /** The smallest block of any process. Reported, not used. */
   readonly minNsPerOp: number;
-  /** Median over processes of each process's IQR as a fraction of its median. */
+  /**
+   * Median over processes of each process's IQR as a fraction of its median.
+   * Reported, not used: it describes the blocks, not the reported minimum.
+   */
   readonly iqrPct: number;
   /** (max − min) / min over the process minima. */
   readonly spreadPct: number;
+  /** `spreadPct` past NOISY. */
   readonly noisy: boolean;
 }
 
@@ -218,13 +249,13 @@ export function cellStats(samples: number[][]): CellStats {
     samplesNsPerOp: kept,
     processMinNsPerOp: mins,
     nsPerOp,
-    ci95NsPerOp:
-      mins.length > 1 ? bootstrapCIOf(mins, median) : [nsPerOp, nsPerOp],
+    rangeNsPerOp: [lo, hi],
+    rangeCoverage: rangeCoverage(mins.length),
     medianNsPerOp: median(all),
     minNsPerOp: Math.min(...all),
     iqrPct,
     spreadPct,
-    noisy: spreadPct > NOISY || iqrPct > NOISY,
+    noisy: spreadPct > NOISY,
   };
 }
 

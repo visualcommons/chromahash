@@ -13,6 +13,7 @@
  */
 
 import { defaultMaxLoad, hostKey } from "./perf/host.ts";
+import { NOISY } from "./perf/probe.ts";
 
 // ─── The document, as tables ────────────────────────────────────────────────
 
@@ -288,10 +289,15 @@ export const MIN_REPS = 5;
 export const STABILITY_MODE = "bounded";
 export const SUPPLEMENT_MODE = "full";
 
-/** A measured value with the interval the run recorded for it, if any. */
+/** A measured value with the range the run recorded for it, if any. */
 export interface Estimate {
   value: number;
-  /** Bootstrap 95% interval across processes; null for a chromahash-perf/2 cell. */
+  /**
+   * The range across processes (or AB/BA blocks, for a ratio) — never a 95%
+   * interval; `perf/probe.ts` gives its coverage. Null for a chromahash-perf/2
+   * cell, and for a noisy one: a range wider than NOISY is not allowed to
+   * widen what a documented value may be.
+   */
   interval: [number, number] | null;
 }
 
@@ -306,9 +312,24 @@ interface Cell {
   iqrPct: number;
   noisy: boolean;
   iters: number;
-  /** chromahash-perf/3: the interval of `nsPerOp` across processes. */
-  ci95NsPerOp?: [number, number];
+  /** chromahash-perf/3: the lowest and highest process minimum. */
+  rangeNsPerOp?: [number, number];
+  /** chromahash-perf/3: how often such a range holds the median. */
+  rangeCoverage?: number;
   processMinNsPerOp?: number[];
+  spreadPct?: number;
+}
+
+/**
+ * How far a chromahash-perf/3 cell's process minima spread, recomputed from
+ * the minima themselves rather than read from the driver's summary; null for a
+ * run that recorded none.
+ */
+export function processSpread(c: Cell): number | null {
+  const m = c.processMinNsPerOp;
+  if (!m || m.length < 2) return null;
+  const lo = Math.min(...m);
+  return lo > 0 ? (Math.max(...m) - lo) / lo : null;
 }
 
 export interface PairRecord {
@@ -496,7 +517,14 @@ export interface RunsOptions {
 export class Runs {
   private readonly byId = new Map<
     string,
-    { us: number; cell: Cell; from: string; interval: [number, number] | null }
+    {
+      us: number;
+      cell: Cell;
+      from: string;
+      interval: [number, number] | null;
+      /** Across processes, chromahash-perf/3 only. */
+      spread: number | null;
+    }
   >();
   /** Every loaded run's own value for each of its cells, by file. */
   private readonly perRun = new Map<string, Map<string, number>>();
@@ -720,13 +748,17 @@ export class Runs {
       for (const c of doc.cells) {
         if (this.byId.has(c.id)) continue;
         if (!isPrimary && !primaryAbsent.has(targetOf(c.id))) continue;
-        const ci = c.ci95NsPerOp;
+        const range = c.rangeNsPerOp;
+        const spread = doc.schema === SCHEMA ? processSpread(c) : null;
         this.byId.set(c.id, {
           us: (c.nsPerOp ?? c.medianNsPerOp) / 1000,
           cell: c,
           from: this.runKey(doc),
           interval:
-            doc.schema === SCHEMA && ci ? [ci[0] / 1000, ci[1] / 1000] : null,
+            doc.schema === SCHEMA && range && spread !== null && spread <= NOISY
+              ? [range[0] / 1000, range[1] / 1000]
+              : null,
+          spread,
         });
       }
       for (const p of doc.pairs ?? []) {
@@ -804,11 +836,37 @@ export class Runs {
     return this.byId.get(this.resolveId(id))?.cell ?? null;
   }
 
-  /** Every id a binding resolved whose cell the driver flagged noisy. */
+  /**
+   * Every id a binding resolved whose cell is noisy: its processes spread past
+   * NOISY (chromahash-perf/3), or the driver flagged it (/2, whose flag meant
+   * a block IQR). Checked on the band alone.
+   */
   noisyTouched(): string[] {
     return [...this.touched]
-      .filter((id) => this.byId.get(id)?.cell.noisy)
+      .filter((id) => {
+        const hit = this.byId.get(id);
+        if (!hit) return false;
+        return hit.spread !== null ? hit.spread > NOISY : hit.cell.noisy;
+      })
       .sort();
+  }
+
+  /**
+   * Every id a binding resolved whose processes spread past the host bar,
+   * CROSS_RUN_TOLERANCE, with the spread. A cell whose own processes disagree
+   * by more than two runs of the host may is failing the host bar inside one
+   * run: no figure transcribed from it is reproducible to the document's
+   * resolution, whatever the band says.
+   */
+  unstableTouched(): { id: string; spread: number }[] {
+    const out: { id: string; spread: number }[] = [];
+    for (const id of [...this.touched].sort()) {
+      const spread = this.byId.get(id)?.spread;
+      if (spread != null && spread > CROSS_RUN_TOLERANCE) {
+        out.push({ id, spread });
+      }
+    }
+    return out;
   }
 
   get ids(): string[] {
@@ -922,6 +980,22 @@ export function runFailures(R: Runs): Failure[] {
     }
   }
   return out;
+}
+
+/**
+ * Bound cells whose processes disagree past the host bar (`unstableTouched`).
+ * Call after every binding and claim has resolved, since `touched` is what
+ * they asked for.
+ */
+export function noiseFailures(R: Runs): Failure[] {
+  return R.unstableTouched().map(({ id, spread }) => ({
+    where: "committed runs",
+    column: "process spread",
+    row: id,
+    documented: `processes within ${(CROSS_RUN_TOLERANCE * 100).toFixed(0)}% of each other`,
+    measured: `${(spread * 100).toFixed(1)}% apart`,
+    detail: `a bound cell whose own processes spread past the ${(CROSS_RUN_TOLERANCE * 100).toFixed(0)}% host bar cannot back a figure — re-measure on a quieter host`,
+  }));
 }
 
 export class MissingCell extends Error {
