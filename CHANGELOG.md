@@ -5,11 +5,12 @@ All notable changes to ChromaHash are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-ChromaHash is a **Draft** format. While pre-1.0, the bitstream is not guaranteed to be
-stable between minor versions. From 0.7.1 the wire format carries a 3-bit `version` field
-in byte 0 and a decoder rejects a generation it does not implement; before it, v0.2, v0.3
-and v0.4 all shared header bit 47 = 1, so an older decoder applied to a newer hash
-silently produced garbled output. Applications spanning the 0.6/0.7 boundary MUST track
+The wire format is **frozen as of 0.7.1** (wire-format generation v1; see "What 'Stable'
+means here" at the top of `spec/README.md`). The package version is still pre-1.0, but from
+0.7.1 on any change to the bitstream increments the 3-bit `version` field in byte 0, and a
+decoder rejects a generation it does not implement. Before 0.7.1 the bitstream was not
+stable between minor versions: v0.2, v0.3 and v0.4 all shared header bit 47 = 1, so an
+older decoder applied to a newer hash silently produced garbled output. Applications spanning the 0.6/0.7 boundary MUST track
 the format version via producer-side metadata. See `spec/README.md` §2.5 for details.
 
 **Package coordinates change in 0.7.1.** The `justin13888` → `visualcommons` move
