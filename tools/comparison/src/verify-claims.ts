@@ -143,6 +143,16 @@ function cflPaidOverShipped(paid: number): number {
   return ((paid - shipped) / shipped) * 100;
 }
 
+/**
+ * How far AVIF at ~1.6 kB leads code 4 on ΔE00 in §11.14, as a percentage of
+ * code 4's score — the "19%" §11.14's own prose gives, recomputed from cells.
+ */
+function avifLeadOverCode4(code4: number): number {
+  const avif = cellOf("11.14", 0, "1595.6", "ΔE00 ↓");
+  if (avif === null) throw new Error("§11.14 has no 1595.6 B AVIF row");
+  return ((code4 - avif) / code4) * 100;
+}
+
 const REGISTER: Claim[] = [
   // ── The v0.7 recipe's holdout verdict ────────────────────────────────────
   // Quoted in three places plus the Rust doc comment. §7.12's `L28C15 stack`
@@ -413,7 +423,8 @@ const REGISTER: Claim[] = [
   {
     file: "spec/RATIONALE.md",
     what: "the 4-bit layout on holdout",
-    pattern: /worth −([\d.]+)% mean ΔE00 on the\nnever-tuned holdout/,
+    pattern:
+      /worth −([\d.]+)% mean ΔE00 on the\nholdout split with every guard/,
     section: "4.5",
     row: "L28@4 C15@3",
     column: "Δ%",
@@ -704,6 +715,139 @@ const REGISTER: Claim[] = [
     row: "Entropy-coding headroom at 108 B",
     column: "Wikimedia",
     transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "CfL with free gains at 32 B",
+    pattern: /given away free it is −([\d.]+)% ΔE00 at 32 B/,
+    section: "7.10",
+    row: "CfL free (gains not paid for)",
+    column: "vs its own control",
+    transform: abs,
+  },
+  // The old-numbering trap the spec's entry above records: `tier 2` is code 3.
+  {
+    file: "spec/RATIONALE.md",
+    what: "CfL with free gains at code 3 (411 B)",
+    pattern: /ΔE00 at 32 B, −([\d.]+)% at\n\s*code 3/,
+    section: "7.10",
+    row: "tier 2 free",
+    column: "vs its own control",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "CfL with free gains at code 4 (1623 B)",
+    pattern: /code 3 and −([\d.]+)% at code 4 — but/,
+    section: "7.10",
+    row: "tier 3 free",
+    column: "vs its own control",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "CfL with paid gains at 32 B, against the shipped layout",
+    pattern: /signals it costs\n\s*(\+[\d.]+)% at 32 B/,
+    section: "7.10",
+    row: "CfL paid, L24@5 C9@4",
+    column: "ΔE00",
+    transform: cflPaidOverShipped,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the leave-one-image-out coder's AC-bit saving at 32 B",
+    pattern: /saves ([\d.]+)% of the AC bits at 32 B/,
+    section: "7.13",
+    row: "**per-index context backing off to order-0, LOO**",
+    column: "vs fixed",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "entropy coding's ΔE00 headroom at 32 B",
+    pattern: /coefficients that is −([\d.]+)% ΔE00 at 32 B/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 32 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "entropy coding's ΔE00 headroom at 108 B",
+    pattern: /ΔE00 at 32 B and −([\d.]+)% at 108 B \(`EXPERIMENTS/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 108 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "entropy coding's ΔE00 headroom at 108 B, in future work",
+    pattern: /measured only up to code 2, at −([\d.]+)%/,
+    section: "9.5",
+    row: "Entropy-coding headroom at 108 B",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "AVIF's ΔE00 lead over code 4 at ~1.6 kB",
+    pattern: /AVIF by ([\d.]+)% on ΔE00/,
+    section: "11.14",
+    row: "1623",
+    column: "ΔE00 ↓",
+    transform: avifLeadOverCode4,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the best scalefactor-band arm, in Quantization",
+    pattern: /current corpus its best arm is −([\d.]+)% ΔE00 at code 1/,
+    section: "9.5",
+    row: "Scalefactor bands, best arm",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the best scalefactor-band arm, in the codec audit",
+    pattern: /framings\): −([\d.]+)% at code 1 on the current corpus/,
+    section: "9.5",
+    row: "Scalefactor bands, best arm",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the best scalefactor-band arm, in future work",
+    pattern: /The current figure\n\s*is −([\d.]+)% ΔE00 for the best arm/,
+    section: "9.5",
+    row: "Scalefactor bands, best arm",
+    column: "Wikimedia",
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the 32 B interleaved prefix, in Architecture",
+    pattern: /interleaved code-2 hash\nscore (\+[\d.]+)% ΔE00/,
+    section: "7.11",
+    row: "first 32 B, interleaved",
+    column: "vs native tier 0 (11.481)",
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the 32 B interleaved prefix, in the codec audit",
+    pattern: /code-2 hash is (\+[\d.]+)% ΔE00 against native code 1/,
+    section: "7.11",
+    row: "first 32 B, interleaved",
+    column: "vs native tier 0 (11.481)",
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "the 32 B interleaved prefix, in future work",
+    pattern: /interleaved code-2 hash score (\+[\d.]+)% ΔE00/,
+    section: "7.11",
+    row: "first 32 B, interleaved",
+    column: "vs native tier 0 (11.481)",
   },
 ];
 
