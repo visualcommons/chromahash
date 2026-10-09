@@ -772,10 +772,14 @@ run = "node tools/comparison/dist/stratify.js"
 # metric of every arm against a reference arm (the incumbent by default), the
 # 95% paired interval, the raw and Holm-adjusted p side by side, and the guard
 # verdict on intervals beside the point-mean one. `--seed-sensitivity`
-# re-derives every committed ΔE00 interval under other bootstrap seeds, the
-# check EXPERIMENTS.md §13.5 records.
-#   arms <result> [--baseline LABEL]
+# re-derives every committed ΔE00 interval under other bootstrap seeds, and
+# `--resample-change` at the interval resample count used before 10,000 (and
+# the guard verdicts read off them), the two checks EXPERIMENTS.md §13.5
+# records. `--baseline-from` takes the reference arm from a second result
+# scored over the same images.
+#   arms <result> [--baseline LABEL [--baseline-from RESULT]]
 #   arms --seed-sensitivity [--seeds 20] [<result>...]
+#   arms --resample-change [--from 1000] [<result>...]
 [tasks."arms"]
 description = "Paired intervals, Holm-adjusted p and interval guards for a committed sweep"
 depends = ["build:compare"]
