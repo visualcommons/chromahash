@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 #MISE description="Re-measure spec/PERFORMANCE.md end to end: preflight, bounded pair, full supplement, stages, copy, fix, gate"
 #
-# Usage: mise run benchmark:session [--scratch DIR] [--skip-build] [RUN FLAGS...]
+# Usage: mise run benchmark:session [--scratch DIR] [--skip-build]
+#                                    [--load-timeout SECONDS] [RUN FLAGS...]
 #
 #   --scratch DIR   smoke-test the procedure: write the sweeps to DIR and stop
 #                   there — no stage recordings (they write tracked baselines),
 #                   no copy into baselines/, no --fix. Implies --allow-dirty.
 #   --skip-build    the harnesses are already built at this commit
+#   --load-timeout SECONDS
+#                   how long to wait, each time, for the 1-minute load to fall
+#                   under the bar (default 1800): after the build, before each
+#                   sweep and each of its process rounds, and before the stages
 #   RUN FLAGS       passed to every sweep: --pin CPULIST, --processes P,
 #                   --reps N, --max-load L, --force-loaded, --quick, --impls …
 #
@@ -23,18 +28,33 @@
 #
 # Nothing here runs sudo. The root-only steps — governor `performance`, boost
 # off — are in §0; the preflight reports whether they were taken.
+#
+# The load is waited out, not refused. The 1-minute load average decays with a
+# one-minute time constant, so it is still above the bar a minute after
+# build:benchmark, and after each round's `threads=auto` batch cells (a runnable
+# thread on every core); refusing there stopped the session at its second
+# sweep, a quarter of an hour into measuring. Every sweep therefore runs with
+# `--wait-for-load`, which waits before its start and before every process
+# round, and the stages wait the same way. A wait that times out exits 3 with
+# what it saw.
 set -euo pipefail
 
 scratch=""
 skip_build=0
+load_timeout=1800
 run_flags=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --scratch) scratch="${2:?--scratch needs a directory}"; shift 2 ;;
         --skip-build) skip_build=1; shift ;;
+        --load-timeout) load_timeout="${2:?--load-timeout needs seconds}"; shift 2 ;;
         *) run_flags+=("$1"); shift ;;
     esac
 done
+case "$load_timeout" in
+    ''|*[!0-9]*) echo "benchmark:session: --load-timeout needs whole seconds, got '$load_timeout'" >&2; exit 2 ;;
+esac
+run_flags+=(--wait-for-load "$load_timeout")
 
 run_js="node tools/comparison/dist/perf/run.js"
 say() { printf '\n== benchmark:session: %s\n' "$*" >&2; }
@@ -46,6 +66,7 @@ if [ "$skip_build" -eq 0 ]; then
 fi
 mise run build:compare
 
+# The preflight waits out the build's own load before checking the host.
 say "preflight"
 preflight=("${run_flags[@]}")
 if [ -n "$scratch" ]; then preflight+=(--allow-dirty); fi
@@ -76,11 +97,16 @@ if [ -n "$scratch" ]; then
 fi
 
 # §1's three columns and §1.1's three. Each writes its committed baseline
-# directly, merged one cell per invocation.
+# directly, merged one cell per invocation. The stage recorders do not read the
+# load themselves, so wait for the full sweep's tail to clear first.
+say "waiting for the load before the stages"
+$run_js --preflight "${preflight[@]}"
 say "stages (§1)"
 mise run benchmark:stages 100 100 1
 mise run benchmark:stages 512 512 1
 mise run benchmark:stages 512 512 4
+say "waiting for the load before the decode stages"
+$run_js --preflight "${preflight[@]}"
 say "decode stages (§1.1)"
 mise run benchmark:decode-stages 100 100 1 2000
 mise run benchmark:decode-stages 100 100 4 20

@@ -33,17 +33,6 @@ export function defaultMaxLoad(cores: number): number {
   return Math.max(1, cores / 8);
 }
 
-/** `/proc/loadavg`'s first three fields, or null. */
-export function parseLoadavg(
-  text: string | null,
-): [number, number, number] | null {
-  if (text === null) return null;
-  const f = text.trim().split(/\s+/).slice(0, 3).map(Number);
-  return f.length === 3 && f.every(Number.isFinite)
-    ? [f[0] as number, f[1] as number, f[2] as number]
-    : null;
-}
-
 /** One value if every CPU agrees, `mixed: a, b` otherwise, null if none read. */
 export function summarize(values: readonly string[]): string | null {
   const distinct = [...new Set(values.map((v) => v.trim()))].sort();
@@ -53,12 +42,27 @@ export function summarize(values: readonly string[]): string | null {
     : `mixed: ${distinct.join(", ")}`;
 }
 
+export type Loadavg = [number, number, number];
+
 export interface Preflight {
   /** 1-, 5- and 15-minute load averages when the run started. */
-  loadavgStart: [number, number, number] | null;
-  /** The same, at the start of each process round and at the end. */
-  loadavgRounds: ([number, number, number] | null)[];
-  loadavgEnd: [number, number, number] | null;
+  loadavgStart: Loadavg | null;
+  /**
+   * The same at the start of each process round, after any wait: the gate holds
+   * every one to the bar, so a run that starts quiet and becomes loaded fails.
+   */
+  loadavgRounds: (Loadavg | null)[];
+  /**
+   * At the end. Recorded, not held to the bar: it trails the run's own last
+   * minutes, which can include the `threads=auto` batch cells, so it says more
+   * about this sweep than about anything else on the host.
+   */
+  loadavgEnd: Loadavg | null;
+  /**
+   * Seconds spent waiting for the load to fall under the bar (`--wait-for-load`)
+   * before the start and before each round, in that order; empty if no wait.
+   */
+  waitedSeconds: number[];
   maxLoad: number;
   /** Started above `maxLoad` because `--force-loaded` said to. Not a baseline. */
   loaded: boolean;
@@ -95,8 +99,73 @@ function perCpu(file: string): string[] {
     .filter((v): v is string => v !== null);
 }
 
-export function readLoadavg(): [number, number, number] | null {
-  return parseLoadavg(read("/proc/loadavg"));
+/**
+ * The 1-, 5- and 15-minute load averages, rounded as `/proc/loadavg` writes
+ * them. `os.loadavg()` reads `/proc/loadavg` on Linux and `vm.loadavg` on macOS,
+ * so the preflight and the gate's load check work on both; Windows has no load
+ * average and reports zeros, which would read as an idle host, so it is null.
+ */
+export function readLoadavg(
+  platform: string = process.platform,
+  sample: () => number[] = os.loadavg,
+): Loadavg | null {
+  if (platform === "win32") return null;
+  const l = sample();
+  if (l.length < 3 || !l.slice(0, 3).every(Number.isFinite)) return null;
+  const r = (x: number) => Math.round(x * 100) / 100;
+  return [r(l[0] as number), r(l[1] as number), r(l[2] as number)];
+}
+
+export interface LoadWait {
+  /** Under the bar (or unreadable) before the timeout. */
+  ok: boolean;
+  waitedMs: number;
+  /** The last reading taken. */
+  load: Loadavg | null;
+}
+
+/**
+ * Poll the 1-minute load average until it is at or under `maxLoad`, or until
+ * `timeoutMs` has passed.
+ *
+ * Load is the one host property the person running a sweep can fix by waiting,
+ * and the sweep itself is what most often needs waiting out: the 1-minute
+ * average decays with a one-minute time constant, so it stays above the bar for
+ * a minute or two after `build:benchmark`, and after a round's `threads=auto`
+ * batch cells put a runnable thread on every core. Refusing there stopped
+ * `benchmark:session` at its second sweep. A host with no load average to read
+ * is not waited on: there is nothing to wait for.
+ *
+ * Pure apart from the injected clock, sleep and reader, so the selftest can
+ * drive it without waiting.
+ */
+export async function waitForLoad(o: {
+  maxLoad: number;
+  timeoutMs: number;
+  pollMs?: number;
+  read?: () => Loadavg | null;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+  /** Called before each sleep with the reading and the time waited so far. */
+  onWait?: (load1: number, waitedMs: number) => void;
+}): Promise<LoadWait> {
+  const read = o.read ?? (() => readLoadavg());
+  const sleep =
+    o.sleep ??
+    ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const now = o.now ?? Date.now;
+  const poll = o.pollMs ?? 10_000;
+  const start = now();
+  for (;;) {
+    const load = read();
+    const waitedMs = now() - start;
+    if (load === null || load[0] <= o.maxLoad) {
+      return { ok: true, waitedMs, load };
+    }
+    if (waitedMs >= o.timeoutMs) return { ok: false, waitedMs, load };
+    o.onWait?.(load[0], waitedMs);
+    await sleep(Math.min(poll, o.timeoutMs - waitedMs));
+  }
 }
 
 /**
@@ -125,7 +194,10 @@ function readBoost(): { value: string | null; source: string | null } {
     : { value: null, source: null };
 }
 
-/** Read the host's state. Every field is null off Linux, where none of it exists. */
+/**
+ * Read the host's state. The load average is read on Linux and macOS; the
+ * cpufreq fields are Linux's sysfs and null elsewhere.
+ */
 export function readPreflight(
   maxLoad: number,
   forceLoaded: boolean,
@@ -137,6 +209,7 @@ export function readPreflight(
     loadavgStart: load,
     loadavgRounds: [],
     loadavgEnd: null,
+    waitedSeconds: [],
     maxLoad,
     loaded: false,
     governor: summarize(perCpu("scaling_governor")),

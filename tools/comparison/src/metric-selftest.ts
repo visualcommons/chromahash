@@ -138,7 +138,8 @@ import {
   hostKey,
   judgePreflight,
   mayStart,
-  parseLoadavg,
+  readLoadavg,
+  waitForLoad,
 } from "./perf/host.ts";
 import { planMatrix, planRun, roundOrder } from "./perf/plan.ts";
 import { cellStats, pairStats } from "./perf/probe.ts";
@@ -2782,6 +2783,7 @@ for (const order of ["full first", "bounded first"] as const) {
     loadavgStart: [30.2, 28, 25],
     loadavgRounds: [],
     loadavgEnd: null,
+    waitedSeconds: [],
     maxLoad: defaultMaxLoad(16),
     loaded: false,
     governor: "powersave",
@@ -2809,9 +2811,74 @@ for (const order of ["full first", "bounded first"] as const) {
       mayStart(quiet, false) &&
       !quiet.loaded &&
       quiet.warnings.length === 3 &&
-      parseLoadavg("0.52 0.58 0.59 1/1234 5678")?.join() === "0.52,0.58,0.59" &&
-      parseLoadavg("garbage") === null,
+      readLoadavg("linux", () => [0.524, 0.58, 0.591])?.join() ===
+        "0.52,0.58,0.59" &&
+      readLoadavg("darwin", () => [1.5, 1.2, 1])?.join() === "1.5,1.2,1" &&
+      readLoadavg("win32", () => [0, 0, 0]) === null &&
+      readLoadavg("linux", () => [Number.NaN, 0, 0]) === null,
     `refused=${mayStart(refused, false)} forced=${forced.loaded} quiet=${JSON.stringify(quiet.warnings)}`,
+  );
+}
+
+// V12b. --wait-for-load: a loaded host is waited out rather than refused, and
+//       given up on at the timeout. A fake clock, so nothing actually sleeps:
+//       the load decays from 9 by one per poll against a bar of 2.
+{
+  const fake = (start: number) => {
+    let t = 0;
+    let load = start;
+    const notes: number[] = [];
+    return {
+      notes,
+      opts: {
+        read: (): [number, number, number] => [load, load, load],
+        sleep: async (ms: number) => {
+          t += ms;
+          load -= 1;
+        },
+        now: () => t,
+        onWait: (l: number) => notes.push(l),
+      },
+    };
+  };
+  const decays = fake(9);
+  const settled = await waitForLoad({
+    maxLoad: 2,
+    timeoutMs: 600_000,
+    pollMs: 10_000,
+    ...decays.opts,
+  });
+  const stuck = fake(9);
+  const gaveUp = await waitForLoad({
+    maxLoad: 2,
+    timeoutMs: 25_000,
+    pollMs: 10_000,
+    ...stuck.opts,
+  });
+  const quiet = await waitForLoad({
+    maxLoad: 2,
+    timeoutMs: 0,
+    read: () => [0.3, 0.3, 0.3],
+  });
+  const unreadable = await waitForLoad({
+    maxLoad: 2,
+    timeoutMs: 0,
+    read: () => null,
+  });
+  check(
+    "--wait-for-load waits a loaded host out, gives up at the timeout, and does not wait on a quiet or unreadable one",
+    settled.ok &&
+      settled.waitedMs === 70_000 &&
+      settled.load?.[0] === 2 &&
+      decays.notes.join() === "9,8,7,6,5,4,3" &&
+      !gaveUp.ok &&
+      gaveUp.waitedMs === 25_000 &&
+      gaveUp.load?.[0] === 6 &&
+      quiet.ok &&
+      quiet.waitedMs === 0 &&
+      unreadable.ok &&
+      unreadable.load === null,
+    `settled=${JSON.stringify(settled)} gaveUp=${JSON.stringify(gaveUp)} quiet=${quiet.ok} unreadable=${unreadable.ok}`,
   );
 }
 

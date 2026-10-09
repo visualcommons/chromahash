@@ -9,7 +9,7 @@
  *   node dist/perf/run.js [--full | --quick] [--impls A,B] [--out FILE]
  *                         [--processes P] [--reps N] [--max-cell-ms N]
  *                         [--pin CPULIST] [--max-load L] [--force-loaded]
- *                         [--plan]
+ *                         [--wait-for-load [SECONDS]] [--plan] [--host-id]
  *
  *   --full          the cells only the exhaustive matrix has; a supplement to
  *                   the bounded run, never an override (plan.ts)
@@ -21,7 +21,16 @@
  *                   (default max(1, threads/8))
  *   --force-loaded  start anyway; the run is marked loaded and the gate
  *                   refuses it as a baseline
+ *   --wait-for-load [SECONDS]
+ *                   instead of refusing a loaded host, wait for the 1-minute
+ *                   load to fall under the bar — before the start and before
+ *                   every process round — for at most SECONDS (default 1800)
+ *                   each time, then exit 3. Without it a round that starts
+ *                   above the bar is only warned about, and the gate will
+ *                   refuse the run
  *   --plan          print the cells and pairs this run would measure, and exit
+ *   --host-id       print this host's baseline key (baselines/hosts/<key>/)
+ *                   and exit
  *   --preflight     print the host's state and the tree's, refuse (exit 3/4)
  *                   as a run would, and exit; --allow-dirty waives the tree
  */
@@ -43,6 +52,7 @@ import {
   readLoadavg,
   readPreflight,
   rustcVersion,
+  waitForLoad,
 } from "./host.ts";
 import { makeFixture } from "./matrix.ts";
 import {
@@ -93,9 +103,19 @@ const REPS = int("--reps", QUICK ? 1 : 5);
 const PROCESSES = int("--processes", QUICK ? 1 : 3);
 const PIN = value("--pin");
 const FORCE_LOADED = flag("--force-loaded");
+const GATE_MAX_LOAD = defaultMaxLoad(os.cpus().length);
 const MAX_LOAD = Number.parseFloat(
-  value("--max-load") ?? String(defaultMaxLoad(os.cpus().length)),
+  value("--max-load") ?? String(GATE_MAX_LOAD),
 );
+/** `--wait-for-load [SECONDS]`: the timeout, or null when not waiting. */
+const WAIT_SECONDS = ((): number | null => {
+  const i = args.indexOf("--wait-for-load");
+  if (i < 0) return null;
+  const next = args[i + 1];
+  return next !== undefined && /^[0-9]+$/.test(next)
+    ? Number.parseInt(next, 10)
+    : 1800;
+})();
 /**
  * The three run shapes must not land on the same file: the gate reads the
  * bounded pair and the full supplement as distinct baselines, so a shared
@@ -119,6 +139,16 @@ const ONLY = only ? new Set(only.split(",").map((s) => s.trim())) : null;
 const universe = allTargets();
 const targets = universe.filter((t) => (ONLY ? ONLY.has(t.name) : true));
 
+const HOST_ENV = {
+  os: process.platform,
+  arch: process.arch,
+  cpuModel: os.cpus()[0]?.model ?? "unknown",
+};
+if (flag("--host-id")) {
+  process.stdout.write(`${hostKey(HOST_ENV)}\n`);
+  process.exit(0);
+}
+
 if (flag("--plan")) {
   const plan = planRun(MODE, targets, universe);
   for (const c of plan.cells) console.log(c.id);
@@ -132,7 +162,60 @@ if (flag("--plan")) {
 
 // ─── Preflight ──────────────────────────────────────────────────────────────
 
+/** Seconds waited before the start and each round, for the record. */
+const waited: number[] = [];
+
+/**
+ * The load average to record at `at`, after waiting for it to fall under the
+ * bar when `--wait-for-load` asked for that. A timeout exits 3: a run taken
+ * past it would be one the gate refuses, so there is nothing to keep.
+ */
+async function settle(at: string): Promise<ReturnType<typeof readLoadavg>> {
+  if (WAIT_SECONDS === null || FORCE_LOADED) {
+    const load = readLoadavg();
+    if (load !== null && load[0] > GATE_MAX_LOAD && at !== "start") {
+      process.stderr.write(
+        `perf: WARNING ${at} starts at a 1-minute load of ${load[0].toFixed(2)}, above the gate's ${GATE_MAX_LOAD.toFixed(2)} — verify:benchmark will refuse this run as a baseline; pass --wait-for-load\n`,
+      );
+    }
+    return load;
+  }
+  let reported = Number.NEGATIVE_INFINITY;
+  const w = await waitForLoad({
+    maxLoad: MAX_LOAD,
+    timeoutMs: WAIT_SECONDS * 1000,
+    onWait: (load1, ms) => {
+      if (ms - reported < 60_000) return;
+      reported = ms;
+      process.stderr.write(
+        `perf: ${at}: 1-minute load ${load1.toFixed(2)} is above ${MAX_LOAD.toFixed(2)}; waiting (${Math.round(ms / 1000)} s of at most ${WAIT_SECONDS} s)\n`,
+      );
+    },
+  });
+  waited.push(Math.round(w.waitedMs / 1000));
+  if (!w.ok) {
+    process.stderr.write(
+      [
+        `perf: giving up at ${at} — the 1-minute load is still ${w.load?.[0].toFixed(2)} after ${WAIT_SECONDS} s, above ${MAX_LOAD.toFixed(2)}.`,
+        "  Something else on this host is using it. Find it (`top`), or raise the",
+        "  timeout with --wait-for-load SECONDS; --force-loaded measures anyway, but",
+        "  verify:benchmark will not accept the run as a baseline.",
+        "",
+      ].join("\n"),
+    );
+    process.exit(3);
+  }
+  return w.load;
+}
+
+await settle("start");
 const preflight = readPreflight(MAX_LOAD, FORCE_LOADED);
+preflight.waitedSeconds = waited;
+if (MAX_LOAD > GATE_MAX_LOAD) {
+  process.stderr.write(
+    `perf: WARNING --max-load ${MAX_LOAD} is above the gate's bar of ${GATE_MAX_LOAD.toFixed(2)} for ${os.cpus().length} threads; verify:benchmark recomputes the bar and will refuse a run that crossed it\n`,
+  );
+}
 for (const w of preflight.warnings)
   process.stderr.write(`perf: WARNING ${w}\n`);
 if (!mayStart(preflight, FORCE_LOADED)) {
@@ -140,9 +223,9 @@ if (!mayStart(preflight, FORCE_LOADED)) {
     [
       `perf: refusing to start — the host is loaded (${preflight.loadavgStart?.join(" ")}).`,
       "  A wall-clock figure taken now would be about this machine's other work.",
-      "  Wait for it, raise the bar with --max-load, or pass --force-loaded to",
-      "  measure anyway: the run is then marked loaded and verify:benchmark will",
-      "  not accept it as a baseline.",
+      "  Pass --wait-for-load to wait for it, or --force-loaded to measure anyway:",
+      "  the run is then marked loaded and verify:benchmark will not accept it as",
+      "  a baseline.",
       "",
     ].join("\n"),
   );
@@ -166,8 +249,8 @@ if (flag("--preflight")) {
   const show = (v: unknown) => (v === null ? "(not exposed)" : String(v));
   process.stderr.write(
     [
-      `perf: preflight on ${hostKey({ os: process.platform, arch: process.arch, cpuModel: os.cpus()[0]?.model ?? "unknown" })}`,
-      `  load average   ${show(preflight.loadavgStart?.join(" ") ?? null)} (bar ${MAX_LOAD.toFixed(2)})`,
+      `perf: preflight on ${hostKey(HOST_ENV)}`,
+      `  load average   ${show(preflight.loadavgStart?.join(" ") ?? null)} (bar ${MAX_LOAD.toFixed(2)}${waited[0] ? `, after waiting ${waited[0]} s` : ""})`,
       `  governor       ${show(preflight.governor)}`,
       `  boost          ${show(preflight.boost)}${preflight.boostSource ? ` (${preflight.boostSource})` : ""}`,
       `  SMT            ${show(preflight.smt)}`,
@@ -304,7 +387,7 @@ for (const c of plan.cells) {
 /** Per cell, each round's blocks; undefined where that round's process failed. */
 const rounds = new Map<string, (number[] | undefined)[]>();
 for (let r = 0; r < PROCESSES; r++) {
-  preflight.loadavgRounds.push(readLoadavg());
+  preflight.loadavgRounds.push(await settle(`round ${r + 1}`));
   const order = roundOrder(plan, r).filter((c) => iters.has(c.id));
   process.stderr.write(
     `\nperf: round ${r + 1}/${PROCESSES}, ${order.length} process(es)\n`,
@@ -374,9 +457,7 @@ for (const p of plan.pairs) {
 
 const measured = new Set(cells.map((c) => c.id));
 const environment = {
-  os: process.platform,
-  arch: process.arch,
-  cpuModel: os.cpus()[0]?.model ?? "unknown",
+  ...HOST_ENV,
   cores: os.cpus().length,
   node: process.versions.node,
   kernel: `${os.type()} ${os.release()}`,
