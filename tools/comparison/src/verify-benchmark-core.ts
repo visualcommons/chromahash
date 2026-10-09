@@ -242,18 +242,18 @@ export const CROSS_RUN_TOLERANCE = 0.1;
 
 /**
  * How far a documented figure may sit from the committed run and still pass,
- * when it is not inside the cell's own interval.
+ * when it is not inside the cell's own range.
  *
- * Half of §0's 10% host bar. A documented figure is transcribed from one run,
- * and §0's procedure commits a second that may sit anywhere within 10% of the
- * first; holding the document to the run *exactly* made every re-measurement
- * rewrite nearly every value, so the diff of a re-run was noise and a real
- * change could not be seen in it. 5% absorbs the motion of nearly every cell
- * between two sweeps the host bar accepts — the one pair this document has
- * evidence for spread at most 5.5%, with almost every cell far tighter — while
- * a change the size of the bar itself still fails. It is the resolution of the
- * document, stated: a ratio claim within 5% of 1, such as §5's SIMD gain, is
- * checked only to that resolution.
+ * Half of §0's 10% host bar — a resolution chosen, not a noise level measured.
+ * Holding the document to the run *exactly* made every re-measurement rewrite
+ * nearly every value, so the diff of a re-run was noise and a real change could
+ * not be seen in it. With half the bar, a figure is rewritten only when it
+ * moved more than half of what the bar lets two runs of the host differ by,
+ * and a change the size of the bar always is. How many figures a re-run on
+ * this host moves past 5% is not known yet: the one pair of sweeps this host
+ * has compared was never committed, so its agreement is unverified (§0), and
+ * the first committed pair will say. A ratio claim within 5% of 1, such as §5's
+ * SIMD gain, is checked only to that resolution — and for its direction.
  */
 export const TOLERANCE = 0.05;
 
@@ -1483,10 +1483,20 @@ export interface Counters {
  *  - `interval` — it lies inside the cell's own interval across processes
  *                 (widened by half the last written digit, for the rounding).
  *  - `band`     — it lies within TOLERANCE of the measured value: within
- *                 SHARE_FLOOR_POINTS for a stage
- *                 share, and within TOLERANCE × 100 points for a percentage
- *                 that is a difference of two timings.
- *  - `outside`  — none of these; `--fix` rewrites it.
+ *                 SHARE_FLOOR_POINTS for a stage share, and for a percentage
+ *                 that is a difference of two timings, within TOLERANCE of
+ *                 the ratio it stands for (−36.3% is 0.637×, so ±3.2 points).
+ *  - `outside`  — none of these, or a figure that states a direction the
+ *                 measurement does not have; `--fix` rewrites it.
+ *
+ * **Direction.** A ratio other than 1× and a timing percentage other than 0%
+ * say which way something went — a speedup or a slowdown, a saving or a cost
+ * — and that is the claim a reader takes from them. A band around the value
+ * can straddle the neutral point: "2% faster" sits within 5% of a measured 1%
+ * slowdown. So such a figure must also be on the measured side of neutral; a
+ * stated 1.03× against a measured 0.99× fails, and `--fix` writes 0.99×. A
+ * figure that rounds to neutral as written ("1.00×", "0%") states no
+ * direction. A stage share is not a direction and is exempt.
  *
  * Until the methods revision this was `exact` alone, against one run's rounded
  * output, so a re-run moved most values in the document and `--fix` rewrote
@@ -1507,6 +1517,7 @@ export function agreement(
   const shown = `${rounded.toFixed(doc.decimals)}${suffixOf(doc.unit)}`;
   if (Math.abs(rounded - doc.value) < 1e-9) return { verdict: "exact", shown };
   const half = 0.5 * 10 ** -doc.decimals;
+  if (reversed(doc, m, rule, half)) return { verdict: "outside", shown };
   const iv = measured.interval;
   if (iv) {
     const lo = Math.min(iv[0], iv[1]) / scale;
@@ -1519,12 +1530,36 @@ export function agreement(
     doc.unit === "percent"
       ? rule === "share"
         ? SHARE_FLOOR_POINTS
-        : TOLERANCE * 100
+        : // A timing percentage p stands for the ratio 1 + p/100; 5% of that.
+          TOLERANCE * Math.abs(100 + m)
       : TOLERANCE * Math.abs(m);
   return {
     verdict: Math.abs(doc.value - m) <= tol + half + 1e-12 ? "band" : "outside",
     shown,
   };
+}
+
+/**
+ * Whether a documented ratio or timing percentage states a direction — it is
+ * further from neutral (1×, 0%) than its own rounding — that the measured
+ * value does not share. See `agreement`.
+ */
+function reversed(
+  doc: DocNumber,
+  m: number,
+  rule: "share" | "default",
+  half: number,
+): boolean {
+  const neutral =
+    doc.unit === "ratio"
+      ? 1
+      : doc.unit === "percent" && rule === "default"
+        ? 0
+        : null;
+  if (neutral === null) return false;
+  const stated = doc.value - neutral;
+  if (Math.abs(stated) <= half + 1e-12) return false;
+  return Math.sign(stated) * Math.sign(m - neutral) < 0;
 }
 
 const suffixOf = (unit: Unit): string =>

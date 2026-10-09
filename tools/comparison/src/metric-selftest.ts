@@ -2333,19 +2333,59 @@ const est = (value: number, interval: [number, number] | null = null) => ({
       "band",
     ],
     [
-      "difference 4 points",
-      agreement(num(-32.3, "percent", 1), est(-36.3)).verdict,
+      "difference 3 points of a 0.637x ratio (relative 4.7%)",
+      agreement(num(-33.3, "percent", 1), est(-36.3)).verdict,
       "band",
+    ],
+    [
+      "difference 4 points of a 0.637x ratio (relative 6.3%)",
+      agreement(num(-32.3, "percent", 1), est(-36.3)).verdict,
+      "outside",
     ],
     [
       "difference 7 points",
       agreement(num(-29.3, "percent", 1), est(-36.3)).verdict,
       "outside",
     ],
+    [
+      "a 2% gain stated, a 1% loss measured: in band, wrong way",
+      agreement(num(2, "percent", 0), est(-1)).verdict,
+      "outside",
+    ],
+    [
+      "a 2% gain stated, 4% measured: same way, in band",
+      agreement(num(2, "percent", 0), est(4)).verdict,
+      "band",
+    ],
+    [
+      "1.03x stated, 0.99x measured: in band, wrong way",
+      agreement(num(1.03, "ratio", 2), est(0.99)).verdict,
+      "outside",
+    ],
+    [
+      "1.00x states no direction",
+      agreement(num(1.0, "ratio", 2), est(0.98)).verdict,
+      "band",
+    ],
+    [
+      "0% states no direction",
+      agreement(num(0, "percent", 0), est(-1.2)).verdict,
+      "band",
+    ],
+    [
+      "a slowdown inside its range is still a slowdown",
+      agreement(num(1.02, "ratio", 2), est(0.995, [0.98, 1.03])).verdict,
+      "outside",
+    ],
+    [
+      "a stage share has no direction",
+      agreement(num(0.3, "percent", 1), est(-0.1), "share").verdict,
+      "band",
+    ],
   ];
   const wrong = cases.filter(([, got, want]) => got !== want);
   check(
-    `a value passes exactly, inside its interval, or within ±${TOLERANCE * 100}% — and fails outside all three`,
+    `a value passes exactly, inside its range, or within ±${TOLERANCE * 100}% (relative, for a timing percentage) — and fails outside all three, or on the wrong side of 1x or 0%`,
     TOLERANCE <= CROSS_RUN_TOLERANCE && wrong.length === 0,
     wrong.length === 0
       ? `${cases.length} cases`
@@ -3203,6 +3243,20 @@ for (const order of ["full first", "bounded first"] as const) {
   const countWrong = checkSweepClaims("widest 5.0%", R, ctx, [widest]);
   const countFill = checkSweepClaims("widest TBD%", R, ctx, [widest]);
   const filled = applyEdits("§2 prices at TBD ms", [], tbd.edits);
+  // A sentence stating a gain, against a measured loss within the band.
+  const gainClaim = (measured: number): SweepClaim => ({
+    what: "gain",
+    pattern: /the measured gain is (TBD|[\d.]+)%/,
+    unit: "percent",
+    decimals: 0,
+    resolve: () => measured,
+  });
+  const gainWrongWay = checkSweepClaims("the measured gain is 2%", R, ctx, [
+    gainClaim(-1),
+  ]);
+  const gainRightWay = checkSweepClaims("the measured gain is 2%", R, ctx, [
+    gainClaim(3),
+  ]);
   check(
     "a sweep figure is filled from a TBD, pending without a cell, banded, and held for every cell it speaks for",
     tbd.placeholders === 1 &&
@@ -3218,7 +3272,9 @@ for (const order of ["full first", "bounded first"] as const) {
       wrapped.failures.length === 0 &&
       countRight.failures.length === 0 &&
       countWrong.failures.length === 1 &&
-      countFill.edits[0]?.text === "5.2",
+      countFill.edits[0]?.text === "5.2" &&
+      gainWrongWay.failures.length === 1 &&
+      gainRightWay.failures.length === 0,
     `tbd=${JSON.stringify(tbd.edits)} pending=${pending.pending} in=${details(inBand.failures)} out=${JSON.stringify(outBand.edits)} flat=${details(flat("all 104 us").failures)} wrapped=${details(wrapped.failures)}`,
   );
 }

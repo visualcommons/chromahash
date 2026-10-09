@@ -194,18 +194,24 @@ are estimates from that budget, not measurements; each run records its own
 `wallSeconds`.
 
 **How a figure is checked.** A documented value passes when it is the
-measured value rounded as written, when it lies inside the cell's interval, or
-when it is within **±5%** of the committed run — half of the 10% host bar, wide
-enough to absorb the motion between two sweeps the bar accepts (the one pair
-this host has evidence for spread at most 5.5%, almost every cell far less)
-and narrow enough that a change the size of the bar still fails. A stage share
+measured value rounded as written, when it lies inside the cell's range, or
+when it is within **±5%** of the committed run. The 5% is half of the 10% host
+bar, and it is a resolution chosen rather than a noise level measured: a
+figure is rewritten only when it moved more than half of what the bar lets
+two runs of the host differ by, and a change the size of the bar always is.
+How many figures a re-run on this host moves past it is not known yet — the
+one pair of sweeps this host has compared was never committed, so that
+agreement is unverified — and the first committed pair will say. A stage share
 passes within half a point, whatever its size: §1 records two
 recordings back to back agreeing within 0.4 points. A percentage that is a
 difference of two timings (§4's "vs shipped", §5's "2%") is held to the same 5%
-on its ratio. `--fix` rewrites only what is outside, so a re-run on a stable
-host rewrites almost nothing, and what it does rewrite has moved. That is the
-document's resolution, stated: a claim within 5% of 1 — §5's SIMD gain — is
-checked to "within 5%", no finer. Every figure the prose restates is bound
+on the ratio it stands for — §4's −36.3% is 0.637×, so ±3.2 points. A ratio or
+timing percentage that states a direction must also keep it: a figure written
+as a speedup fails against a measured slowdown however small the difference,
+and `--fix` writes the measured side; one that rounds to 1× or 0% as written
+states none. `--fix` rewrites only what is outside. That is the document's
+resolution, stated: a claim within 5% of 1 — §5's SIMD gain — is checked to
+"within 5%" and to its sign, no finer. Every figure the prose restates is bound
 the same way, and one that needs a measurement nobody has committed is written
 `TBD` and fails by name.
 
