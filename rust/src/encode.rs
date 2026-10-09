@@ -2319,4 +2319,132 @@ mod tests {
             assert_levers_reproduce(*t, w, h, &rgba, *tier);
         }
     }
+
+    // ── Header-field quantizers at sweep widths ──────────────────────────
+    //
+    // The shipped widths (8-bit aspect, linear scale grid) take the early
+    // return or the linear branch, so the goldens above never reach the
+    // coarse-aspect or µ-law-scale arithmetic. These pin it directly.
+
+    #[test]
+    fn aspect_quantizer_is_the_identity_at_eight_bits_and_wider() {
+        for byte in 0..=255u8 {
+            for bits in [8u32, 9] {
+                assert_eq!(quantize_aspect(byte, bits), (byte as u32, byte));
+                assert_eq!(dequantize_aspect(byte as u32, bits), byte);
+            }
+        }
+    }
+
+    #[test]
+    fn aspect_quantizer_rounds_onto_the_symmetric_grid() {
+        // At `bits` < 8 the grid is 128 + k·2^(8−bits) for codes
+        // k + 2^(bits−1) in [0, 2^bits), clamped to [0, 255]; the code is
+        // round_half_away_from_zero((byte − 128) / step) + centre, clamped.
+        #[rustfmt::skip]
+        let cases: &[(u32, u8, u32, u8)] = &[
+            // bits = 4: step 16, centre 8.
+            (4, 0, 0, 0), (4, 1, 0, 0), (4, 8, 0, 0), (4, 9, 1, 16),
+            (4, 96, 6, 96), (4, 120, 7, 112), (4, 121, 8, 128), (4, 128, 8, 128),
+            (4, 135, 8, 128), (4, 136, 9, 144), (4, 191, 12, 192), (4, 232, 15, 240),
+            // 255 rounds to code 16, past the top code 15: the clamp holds it.
+            (4, 255, 15, 240),
+            // bits = 1: step 128, centre 1. Two codes, portrait and square.
+            (1, 0, 0, 0), (1, 64, 0, 0), (1, 65, 1, 128), (1, 128, 1, 128), (1, 255, 1, 128),
+            // bits = 7: step 2, centre 64.
+            (7, 0, 0, 0), (7, 127, 63, 126), (7, 128, 64, 128), (7, 129, 65, 130),
+            (7, 254, 127, 254), (7, 255, 127, 254),
+        ];
+        for &(bits, byte, code, recon) in cases {
+            assert_eq!(
+                quantize_aspect(byte, bits),
+                (code, recon),
+                "bits={bits} byte={byte}"
+            );
+            assert_eq!(
+                dequantize_aspect(code, bits),
+                recon,
+                "bits={bits} code={code}"
+            );
+        }
+        // Every code of a 4-bit field, including the clamped bottom one.
+        let grid: Vec<u8> = (0..16).map(|c| dequantize_aspect(c, 4)).collect();
+        let want: Vec<u8> = (0..16).map(|k| (k * 16) as u8).collect();
+        assert_eq!(grid, want);
+    }
+
+    #[test]
+    fn aspect_quantizer_picks_the_nearest_grid_byte() {
+        // A property over every byte and width: the reconstruction is the
+        // decoder's own dequantization of the code, the code fits the field,
+        // and no grid byte is nearer the input.
+        for bits in 1..=7u32 {
+            let grid: Vec<u8> = (0..1u32 << bits)
+                .map(|c| dequantize_aspect(c, bits))
+                .collect();
+            for byte in 0..=255u8 {
+                let (code, recon) = quantize_aspect(byte, bits);
+                assert!(code < 1 << bits, "bits={bits} byte={byte} code={code}");
+                assert_eq!(recon, grid[code as usize], "bits={bits} byte={byte}");
+                let err = (recon as i32 - byte as i32).abs();
+                for &g in &grid {
+                    assert!(
+                        err <= (g as i32 - byte as i32).abs(),
+                        "bits={bits} byte={byte}: {recon} is farther than {g}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn coarse_aspect_field_reaches_the_hash_and_the_decoder() {
+        // 4:1 is aspect byte 191, which a 4-bit field codes as 12 (byte 192).
+        // The encoder writes the code into bits 8..12, and the decoder sizes
+        // its render from the reconstructed byte, not the source's.
+        let t = Tunables {
+            aspect_bits: 4,
+            ..Tunables::DEFAULT
+        };
+        let rgba = lever_image(8, 2, false, 3);
+        let hash = encode_with(8, 2, &rgba, Gamut::Srgb, &t, 1);
+        assert_eq!(hash.len(), body_len_bytes(&t, false, 1));
+        assert_eq!(crate::bitpack::read_bits(&hash, 8, 4), 12);
+        let (w, h, _) = crate::decode::decode_to_with(&hash, &t, Gamut::Srgb);
+        assert_eq!((w, h), crate::aspect::decode_output_size(192, 1));
+    }
+
+    #[test]
+    fn scale_quantizer_linear_grid() {
+        // code = round_half_away_from_zero((2^bits − 1) · clamp01(scale / range)).
+        assert_eq!(quantize_scale(0.0, 0.5, 6, 0.0), 0);
+        assert_eq!(quantize_scale(0.25, 0.5, 6, 0.0), 32); // 31.5 rounds up
+        assert_eq!(quantize_scale(0.5, 0.5, 6, 0.0), 63);
+        assert_eq!(quantize_scale(0.9, 0.5, 6, 0.0), 63); // clamped
+        assert_eq!(quantize_scale(0.1, 0.125, 5, 0.0), 25); // 24.8
+        assert_eq!(dequantize_scale(32, 0.5, 6, 0.0), 32.0 / 63.0 * 0.5);
+        assert_eq!(dequantize_scale(63, 0.5, 6, 0.0), 0.5);
+        assert_eq!(dequantize_scale(0, 0.5, 6, 0.0), 0.0);
+    }
+
+    #[test]
+    fn scale_quantizer_mu_law_grid() {
+        // `scale_mu` > 0 compands the code: 0.05 of a 0.5 range is x = 0.1,
+        // and ln(1 + 5·0.1) / ln 6 = 0.2263, so the code is round(63 · 0.2263)
+        // = 14 where the linear grid gives round(6.3) = 6.
+        assert_eq!(quantize_scale(0.05, 0.5, 6, 5.0), 14);
+        assert_eq!(quantize_scale(0.05, 0.5, 6, 0.0), 6);
+        assert_eq!(
+            dequantize_scale(14, 0.5, 6, 5.0),
+            mu_expand(14.0 / 63.0, 5.0) * 0.5
+        );
+        assert!(dequantize_scale(14, 0.5, 6, 5.0) < dequantize_scale(14, 0.5, 6, 0.0));
+        // Every code round-trips through its own reconstruction on both grids.
+        for mu in [0.0, 5.0] {
+            for code in 0..=63u32 {
+                let s = dequantize_scale(code, 0.5, 6, mu);
+                assert_eq!(quantize_scale(s, 0.5, 6, mu), code, "mu={mu} code={code}");
+            }
+        }
+    }
 }
