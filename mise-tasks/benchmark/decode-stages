@@ -13,8 +13,9 @@
 # invocation, merged like perf-stages.json and for the same reasons (see
 # mise-tasks/benchmark/stages): §1.1 is three columns, each its own
 # invocation, gated by `verify:benchmark`. The recorder's dirty probe excludes
-# its own two artifacts and nothing else, so §0's procedure can record §1 and
-# §1.1 back to back before committing either.
+# the measurement outputs — its own two artifacts and the per-host sweep
+# baselines — and nothing else, so `benchmark:session` can record §1 and §1.1
+# in any order relative to the sweeps' copy, before committing any of them.
 #
 # ITERS scales inversely with the cost of one decode, so each column times a
 # comparable interval: §1.1 is recorded with
