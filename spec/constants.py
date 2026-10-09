@@ -170,7 +170,8 @@ LAYOUT_B = AcLayout(
 # Layout T0: the v1 DEFAULT-TIER layout (the shipped default at code 1). At a 32-byte
 # budget the AC payload is 202 bits, and spending it on 28 luma coefficients at
 # 4 bits plus 15 chroma at 3 beats LAYOUT_B's 26@5 / 9@4 split by 2.09% mean
-# ΔE00 on the never-tuned holdout split (spec/EXPERIMENTS.md §4.5; the 3.5% this
+# ΔE00 on the old photographic holdout, since spent (spec/EXPERIMENTS.md §4.5,
+# §11.12; the 3.5% this
 # comment used to quote was the whole v0.7 recipe, not the layout alone):
 #   no-alpha = 54 prefix + 28·4 L + 2·15·3 chroma                 = 256 bits
 #   alpha    = 54 + 9 + 22·4 L + 2·3·3 chroma + 28·3 alpha        = 253 bits
@@ -181,7 +182,8 @@ LAYOUT_B = AcLayout(
 # where every one of its 16 images improves. That is in-sample evidence. The
 # never-tuned alpha holdout that put it at −16.2% mean ΔE00 has been retired (one
 # of its images was deleted from Wikimedia Commons), so that figure can no longer
-# be reproduced (spec/EXPERIMENTS.md §11.12).
+# be reproduced (spec/EXPERIMENTS.md §11.12). Its replacement, the sealed alpha
+# holdout v2, confirms the row out of sample at −13.66% (§13.7, register C2).
 LAYOUT_T0 = AcLayout(
     l_tiers=((28, 4), (0, 4)),
     c_count=15,

@@ -2242,6 +2242,96 @@ const BINDINGS: Binding[] = [
     rowBaselines: { "code 4 − code 3": "code 3 (411 B)" },
   },
 
+  // §13.7 — the register's confirmations on the sealed holdout2 splits, read
+  // once at the freeze. Each row names its own baseline at equal bytes; the
+  // entry-family Holm and baseline-relative guards are register-verdict's.
+  {
+    kind: "rows",
+    section: "13.7",
+    table: 0,
+    sweep: "c1-confirm-photo-holdout2",
+    baseline: "SS10 constants (incumbent)",
+    columns: {
+      ΔE00: "diff:ciede2000",
+      "95% CI of Δ": "diffCi:ciede2000",
+      relative: "ciedeDeltaPct",
+    },
+    aliases: {
+      "code 1: `sel_hv=0.30` vs shipped": "sel_hv=0.30",
+      "code 1: isotropic vs shipped": "isotropic (aniso=0 hv=0)",
+      "code 1: pre-adoption v0.6-derived vs shipped":
+        "pre-adoption v0.6-derived",
+      "code 1: `sel_hv=0 aniso=1.2` vs shipped": "sel_hv=0 aniso=1.2",
+      "code 0: `L18@4 C7@3` vs shipped `L19@4 C6@3`": "compact 21B L18@4 C7@3",
+      "code 0: `L20@4 C5@3` vs shipped": "compact 21B L20@4 C5@3",
+      "code 0: `L26@3 C6@3` vs shipped": "compact 21B L26@3 C6@3",
+      "code 0: the old shipped shape vs shipped": "compact 21B shipped shape",
+    },
+    rowBaselines: {
+      "code 0: `L18@4 C7@3` vs shipped `L19@4 C6@3`": "compact 21B L19@4 C6@3",
+      "code 0: `L20@4 C5@3` vs shipped": "compact 21B L19@4 C6@3",
+      "code 0: `L26@3 C6@3` vs shipped": "compact 21B L19@4 C6@3",
+      "code 0: the old shipped shape vs shipped": "compact 21B L19@4 C6@3",
+    },
+  },
+  {
+    kind: "rows",
+    section: "13.7",
+    table: 1,
+    sweep: "rd-budget-holdout2",
+    resolve: byFormatThenBytes,
+    labelColumn: 0,
+    columns: {
+      bytes: "bytes",
+      "ΔE00 ↓": "meanCiede",
+      "SSIM2 ↑": "meanSsimulacra2",
+      "Butter ↓": "meanButteraugli",
+      "DSSIM ↓": "meanDssim",
+    },
+    aliases: { "**ChromaHash compact**": "ChromaHash@21B" },
+    note: "C1's ThumbHash admission, laid out as §11.12's positioning table.",
+  },
+  {
+    kind: "rows",
+    section: "13.7",
+    table: 2,
+    sweep: "v07-holdout-alpha-holdout2",
+    baseline: "SHIPPED A5@4 L20@5 C9@4",
+    columns: {
+      ΔE00: "diff:ciede2000",
+      "95% CI of Δ": "diffCi:ciede2000",
+      relative: "ciedeDeltaPct",
+    },
+    aliases: {
+      "code 1: `A28@3 L22@4 C3@3` vs `A5@4 L20@5 C9@4`":
+        "ADOPTED A28@3 L22@4 C3@3",
+      "code 0: `A16@3 L12@4 C1@3` vs the old compact shape":
+        "compact 21B ADOPTED A16@3 L12@4 C1@3",
+      "`alpha_ac_fit` on vs off, code 1": "  + alpha_ac_fit",
+    },
+    rowBaselines: {
+      "code 0: `A16@3 L12@4 C1@3` vs the old compact shape":
+        "compact 21B shipped shape",
+      "`alpha_ac_fit` on vs off, code 1": "ADOPTED A28@3 L22@4 C3@3",
+    },
+  },
+  {
+    kind: "rows",
+    section: "13.7",
+    table: 3,
+    sweep: "alpha-tier1-holdout2",
+    baseline: "SHIPPED A5@4 L20@5 C9@4",
+    columns: {
+      ΔE00: "diff:ciede2000",
+      "95% CI of Δ": "diffCi:ciede2000",
+      relative: "ciedeDeltaPct",
+    },
+    aliases: {
+      "code 2: the shipped base row vs `A5@4 L20@5 C9@4`":
+        "A28@3 L22@4 C3@3 (t0 winner)",
+    },
+  },
+
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
   {
@@ -2405,6 +2495,12 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
     "`verdict` is the section's conclusion in words, not a measurement",
   "11.12#1":
     "`verdict` is the section's conclusion in words, not a measurement. `holdout` is UNREPRODUCIBLE: one of the alpha holdout images, cutout-wordmark-aflac, was deleted from Wikimedia Commons on 2026-08-25 as a copyright violation and has no archived copy, so the alpha holdout split is retired, v07-holdout-alpha --split holdout refuses to run, and the column has no committed result. It stays unbound until a new sealed alpha split replaces it (#83)",
+  "13.7#0":
+    "`p Holm` is Holm across the register entry's judged comparisons (the family the freeze names), and `guards (CI)` is read against each row's named baseline; the rows binding computes Holm across the sweep's arms and guards against row 0 only, so both columns are re-derived by `mise run register-verdict C1|C2` instead",
+  "13.7#2":
+    "`p Holm` is Holm across the register entry's judged comparisons (the family the freeze names), and `guards (CI)` is read against each row's named baseline; the rows binding computes Holm across the sweep's arms and guards against row 0 only, so both columns are re-derived by `mise run register-verdict C1|C2` instead",
+  "13.7#3":
+    "`p Holm` is Holm across the register entry's judged comparisons (the family the freeze names), and `guards (CI)` is read against each row's named baseline; the rows binding computes Holm across the sweep's arms and guards against row 0 only, so both columns are re-derived by `mise run register-verdict C1|C2` instead",
   "13.1#1":
     "`Spur / Deficit` is the ratio of two columns in the same row, both of which are bound; it is the reading, not a measurement",
 };
@@ -2489,6 +2585,10 @@ const EXPECTED_CELLS: Record<string, number> = {
   "13.5#0": 72,
   "13.6#0": 64,
   "13.6#1": 8,
+  "13.7#0": 24,
+  "13.7#1": 10,
+  "13.7#2": 9,
+  "13.7#3": 3,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */

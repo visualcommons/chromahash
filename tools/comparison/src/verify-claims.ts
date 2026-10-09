@@ -155,7 +155,8 @@ const REGISTER: Claim[] = [
   {
     file: "rust/src/constants.rs",
     what: "the v0.7 recipe on holdout",
-    pattern: /never-tuned holdout split at\n\s*\/\/\/ −([\d.]+)% mean ΔE00/,
+    pattern:
+      /old photographic holdout \(since\n\s*\/\/\/ spent, EXPERIMENTS\.md §11\.12\) at\n\s*\/\/\/ −([\d.]+)% mean ΔE00/,
     section: "7.12",
     row: "**L28C15 stack**",
     column: "Δ%",
@@ -347,7 +348,8 @@ const REGISTER: Claim[] = [
   {
     file: "rust/src/constants.rs",
     what: "the 4-bit layout on holdout",
-    pattern: /by ([\d.]+)% mean ΔE00 on the never-tuned holdout split/,
+    pattern:
+      /by ([\d.]+)% mean ΔE00 on the old photographic holdout \(since spent,/,
     section: "4.5",
     row: "L28@4 C15@3",
     column: "Δ%",
@@ -356,10 +358,33 @@ const REGISTER: Claim[] = [
   {
     file: "spec/constants.py",
     what: "the 4-bit layout on holdout",
-    pattern: /split by ([\d.]+)% mean\n# ΔE00 on the never-tuned holdout split/,
+    pattern:
+      /split by ([\d.]+)% mean\n# ΔE00 on the old photographic holdout, since spent/,
     section: "4.5",
     row: "L28@4 C15@3",
     column: "Δ%",
+    transform: abs,
+  },
+  // The alpha row's out-of-sample confirmation (register C2), quoted beside
+  // the retired split's unreproducible −16.2% in both constant tables.
+  {
+    file: "rust/src/constants.rs",
+    what: "the alpha row on alpha holdout v2",
+    pattern: /confirms the row out of sample at −([\d.]+)% \(§13\.7/,
+    section: "13.7",
+    table: 2,
+    row: "code 1: A28@3 L22@4 C3@3 vs A5@4 L20@5 C9@4",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/constants.py",
+    what: "the alpha row on alpha holdout v2",
+    pattern: /confirms the row out of sample at −([\d.]+)% \(§13\.7/,
+    section: "13.7",
+    table: 2,
+    row: "code 1: A28@3 L22@4 C3@3 vs A5@4 L20@5 C9@4",
+    column: "relative",
     transform: abs,
   },
   {
