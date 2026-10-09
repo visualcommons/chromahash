@@ -754,6 +754,7 @@ mise run arms artifact-ladder-common-grid --baseline "code 2 (108 B)"   # §13.2
 mise run arms artifact-ladder-common-grid --baseline "code 3 (411 B)"   # §13.2
 mise run arms --summary                                                 # §13.5
 mise run arms --seed-sensitivity                                        # §13.5
+mise run arms --resample-change                                         # §13.5
 
 # Check the tables in this file against the results above
 mise run verify:experiments
@@ -851,6 +852,14 @@ decode), two passes reduce the gamma-sRGB squared error it optimizes by
 | `refine_obj=0` (gamma sRGB), 2 passes | 11.686 | **0.26%** |
 | `refine_obj=0`, 2 passes + dc + scale | 11.741 | **0.73%** |
 | `refine_obj=2` (clipped OKLAB), 2 passes | 11.634 | −0.19% |
+
+(Paired against `shipped` over the 31 images, `mise run arms refine-ablation`:
+the +0.26% row is [−0.004, +0.065] and the +0.73% row [−0.004, +0.202], both
+straddling zero; the −0.19% row is [−0.043, −0.001]. None of the three
+survives Holm across the sweep's 16 arms. Drawn at 1,000 resamples the +0.73%
+row excluded zero, [+0.001, +0.218], and the −0.19% row did not; §13.5 counts
+both among the seven intervals the move to 10,000 turned. So the table is a
+consistent direction on 31 images, not a resolved size.)
 
 A 15–31% reduction in decoded-pixel squared error buys a **+0.26% increase** in
 ΔE00, and pushing it to 17–31% with the DC and scale coordinates buys **+0.73%**
@@ -1255,15 +1264,20 @@ Paired per image over the same split (adopted minus pre-adoption 40 B, ΔE00,
 `bootstrapCI`'s default seed and resamples), the two splits disagree:
 
 - **Holdout:** 11.298 against 11.307, a difference of −0.009 with CI
-  [−0.098, +0.082]; the adopted recipe wins on 15 of 32 images. The two are
+  [−0.098, +0.077]; the adopted recipe wins on 15 of 32 images. The two are
   **not separable**. That is consistent with "matches at 40 B", and it does not
   support "better than".
 - **Tune:** 11.481 against 11.292, a difference of +0.188 with CI
-  [+0.071, +0.312]; the adopted recipe wins on 8 of 31. Here the 40-byte
+  [+0.069, +0.310]; the adopted recipe wins on 8 of 31. Here the 40-byte
   pre-adoption format is **better**, so the saving on tune is less than 20%.
   The adopted recipe does separate from the pre-adoption format at 32 B on tune
-  (−0.175, CI [−0.276, −0.079]), so the tune saving lies strictly between 0 and
+  (−0.175, CI [−0.273, −0.077]), so the tune saving lies strictly between 0 and
   20%. The ladder has no arm between 32 and 40 B to place it more precisely.
+  The three intervals are `mise run arms budget-ladder-tuned --baseline "40B
+  pre-adoption L34/C12"` (and `"32B pre-adoption L26/C9"`) and `mise run arms
+  final-candidates-holdout --baseline "40B pre-adoption L34/C12"
+  --baseline-from budget-ladder-tuned-holdout`, each the `32B SHIPPED (ref)`
+  or `32B L28C15 stack` row.
 
 So the evidence bounds the saving at no more than 20%, and reaches 20% only on
 the split where the two arms cannot be told apart. Neither split's figure is the
@@ -1520,9 +1534,9 @@ now that §10 has made the optimized recipe the default.
 > and this section withdrew it, because no sweep produced a pre-adoption ladder
 > on this corpus. `budget-ladder-tuned` now does, and §7.12 restates it: on
 > holdout the adopted recipe at 32 B (11.298) and the pre-adoption format at
-> 40 B (11.307) are not separable (paired CI [−0.098, +0.082]), so the 20% is an
+> 40 B (11.307) are not separable (paired CI [−0.098, +0.077]), so the 20% is an
 > equal-quality match there and no better. On tune the 40-byte pre-adoption
-> format is separably better (paired CI [+0.071, +0.312]), so the saving there is
+> format is separably better (paired CI [+0.069, +0.310]), so the saving there is
 > less than 20%. The saving is therefore at most 20%, and no single split's
 > figure stands for it. The −3.72% above remains the figure the pre-registered
 > rule is judged on.
@@ -2197,10 +2211,10 @@ because a sweep that quietly changes budget mid-campaign reports a comparison no
 | layout | ΔE00 | Δ% | paired 95% CI | Holm p | win/n |
 |---|---|---|---|---|---|
 | **shipped** L20@5 C9@4 | 15.689 | — | — | — | — |
-| L22@4 C14@3 (the arithmetic in §8.1) | 15.541 | −0.94% | [+0.053, +0.251] | 0.0756 | 15/16 |
-| L29@4 C9@3 | 15.497 | −1.22% | [+0.058, +0.353] | 0.0066 | 12/16 |
-| L36@3 C10@3 | 15.432 | −1.64% | [+0.093, +0.452] | 0.0066 | 13/16 |
-| **L43@3 C11@2** | **15.401** | **−1.84%** | [+0.107, +0.518] | 0.0066 | 13/16 |
+| L22@4 C14@3 (the arithmetic in §8.1) | 15.541 | −0.94% | [+0.053, +0.253] | 0.0756 | 15/16 |
+| L29@4 C9@3 | 15.497 | −1.22% | [+0.057, +0.361] | 0.0066 | 12/16 |
+| L36@3 C10@3 | 15.432 | −1.64% | [+0.094, +0.459] | 0.0066 | 13/16 |
+| **L43@3 C11@2** | **15.401** | **−1.84%** | [+0.109, +0.517] | 0.0066 | 13/16 |
 
 The shipped layout is significantly worse than a dozen alternatives, and the
 direction is consistent: alpha mode wants **more luma coefficients at lower
@@ -2248,8 +2262,8 @@ optimum, but it is close to it and the gap does not justify a second constant:
 | layout | ΔE00 | Δ% | paired 95% CI | Holm p |
 |---|---|---|---|---|
 | **DEFAULT** L28@4 C15@3 | 10.450 | — | — | — |
-| pre-adoption L26@5 C9@4 | 10.569 | +1.14% | [−0.300, +0.022] | 1.0000 |
-| L30@4 C13@3 | 10.394 | −0.54% | [+0.008, +0.102] | 0.5599 |
+| pre-adoption L26@5 C9@4 | 10.569 | +1.14% | [−0.294, +0.034] | 1.0000 |
+| L30@4 C13@3 | 10.394 | −0.54% | [+0.009, +0.104] | 0.5599 |
 | L40@4 C7@3 | 10.344 | −1.01% | includes zero | 1.0000 |
 
 Exactly one arm reaches significance, by 0.54%. Graphics wants slightly more
@@ -2267,9 +2281,9 @@ the §8 adoption was chosen on photographs, and it holds on content it never saw
 | variant | ΔE00 | Δ% | paired 95% CI | Holm p |
 |---|---|---|---|---|
 | **DEFAULT** (full stack) | 10.450 | — | — | — |
-| no selection weights | 10.513 | +0.60% | [−0.229, +0.076] | 1.0000 |
-| no encoder search (`scale_fit=0 ac_nearest=0`) | 10.577 | +1.22% | **[−0.228, −0.039]** | 0.0320 |
-| pre-adoption (everything off) | 10.766 | **+3.02%** | **[−0.597, −0.114]** | 0.0018 |
+| no selection weights | 10.513 | +0.60% | [−0.225, +0.085] | 1.0000 |
+| no encoder search (`scale_fit=0 ac_nearest=0`) | 10.577 | +1.22% | **[−0.226, −0.040]** | 0.0320 |
+| pre-adoption (everything off) | 10.766 | **+3.02%** | **[−0.577, −0.112]** | 0.0018 |
 | `sel_hv = 0.30` | 10.410 | −0.39% | includes zero | 1.0000 |
 
 Turning the adoption off costs 3.02% on graphics, significantly. Note the last
@@ -2289,14 +2303,14 @@ adopted pair as incumbent and an explicit isotropic arm.
 | variant | ΔE00 | Δ% | paired 95% CI | Holm p | win/n |
 |---|---|---|---|---|---|
 | **DEFAULT** aniso 1.2 / hv 0.15 | 11.481 | — | — | — | — |
-| isotropic (aniso 0, hv 0) | 11.455 | −0.23% | [−0.063, +0.126] | 1.0000 | 16/31 |
-| **aniso 0.9 / hv 0.0** | **11.393** | **−0.76%** | **[+0.035, +0.149]** | 0.0432 | 18/31 |
-| **aniso 1.2 / hv 0.0** (shipped aniso, `sel_hv` off) | **11.421** | **−0.52%** | **[+0.016, +0.111]** | 0.2112 | 20/31 |
-| aniso 1.2 / hv 0.30 | 11.525 | 0.39% | [−0.119, +0.025] | 1.0000 | 14/31 |
-| aniso 2.0 / hv 0.30 | 11.578 | 0.85% | **[−0.183, −0.020]** | 0.2438 | 13/31 |
-| aniso 1.2 / hv −0.15 | 11.464 | −0.14% | [−0.063, +0.085] | 1.0000 | 20/31 |
-| aniso 1.2 / hv −0.30 | 11.549 | 0.59% | [−0.176, +0.026] | 1.0000 | 13/31 |
-| aniso 3.2 / hv 0.0 | 11.632 | 1.32% | **[−0.260, −0.064]** | 0.0056 | 8/31 |
+| isotropic (aniso 0, hv 0) | 11.455 | −0.23% | [−0.061, +0.123] | 1.0000 | 16/31 |
+| **aniso 0.9 / hv 0.0** | **11.393** | **−0.76%** | **[+0.031, +0.149]** | 0.0432 | 18/31 |
+| **aniso 1.2 / hv 0.0** (shipped aniso, `sel_hv` off) | **11.421** | **−0.52%** | **[+0.015, +0.109]** | 0.2112 | 20/31 |
+| aniso 1.2 / hv 0.30 | 11.525 | 0.39% | [−0.120, +0.024] | 1.0000 | 14/31 |
+| aniso 2.0 / hv 0.30 | 11.578 | 0.85% | **[−0.178, −0.022]** | 0.2438 | 13/31 |
+| aniso 1.2 / hv −0.15 | 11.464 | −0.14% | [−0.062, +0.089] | 1.0000 | 20/31 |
+| aniso 1.2 / hv −0.30 | 11.549 | 0.59% | [−0.177, +0.026] | 1.0000 | 13/31 |
+| aniso 3.2 / hv 0.0 | 11.632 | 1.32% | **[−0.259, −0.063]** | 0.0056 | 8/31 |
 
 Three findings, and the first two are uncomfortable:
 
@@ -2414,28 +2428,30 @@ tier code is spent on it.
 
 | layout | ΔE00 | Δ% vs shipped shape | paired CI vs the leader | Holm p vs the leader |
 |---|---|---|---|---|
-| shipped shape L13@5 C6@4 | 12.620 | — | **[−0.673, −0.301]** | 0.0028 |
+| shipped shape L13@5 C6@4 | 12.620 | — | **[−0.666, −0.292]** | 0.0028 |
 | **L19@4 C6@3** | **12.156** | −3.67% | (leader) | (leader) |
-| L26@3 C6@3 | 12.166 | −3.59% | [−0.085, +0.069] | 1.0000 |
-| L18@4 C7@3 | 12.171 | −3.55% | [−0.076, +0.028] | 1.0000 |
-| L16@4 C8@3 | 12.244 | −2.98% | **[−0.184, −0.000]** | 0.6775 |
-| L24@3 C7@3 | 12.189 | −3.41% | [−0.106, +0.033] | 1.0000 |
-| L20@4 C5@3 | 12.243 | −2.98% | [−0.209, +0.004] | 0.6775 |
-| L35@3 C2@2 (count-maximal) | 12.280 | −2.69% | **[−0.398, +0.124]** | 1.0000 |
-| L19@5 C2@4 (precision-maximal) | 12.444 | −1.40% | **[−0.499, −0.127]** | 0.0028 |
+| L26@3 C6@3 | 12.166 | −3.59% | [−0.085, +0.067] | 1.0000 |
+| L18@4 C7@3 | 12.171 | −3.55% | [−0.073, +0.028] | 1.0000 |
+| L16@4 C8@3 | 12.244 | −2.98% | **[−0.184, +0.007]** | 0.6775 |
+| L24@3 C7@3 | 12.189 | −3.41% | [−0.102, +0.033] | 1.0000 |
+| L20@4 C5@3 | 12.243 | −2.98% | [−0.204, +0.002] | 0.6775 |
+| L35@3 C2@2 (count-maximal) | 12.280 | −2.69% | **[−0.381, +0.124]** | 1.0000 |
+| L19@5 C2@4 (precision-maximal) | 12.444 | −1.40% | **[−0.486, −0.117]** | 0.0028 |
 
 The extremes are decisively rejected and the shipped shape is decisively beaten
 — by 3.67% — but **the leading five layouts are a plateau**: their paired CIs
-against the leader all include zero. Only `L16@4 C8@3` has separated from the
-group, and it separated downward. The photographic split still cannot choose
-among the five, and squeezing its guard metrics for a winner would be mining
-noise.
+against the leader all include zero. This section used to say `L16@4 C8@3`
+had separated from the group, downward, on an interval of [−0.184, −0.000]. That
+bound was zero to three places, and drawn at 10,000 resamples rather than 1,000
+(§13.5) the interval is [−0.184, +0.007]: it has not separated. The
+photographic split still cannot choose among the five, and squeezing its guard
+metrics for a winner would be mining noise.
 
-> **After Holm (§13.5):** `L16@4 C8@3` has not separated either. Against the
-> leader it adjusts to 0.68, and only the shipped shape and the
-> precision-maximal layout remain distinguishable. The count-maximal row's
-> interval, bold above, never excluded zero. The plateau is wider than five, and
-> the choice below does not rest on it.
+> **After Holm (§13.5):** `L16@4 C8@3` has not separated on the adjusted p
+> either. Against the leader it adjusts to 0.68, and only the shipped shape
+> and the precision-maximal layout remain distinguishable. The count-maximal
+> row's interval, bold above, never excluded zero. The plateau is wider than
+> five, and the choice below does not rest on it.
 
 The *identity* of the leader did move, though, and toward the layout that
 shipped: on the old corpus `L18@4 C7@3` led and `L19@4 C6@3` sat second, and
@@ -2488,11 +2504,11 @@ adopted row, −13.00%, to the digit:
 
 | alpha layout, 21 B | ΔE00 | Δ% | αMAE | more-opaque half (8) | paired CI vs the adopted row | guards (CI) |
 |---|---|---|---|---|---|---|
-| shipped shape A5@4 L9@5 C5@4 | 15.974 | — | 0.2625 | — | [−2.794, −1.361] | — |
-| A12@3 L15@4 C1@3 | 14.615 | −8.51% | 0.2144 | −7.67% | [−1.109, −0.378] | ok |
+| shipped shape A5@4 L9@5 C5@4 | 15.974 | — | 0.2625 | — | [−2.789, −1.392] | — |
+| A12@3 L15@4 C1@3 | 14.615 | −8.51% | 0.2144 | −7.67% | [−1.130, −0.361] | ok |
 | **A16@3 L12@4 C1@3** (adopted) | **13.898** | **−13.00%** | 0.1851 | **−9.42%** | — | ok |
-| A20@3 L9@4 C1@3 | 13.831 | −13.42% | 0.1795 | −9.03% | [−0.079, +0.221] | ok |
-| A24@3 L5@4 C2@3 | 13.738 | −14.00% | 0.1726 | −9.23% | [−0.096, +0.401] | ok |
+| A20@3 L9@4 C1@3 | 13.831 | −13.42% | 0.1795 | −9.03% | [−0.083, +0.215] | ok |
+| A24@3 L5@4 C2@3 | 13.738 | −14.00% | 0.1726 | −9.23% | [−0.103, +0.399] | ok |
 
 The adopted row is not the mean's best: `A24@3` is 1.0 pp ahead, and so is
 `A20@3` by 0.4 pp. But both paired intervals against the adopted row include
@@ -3091,13 +3107,13 @@ no hash.
 | variant | ΔE00 | Δ% | SSIM2 | Ring | Spur | paired 95% CI | Holm p | guards (means) | guards (CI) |
 |---|---|---|---|---|---|---|---|---|---|
 | shipped (no window) | 11.481 | — | −342.1 | 1.03 | 3.53 | — | — | (base) | (base) |
-| w_min 0.85 exp 1 | 11.518 | +0.33% | −344.1 | 0.79 | 2.44 | [−0.077, −0.003] | 0.0692 | FAIL | inconclusive |
-| w_min 0.7 exp 1 | 11.652 | +1.49% | −347.9 | 0.68 | 1.79 | [−0.267, −0.092] | 0.0014 | FAIL | FAIL |
-| w_min 0.7 exp 2 | 11.781 | +2.61% | −349.7 | 0.75 | 1.52 | [−0.427, −0.187] | 0.0014 | FAIL | FAIL |
-| w_min 0.5 exp 1 | 11.983 | +4.38% | −356.2 | 0.80 | 1.28 | [−0.707, −0.329] | 0.0014 | FAIL | FAIL |
-| w_min 0.5 exp 2 | 12.311 | +7.23% | −360.8 | 1.02 | 0.95 | [−1.105, −0.590] | 0.0014 | FAIL | FAIL |
-| luma only 0.7 exp 1 | 11.654 | +1.51% | −347.3 | 0.68 | 1.90 | [−0.261, −0.101] | 0.0014 | FAIL | FAIL |
-| chroma only 0.7 exp 1 | 11.484 | +0.03% | −342.7 | 1.03 | 3.58 | [−0.029, +0.029] | 0.8103 | ok | ok |
+| w_min 0.85 exp 1 | 11.518 | +0.33% | −344.1 | 0.79 | 2.44 | [−0.076, −0.003] | 0.0692 | FAIL | inconclusive |
+| w_min 0.7 exp 1 | 11.652 | +1.49% | −347.9 | 0.68 | 1.79 | [−0.269, −0.086] | 0.0014 | FAIL | FAIL |
+| w_min 0.7 exp 2 | 11.781 | +2.61% | −349.7 | 0.75 | 1.52 | [−0.428, −0.185] | 0.0014 | FAIL | FAIL |
+| w_min 0.5 exp 1 | 11.983 | +4.38% | −356.2 | 0.80 | 1.28 | [−0.711, −0.320] | 0.0014 | FAIL | FAIL |
+| w_min 0.5 exp 2 | 12.311 | +7.23% | −360.8 | 1.02 | 0.95 | [−1.108, −0.577] | 0.0014 | FAIL | FAIL |
+| luma only 0.7 exp 1 | 11.654 | +1.51% | −347.3 | 0.68 | 1.90 | [−0.261, −0.097] | 0.0014 | FAIL | FAIL |
+| chroma only 0.7 exp 1 | 11.484 | +0.03% | −342.7 | 1.03 | 3.58 | [−0.032, +0.029] | 0.8103 | ok | ok |
 
 Four things this settles.
 
@@ -3138,16 +3154,16 @@ incumbent and make the tightest instrument here meaningless.
 | variant | ΔE00 | Δ% | SSIM2 | DSSIM | Ring | Spur | paired 95% CI | Holm p | guards (means) | guards (CI) |
 |---|---|---|---|---|---|---|---|---|---|---|
 | t2 shipped (no window) | 9.670 | — | −213.2 | 0.2560 | 1.32 | 3.64 | — | — | (base) | (base) |
-| t2 w_min 0.85 exp 1 | 9.678 | +0.08% | −216.5 | 0.2549 | 1.03 | 2.62 | [−0.030, +0.011] | 0.9143 | FAIL | FAIL |
+| t2 w_min 0.85 exp 1 | 9.678 | +0.08% | −216.5 | 0.2549 | 1.03 | 2.62 | [−0.028, +0.011] | 0.9143 | FAIL | FAIL |
 | t2 w_min 0.7 exp 1 | 9.763 | +0.96% | −222.2 | 0.2544 | 0.87 | 1.99 | [−0.141, −0.050] | 0.0010 | FAIL | FAIL |
-| t2 w_min 0.5 exp 2 | 10.271 | +6.21% | −242.7 | 0.2562 | 1.01 | 1.26 | [−0.756, −0.463] | 0.0010 | FAIL | FAIL |
-| t2 luma only 0.7 exp 1 | 9.755 | +0.88% | −221.4 | 0.2544 | 0.88 | 2.02 | [−0.130, −0.049] | 0.0010 | FAIL | FAIL |
-| t2 chroma only 0.7 exp 1 | 9.678 | +0.08% | −214.0 | 0.2561 | 1.30 | 3.70 | [−0.035, +0.021] | 0.9143 | ok | inconclusive |
+| t2 w_min 0.5 exp 2 | 10.271 | +6.21% | −242.7 | 0.2562 | 1.01 | 1.26 | [−0.754, −0.460] | 0.0010 | FAIL | FAIL |
+| t2 luma only 0.7 exp 1 | 9.755 | +0.88% | −221.4 | 0.2544 | 0.88 | 2.02 | [−0.127, −0.048] | 0.0010 | FAIL | FAIL |
+| t2 chroma only 0.7 exp 1 | 9.678 | +0.08% | −214.0 | 0.2561 | 1.30 | 3.70 | [−0.036, +0.022] | 0.9143 | ok | inconclusive |
 
 The pattern holds, and the light arm gets interesting.
 
 At `w_min 0.85`, ΔE00 is **statistically free** — the paired CI is
-[−0.030, +0.011] and includes zero, on 31 images, from the instrument §11 built
+[−0.028, +0.011] and includes zero, on 31 images, from the instrument §11 built
 precisely to resolve differences this small. For that nothing, the arm buys a
 **28% cut in invented detail**, a **22% cut in ringing**, and a *better* DSSIM
 (0.2549 vs 0.2560).
@@ -3363,11 +3379,11 @@ against each other:
 
 | comparison | Spur Δ | paired 95% CI | Holm p |
 |---|---|---|---|
-| code 0 − code 2 | +0.496 | [−0.009, +1.015] | 0.0976 |
-| code 1 − code 2 | +0.048 | [−0.385, +0.453] | 0.7991 |
-| code 3 − code 2 | +0.735 | [+0.348, +1.154] | 0.0008 |
-| code 4 − code 2 | +0.742 | [+0.263, +1.182] | 0.0072 |
-| code 4 − code 3 | +0.007 | [−0.284, +0.258] | 0.9209 |
+| code 0 − code 2 | +0.496 | [+0.005, +1.023] | 0.0976 |
+| code 1 − code 2 | +0.048 | [−0.409, +0.461] | 0.7991 |
+| code 3 − code 2 | +0.735 | [+0.358, +1.159] | 0.0008 |
+| code 4 − code 2 | +0.742 | [+0.270, +1.195] | 0.0072 |
+| code 4 − code 3 | +0.007 | [−0.280, +0.261] | 0.9209 |
 
 `mise run arms artifact-ladder-common-grid --baseline "code 2 (108 B)"` prints
 the first four rows (and the same comparison for every other metric), and
@@ -3381,16 +3397,20 @@ Three findings, on one instrument.
    3.98 → 3.53 → **3.48** and then rises, 4.22 at code 3 and 4.22 at code 4.
    The two lowest cells are not separable, and this does not claim they are: a
    paired bootstrap over the same 31 photographs puts code 1 − code 2 at
-   **+0.048, 95% CI [−0.385, +0.453]**, straddling zero, and code 0 − code 2 at
-   +0.496 [−0.009, +1.015], barely straddling it. Calling code 2 *the minimum*
+   **+0.048, 95% CI [−0.409, +0.461]**, straddling zero, and code 0 − code 2 at
+   +0.496 [+0.005, +1.023], which clears zero by 0.005 and not after Holm
+   (0.0976). Drawn at 1,000 resamples it was [−0.009, +1.015] and straddled
+   zero; raising the count to 10,000 (§13.5) moved it across. A bound 0.005
+   from zero is the seed's to decide as much as the data's, so it is read as
+   unresolved here. Calling code 2 *the minimum*
    would be reading a 0.05-level gap this corpus cannot resolve — the mistake
    §11.5 declines to make when it calls its leading five layouts a plateau
    rather than crowning the top row.
 
    The **rise off that floor is what survives**: code 3 − code 2 is +0.735
-   [**+0.348, +1.154**] and code 4 − code 2 is +0.742 [**+0.263, +1.182**], both
+   [**+0.358, +1.159**] and code 4 − code 2 is +0.742 [**+0.270, +1.195**], both
    excluding zero. The top two are a plateau of their own — code 4 − code 3 is
-   +0.007 [−0.284, +0.258]. So the shape is two levels rather than five: a floor
+   +0.007 [−0.280, +0.261]. So the shape is two levels rather than five: a floor
    at codes 1–2, and a step up to codes 3–4 that stands **21%** above it while
    ΔE00 improves 30%. That codes 1–2 are also where §11.14 puts the format's
    strongest cross-format position is not a coincidence worth asserting from two
@@ -3558,7 +3578,8 @@ controls the familywise error at 0.05 whatever the dependence between the tests
 (they share an incumbent, so they are dependent). The p-value is a bootstrap
 test that inverts the same construction as the interval, at 10,000 resamples
 rather than 1,000, because at 1,000 the smallest reportable p (2/1,001) times 32
-already exceeds 0.05. The seven tables that quote a paired ΔE00 interval (§11.1,
+already exceeds 0.05. (The intervals were drawn at 1,000 until 2026-10 and are
+now drawn at 10,000 too; see the end of this section.) The seven tables that quote a paired ΔE00 interval (§11.1,
 §11.4 twice, §11.5, §11.10, §12.2 and §12.3) now carry the Holm p beside it. The
 family is always the whole committed sweep, never only the rows a table quotes:
 a table showing five arms of 29 was still chosen from 29.
@@ -3571,12 +3592,12 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 839 | 618 | 565 | 507 | 169 | 163 | 87 | 82 |
-| `selection-weights` | 28 | 13 | 2 | 1 | 27 | 0 | 13 | 14 |
+| all committed sweeps | 839 | 618 | 565 | 512 | 165 | 162 | 82 | 83 |
+| `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
 | `graphics-layout` | 28 | 1 | 0 | 16 | 12 | 0 | 7 | 5 |
-| `prefix-shrink` | 32 | 22 | 18 | 11 | 13 | 8 | 7 | 6 |
+| `prefix-shrink` | 32 | 22 | 18 | 12 | 12 | 8 | 6 | 6 |
 | `synthesis-window` | 7 | 6 | 5 | 1 | 1 | 5 | 0 | 1 |
 | `holdout-candidates-holdout` | 13 | 13 | 13 | 8 | 0 | 5 | 0 | 0 |
 | `final-candidates-holdout` | 16 | 16 | 16 | 13 | 1 | 2 | 0 | 1 |
@@ -3586,7 +3607,10 @@ when the 2026-09 re-measure committed the §6 sweeps no table had bound. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
 #102 then turned the one EXIF-rotated tune photograph upright and re-ran every
 tune result that scores it, which moved the first row and the
-`selection-weights` and `prefix-shrink` rows; the other six are as they were.)
+`selection-weights` and `prefix-shrink` rows; the other six are as they were.
+Raising the interval resample count to 10,000, below, moved the same three
+rows again, in the guard columns only: no ΔE00 count can move with it, because
+the p-values were already drawn at 10,000.)
 
 What it says:
 
@@ -3614,9 +3638,11 @@ What it says:
 3. **The SSIMULACRA2 guard is finer than these corpora resolve.** Its tolerance
    is 1.0 point, and a near-null arm's paired SSIMULACRA2 interval is several
    points either side of zero. §11.5's isotropic arm, for example, is
-   [−4.15, +7.03] (`mise run arms selection-weights`). Such an arm cannot be
-   `ok` however good it is, which is why 27 of `selection-weights`' 28 arms are
-   `inconclusive` (the 28th, `aniso 1.2 / hv 0`, is `ok`). That is not a verdict on those arms. It
+   [−4.01, +6.73] (`mise run arms selection-weights`). Such an arm cannot be
+   `ok` however good it is, which is why 26 of `selection-weights`' 28 arms are
+   `inconclusive`. The other two, `aniso 1.2 / hv 0` and `aniso 0.9 / hv 0`,
+   are `ok`; the second became `ok` when the intervals moved to 10,000
+   resamples. That is not a verdict on those arms. It
    says the tolerance and the sample size were never matched. A pre-registered
    criterion for v0.8 has to settle one of them before it is used.
 4. **The two verdicts part in both directions.** The arms that passed on means
@@ -3636,7 +3662,10 @@ That is deliberate, because it makes every quoted interval reproducible to the
 digit. Its cost is measured with `mise run arms --seed-sensitivity`, which
 re-derives every committed ΔE00 interval against its incumbent under 20 other
 seeds. Over the 54 results of the 2026-09 re-measure that is 839 intervals
-(it was 504 over the 36 results this section was first written against):
+(it was 504 over the 36 results this section was first written against).
+
+With the intervals drawn at 1,000 resamples, as they were when this section was
+written:
 
 * The largest move of either bound is 0.295 ΔE00, and the largest move relative
   to its own interval's width is 15.5%. (These are two separate maxima; this
@@ -3647,13 +3676,64 @@ seeds. Over the 54 results of the 2026-09 re-measure that is 839 intervals
 (23 and 14 before #102 re-scored the tune results with the one EXIF-rotated
 photograph upright; the two maxima did not move.)
 
-Among the rows this file quotes, §12.2's `w_min 0.85` [−0.077, −0.003] is one
-of the 26, and §11.1's `L22@4 C14@3` and §11.5's `aniso 0.9 / hv 0` are two of
-the 10. An interval whose bound
-sits within about a tenth of its width of zero is decided by the seed as much as
-by the data. The remedy is more resamples, not another seed. It would move every
-interval this file quotes, and the 2026-09 re-measure kept the method fixed so
-that its intervals stay comparable with this section's; the change is #88.
+Among the rows this file quoted, §12.2's `w_min 0.85` [−0.077, −0.003] was one
+of the 26, and §11.1's `L22@4 C14@3` and §11.5's `aniso 0.9 / hv 0` were two of
+the 10. An interval whose bound sits within about a tenth of its width of zero
+is decided by the seed as much as by the data. The remedy is more resamples, not
+another seed (#88).
+
+**The intervals are drawn at 10,000 resamples (2026-10).** That is the count the
+p-values already used, and `stats.ts` now has one constant,
+`BOOTSTRAP_RESAMPLES`, behind both, so an interval and the p-value of the same
+test are drawn over the same resamples. It had to land before any entry of
+[`V0.8-DECISIONS.md`](V0.8-DECISIONS.md) freezes, because a freeze pins the
+instrument. No per-image score moved: every committed result already carries
+the per-image values, so every interval was re-derived from them, and every
+table in this file was re-transcribed by `mise run verify:experiments --fix`.
+`mise run arms --resample-change` re-derives the same 839 intervals at seed 42
+at 1,000 and at 10,000 and counts what moved:
+
+* The largest move of either bound is 0.099 ΔE00.
+* 7 intervals change whether they exclude zero: four of `refine-ablation`'s
+  (`32B obj2 p2` now excludes zero; `32B obj0 p2 +dc`, `+scale` and
+  `+dc+scale` no longer do), `refine-objective`'s `obj3 wc=3 p4 +dc+scale`
+  (no longer), `prefix-shrink`'s `spend4b b_from_a (-5) L29C15` and
+  `embedded-tiers`' `t1 seq, trunc 48 B` (both now do). At 10,000 each has a
+  bound within 0.01 of zero. No table in this file quotes an interval for any
+  of the seven, but §7.1's quotes two of them as point means
+  (`refine_obj=0`, 2 passes + dc + scale, and `refine_obj=2`, 2 passes), and
+  now says what their intervals are.
+* 0 Holm verdicts change, by construction: the p-values were drawn at 10,000
+  before and after.
+* At 1,000, 7 arms' intervals disagreed with their own raw p on whether the
+  difference is significant at 0.05. At 10,000, none of the 839 does.
+* 6 arms' `guards (CI)` verdicts change, which moved the table at the head of
+  this section from 507 / 169 / 163 (`ok` / `inconclusive` / `FAIL`) to
+  512 / 165 / 162. Five go `inconclusive` → `ok`: `compact-tier`'s
+  `L26@3 C6@3`, `compact-tier-graphics`' `L19@4 C6@3` and `L20@3 C9@3`,
+  `prefix-shrink`'s `spend4b b_from_a +mu8 (-5) L29C15`, and §11.5's
+  `aniso 0.9 / hv 0`. One goes `FAIL` → `inconclusive`: `alpha-ceiling`'s
+  `A64@2 L8@4 C5@3`.
+
+Two intervals this file quotes against a reference other than the incumbent
+also crossed zero, and their sections now say so: §11.10's `L16@4 C8@3`
+against the leader, [−0.184, −0.000] → [−0.184, +0.007], so it no longer
+separates from the plateau; and §13.2's spurious-detail code 0 − code 2,
+[−0.009, +1.015] → [+0.005, +1.023], which still does not survive Holm.
+
+The seed check, re-run at 10,000:
+
+* The largest move of either bound is 0.077 ΔE00, and the largest move relative
+  to its own interval's width is 4.8%.
+* 7 arms' intervals change whether they exclude zero under some seed, down from
+  26.
+* 10 arms change their Holm verdict, as before. Raising the interval count
+  could not move these, because the p-values were already drawn at 10,000:
+  a Holm-adjusted p within its Monte Carlo error of 0.05 still turns on the
+  seed. That is the case R1's seed condition in `V0.8-DECISIONS.md` exists for.
+
+§12.2's `w_min 0.85` is no longer among the interval flips. §11.1's
+`L22@4 C14@3` and §11.5's `aniso 0.9 / hv 0` are still two of the 10 Holm flips.
 
 **Correlations.** `stratify` now prints a Fisher-z interval for each `r`, the
 t-test p, a Holm p across the five tiers, and the threshold for its n: at
