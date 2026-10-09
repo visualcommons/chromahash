@@ -759,6 +759,18 @@ mise run arms --resample-change                                         # §13.5
 # results' paired spread. Re-scores nothing and reads no sealed image (§13.6).
 mise run mde                                                            # §13.6
 
+# The register's two confirmations on the sealed holdout2 splits (§13.7). Each
+# was read once, at the freeze commit 2047f7d; the reads refuse to overwrite a
+# committed holdout2 result, so these four lines cannot run again as written.
+mise run sweep c1-confirm-photo --split holdout2 --decision C1          # §13.7
+node tools/comparison/dist/rd-budget.js --split holdout2 --decision C1  # §13.7
+mise run sweep v07-holdout-alpha --split holdout2 --decision C2         # §13.7
+mise run sweep alpha-tier1 --split holdout2 --decision C2               # §13.7
+# Their verdicts, re-derived from the committed results (re-scores nothing)
+mise run register-verdict C1                                            # §13.7
+mise run register-verdict C2                                            # §13.7
+mise run arms --seed-sensitivity c1-confirm-photo-holdout2 v07-holdout-alpha-holdout2 alpha-tier1-holdout2
+
 # Check the tables in this file against the results above
 mise run verify:experiments
 mise run verify:experiments --list-unbound
@@ -803,7 +815,9 @@ listed here so their absence is not mistaken for a result being withheld:
 `low-budget-allocation` and `v06-vs-v1` were run and superseded before this
 file's round-3 numbers were taken, and their outputs no longer survive on disk;
 `capped-tier1-vs-tier0`, `scalefactor-bands-t1` and `tier-precision-vs-count`
-were written but never run. None of them informed an adopted constant.
+have not been run on the current corpus. `RATIONALE.md` quotes results from
+all three taken on the pre-2026-08 corpus, whose outputs were not kept. None of
+them informed an adopted constant.
 `compact-tier-alpha` was listed here too, as written but never run. That was
 wrong in the way that matters: its committed result reproduces the tune figure
 §11.12 quotes for the adopted compact alpha row to the digit, so the run that
@@ -2926,7 +2940,7 @@ Deliberately unchanged, each with the number that left it alone:
 
 | Kept | Why |
 |---|---|
-| `sel_hv = 0.15` | 0.30 was better on two tune corpora and **worse on holdout** (§11.12); on the current corpus it is worse on tune too, and `hv = 0` is better — unvalidated on holdout (§11.5) |
+| `sel_hv = 0.15` | 0.30 was better on two tune corpora and **worse on holdout** (§11.12); on the current corpus it is worse on tune too, and `hv = 0` is better — unvalidated on holdout (§11.5). Confirmed on `holdout2` (§13.7): neither 0.30 nor 0 is distinguishable from 0.15 |
 | `aniso_oblique = 1.2` | Isotropic is statistically indistinguishable on tune and worse on holdout (§11.5, §11.12) |
 | µ-law µ_L = 5 / µ_C = 8 | Every alternative family is worse, including corpus-trained codebooks (§11.6) |
 | No deadzone | +0.08% once the knob could move the output (§11.7) |
@@ -3596,7 +3610,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 839 | 618 | 565 | 512 | 165 | 162 | 82 | 83 |
+| all committed sweeps | 864 | 639 | 586 | 525 | 170 | 169 | 86 | 84 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3607,7 +3621,9 @@ against its incumbent:
 | `final-candidates-holdout` | 16 | 16 | 16 | 13 | 1 | 2 | 0 | 1 |
 
 (The first row sums every committed result, so it grew from 504 arms to 839
-when the 2026-09 re-measure committed the §6 sweeps no table had bound. The
+when the 2026-09 re-measure committed the §6 sweeps no table had bound, and
+to 864 when the register's confirmations committed their three holdout2
+sweeps (§13.7). The prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
 #102 then turned the one EXIF-rotated tune photograph upright and re-ran every
 tune result that scores it, which moved the first row and the
@@ -3849,3 +3865,92 @@ smartphone, six skin-tone and four chroma-floor images among the 32), and the
 alpha one two per covariate cell (#107), so their spread may differ, and
 nothing may read them to check before an entry freezes. The power is 0.8 and α is 0.05;
 `mise run mde --power 0.9` or `--alpha` restate the tables at other values.
+
+### 13.7 The confirmations, out of sample (2026-10)
+
+`V0.8-DECISIONS.md` registers two confirmations: C1 for the photographic
+constants and C2 for the alpha constants. They exist because the old holdout
+was spent (§11.12). `sel_hv = 0.15` had been selected on it, and the alpha
+evidence died with the retired alpha split. Both entries froze at `2047f7d`,
+with every judged comparison and its baseline named before the read. Each read
+its sealed split once, from a clean tree, at B = 10,000. The four results are
+committed as `*-holdout2.json`, and `mise run register-verdict C1|C2`
+re-derives every row below from them.
+
+**C1: the photographic constants, on the 32 images of `holdout2` (Holm across
+all eight comparisons).**
+
+| comparison (arm vs baseline, equal bytes) | ΔE00 | 95% CI of Δ | relative | p Holm | guards (CI) |
+|---|---|---|---|---|---|
+| code 1: `sel_hv=0.30` vs shipped | +0.003 | [−0.055, +0.055] | +0.02% | 1.0000 | inconclusive |
+| code 1: isotropic vs shipped | +0.047 | [−0.027, +0.125] | +0.41% | 0.8271 | inconclusive |
+| code 1: pre-adoption v0.6-derived vs shipped | +0.258 | [+0.139, +0.389] | +2.22% | 0.0016 | FAIL |
+| code 1: `sel_hv=0 aniso=1.2` vs shipped | −0.013 | [−0.057, +0.034] | −0.11% | 1.0000 | inconclusive |
+| code 0: `L18@4 C7@3` vs shipped `L19@4 C6@3` | +0.008 | [−0.068, +0.075] | +0.07% | 1.0000 | FAIL |
+| code 0: `L20@4 C5@3` vs shipped | +0.096 | [+0.025, +0.188] | +0.77% | 0.0190 | ok |
+| code 0: `L26@3 C6@3` vs shipped | −0.186 | [−0.282, −0.088] | −1.50% | 0.0016 | ok |
+| code 0: the old shipped shape vs shipped | +0.412 | [+0.272, +0.557] | +3.31% | 0.0016 | FAIL |
+
+The shipped incumbents score 11.617 at code 1 and 12.468 at code 0. No
+comparison clears R1's first condition, a 3% improvement, so **the shipped
+constants stand at both codes**. The MDE the freeze quoted for this family is
+1.14%, so this verdict also excludes an improvement of 3% or more; it does not
+merely fail to show one. Three readings go beyond the verdict:
+
+1. **`sel_hv = 0.15` now has out-of-sample evidence.** Neither 0.30 nor 0 is
+   distinguishable from it (+0.02% and −0.11%, both intervals straddling
+   zero). `hv = 0` cleared zero on tune (§11.5) and does not here.
+2. **The adoption replicates.** The pre-adoption v0.6-derived row is 2.22%
+   worse, significant after Holm, and fails its guards: §8's gain holds on
+   photographs nothing had tuned on.
+3. **One compact layout is better, below the bar.** `L26@3 C6@3` is 1.50%
+   better than the shipped `L19@4 C6@3`. That is significant after Holm, every
+   guard is `ok` on intervals, and no seed moves it. §11.10 called the compact
+   tier a plateau, tie-broken across corpora, and this split leans the other
+   way. It is under R1's 3%, so it changes nothing in 1.0, and a reopening
+   would start from it.
+
+**The compact tier's admission holds out of sample.** In `rd-budget` on the
+same split, the shipped compact row beats ThumbHash on all four metrics:
+
+| | bytes | ΔE00 ↓ | SSIM2 ↑ | Butter ↓ | DSSIM ↓ |
+|---|---|---|---|---|---|
+| ThumbHash | 20.8 | 13.350 | −411.2 | 34.46 | 0.2819 |
+| **ChromaHash compact** | **21** | **12.468** | **−398.4** | **32.83** | **0.2802** |
+
+**The smartphone stratum, reported and not judged (register Q12).** The
+smartphone-camera images are harder: the incumbent's mean ΔE00 is 13.178 on
+the nine `sealed-phone-*` images against 11.006 on the other 23. The
+constants' ordering does not change within the stratum. At code 1, `sel_hv=0`
+is −0.03%, `sel_hv=0.30` −0.11% and isotropic +0.96% on the phone images. At
+code 0, `L26@3 C6@3` is −0.71% there and −1.86% on the rest. Nine images resolve
+none of these; the stratum is a description, not a test.
+
+**C2: the alpha constants, on the 14 images of alpha holdout v2 (Holm across
+all four comparisons).**
+
+| comparison (replacement vs the row it replaced) | ΔE00 | 95% CI of Δ | relative | p Holm | guards (CI) |
+|---|---|---|---|---|---|
+| code 1: `A28@3 L22@4 C3@3` vs `A5@4 L20@5 C9@4` | −2.110 | [−3.326, −1.280] | −13.66% | 0.0008 | ok |
+| code 0: `A16@3 L12@4 C1@3` vs the old compact shape | −1.592 | [−2.822, −0.758] | −10.19% | 0.0008 | ok |
+| `alpha_ac_fit` on vs off, code 1 | +0.040 | [−0.124, +0.183] | +0.30% | 0.5927 | inconclusive |
+
+The fourth comparison reads `alpha-tier1` rather than `v07-holdout-alpha`:
+
+| comparison (replacement vs the row it replaced) | ΔE00 | 95% CI of Δ | relative | p Holm | guards (CI) |
+|---|---|---|---|---|---|
+| code 2: the shipped base row vs `A5@4 L20@5 C9@4` | −1.132 | [−1.852, −0.550] | −8.99% | 0.0008 | ok |
+
+**All three replacements replicate under R1**, and `alpha_ac_fit = false`
+stands. The code-1 row's −13.66% sits near its tune figure (−17.10%, §11.3) and
+the retired split's unreproducible −16.2%. The code-2 base row's −8.99% sits
+near its tune −11.95% (§11.11). This is the out-of-sample evidence the alpha
+allocation lost in #83.
+
+**Condition 4.** Re-derived under 20 other bootstrap seeds, none of the 25
+ΔE00 intervals in the three sweep results changes whether it excludes zero,
+and no Holm verdict turns; the largest bound move is 0.059 ΔE00.
+
+Both entries are therefore `decided`, and the 1.0 freeze (`V0.8-DECISIONS.md`
+A1) stands on them.
+
