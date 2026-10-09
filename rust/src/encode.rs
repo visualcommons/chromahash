@@ -2447,4 +2447,169 @@ mod tests {
             }
         }
     }
+
+    // ── AC quantization job ──────────────────────────────────────────────
+
+    /// A job over `values` with the given tiers and quantizer, at the L
+    /// channel's range and scale width and no band split.
+    fn test_job<'a>(
+        values: &'a [f64],
+        tiers: &'a [(usize, u32)],
+        family: crate::constants::Companding,
+        table: &'a crate::constants::QuantTable,
+        deadzone: f64,
+    ) -> AcQuantJob<'a> {
+        AcQuantJob {
+            values,
+            tiers,
+            split: values.len(),
+            band_gain: 1.0,
+            max_scale: 0.5,
+            code_max: 63,
+            scale_bits: 6,
+            scale_mu: 0.0,
+            family,
+            mu: 5.0,
+            table,
+            deadzone,
+            accel: None,
+        }
+    }
+
+    const MU_LAW: crate::constants::Companding = crate::constants::Companding::MuLaw;
+    const NO_TABLE: crate::constants::QuantTable = crate::constants::QuantTable::EMPTY;
+
+    #[test]
+    fn bits_at_walks_the_precision_tiers() {
+        let tiers = [(3usize, 6u32), (2, 5)];
+        let job = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.0);
+        let widths: Vec<u32> = (0..7).map(|i| job.bits_at(i)).collect();
+        // Past the last tier the last width holds.
+        assert_eq!(widths, [6, 6, 6, 5, 5, 5, 5]);
+        let tiers = [(0usize, 6u32), (4, 5)];
+        let job = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.0);
+        assert_eq!(job.bits_at(0), 5);
+        // A third tier is where the running base must accumulate: with two,
+        // the last tier and the past-the-end fallback share a width.
+        let tiers = [(2usize, 6u32), (1, 5), (4, 4)];
+        let job = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.0);
+        let widths: Vec<u32> = (0..8).map(|i| job.bits_at(i)).collect();
+        assert_eq!(widths, [6, 6, 5, 4, 4, 4, 4, 4]);
+    }
+
+    #[test]
+    fn quantize_one_scores_reconstruction_error() {
+        // 4-bit µ-law (µ = 5): levels 0, 0.0583, 0.1337, 0.2310, … At 0.182
+        // the companded rounding picks code 10 (0.2310), but 9 (0.1337)
+        // reconstructs nearer, so the search moves to it.
+        let tiers = [(1usize, 4u32)];
+        let job = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.0);
+        assert_eq!(job.quant(0, 0.182), 10);
+        assert_eq!(quantize_one(&job, 0, 0.182, 1.0, false), 10);
+        assert_eq!(quantize_one(&job, 0, 0.182, 1.0, true), 9);
+        // A zero scale is the exact-zero centre code, search or not.
+        assert_eq!(quantize_one(&job, 0, 0.3, 0.0, true), 7);
+    }
+
+    #[test]
+    fn quantize_one_lets_a_fired_deadzone_stand() {
+        let tiers = [(1usize, 4u32)];
+        let open = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.0);
+        // Premise: without a deadzone the search takes 0.05 to code 8.
+        assert_eq!(quantize_one(&open, 0, 0.05, 1.0, true), 8);
+        let dz = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.1);
+        // Below the deadzone: the centre, and the search does not undo it.
+        assert_eq!(quantize_one(&dz, 0, 0.05, 1.0, true), 7);
+        assert_eq!(quantize_one(&dz, 0, -0.05, 1.0, true), 7);
+        // Above it the search still runs.
+        assert_eq!(quantize_one(&dz, 0, 0.182, 1.0, true), 9);
+        // The threshold is strict: |value| == deadzone is not deadzoned.
+        let at = test_job(&[], &tiers, MU_LAW, &NO_TABLE, 0.182);
+        assert_eq!(at.quant(0, 0.182), 10);
+        assert_eq!(quantize_one(&at, 0, 0.182, 1.0, true), 9);
+    }
+
+    #[test]
+    fn quantize_one_keeps_the_companded_code_on_an_exact_tie() {
+        // Exactly representable levels: 0.375 is 0.125 from both 0.25 and
+        // 0.5. The table quantizer rounds the tie away from zero (code 9, 0.5)
+        // and the strict search keeps it rather than stepping down to 8.
+        let mut table = crate::constants::QuantTable::EMPTY;
+        table.levels[..3].copy_from_slice(&[0.25, 0.5, 0.75]);
+        table.len = 3;
+        let tiers = [(1usize, 4u32)];
+        let job = test_job(
+            &[],
+            &tiers,
+            crate::constants::Companding::Table,
+            &table,
+            0.0,
+        );
+        assert_eq!(job.quant(0, 0.375), 9);
+        assert_eq!(quantize_one(&job, 0, 0.375, 1.0, true), 9);
+    }
+
+    #[test]
+    fn quantize_ac_channel_scale_fit_modes() {
+        // 0.1853 sits on the 12/13 boundary of the 4-bit µ-law grid (at a
+        // normalized 0.6174): over the raw scale 0.3 it is 0.6177 (code 13),
+        // over the dequantized 0.3016 it is 0.6144 (code 12).
+        let values = [0.3, -0.12, 0.05, 0.21, -0.27, 0.1853];
+        let raw = 0.3;
+        let tiers = [(values.len(), 4u32)];
+        let job = test_job(&values, &tiers, MU_LAW, &NO_TABLE, 0.0);
+        let fit = |mode: u32| {
+            let t = Tunables {
+                scale_fit: mode,
+                ac_nearest: false,
+                ..Tunables::DEFAULT
+            };
+            quantize_ac_channel(&job, raw, &t)
+        };
+        let codes_at = |s: f64| -> Vec<u32> {
+            values
+                .iter()
+                .map(|&v| compand_quantize(v / s, 4, MU_LAW, 5.0, &NO_TABLE, 0.0))
+                .collect()
+        };
+        // Both nominal modes write round(63 · 0.3 / 0.5) = 38. Mode 0 normalizes
+        // by the raw scale, mode 1 by the scale the decoder will see.
+        let nominal = 38;
+        let deq = dequantize_scale(nominal, 0.5, 6, 0.0);
+        assert_eq!(fit(0), (nominal, codes_at(raw)));
+        assert_eq!(fit(1), (nominal, codes_at(deq)));
+        // Mode 2 searches every code by reconstruction SSE; here it lands
+        // somewhere neither nominal mode does.
+        let (code, codes) = fit(2);
+        assert_eq!(codes, codes_at(dequantize_scale(code, 0.5, 6, 0.0)));
+        assert_ne!((code, codes.clone()), fit(0));
+        assert_ne!((code, codes), fit(1));
+        assert_ne!(fit(0), fit(1), "premise: the two nominal modes differ");
+    }
+
+    #[test]
+    fn scale_search_keeps_the_smaller_code_on_an_exact_tie() {
+        // Levels 0.5 and 1.0 are exact, and dequantize_scale(4) is exactly
+        // 2·dequantize_scale(2), so a lone coefficient equal to
+        // dequantize_scale(2) reconstructs with zero error at code 2 (level
+        // 1.0) and at code 4 (level 0.5). The strict search keeps code 2.
+        let mut table = crate::constants::QuantTable::EMPTY;
+        table.levels[..2].copy_from_slice(&[0.5, 1.0]);
+        table.len = 2;
+        let v = dequantize_scale(2, 0.5, 6, 0.0);
+        assert_eq!(dequantize_scale(4, 0.5, 6, 0.0), 2.0 * v);
+        let values = [v];
+        let tiers = [(1usize, 4u32)];
+        let job = test_job(
+            &values,
+            &tiers,
+            crate::constants::Companding::Table,
+            &table,
+            0.0,
+        );
+        assert_eq!(
+            quantize_ac_channel(&job, v, &Tunables::DEFAULT),
+            (2, vec![9])
+        );
+    }
 }
