@@ -1329,7 +1329,10 @@ mod tests {
             signs.push(v > 0.0);
         }
         // The signs are the hash-seeded xorshift64* stream: fixed for a hash,
-        // different for another.
+        // different for another. The pinned pattern is exactly period 3
+        // because each sign is `r & 1`, xorshift64*'s weakest output bit. That
+        // pins current behaviour, not a desired property: taking the sign
+        // from `r >> 63` is expected to change this vector and re-pin it.
         assert_eq!(
             signs,
             [
