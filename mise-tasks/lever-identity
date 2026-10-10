@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Check the byte-identical accel levers on every fixture image, encode and decode"
+#MISE depends=["build:compare"]
+#
+# Usage: mise run lever-identity [--out tools/comparison/results/lever-identity.json]
+#
+# Encodes every fetched fixture image (sealed holdout2 photographs skipped)
+# with every accel lever off and all seven on, at 100 px and 512 px for tier
+# codes 0-4 and at full resolution for codes 0-2, and requires identical
+# hashes and identical decoded pixels. Takes about an hour on the 7800X3D.
+#
+# A file task rather than an inline one, because mise appends an inline task's
+# arguments instead of passing them as "$@".
+set -euo pipefail
+
+cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin
+node tools/comparison/dist/lever-identity.js "$@"
