@@ -1,0 +1,794 @@
+{
+  "levers": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1",
+  "images": 193,
+  "encodePairs": 2509,
+  "decodePairs": 2509,
+  "differing": 0,
+  "diffs": [],
+  "provenance": {
+    "rev": "da2dd66b404ddc3652a90cf30bd9d8593bff7a2c",
+    "dirty": false,
+    "dirtyPaths": [],
+    "iqaCli": "unused",
+    "config": "lever-identity",
+    "configSha256": "",
+    "binaries": {
+      "rust/target/release/examples/encode_stdin": "8e4dc486cd10279d1b7dc3ccf225bffc68d69d4d3ba8d8c4be5140c54010b0f3"
+    },
+    "node": "v24.18.1",
+    "corpus": [
+      {
+        "name": "natural/chroma-black-and-white.jpg",
+        "sha256": "0ea4fa6c16e8923ec0b3658a5cebb6bee4ba32ae35bca0641b69b9fe64e27f50"
+      },
+      {
+        "name": "natural/chroma-glass-reinforcements.jpg",
+        "sha256": "7dc132db36c390e2be4b2b343a52b09525e24a8cbeb671113bfc4072bed707eb"
+      },
+      {
+        "name": "natural/chroma-orange-tree.jpg",
+        "sha256": "6c6e79cbb6bb1aae2aec8b4d5f8daebc4ca27ea76b452a942c126531fe6104f0"
+      },
+      {
+        "name": "natural/chroma-strawberries.jpg",
+        "sha256": "a0c528991ab1648ac771175404312ddce981a20abbc9e081039e5056d267bbc4"
+      },
+      {
+        "name": "natural/chroma-stripes.jpg",
+        "sha256": "3c1db5104fe00d895aa9ffd4a6fd5d5ecb21a92b2f969ed4a33f50f5767b83ca"
+      },
+      {
+        "name": "natural/chroma-the-old-monochrome.jpg",
+        "sha256": "b6e5db7f2b2225939b08ea4d7de2c0e5ba2fa590a6c1dda7bc682de5c759024b"
+      },
+      {
+        "name": "natural/chroma-windows-toronto-city.jpg",
+        "sha256": "ebd77b5d88886ee03a4f38be2a87c88ab364beab124270c20a3e52c9a8df1027"
+      },
+      {
+        "name": "natural/chroma-yellow-wall.jpg",
+        "sha256": "a3f86e606f25888467ae29e2c27534bbdbc9abedfab119439f90282613f7e5d9"
+      },
+      {
+        "name": "natural/natural-agraulis-vanillae-isla.jpg",
+        "sha256": "04c47c24d08d713222691350748206f79cbbf40b14ce0833110c13f495b39b40"
+      },
+      {
+        "name": "natural/natural-andrew-jackson-state.jpg",
+        "sha256": "9756e13cbf24c588ce74fce684c8917d10e63545b057c59bcbbcba22b5fffa08"
+      },
+      {
+        "name": "natural/natural-autumn.jpg",
+        "sha256": "1e931ee0d6f6e83d8665a425201dbbbfcac8ae202da51c0aafdeea98a9139b5e"
+      },
+      {
+        "name": "natural/natural-bird-cherry-ermine.jpg",
+        "sha256": "bf2a30c065bc167f8d7a364b05412af44b106f780087cda1b196e4d96573c012"
+      },
+      {
+        "name": "natural/natural-bridge.jpg",
+        "sha256": "2d56f201e4976a357e8b698bcfe0f9526995a27f5ff0898d18c1b2eeb85cd328"
+      },
+      {
+        "name": "natural/natural-building.jpg",
+        "sha256": "26f764ef6a1cb713bae0fa2849bf672d9ba5c68b9361f8af6e5ff3c4165b9279"
+      },
+      {
+        "name": "natural/natural-cafe.jpg",
+        "sha256": "3e51ddb45a7dea7de7c675d011637586b5bf7f5d69431453f80f94f62b31abb2"
+      },
+      {
+        "name": "natural/natural-city.jpg",
+        "sha256": "0f274e4fa2aba5e4e77013b848585a215b1979cebc183b2305bdb6acec267e6d"
+      },
+      {
+        "name": "natural/natural-coast.jpg",
+        "sha256": "136b905c1d7f74ba432a99af3ec94c731eed9d9d339bb3c90a691c7e7efd417f"
+      },
+      {
+        "name": "natural/natural-dish-meatloaf-served.jpg",
+        "sha256": "cacedc4705bfd6433849756addb692920b1819db2b187dd8ef3c7922f9d35017"
+      },
+      {
+        "name": "natural/natural-egretta-thula-las.jpg",
+        "sha256": "00e9a470e07721ac2d384a437fe922f66ee82c27cc81c106e8a2097a14bfb6c1"
+      },
+      {
+        "name": "natural/natural-facade.jpg",
+        "sha256": "c1e5fdba76edda1f4d02e64fbbf7037994219539cf21234254291bfa6a193b16"
+      },
+      {
+        "name": "natural/natural-fishing-the-coast.jpg",
+        "sha256": "7497c8976f59942a24cefbd7fa94e2097ae2504e6f295e4453fa6082384f6fcf"
+      },
+      {
+        "name": "natural/natural-food.jpg",
+        "sha256": "050fc946ddd1d959f896bed0f8315552fc57713dbe31e5ba94000726d1e2642d"
+      },
+      {
+        "name": "natural/natural-forest-road-slavne.jpg",
+        "sha256": "54f1fae4f6195bbb1092e5ce87abe946fc691cb17ebfcdcacc916f181936f07d"
+      },
+      {
+        "name": "natural/natural-forest.jpg",
+        "sha256": "e56c78966c6e9d8b1cd9a39f9997ab1d837ee703983115aa29a670004310c44e"
+      },
+      {
+        "name": "natural/natural-hard-rock-cafe.jpg",
+        "sha256": "fe9f5c50d1c5c7439526f45de71e211c7d46b6486c3ddbd469f4be5999c07a62"
+      },
+      {
+        "name": "natural/natural-interior-cafe-commerce.jpg",
+        "sha256": "2bb825fed40007f83a759f4103691599fcdddb116d411648752dd8df990b7ec9"
+      },
+      {
+        "name": "natural/natural-lake.jpg",
+        "sha256": "b30294eff0335b49d4e159f78cceb95d15176560adbd02cf35df4fd87cee3128"
+      },
+      {
+        "name": "natural/natural-landschaftsschutzgebiet-dwest-gen.jpg",
+        "sha256": "c76ccdd7cb56c1959272d57726c324998e3cb81bcaa0d658180d0d065d3bd33a"
+      },
+      {
+        "name": "natural/natural-landschaftsschutzgebiet-volkspark-rehberge.jpg",
+        "sha256": "8600924344d252eeed2d5bfeb8502c77dedca362bcb4f996f63d94e8b5081b01"
+      },
+      {
+        "name": "natural/natural-lmen-umland.jpg",
+        "sha256": "1330a32f865b6d3d713336bade56cb97d6b2c77a4d5b4506f309136de8bce3e6"
+      },
+      {
+        "name": "natural/natural-mabrousha-cake-with.jpg",
+        "sha256": "fc1bc49c2b2ca9675bd87205d7b4382ef2b10d80da8346600abd9a19a637d985"
+      },
+      {
+        "name": "natural/natural-maidens-tower.jpg",
+        "sha256": "6e2003530320c4b0f943940b9038ce56f80da238811a059fbfe6ce8cc3bb3d40"
+      },
+      {
+        "name": "natural/natural-mid-1920s-house.jpg",
+        "sha256": "b71252c8ce94143164c38900d53f522d9e987e72eb00dd33384ae1d331bf95ec"
+      },
+      {
+        "name": "natural/natural-mountains.jpg",
+        "sha256": "d9bca3f7013984861644cc85ac517dbcbae4d21d496c2c3dd441c5027ba61411"
+      },
+      {
+        "name": "natural/natural-nnov-shcherbinki-produce.jpg",
+        "sha256": "10030c1934c2753f6fd77451a45af8a8c94494252e0213df646b08b9d2d2185e"
+      },
+      {
+        "name": "natural/natural-nster-westdeutsche-lotterie-2.jpg",
+        "sha256": "26f7412b89e183810ab9fe77142290296d87d3d65e7b7464340cb66a24ed3405"
+      },
+      {
+        "name": "natural/natural-nster-westdeutsche-lotterie.jpg",
+        "sha256": "0ac1145f61da508d18f9b8b79fbb3e5c602c6618f641c88924444c9443dc3940"
+      },
+      {
+        "name": "natural/natural-obama-center-library.jpg",
+        "sha256": "c849e4ca78b07c8e51f28c9aee920a48a12f9ac04d7eb9e40c2082ccc3cd5195"
+      },
+      {
+        "name": "natural/natural-ocean-sunset.jpg",
+        "sha256": "8236cdb79c8a046201ff454f79baaa5e600fbf1f80fdaee784f8998a4b815609"
+      },
+      {
+        "name": "natural/natural-piano.jpg",
+        "sha256": "ef12c3d1e8837f1b3e762815fffef1c57cdc2d69df0104e0a27220ec4785e514"
+      },
+      {
+        "name": "natural/natural-pike-place-market.jpg",
+        "sha256": "be45216f8c7cdbf31997ebacce9f297a0e20b3c5b4a5b07b7bc33fc3e674ef0e"
+      },
+      {
+        "name": "natural/natural-pug.jpg",
+        "sha256": "fc587a30b480e7d9b3c945eb1c888ca51ef71760b8b201971aaad1994eeba00d"
+      },
+      {
+        "name": "natural/natural-river.jpg",
+        "sha256": "1d1d8e01c11168d69955afa7260e06b7e8b5abf323bbd079bd68cbc86089be57"
+      },
+      {
+        "name": "natural/natural-roof-tiles-packed.jpg",
+        "sha256": "7832fed7d5f12a8aec3d36393d9f646b11d601a445d858eb214b916cb04d2688"
+      },
+      {
+        "name": "natural/natural-shop.jpg",
+        "sha256": "084917dd18af8c05412c31c8a5d56a197dd194e105205e0de65a7666d1ef78d0"
+      },
+      {
+        "name": "natural/natural-snow-forest.jpg",
+        "sha256": "01c8e9295d8a1e20e2400c2ae83dd48b394b7108c768bf9cd7a5820c7e288d5d"
+      },
+      {
+        "name": "natural/natural-studioarrangement-for-product.jpg",
+        "sha256": "7eac9625191027dc861c05e4b548f8fe2fa6b7abc37bcba5b0ac1270116b5c54"
+      },
+      {
+        "name": "natural/natural-succulents.jpg",
+        "sha256": "c3268d723bb03d9487333a3f0cd7b6eb95888c5c2691607aea663f66bd213d5f"
+      },
+      {
+        "name": "natural/natural-sunset.jpg",
+        "sha256": "d86d62091b02bd724e8c6df57bec4181a8be8715896e21face41fc38c5d621c9"
+      },
+      {
+        "name": "natural/natural-table-set-for.jpg",
+        "sha256": "9af6423b26141dce7d14aeeef58f94d4d980875ead7c7d6653814dec81ee756c"
+      },
+      {
+        "name": "natural/natural-tools.jpg",
+        "sha256": "62dd8ca41bf4c90189877c3ee156180131de3e7ee0e73f3353c970d3bef6e1ac"
+      },
+      {
+        "name": "natural/natural-trees-rising-out.jpg",
+        "sha256": "31f10ec471cd35b2467469feac2c75b803e422f32e042c05ae2ac50250b54c18"
+      },
+      {
+        "name": "natural/natural-tulips.jpg",
+        "sha256": "8acd986e8159839b81bd3c11b922e3360c678031851d8fe71b8af275da82f644"
+      },
+      {
+        "name": "natural/natural-typewriter.jpg",
+        "sha256": "4512863afc35956b46d7474d2a869d3a67a2dc0b6e2c9235d9f8c0b71355ca00"
+      },
+      {
+        "name": "natural/natural-walnut-tart-close.jpg",
+        "sha256": "68141502b2131761f963dca2c4f9ef09e43457812235f88c8a448326009f6e93"
+      },
+      {
+        "name": "natural/night-aurora.jpg",
+        "sha256": "5594aa7fa65bc8965c7eee9bc1f59d9f9e41b3950418cf3c62767e06a85f03b2"
+      },
+      {
+        "name": "natural/night-bas-lica-notre.jpg",
+        "sha256": "accfac7a9eb21d983456dc80936c7797dd3496cd5c0b4d6e387f3605bd3210de"
+      },
+      {
+        "name": "natural/night-bridge-lights.jpg",
+        "sha256": "19749fb9da951a2e82e00650d00d6f5923c8cb7a4bb417b1e9624e1c246319fd"
+      },
+      {
+        "name": "natural/night-city-rain.jpg",
+        "sha256": "03e291ae5596f7aa2b1a2fcbd6fa6f83aa0d1949a2f8887cac2e964c4e9b6367"
+      },
+      {
+        "name": "natural/night-long-island-city.jpg",
+        "sha256": "f009409b13acdd9a1aba85fa81309fe7c29681ab284a029c9cf7552a8f92a591"
+      },
+      {
+        "name": "natural/night-milky-way.jpg",
+        "sha256": "0c2250fb8862b9d67b0478cc4ab91761d130fdf27d8b2628990bf3dd1e756c8f"
+      },
+      {
+        "name": "natural/night-night-sky-milky.jpg",
+        "sha256": "a84ed4e7b6b81b0deaec580b6def472b74b031300d17712def354847900c7eef"
+      },
+      {
+        "name": "natural/night-nster-liudgerhaus-und.jpg",
+        "sha256": "1c4dedcc5564305a8bf0bfdfde912dc45057b60c3a80caef977c2b39eaa36674"
+      },
+      {
+        "name": "natural/portrait-african-lady.jpg",
+        "sha256": "84d789fe7a5ef4f3713c596a5fdb562cdc11a2d0c6c903a13ccc8495f71beba9"
+      },
+      {
+        "name": "natural/portrait-african-woman-rusinga.jpg",
+        "sha256": "b42b667d11aaeeca9a2b57c34c1bd5ec502935ad9565da8c4c1ffd12101d80cb"
+      },
+      {
+        "name": "natural/portrait-backlit.jpg",
+        "sha256": "2b79e5daa810cfe612ade061516a751978a8b2fd488f67db93ea43ebf8445fae"
+      },
+      {
+        "name": "natural/portrait-camera.jpg",
+        "sha256": "ccee0095ccdb8c9c4a51781c234107add9e712f3d2b4564007281ace80b8755b"
+      },
+      {
+        "name": "natural/portrait-child-book.jpg",
+        "sha256": "5c86090b3716a1d720e22fa6471a442379e4b633472e0ae214ed2fc031165a45"
+      },
+      {
+        "name": "natural/portrait-dim-indoor.jpg",
+        "sha256": "1d62cad2c8eb9bafcb67c7ecbd7e5703954fb2e86b0a9e272794be65e9b9ff47"
+      },
+      {
+        "name": "natural/portrait-face.jpg",
+        "sha256": "3ca59ba317406c432431c08dec4b35f23fdc82828745d1003b4fdea0fe0217ff"
+      },
+      {
+        "name": "natural/portrait-guitarist.jpg",
+        "sha256": "71a0fb62d9798707ab0d4bea2b4c7a9b656bbf7bbd8dc0a828ac3f96faff0520"
+      },
+      {
+        "name": "natural/portrait-imene6.jpg",
+        "sha256": "1c338666388eaba2b821ff9f1e136179bc1ac50f78e13cd13ace9d78ca563fd9"
+      },
+      {
+        "name": "natural/portrait-mother-and-child.jpg",
+        "sha256": "0edca0e3a38b7670be967cb78c33ce1ed79c5a88e88ec4282970080a9766b8e0"
+      },
+      {
+        "name": "natural/portrait-mother-child.jpg",
+        "sha256": "7fef82de83c575ffaa8ebe419229d500f9e4f5a24512a979065e2d2109e42f17"
+      },
+      {
+        "name": "natural/portrait-portrait-femme-tenue.jpg",
+        "sha256": "3db3587f2612133fc4859adc0b3097fb833bbe644e2b92617ee8fa60b9166fd4"
+      },
+      {
+        "name": "natural/portrait-sideshow-bob-love.jpg",
+        "sha256": "1967684f3043484bb14543e2596c8bc94563a59094b510ca55bf2b82527597f0"
+      },
+      {
+        "name": "natural/portrait-suit.jpg",
+        "sha256": "0220ca71241566875f08bf4600b9b1feb6ef4ab66b0e8f6e41de22ecd4db6eb5"
+      },
+      {
+        "name": "natural/portrait-sunglasses.jpg",
+        "sha256": "88ecd293c55c192439e68d310e83ff201dceccea8e36a60d1647ec882106032b"
+      },
+      {
+        "name": "alpha/cutout-3d-star-greek.png",
+        "sha256": "28b9e4888cdcbfa13cafbb1b56d0ee1f515756b99b8f7ecc00a544ecaa85dc7c"
+      },
+      {
+        "name": "alpha/cutout-3d-star-soviet.png",
+        "sha256": "89e2d3f669b448c56e47a9c29de65121c60a3d9e9910c95499f0233817074d94"
+      },
+      {
+        "name": "alpha/cutout-app-icon-aptoide.png",
+        "sha256": "40ae89a4816df285936235cf877f7c69cf9ca000e27eeea3ac4709dce0e7982a"
+      },
+      {
+        "name": "alpha/cutout-bioart-astrocyte.png",
+        "sha256": "559304d1f8226cfafa4de7685601a3d5dd0673e93365b7b8dc9093a2112849a9"
+      },
+      {
+        "name": "alpha/cutout-broccoli.png",
+        "sha256": "e7f19280e60b7f164bd53e68134040fa97c3efb539ff44edf2d985ccb3a48f8f"
+      },
+      {
+        "name": "alpha/cutout-campaign-medal.png",
+        "sha256": "1d49ac031e3ae558d3a46cbb3aec5b12c64e31363f01705a9b49852f458f29f8"
+      },
+      {
+        "name": "alpha/cutout-cheeseburger.png",
+        "sha256": "cff8d8ac543defb51454a96a1513dafb43457a569f487030380128b76cfa760a"
+      },
+      {
+        "name": "alpha/cutout-dod-seal.png",
+        "sha256": "8a67df69e07c9e342bd9d7ac677e6a962ac0a39507881b531bdf88e9baabbaa9"
+      },
+      {
+        "name": "alpha/cutout-dslr-camera.png",
+        "sha256": "b52e726f129bfc656763ac5d2c8c98f4ee96ce1b6cea95010fa90cb8564bffc5"
+      },
+      {
+        "name": "alpha/cutout-emblem-kscz.png",
+        "sha256": "c8095953b20fd2e8b0a2db22902f3353c5c7196ac35302e00dee221842afad43"
+      },
+      {
+        "name": "alpha/cutout-game-sprite-ship.png",
+        "sha256": "0e731563527cb737e4f0ff4cff0fbb723fa3dced9d48ec8f72f0ad63945519ca"
+      },
+      {
+        "name": "alpha/cutout-glassfish.png",
+        "sha256": "122c8a89f44ddd023cb0c581e565cd027c4013261e06a11d54ceef379d85305c"
+      },
+      {
+        "name": "alpha/cutout-greek-vase-figure.png",
+        "sha256": "ff3e45df88805a10348a8fd92d1212a9410ebe6cce22d52e02ab1188d05a89f8"
+      },
+      {
+        "name": "alpha/cutout-green-dragon.png",
+        "sha256": "4d02f29aec4e6de647874836130026e8c413b820b122af3bbddb56a61d097ea6"
+      },
+      {
+        "name": "alpha/cutout-insignia-4id.png",
+        "sha256": "8fb32f6350082d5b90019b4fdd2070bea4e0d8fb48e934a0f50b4c2d85f08924"
+      },
+      {
+        "name": "alpha/cutout-lamp-glow.png",
+        "sha256": "857ef6d2b9fd450be843429cca5f49353705c52000647791bb7530de81de840f"
+      },
+      {
+        "name": "alpha/cutout-lineart-hoe.png",
+        "sha256": "fd3ad52a4a82f4c685d05981ce3e54ddc35403e23945a3be62fb7b2986e6f142"
+      },
+      {
+        "name": "alpha/cutout-lineart-oinochoe.png",
+        "sha256": "3bfbc282601a585c17938950b8cba766faeaf4d423bf8a36b87e716c4c42d5ff"
+      },
+      {
+        "name": "alpha/cutout-navy-crest.png",
+        "sha256": "61eab4c1618ddbc8de9cbf78135492bee775be50d15a6eebd7335bf3be370643"
+      },
+      {
+        "name": "alpha/cutout-nokia-soft-shadow.png",
+        "sha256": "75951d906cb08acc1a643554dde538d739d3f814a5f5231a7971a96550ada98a"
+      },
+      {
+        "name": "alpha/cutout-planet-gas-giant.png",
+        "sha256": "16d9563712b9d7b42c548b64821d7f17f2913c5ed62c62086967394d5540183d"
+      },
+      {
+        "name": "alpha/cutout-planet-lava.png",
+        "sha256": "74b6ae59cbfef2fa11e59d29d51ed326b3c26a10ac40604eec9ccd94883ea9cc"
+      },
+      {
+        "name": "alpha/cutout-road-sign.png",
+        "sha256": "56297cb398e82ca506d2057a4402218a1113f7acb38ac92e2c1b3f5e6d460122"
+      },
+      {
+        "name": "alpha/cutout-wordmark-aflac.png",
+        "sha256": "3e0ddc1b3b6856b16b48ac2003f343e0e8cfaff02f022e8b2c21fbf24de2e302"
+      },
+      {
+        "name": "graphic/graphic-alphaplot-app.png",
+        "sha256": "ba4a7e2fceb4bf58afbfd6c9ec7ebd688e5f788685f1a4a0417ec6d25d895484"
+      },
+      {
+        "name": "graphic/graphic-bar-chart-waymo.png",
+        "sha256": "ecdded63aa63c820ea3597ad54368a6a37762c8b21d8a2468c04e074e513dbe5"
+      },
+      {
+        "name": "graphic/graphic-block-diagram-arch.png",
+        "sha256": "96a3b45b68420d3a30c7c75353c14b6b868ae192b717867d2899ca899b16542e"
+      },
+      {
+        "name": "graphic/graphic-circuit-schematic.png",
+        "sha256": "21b08cc6349ed77eaf46b5441d0a87b138da341c78b3c6d7871003002a8f05be"
+      },
+      {
+        "name": "graphic/graphic-comic-strip-1940.jpg",
+        "sha256": "cfb1ac7c0ac7cf23889e8c166fc8d3f9060b32f4136f12436a8eab5b4754aa7d"
+      },
+      {
+        "name": "graphic/graphic-comic-wiggle-much.jpg",
+        "sha256": "f0ef6ccd47a41f6434ad799f95689fab4f329fd9c258651d789e99cb46484086"
+      },
+      {
+        "name": "graphic/graphic-flat-design-desk.png",
+        "sha256": "05052971fb70305f0b0374fdb4188f1a170fdc5d8bb3a3e47f4a4240b1197483"
+      },
+      {
+        "name": "graphic/graphic-geonames-map.png",
+        "sha256": "620e583c5123dd2fa7775b954a4fa62a683d38fa9b4f66f07dae03fcb68a66e9"
+      },
+      {
+        "name": "graphic/graphic-gnome-desktop.png",
+        "sha256": "ac321db9b5bdfd7fb0e42ee3f7ab484337b11d8b0891de5567da75bed004038d"
+      },
+      {
+        "name": "graphic/graphic-infographic-timeline.png",
+        "sha256": "9992cd11ecde839df92bfca7bb5f9f26cbf34995a8defe816303447c8799f7c5"
+      },
+      {
+        "name": "graphic/graphic-lineart-pictographs.png",
+        "sha256": "cefed9c71dc7a3f8c7564fc52dd9e57bf667d5fc794913cd4c8f3689e8b9f4a8"
+      },
+      {
+        "name": "graphic/graphic-lineart-scarecrow.png",
+        "sha256": "ff8d79e50f91a00d0f1e7f33f06fe828282d315f53bee6c27178f2b94262f10d"
+      },
+      {
+        "name": "graphic/graphic-logo-solid-blue.png",
+        "sha256": "b8651f9625e2639fe5edc9c32c9e4eeb2b3073d086813c8c35e024da677804f9"
+      },
+      {
+        "name": "graphic/graphic-periodic-table-nist.png",
+        "sha256": "cc1dfe32b5a69817debaba2ae3fe28133a249d78809d26355607f182bf1c941c"
+      },
+      {
+        "name": "graphic/graphic-playfair-piecharts.jpg",
+        "sha256": "95e0cedb123c1237e954b1d1092d11be48b52104f2c78ba7354b06d53d5b4f86"
+      },
+      {
+        "name": "graphic/graphic-scientific-plot.png",
+        "sha256": "9230123c94a491ed5da769521bbe0607f5e26b7b48cc31b0637421055b03aa89"
+      },
+      {
+        "name": "graphic/graphic-sheet-music-dense.png",
+        "sha256": "b7781ee6d008381c4e160b390e2cb8ce65f076be9659a7c0e179389b33732585"
+      },
+      {
+        "name": "graphic/graphic-smps-schematic.jpg",
+        "sha256": "334e85b5b4b8c3abe1860dacb90da7bbd357569faa57dc8b6510070efa4ff839"
+      },
+      {
+        "name": "graphic/graphic-tiling-wm.png",
+        "sha256": "a6d916ce0b0a1ed8725156cb333285d605df9f863ea34bcdaf34d03ee5a2e57b"
+      },
+      {
+        "name": "graphic/graphic-timechart-six-nations.png",
+        "sha256": "ea2ff4f323ad6cfa1f68831a26c530d600ecbc689a6cf1b16f13ed05520da5bf"
+      },
+      {
+        "name": "graphic/graphic-transit-diagram.png",
+        "sha256": "4191a1ad8c1b4a897c537a422df91cfb87734826c38c0f0a885f729f96e4627d"
+      },
+      {
+        "name": "graphic/graphic-web-app-screenshot.png",
+        "sha256": "3af04a4bc4dfdd53ab6bf5d4f17b2f37ab100fa021b60a169d3ab876ceb3fae0"
+      },
+      {
+        "name": "graphic/graphic-wikipedia-text-page.png",
+        "sha256": "47a33fc28e64aa8e9218235caaa759060d653a9b8c4b7fd2bd733e75387b6dfc"
+      },
+      {
+        "name": "graphic/graphic-world-map-colour.png",
+        "sha256": "e21e3a23daa9e8e5b43c61255350df5efa1211ec281cd9567ca6e07cc0703233"
+      },
+      {
+        "name": "synthetic/alpha-checkerboard.png",
+        "sha256": "8b84757373c1eaac26cfe473dc7fd577ee89505ae65ab3ba52fbcd1633dde0b9"
+      },
+      {
+        "name": "synthetic/alpha-fully-transparent.png",
+        "sha256": "bc11e1419344369ce138cce6ee7aa3db7544e64603b772faf0c24e7eaa28e2b3"
+      },
+      {
+        "name": "synthetic/alpha-gradient.png",
+        "sha256": "ffd86a8dbaa2a1fb68c7ad5c0ba84210fb05385117a718b55e5cbfdd0c25263d"
+      },
+      {
+        "name": "synthetic/alpha-opaque.png",
+        "sha256": "eb344c4804397eb56b5454568eddd742f55000c495a0a7289e62a7b022fd8d50"
+      },
+      {
+        "name": "synthetic/alpha-single-pixel.png",
+        "sha256": "590002884fdfb20a584518982aec306b0401edfd596d1d51bbefb19fd2bbd4b2"
+      },
+      {
+        "name": "synthetic/alpha-uniform-128.png",
+        "sha256": "55a5049499e2d14a1f5432dbfd77764025b171c202e60278073a8570c5eb92ab"
+      },
+      {
+        "name": "synthetic/checkerboard.png",
+        "sha256": "3d044dde28b4ec4e148c370db38c78c6186514aaa8bb46414fce56305888346f"
+      },
+      {
+        "name": "synthetic/dim-100x1.png",
+        "sha256": "cf709eaabbf7829cce162ff8fb6203a35af40aef83b771bc4aba2d21e05dc425"
+      },
+      {
+        "name": "synthetic/dim-100x100.png",
+        "sha256": "5edf897d55e47c02096539b18feeb21d7247d372ea8edc7b81c89cd212742cd0"
+      },
+      {
+        "name": "synthetic/dim-16x16.png",
+        "sha256": "bf6062e6a457ec6682303cc8315746d358f3f15f6840823eaa4d5037b762a728"
+      },
+      {
+        "name": "synthetic/dim-16x9.png",
+        "sha256": "bdb7c30ee630a6cb31623059384e13b22cc630f5eaa4e0d1d48e49fa1d24d8a3"
+      },
+      {
+        "name": "synthetic/dim-1x1.png",
+        "sha256": "7d8169d954d0552c3512dd7580685ab08708dbc2d2d7af9399d19d7e127fe6f0"
+      },
+      {
+        "name": "synthetic/dim-1x100.png",
+        "sha256": "a3c349ae26083d494153e1efda8c7015d073a2712144679fbd28d1db7d9c8fe1"
+      },
+      {
+        "name": "synthetic/dim-4x4.png",
+        "sha256": "1e68e1dc443cd0117c1665682a78078f1faef4429771cad014deefd4999047a8"
+      },
+      {
+        "name": "synthetic/dim-4x8.png",
+        "sha256": "3af68eb5d0f89de311f12fa1a46b25d8fdd8907c030c89a26b64e179681a8283"
+      },
+      {
+        "name": "synthetic/dim-8x4.png",
+        "sha256": "a5ea4f57d09cfb5f2534b5167e09af4b980896bc8bdd84437a132588c70f127e"
+      },
+      {
+        "name": "synthetic/dim-9x6.png",
+        "sha256": "fe22a04127f0906d93958da85b7e4f8145a8254268986daae2d78916795a4021"
+      },
+      {
+        "name": "synthetic/gamut-adobe-rgb.png",
+        "sha256": "25b2e7ef9727a94d1d06d458b700f9f430632ce1f4eb61a528d2b2ef7152a9bf"
+      },
+      {
+        "name": "synthetic/gamut-bt2020.png",
+        "sha256": "25b2e7ef9727a94d1d06d458b700f9f430632ce1f4eb61a528d2b2ef7152a9bf"
+      },
+      {
+        "name": "synthetic/gamut-p3.png",
+        "sha256": "25b2e7ef9727a94d1d06d458b700f9f430632ce1f4eb61a528d2b2ef7152a9bf"
+      },
+      {
+        "name": "synthetic/gamut-prophoto.png",
+        "sha256": "25b2e7ef9727a94d1d06d458b700f9f430632ce1f4eb61a528d2b2ef7152a9bf"
+      },
+      {
+        "name": "synthetic/gamut-srgb.png",
+        "sha256": "25b2e7ef9727a94d1d06d458b700f9f430632ce1f4eb61a528d2b2ef7152a9bf"
+      },
+      {
+        "name": "synthetic/gradient-2d.png",
+        "sha256": "bf6062e6a457ec6682303cc8315746d358f3f15f6840823eaa4d5037b762a728"
+      },
+      {
+        "name": "synthetic/gradient-horizontal.png",
+        "sha256": "3f9d50c97e97d8e3039712faf3b7202c4d2e710a768535f18acb55c039fe7f57"
+      },
+      {
+        "name": "synthetic/gradient-vertical.png",
+        "sha256": "fa021479dca8cedfa27ed9d74adc9356e6da7382bfe1b8be476d2643aa7969a4"
+      },
+      {
+        "name": "synthetic/illust-comic.png",
+        "sha256": "48fa169151da00cfb4617d6c9bd6c35a3c164fbde5c21b0d9411cb6e2505f482"
+      },
+      {
+        "name": "synthetic/illust-icon.png",
+        "sha256": "f08e792d73d771859f8f632f5f73d9fb84cf08fa69d21a691d89571571240e71"
+      },
+      {
+        "name": "synthetic/illust-landscape.png",
+        "sha256": "21c5925e51fc2e73bf095bbeb2fafe222258d29172aae6e37010b15f63282912"
+      },
+      {
+        "name": "synthetic/monochrome.png",
+        "sha256": "8f7621b40f2f59c06a5a86ed34ce5601e8924ab726efdff5665d309929eec683"
+      },
+      {
+        "name": "synthetic/near-black-gradient.png",
+        "sha256": "4bf0ccb6ce0b93e1bf4e5e6eda1d889502022b40691fe6f80d1f346bc5c7771c"
+      },
+      {
+        "name": "synthetic/near-white-gradient.png",
+        "sha256": "e23e7fd256b73c49705e97cc09e99bc7b7ad5c5d8000c10dbf2f464c82f9e515"
+      },
+      {
+        "name": "synthetic/noise.png",
+        "sha256": "499c83a147c6603c383eb9fc6166d57644eaf99fac5a437b8f8f3bfddbde8552"
+      },
+      {
+        "name": "synthetic/saturated-cool.png",
+        "sha256": "302221f417a9cd8d944b0d9f3d0ba4a1dbb23eb1df4e8c8901965e4c999e5753"
+      },
+      {
+        "name": "synthetic/saturated-warm.png",
+        "sha256": "be0f0e2138289cb5f98738bba3eccac05e85b5f4dd6ec847293766dc5dc44b39"
+      },
+      {
+        "name": "synthetic/solid-black.png",
+        "sha256": "0b0e23c11da2a01b4e64fb6acf71f7a17e0611e502d74341086ff5db27ed1e5e"
+      },
+      {
+        "name": "synthetic/solid-blue.png",
+        "sha256": "7729e5c2551135bfa14bdf4a2cff30ea0858c599d5ef1478248c718238ffc7e2"
+      },
+      {
+        "name": "synthetic/solid-gray.png",
+        "sha256": "75ca36d716b221186bd0fbd9e2107f16686c72812a7cff5fdd81fa73b1ddcb4f"
+      },
+      {
+        "name": "synthetic/solid-green.png",
+        "sha256": "1689c51ad23602faf0eb2ad5a9279a4b6adbe8c11e8913055b2bee13560c6dee"
+      },
+      {
+        "name": "synthetic/solid-red.png",
+        "sha256": "56f0b3d746d230296a9d2f8de64739615e6047a78872804e8dc6ff7767216705"
+      },
+      {
+        "name": "synthetic/solid-white.png",
+        "sha256": "5dcc04282d97c0f8be0d6396508d2bf288d2995eb194e87c1516aaf973b6ace1"
+      },
+      {
+        "name": "synthetic/textui-form.png",
+        "sha256": "77a86dd662f5ecf4e58ed9998fcccc2232fb8a9b028f5939343cd605f7acc5fe"
+      },
+      {
+        "name": "synthetic/textui-terminal.png",
+        "sha256": "f2fba4f4d87ec61faf5169071a35c5c3bd99df3abd85ca45c028d35b7a3a3778"
+      },
+      {
+        "name": "synthetic/textui-window.png",
+        "sha256": "57eeac6af516b4060343bbec4db22698e214acb535b7edcadcda79fbe2063bab"
+      },
+      {
+        "name": "holdout/kodak01.png",
+        "sha256": "a56e27cbf5f843c048b6af1d6e090760e9c92fadba88b7dee0205918a37523bd"
+      },
+      {
+        "name": "holdout/kodak02.png",
+        "sha256": "4f4b74a79237e311d72cad958237b5f7088d8bce1c82305ebefe1a70e3022dfd"
+      },
+      {
+        "name": "holdout/kodak03.png",
+        "sha256": "e25ca1ff2f0c0cb5fdfd5f9b0a0bb21ac4c3de3c84a67f35b09a85d3306249db"
+      },
+      {
+        "name": "holdout/kodak04.png",
+        "sha256": "e3b946107c5d3441c022f678d0c3caf1e224d81b1604ba840a4f88e562de61aa"
+      },
+      {
+        "name": "holdout/kodak05.png",
+        "sha256": "10349e963c5c813d327852f82c1795fa4148d69fedffc4c589bee458e3ac3d53"
+      },
+      {
+        "name": "holdout/kodak06.png",
+        "sha256": "363510303b715d4cbc384e1ce227e466b613a09e1b71ae985882bf8e7fbd9b18"
+      },
+      {
+        "name": "holdout/kodak07.png",
+        "sha256": "b77d3f006f42414bb242222e0482e750c0fb9e5ee8d4bed2f6f11c5605fe54a4"
+      },
+      {
+        "name": "holdout/kodak08.png",
+        "sha256": "ba23983c76b4832ee0e8af0592664756841a16779acd69f792e268fb6d13d6e7"
+      },
+      {
+        "name": "holdout/kodak09.png",
+        "sha256": "6a4361c2fc194feb4edaa9f9a4a0620fb9943e460ac7fdf037fb0f6dd6607a7d"
+      },
+      {
+        "name": "holdout/kodak10.png",
+        "sha256": "9dfb70f5867c29ff9ed6313683f19b3d867849e40fbc0c4c54a4a89df341cf23"
+      },
+      {
+        "name": "holdout/kodak11.png",
+        "sha256": "7936814b58b5387fce2e4e2488b4ec830dadd95fa9520f358ddb30990b50f2b6"
+      },
+      {
+        "name": "holdout/kodak12.png",
+        "sha256": "d78c37c2f04f23761ed2367dd77e2db584ddd4c3950833fecf89f199a8126980"
+      },
+      {
+        "name": "holdout/kodak13.png",
+        "sha256": "bc34a3ce58dea09dce1704c997171602de90cb34d0c8503a988b77f473d39b08"
+      },
+      {
+        "name": "holdout/kodak14.png",
+        "sha256": "55a94550ff18f3246c4074fd32b77b0c74447c26b6ad274d564d999c0450ba6e"
+      },
+      {
+        "name": "holdout/kodak15.png",
+        "sha256": "7538cbb80cb9103606c48b806eae57d56c885c7f90b9b3be70a41160f9cbb683"
+      },
+      {
+        "name": "holdout/kodak16.png",
+        "sha256": "a89c7268ccd4718ba424a99fc4643c572cf692ca6eae887185ceb4e9f11d2e54"
+      },
+      {
+        "name": "holdout/kodak17.png",
+        "sha256": "37afcc89fbdcb76d9518e04b2fc011027e2f4cd14b3b2f83cefd721641a47c5b"
+      },
+      {
+        "name": "holdout/kodak18.png",
+        "sha256": "1a9258c365988961d87a0598725b609139c303ad48a5aad6c503c3b1a87849aa"
+      },
+      {
+        "name": "holdout/kodak19.png",
+        "sha256": "b7450b264b1b0a411390d8931b112c27905a992520fc90569dc4b920aa32bbdc"
+      },
+      {
+        "name": "holdout/kodak20.png",
+        "sha256": "3b46c71e3b92a563820ba32936be8330c586c41f938efd94be938386aae4328a"
+      },
+      {
+        "name": "holdout/kodak21.png",
+        "sha256": "ac958597c82073f6bb65129c68f72b651db5b9efd82e11547d07350214bc268b"
+      },
+      {
+        "name": "holdout/kodak22.png",
+        "sha256": "1cee58eb1f2d9c7ebb254d208a03c783ce6cf2c4d8c2cf45e235dd23b4ce1b29"
+      },
+      {
+        "name": "holdout/kodak23.png",
+        "sha256": "e3111a2fd4da24af15d6459ef9eacfe54106b38e27b4a21821b75c3f5d2d5baf"
+      },
+      {
+        "name": "holdout/kodak24.png",
+        "sha256": "1071c68372cc5a01435c2c225a5cf7d4bb803846ec08bb6b3d6721b156d7cb96"
+      }
+    ]
+  }
+}
