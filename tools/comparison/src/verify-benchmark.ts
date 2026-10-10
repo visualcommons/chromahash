@@ -83,7 +83,6 @@ import {
   checkTable,
   clean,
   fixRefusal,
-  noiseFailures,
   parseDecodeStages,
   parseStages,
   parseTables,
@@ -1056,7 +1055,9 @@ function countClaims(pendingProse: number): SweepClaim[] {
       ),
       unit: "count",
       decimals: 0,
-      resolve: (_R, ctx) => ctx.counters.pending,
+      // Withheld cells are TBD once --fix has run, and no committed run can
+      // fill them acceptably either.
+      resolve: (_R, ctx) => ctx.counters.pending + ctx.counters.withheld,
     },
     {
       what: "§0: prose figures no committed run can fill",
@@ -1185,6 +1186,7 @@ const counters: Counters = {
   unbound: 0,
   placeholders: 0,
   pending: 0,
+  withheld: 0,
   unavailable: 0,
   tolerated: 0,
 };
@@ -1509,20 +1511,29 @@ if (decodeStagesBound && DECODE_STAGES) {
 // whole-document run: a count of one section's cells is not §0's count.
 let sweepChecked = 0;
 let sweepPending = 0;
+let sweepWithheld = 0;
 if (!values.section) {
   const ctx: ClaimContext = { counters, stability };
   const sweep = checkSweepClaims(doc, runs, ctx, SWEEP_CLAIMS);
-  const counts = checkSweepClaims(doc, runs, ctx, countClaims(sweep.pending));
+  const counts = checkSweepClaims(
+    doc,
+    runs,
+    ctx,
+    countClaims(sweep.pending + sweep.withheld),
+  );
   for (const r of [sweep, counts]) {
     failures.push(...r.failures);
     proseEdits.push(...r.edits);
   }
   sweepChecked = sweep.checked + counts.checked;
   sweepPending = sweep.pending;
+  sweepWithheld = sweep.withheld;
 }
 
-// Every binding and claim has resolved by now, so `touched` is complete.
-runFail(...noiseFailures(runs));
+// A bound cell or pair spread past the host bar is a failure of that value,
+// not of the run: checkTable and checkSweepClaims withhold it by name, and
+// --fix writes TBD there while still writing every other cell. Only the
+// run-level failures above make --fix refuse.
 
 if (values.fix) {
   const refusal = fixRefusal(runLevel);
@@ -1541,6 +1552,12 @@ if (values.fix) {
   console.log(
     `Rewrote ${edits.length} table cell(s) and ${proseEdits.length} prose figure(s) in ${path.relative(REPO_ROOT, DOC)} — only those outside their range and the ±${(TOLERANCE * 100).toFixed(0)}% band, and the placeholders a committed run can fill.`,
   );
+  const withheld = counters.withheld + sweepWithheld;
+  if (withheld > 0) {
+    console.log(
+      `${withheld} value(s) withheld for process spread are written as TBD (or left as TBD); the gate keeps failing them by name until a quieter session measures them.`,
+    );
+  }
   console.log("Re-run without --fix to confirm, and review the diff.");
   process.exit(0);
 }
@@ -1551,7 +1568,8 @@ console.log(
     `; ${counters.unbound} deliberately unbound` +
     `${counters.unavailable > 0 ? `, ${counters.unavailable} on targets this run could not reach` : ""}` +
     `${counters.placeholders > 0 ? `, ${counters.placeholders} placeholder(s) a committed run can fill` : ""}` +
-    `${counters.pending > 0 ? `, ${counters.pending} placeholder(s) no committed run can fill yet` : ""}.`,
+    `${counters.pending > 0 ? `, ${counters.pending} placeholder(s) no committed run can fill yet` : ""}` +
+    `${counters.withheld > 0 ? `, ${counters.withheld} cell(s) withheld for process spread` : ""}.`,
 );
 console.log(
   `Checked ${proseChecked} figure(s) the prose derives from §1's table.`,
@@ -1561,7 +1579,8 @@ console.log(
 );
 console.log(
   `Checked ${sweepChecked} figure(s) the prose derives from the sweeps` +
-    `${sweepPending > 0 ? `; ${sweepPending} still TBD` : ""}.`,
+    `${sweepPending > 0 ? `; ${sweepPending} still TBD` : ""}` +
+    `${sweepWithheld > 0 ? `; ${sweepWithheld} withheld for process spread` : ""}.`,
 );
 const noisy = runs.noisyTouched();
 if (noisy.length > 0) {
