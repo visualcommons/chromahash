@@ -57,18 +57,19 @@ fn linear_to_gamma8(x: f64, lut: &[u8; 4096]) -> u8 {
     lut[idx]
 }
 
-/// Decode the byte-0 descriptor + byte-1 aspect: (version, tier, hasAlpha,
-/// aspect). Per spec §3.1 (v1). Callers operate on hashes already validated by
-/// [`crate::ChromaHash::from_bytes`], so the fields are well-formed here.
-fn read_header_fields(hash: &[u8], t: &Tunables) -> (u8, u8, bool, u8) {
+/// Decode the byte-0 descriptor + byte-1 aspect: (tier, hasAlpha, aspect). Per
+/// spec §3.1 (v1). Callers operate on hashes already validated by
+/// [`crate::ChromaHash::from_bytes`], so the fields are well-formed here. The
+/// version field is not returned: validation has already required it to be
+/// the one version this decoder reads, so no render path has a use for it.
+fn read_header_fields(hash: &[u8], t: &Tunables) -> (u8, bool, u8) {
     let b0 = hash[0];
-    let version = b0 & ((1 << VERSION_BITS) - 1);
     let tier = (b0 >> VERSION_BITS) & ((1 << TIER_BITS) - 1);
     let has_alpha = (b0 >> ALPHA_FLAG_BIT) & 1 == 1;
     // The aspect field may be narrower than a byte; reconstruct the byte the
     // encoder selected and rendered on.
     let aspect = dequantize_aspect(read_bits(hash, 8, t.aspect_bits), t.aspect_bits);
-    (version, tier, has_alpha, aspect)
+    (tier, has_alpha, aspect)
 }
 
 /// One channel's AC data ready for rendering: windowed coefficient values and
@@ -166,7 +167,7 @@ fn synthesize_detail(
 fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) -> Vec<u8> {
     // 1. Header fields: byte-0 descriptor + byte-1 aspect, then DC/scale prefix
     //    (bits 16..54). Per spec §3.1 (v1).
-    let (_version, tier, has_alpha, aspect) = read_header_fields(hash, t);
+    let (tier, has_alpha, aspect) = read_header_fields(hash, t);
 
     let mut bitpos = 8usize + t.aspect_bits as usize;
     let l_dc_q = read_bits(hash, bitpos, t.l_dc_bits);
@@ -529,7 +530,7 @@ fn render_flat(
 /// Decode a ChromaHash into RGBA pixel data in the given output gamut, with
 /// explicit tunables. Returns (width, height, rgba_pixels).
 pub fn decode_to_with(hash: &[u8], t: &Tunables, output: Gamut) -> (u32, u32, Vec<u8>) {
-    let (_version, tier, _has_alpha, aspect) = read_header_fields(hash, t);
+    let (tier, _has_alpha, aspect) = read_header_fields(hash, t);
     let (w, h) = decode_output_size(aspect, tier);
     let rgba = render_at_size(hash, w as usize, h as usize, t, output);
     (w, h, rgba)
@@ -561,7 +562,7 @@ pub fn decode_capped_to_with(
     t: &Tunables,
     output: Gamut,
 ) -> (u32, u32, Vec<u8>) {
-    let (_version, tier, _has_alpha, aspect) = read_header_fields(hash, t);
+    let (tier, _has_alpha, aspect) = read_header_fields(hash, t);
     let (nat_w, nat_h) = decode_output_size(aspect, tier);
     let w = nat_w.min(max_w);
     let h = nat_h.min(max_h);
@@ -636,7 +637,7 @@ pub fn decode_at_size_to_with(
 /// Extract the average color from a ChromaHash without full decode, with
 /// explicit tunables. Returns [r, g, b, a] as u8 values. Per spec §11.2.
 pub fn average_color_with(hash: &[u8], t: &Tunables) -> [u8; 4] {
-    let (_version, _tier, has_alpha, _aspect) = read_header_fields(hash, t);
+    let (_tier, has_alpha, _aspect) = read_header_fields(hash, t);
 
     let mut bitpos = 8usize + t.aspect_bits as usize;
     let l_dc_q = read_bits(hash, bitpos, t.l_dc_bits);
@@ -897,6 +898,11 @@ mod tests {
         // every pixel. gradient_200x50 → 32×8.
         use crate::ChromaHash;
         let hash = ChromaHash::encode(200, 50, &gradient_image(200, 50), Gamut::Srgb);
+        // Pin the header before decoding (byte 0 = version 0, tier 1, opaque;
+        // byte 1 = round((log2 4 + 4) / 8 · 255) = 191). An encoder that
+        // scrambles byte 0 can name tier 7, whose 4^6-scaled render runs for
+        // minutes, so without this the sweep times out here instead of failing.
+        assert_eq!(hash.as_bytes()[..2], [8, 191]);
         let (w, h, rgba) = hash.decode();
         assert_eq!((w, h), (32, 8));
         let px = |i: usize| &rgba[i * 4..i * 4 + 4];
@@ -1081,5 +1087,343 @@ mod tests {
             decode_at_size_to_with(hash.as_bytes(), 0, 0, &Tunables::DEFAULT, Gamut::Srgb);
         assert_eq!((w, h), (1, 1));
         assert_eq!(rgba.len(), (w * h * 4) as usize);
+    }
+
+    // ── Sweep-only decode paths ──────────────────────────────────────────
+    //
+    // Every tunable below is a no-op at `Tunables::DEFAULT` (gain 1.0, CfL 0,
+    // no truncation, no synthesis), which is why the goldens above cannot see
+    // a defect in the lines they guard. Each test sets the knob where it
+    // matters and checks the render against one built another way.
+
+    /// Overwrite a `bits`-wide field (the bit writer only ever ORs).
+    fn set_field(hash: &mut [u8], pos: usize, bits: u32, value: u32) {
+        for i in 0..bits as usize {
+            hash[(pos + i) / 8] &= !(1 << ((pos + i) % 8));
+        }
+        crate::bitpack::write_bits(hash, pos, bits, value);
+    }
+
+    /// `(bit position, width)` of each code in one channel's AC run.
+    type Fields = Vec<(usize, u32)>;
+
+    /// Bit position and width of every AC code of an opaque hash in the
+    /// sequential layout: L (by precision tier), then a, then b.
+    fn ac_fields(t: &Tunables, tier: u8) -> (Fields, Fields, Fields) {
+        let shape = ac_shape(t, false, tier);
+        let mut pos = prefix_bits(t) as usize;
+        let mut take = |bits: u32| {
+            let at = (pos, bits);
+            pos += bits as usize;
+            at
+        };
+        let mut l = Vec::new();
+        for &(count, bits) in &shape.l_tiers {
+            for _ in 0..count {
+                l.push(take(bits));
+            }
+        }
+        let a = (0..shape.c_count).map(|_| take(shape.c_bits)).collect();
+        let b = (0..shape.c_count).map(|_| take(shape.c_bits)).collect();
+        (l, a, b)
+    }
+
+    fn center(bits: u32) -> u32 {
+        (1 << (bits - 1)) - 1
+    }
+
+    /// A default-tier hash of a noisy gradient, so the high-frequency codes of
+    /// every channel are non-zero.
+    fn opaque_hash() -> Vec<u8> {
+        let (w, h) = (9usize, 7usize);
+        let mut s = 0x9e37_79b9u32;
+        let mut rgba = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            for x in 0..w {
+                s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let n = (s >> 26) as usize;
+                rgba.extend_from_slice(&[
+                    (x * 255 / w + n) as u8,
+                    (y * 255 / h + 2 * n) as u8,
+                    (s >> 20) as u8,
+                    255,
+                ]);
+            }
+        }
+        crate::encode::encode_with(9, 7, &rgba, Gamut::Srgb, &Tunables::DEFAULT, 1).into_vec()
+    }
+
+    #[test]
+    fn truncated_decode_reads_every_missing_code_as_zero() {
+        // A progressive decode of the first k bytes must be the full decode of
+        // a hash whose codes ending past byte k are the exact-zero centre code,
+        // including a code the cut splits.
+        let hash = opaque_hash();
+        let d = Tunables::DEFAULT;
+        let (l, a, b) = ac_fields(&d, 1);
+        for k in [7usize, 8, 13, 20, 31] {
+            let mut want = hash.clone();
+            for &(pos, bits) in l.iter().chain(&a).chain(&b) {
+                if pos + bits as usize > k * 8 {
+                    set_field(&mut want, pos, bits, center(bits));
+                }
+            }
+            assert_ne!(want, hash, "premise: a cut at {k} bytes drops a code");
+            let t = Tunables {
+                trunc_bytes: k,
+                ..d
+            };
+            assert_eq!(
+                decode_to_with(&hash, &t, Gamut::Srgb),
+                decode_to_with(&want, &d, Gamut::Srgb),
+                "cut at {k} bytes"
+            );
+        }
+        // A cut at or past the end is no cut.
+        let t = Tunables {
+            trunc_bytes: hash.len() + 8,
+            ..d
+        };
+        assert_eq!(
+            decode_to_with(&hash, &t, Gamut::Srgb),
+            decode_to_with(&hash, &d, Gamut::Srgb)
+        );
+    }
+
+    #[test]
+    fn band_gain_scales_exactly_the_high_band() {
+        // Zero every code below the band split; what is left is high band
+        // only. Doubling that band's gain is then exactly doubling the
+        // channel's scale range (code/63 · 2r = 2 · code/63 · r, and a
+        // power-of-two product is exact), so the two renders are equal.
+        let d = Tunables::DEFAULT;
+        let shape = ac_shape(&d, false, 1);
+        let (l, a, b) = ac_fields(&d, 1);
+
+        let mut hi_l = opaque_hash();
+        for &(pos, bits) in &l[..band_split_index(shape.l_count(), d.band_split)] {
+            set_field(&mut hi_l, pos, bits, center(bits));
+        }
+        let gained = decode_to_with(
+            &hi_l,
+            &Tunables {
+                band_gain_l: 2.0,
+                ..d
+            },
+            Gamut::Srgb,
+        );
+        assert_ne!(gained, decode_to_with(&hi_l, &d, Gamut::Srgb), "premise");
+        assert_eq!(
+            gained,
+            decode_to_with(
+                &hi_l,
+                &Tunables {
+                    max_l_scale: 2.0 * d.max_l_scale,
+                    ..d
+                },
+                Gamut::Srgb
+            )
+        );
+
+        let mut hi_c = opaque_hash();
+        let c_split = band_split_index(shape.c_count, d.band_split);
+        for &(pos, bits) in a[..c_split].iter().chain(&b[..c_split]) {
+            set_field(&mut hi_c, pos, bits, center(bits));
+        }
+        let gained = decode_to_with(
+            &hi_c,
+            &Tunables {
+                band_gain_c: 2.0,
+                ..d
+            },
+            Gamut::Srgb,
+        );
+        assert_ne!(gained, decode_to_with(&hi_c, &d, Gamut::Srgb), "premise");
+        let wide = Tunables {
+            max_a_scale: 2.0 * d.max_a_scale,
+            max_b_scale: 2.0 * d.max_b_scale,
+            ..d
+        };
+        assert_eq!(gained, decode_to_with(&hi_c, &wide, Gamut::Srgb));
+    }
+
+    #[test]
+    fn cfl_adds_the_luma_prediction_back() {
+        // Chroma that rises with luma: CfL codes it as a gain on the luma AC
+        // plus a small residual. A decoder that subtracts the prediction
+        // instead of adding it renders the chroma ramp inverted, far from the
+        // non-CfL hash's render of the same image.
+        let (w, h) = (12u32, 8u32);
+        let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let v = ((x * 255) / (w - 1)) as f64;
+                let u = ((y * 255) / (h - 1)) as f64;
+                rgba.extend_from_slice(&[
+                    v as u8,
+                    (0.55 * v + 0.2 * u) as u8,
+                    (0.15 * v) as u8,
+                    255,
+                ]);
+            }
+        }
+        let d = Tunables::DEFAULT;
+        let cfl = Tunables { cfl_bits: 5, ..d };
+        let with = crate::encode::encode_with(w, h, &rgba, Gamut::Srgb, &cfl, 1);
+        let without = crate::encode::encode_with(w, h, &rgba, Gamut::Srgb, &d, 1);
+        // Premise: both gains are signalled away from zero (code 16 of 5 bits).
+        let gains = prefix_bits(&cfl) as usize - 10;
+        assert_ne!(read_bits(&with, gains, 5), 16);
+        assert_ne!(read_bits(&with, gains + 5, 5), 16);
+        let (_, _, a) = decode_to_with(&with, &cfl, Gamut::Srgb);
+        let (_, _, b) = decode_to_with(&without, &d, Gamut::Srgb);
+        // Measured: 2.3 levels mean per channel; a decoder that subtracts the a
+        // prediction strays 9.2, the b prediction 15.7.
+        let total: u32 = a.iter().zip(&b).map(|(x, y)| x.abs_diff(*y) as u32).sum();
+        let mean = total as f64 / a.len() as f64;
+        assert!(mean < 4.0, "CfL render strays {mean} from the plain one");
+    }
+
+    #[test]
+    fn detail_seed_is_fnv1a_64() {
+        // Published FNV-1a 64-bit vectors.
+        assert_eq!(hash_seed(b""), 0xcbf2_9ce4_8422_2325);
+        assert_eq!(hash_seed(b"a"), 0xaf63_dc4c_8601_ec8c);
+        assert_eq!(hash_seed(b"foobar"), 0x8594_4171_f739_67e8);
+    }
+
+    #[test]
+    fn synthesized_detail_continues_the_coded_spectrum() {
+        let t = Tunables {
+            synth_count: 12,
+            synth_gain: 0.5,
+            ..Tunables::DEFAULT
+        };
+        let (aspect, tier, l_count) = (128u8, 1u8, 8usize);
+        let order = SelectionOrder::new(aspect, tier, t.aniso_oblique, t.sel_hv);
+        let coded = [0.3, -0.2, 0.15, 0.1, -0.08, 0.05, 0.04, -0.03];
+        let hash = [1u8, 2, 3, 4];
+        let (sel, ac) = synthesize_detail(
+            &hash,
+            aspect,
+            tier,
+            l_count,
+            order.take(l_count),
+            coded.to_vec(),
+            &t,
+        );
+
+        // The selection extends along the same order, the coded band is
+        // untouched, and the tail has the coded band's high-quarter RMS,
+        // scaled by sqrt(p_K / p_j).
+        let ext = order.take(l_count + t.synth_count);
+        assert_eq!(sel.coeffs, ext.coeffs);
+        assert_eq!(ac.len(), l_count + t.synth_count);
+        assert_eq!(ac[..l_count], coded);
+        let rms = ((0.04f64 * 0.04 + 0.03 * 0.03) / 2.0).sqrt();
+        let p_k = order.take(l_count).p_k as f64;
+        let mut signs = Vec::new();
+        for (j, &v) in ac.iter().enumerate().skip(l_count) {
+            let mag = t.synth_gain * rms * (p_k / ext.priorities[j] as f64).sqrt();
+            assert!((v.abs() - mag).abs() < 1e-15, "j={j}: {v} vs {mag}");
+            signs.push(v > 0.0);
+        }
+        // The signs are the hash-seeded xorshift64* stream: fixed for a hash,
+        // different for another. The pinned pattern is exactly period 3
+        // because each sign is `r & 1`, xorshift64*'s weakest output bit. That
+        // pins current behaviour, not a desired property: taking the sign
+        // from `r >> 63` is expected to change this vector and re-pin it.
+        assert_eq!(
+            signs,
+            [
+                false, false, true, false, false, true, false, false, true, false, false, true
+            ]
+        );
+        let (_, other) = synthesize_detail(
+            &[9u8, 9, 9],
+            aspect,
+            tier,
+            l_count,
+            order.take(l_count),
+            coded.to_vec(),
+            &t,
+        );
+        assert_ne!(ac, other);
+
+        // Nothing to extend from: a silent coded band, or no extra count.
+        let silent = vec![0.0; l_count];
+        let (sel, ac) = synthesize_detail(
+            &hash,
+            aspect,
+            tier,
+            l_count,
+            order.take(l_count),
+            silent.clone(),
+            &t,
+        );
+        assert_eq!((sel.coeffs.len(), ac), (l_count, silent));
+        let none = Tunables {
+            synth_count: 0,
+            ..t
+        };
+        let (sel, ac) = synthesize_detail(
+            &hash,
+            aspect,
+            tier,
+            l_count,
+            order.take(l_count),
+            coded.to_vec(),
+            &none,
+        );
+        assert_eq!((sel.coeffs.len(), ac), (l_count, coded.to_vec()));
+    }
+
+    #[test]
+    fn detail_synthesis_needs_a_count_a_gain_and_a_luma_band() {
+        // A tapered window, so even zero-valued synthetic coefficients would
+        // show: they move p_K and with it every coded coefficient's weight.
+        let base = Tunables {
+            w_min_l: 0.6,
+            ..Tunables::DEFAULT
+        };
+        let hash = opaque_hash();
+        let plain = decode_to_with(&hash, &base, Gamut::Srgb);
+        let on = Tunables {
+            synth_count: 12,
+            synth_gain: 0.5,
+            ..base
+        };
+        assert_ne!(decode_to_with(&hash, &on, Gamut::Srgb), plain, "premise");
+        for off in [
+            Tunables {
+                synth_gain: 0.0,
+                ..on
+            },
+            Tunables {
+                synth_count: 0,
+                ..on
+            },
+        ] {
+            assert_eq!(decode_to_with(&hash, &off, Gamut::Srgb), plain);
+        }
+        // A layout with no luma AC has no band to extend.
+        let mut no_luma = base;
+        no_luma.layout.l_tiers = [(0, 4), (0, 4)];
+        let body = vec![0x5au8; crate::constants::body_len_bytes(&no_luma, false, 1)];
+        let mut body = body;
+        body[0] = 8;
+        body[1] = 128;
+        assert_eq!(
+            decode_to_with(
+                &body,
+                &Tunables {
+                    synth_count: 12,
+                    synth_gain: 0.5,
+                    ..no_luma
+                },
+                Gamut::Srgb
+            ),
+            decode_to_with(&body, &no_luma, Gamut::Srgb)
+        );
     }
 }

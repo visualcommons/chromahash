@@ -998,4 +998,49 @@ mod tests {
             "gradient reconstruction max error too large: {max_err}"
         );
     }
+
+    #[test]
+    fn selection_key_weighs_direction_with_aniso_zero() {
+        // The `a_q12 == 0 && h_q12 == 0` shortcut must take *both* weights
+        // being zero: with aniso off but hv on, the key is the §6.2 formula,
+        // not the bare `p << 16`. A pure horizontal frequency (px = 1, py = 0)
+        // has X = 2^12, so U = 2^24 and V = 2^24 + H·2^12; at H = 0.5 (2048 in
+        // Q12) that is W = (2^24 · 1.5·2^24) >> 32 = 1.5·2^16 = 98304. The
+        // vertical one (X = −2^12) gets V = 2^23 and W = 2^15.
+        assert_eq!(selection_key(1, 0, 0, 2048), 98_304);
+        assert_eq!(selection_key(0, 1, 0, 2048), 32_768);
+        assert_ne!(selection_key(1, 0, 0, 2048), 1 << 16);
+        // And with both weights zero the general form agrees with the shortcut,
+        // so the shortcut changes nothing but the cost.
+        for (px, py) in [(1u64, 0u64), (0, 1), (3, 4), (32, 7)] {
+            let p = px * px + py * py;
+            assert_eq!(selection_key(px, py, 0, 0), p << 16, "({px}, {py})");
+        }
+    }
+
+    #[test]
+    fn interleaved_order_merges_by_priority_then_channel_then_index() {
+        let sel = |priorities: Vec<u64>| Selection {
+            coeffs: vec![(0, 0); priorities.len()],
+            p_k: *priorities.last().unwrap(),
+            priorities,
+        };
+        let l_sel = sel(vec![1, 4, 5]);
+        let c_sel = sel(vec![1, 4]);
+        // Equal priorities break by channel (L, a, b), then by index.
+        assert_eq!(
+            interleaved_order(&l_sel, &c_sel, 3, 2),
+            vec![(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1), (0, 2)]
+        );
+        // Counts cap each channel's run, and a count past the selection's
+        // length is clamped to it rather than indexing past the end.
+        assert_eq!(
+            interleaved_order(&l_sel, &c_sel, 2, 1),
+            vec![(0, 0), (1, 0), (2, 0), (0, 1)]
+        );
+        assert_eq!(
+            interleaved_order(&l_sel, &c_sel, 9, 0),
+            vec![(0, 0), (0, 1), (0, 2)]
+        );
+    }
 }

@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+#MISE description="Re-measure spec/PERFORMANCE.md end to end: preflight, bounded pair, full supplement, stages, copy, fix, gate"
+#
+# Usage: mise run benchmark:session [--scratch DIR] [--skip-build]
+#                                    [--load-timeout SECONDS] [--set-primary]
+#                                    [RUN FLAGS...]
+#
+#   --scratch DIR   smoke-test the procedure: write the sweeps to DIR and stop
+#                   there — no stage recordings (they write tracked baselines),
+#                   no copy into baselines/, no --fix. Implies --allow-dirty.
+#   --skip-build    the harnesses are already built at this commit
+#   --load-timeout SECONDS
+#                   how long to wait, each time, for the 1-minute load to fall
+#                   under the bar (default 1800): after the build, before each
+#                   sweep and each of its process rounds, and before the stages
+#   --set-primary   make this host the one PERFORMANCE.md speaks for
+#                   (baselines/hosts/PRIMARY). Without it a session on another
+#                   host commits a secondary set — read only for the targets the
+#                   primary records absent — and leaves PRIMARY, the stage
+#                   baselines and the document's figures to the primary host
+#   RUN FLAGS       passed to every sweep: --pin CPULIST, --processes P,
+#                   --reps N, --max-load L, --force-loaded, --quick, --impls …
+#
+# One command for what PERFORMANCE.md §0 used to give as fifteen, in an order
+# that was load-bearing: sweeps first, then stages, then the copies, or every
+# later recording stamped itself dirty and the gate refused it. Every recorder
+# now excludes the measurement outputs from its dirty probe
+# (perf/provenance.ts MEASUREMENT_OUTPUTS, record_stages.py), so the order
+# below is a convenience, not a constraint.
+#
+# A file task, not an inline `run`: mise appends an inline task's arguments to
+# the command line instead of binding them, so flags would land as stray
+# words (see mise-tasks/benchmark/stages).
+#
+# Nothing here runs sudo. The root-only steps — governor `performance`, boost
+# off — are in §0; the preflight reports whether they were taken.
+#
+# The load is waited out, not refused. The 1-minute load average decays with a
+# one-minute time constant, so it is still above the bar a minute after
+# build:benchmark, and after each round's `threads=auto` batch cells (a runnable
+# thread on every core); refusing there stopped the session at its second
+# sweep, a quarter of an hour into measuring. Every sweep therefore runs with
+# `--wait-for-load`, which waits before its start and before every process
+# round, and the stages wait the same way. A wait that times out exits 3 with
+# what it saw.
+set -euo pipefail
+
+scratch=""
+skip_build=0
+load_timeout=1800
+set_primary=0
+run_flags=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --scratch) scratch="${2:?--scratch needs a directory}"; shift 2 ;;
+        --skip-build) skip_build=1; shift ;;
+        --set-primary) set_primary=1; shift ;;
+        --load-timeout) load_timeout="${2:?--load-timeout needs seconds}"; shift 2 ;;
+        *) run_flags+=("$1"); shift ;;
+    esac
+done
+case "$load_timeout" in
+    ''|*[!0-9]*) echo "benchmark:session: --load-timeout needs whole seconds, got '$load_timeout'" >&2; exit 2 ;;
+esac
+run_flags+=(--wait-for-load "$load_timeout")
+
+run_js="node tools/comparison/dist/perf/run.js"
+say() { printf '\n== benchmark:session: %s\n' "$*" >&2; }
+
+if [ "$skip_build" -eq 0 ]; then
+    say "building every harness"
+    mise run build:benchmark
+    mise run build:benchmark:scalar
+fi
+mise run build:compare
+
+# Whose document this is, decided before an hour of measuring rather than after.
+# It used to be decided at the copy, silently: whichever host ran a session
+# last became PRIMARY, so a macOS session meant to fill the Swift rows would
+# have repointed the whole document at a laptop.
+primary_file="tools/comparison/baselines/hosts/PRIMARY"
+host=$($run_js --host-id)
+previous=$(cat "$primary_file" 2>/dev/null || true)
+primary_session=1
+if [ -z "$previous" ]; then
+    say "no PRIMARY yet; this host, $host, becomes it"
+elif [ "$previous" = "$host" ]; then
+    say "this host, $host, is PRIMARY"
+elif [ "$set_primary" -eq 1 ]; then
+    say "--set-primary: PRIMARY moves from $previous to this host, $host"
+else
+    primary_session=0
+    say "this host is $host and PRIMARY is $previous: committing a secondary set," \
+        "read only for the targets $previous records absent. PRIMARY, the stage" \
+        "baselines and the document's figures stay $previous's; pass --set-primary" \
+        "to make this host the one PERFORMANCE.md speaks for"
+fi
+
+# The preflight waits out the build's own load before checking the host.
+say "preflight"
+preflight=("${run_flags[@]}")
+if [ -n "$scratch" ]; then preflight+=(--allow-dirty); fi
+$run_js --preflight "${preflight[@]}"
+
+stage="${scratch:-tools/comparison/output/perf/session-$(date -u +%Y%m%dT%H%M%SZ)}"
+mkdir -p "$stage"
+started=$(date +%s)
+
+# The host-stability pair: two independent bounded sweeps, one commit, one
+# host. Each is P processes per cell, interleaved round-robin.
+say "bounded sweep 1 of 2 -> $stage/perf-report.json"
+$run_js "${run_flags[@]}" --out "$stage/perf-report.json"
+say "bounded sweep 2 of 2 -> $stage/perf-report-2.json"
+$run_js "${run_flags[@]}" --out "$stage/perf-report-2.json"
+
+# The supplement: only the cells the bounded matrix does not hold.
+quick=0
+for f in "${run_flags[@]}"; do [ "$f" = "--quick" ] && quick=1; done
+if [ "$quick" -eq 0 ]; then
+    say "full supplement -> $stage/perf-report-full.json"
+    $run_js "${run_flags[@]}" --full --out "$stage/perf-report-full.json"
+fi
+
+if [ -n "$scratch" ]; then
+    say "scratch session done in $(( $(date +%s) - started )) s; nothing copied, nothing fixed"
+    exit 0
+fi
+
+# §1's three columns and §1.1's three. Each writes its committed baseline
+# directly, merged one cell per invocation. The stage recorders do not read the
+# load themselves, so wait for the full sweep's tail to clear first. The stage
+# files are not kept per host, so only the primary host records them.
+if [ "$primary_session" -eq 1 ]; then
+    say "waiting for the load before the stages"
+    $run_js --preflight "${preflight[@]}"
+    say "stages (§1)"
+    mise run benchmark:stages 100 100 1
+    mise run benchmark:stages 512 512 1
+    mise run benchmark:stages 512 512 4
+    say "waiting for the load before the decode stages"
+    $run_js --preflight "${preflight[@]}"
+    say "decode stages (§1.1)"
+    mise run benchmark:decode-stages 100 100 1 2000
+    mise run benchmark:decode-stages 100 100 4 20
+    mise run benchmark:decode-stages 100 100 4 200 32x32
+else
+    say "stages skipped: perf-stages.json and perf-decode-stages.json are $previous's"
+fi
+
+# Into the host's own directory, named as the gate reads them. The host id is
+# the run's own, so a run cannot be filed under a host it was not taken on.
+run_host=$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).host.id)' "$stage/perf-report.json")
+if [ "$run_host" != "$host" ]; then
+    say "the run says it was taken on $run_host, but this host is $host; refusing to file it"
+    exit 1
+fi
+dest="tools/comparison/baselines/hosts/$host"
+say "copying into $dest"
+mkdir -p "$dest"
+for f in perf-report.json perf-report-2.json perf-report-full.json; do
+    if [ -f "$stage/$f" ]; then cp "$stage/$f" "$dest/$f"; fi
+done
+if [ "$primary_session" -eq 1 ] && [ "$previous" != "$host" ]; then
+    say "PRIMARY was '${previous:-unset}', now '$host': the document now speaks for this host"
+    printf '%s\n' "$host" > "$primary_file"
+fi
+
+say "verify:benchmark --fix (rewrites only what is outside its band)"
+node tools/comparison/dist/verify-benchmark.js --fix
+say "verify:benchmark"
+status=0
+node tools/comparison/dist/verify-benchmark.js || status=$?
+say "done in $(( $(date +%s) - started )) s; review the diff of spec/PERFORMANCE.md and commit"
+exit "$status"

@@ -9,11 +9,16 @@ Sweep numbers come from the decision tables produced by `mise run sweep <config>
 `tools/comparison/output/sweeps/` when this file's figures were taken, and are
 now committed under `tools/comparison/results/`, for the current corpus only)
 on the **tune split** of the expanded corpus
-(74 images: 43 synthetic + 31 curated photos; the 32-image holdout —
-Kodak24 + held-out curated photos — is reserved for validating winners, per the
-pre-registered rule below). The curated set grew from 26 to 39 photographs in
-the 2026-08 corpus revision (`EXPERIMENTS.md` §9); **the v1 numbers in this file
-were measured before it** and are not comparable to the re-measured tables
+(74 images: 43 synthetic + 31 curated photos). The 32-image holdout — Kodak24 +
+held-out curated photos — was meant to be reserved for validating winners, per
+the pre-registered rule below, but it informed a decision in every round
+(`sel_hv = 0.15` was selected on it), so it is spent: it is now a second tuning
+split, `tune2`, and none of its figures is out-of-sample evidence
+(`EXPERIMENTS.md` §11.12). Its out-of-sample replacement is the sealed
+`holdout2`, read once by `V0.8-DECISIONS.md` C1 and C2: every shipped constant
+stands under R1 there (`EXPERIMENTS.md` §13.7). The curated set grew from 26 to 39
+photographs in the 2026-08 corpus revision (`EXPERIMENTS.md` §9); **the v1
+numbers in this file were measured before it** and are not comparable to the re-measured tables
 there. Re-deriving the constants on the revised corpus was a stated job for the
 next revision, and **v0.7 did it**: µ-law companding, the deadzone, the
 quantization ranges, the scalefactor bands and the selection weights were all
@@ -93,7 +98,8 @@ length, and the selection order is tier-invariant (priorities scale uniformly
 
 Review challenged this with rate–distortion practice (codecs add *precision*
 with rate, not only bandwidth). **Measured** (`tier-precision-vs-count`, the
-108 B budget, equal bytes): every precision-for-count trade loses — a 10×6b+14×5b L
+108 B budget, equal bytes, on the pre-2026-08 corpus; not run on the current
+corpus, and its output was not kept, `EXPERIMENTS.md` §6): every precision-for-count trade loses — a 10×6b+14×5b L
 split +0.11% ΔE00, fewer-L/wider-chroma +1.05%, mostly-6-bit L +0.50%, and all
 three *fail the SSIMULACRA2 guard* (−135 → −141…−158). At these bitrates more
 coefficients beat finer coefficients; the constant-depth design is the right
@@ -110,10 +116,14 @@ it was chosen for availability, not for semantics — the reserved range was, in
 `EXPERIMENTS.md` §3's words, "the cheapest place to put it". The argument for
 keeping it was compatibility: a v1 decoder written before the compact tier
 existed would reject code 4 rather than mis-decode it. **That argument applies
-to a population of size zero.** Wire generation v1 (`version` = 0) ships in
-0.7.x, which was never tagged and never published to any registry; v0.6 and
-earlier carried a single version bit at bit 47 and no tier field at all. The
-compact tier and the rest of v1 reach users in the same release.
+to a population of size zero.** When the codes were reordered (`f6417d3`,
+2026-08-27), wire generation v1 (`version` = 0) had not yet been tagged or
+published to any registry; v0.6 and earlier carried a single version bit at bit
+47 and no tier field at all. v1 was first tagged as `v0.7.1` (2026-08-29) and
+published from it — npm's 0.7.0, pushed earlier to claim the scope, is
+broken and deprecated (`CHANGELOG.md`) — so the compact tier reached users at
+code 0 in the same release as the rest of v1, and no published v1 decoder has
+ever read it at code 4.
 
 Against that, an unordered code costs a permanent hazard. It forces every
 size-scaling site to shift by a derived render level rather than the code, and
@@ -160,21 +170,31 @@ entry; BlurHash saturates near ΔE00 ≈ 12 regardless of component count.)
 A code-2 hash is not a byte-superset of a default-tier hash: channels are stored
 sequentially, so a byte prefix is not decodable. Capped decode (§11.3) already
 covers "render a high-tier hash small" — **measured** (`capped-tier1-vs-tier0`,
-photo tune split): a code-2 hash rendered at the default natural size scores
-ΔE00 7.61 vs 9.57 for a native default-tier encode (−20%), essentially identical
-to the code-2 natural render (7.62). Note this is *not* a truncation preview —
+photo tune split, on the pre-2026-08 corpus; not run on the current corpus, and its output was not kept (`EXPERIMENTS.md` §6)): a code-2 hash
+rendered at the default natural size scores ΔE00 7.61 vs 9.57 for a native
+default-tier encode (−20%), essentially identical to the code-2 natural render
+(7.62). Note this is *not* a truncation preview —
 capped decode keeps every in-band coefficient of the larger set — so it upper-
 bounds what byte-embedded/progressive tiers could preserve. Embedding requires
-interleaving AC across channels by priority: a structural wire change, v0.8
-roadmap.
+interleaving AC across channels by priority: a structural wire change. v0.7
+built it as a sweep-only knob — the first 32 B of an interleaved code-2 hash
+score +4.15% ΔE00 against a native code-1 encode, on tune (`EXPERIMENTS.md`
+§7.11) — and `V0.8-DECISIONS.md` D2 decided not to adopt it in 1.0, since it
+would reorder the payload of every published v1 hash.
 
 ### No entropy coding
 At the default tier, fixed-width fields buy O(1) validation (deterministic length
-*is* the validity check), no decoder tables, and fixed DB width — for ≤256 bits
-the ~20–40% entropy savings on near-Laplacian AC is not worth losing those. At
-codes 3–4 (3–13 kbit) the trade genuinely reverses; entropy-coded AC is a v0.8
-roadmap item, and the R-D gap to WebP/AVIF at those anchors is the budget it
-would need to close.
+*is* the validity check), no decoder tables, and fixed DB width — and for ≤256
+bits the saving is small. An adaptive coder scored leave-one-image-out, so that
+its tables are paid for, saves 7.5% of the AC bits at 32 B, not the ~20–40%
+this section used to assume for near-Laplacian AC; spent on more
+coefficients that is −1.6% ΔE00 at 32 B and −4.8% at 108 B (`EXPERIMENTS.md`
+§7.13, tune). Neither is worth losing those properties at the default tier. At
+codes 3–4 (3–13 kbit) the trade may reverse, but nothing has measured it there.
+`V0.8-DECISIONS.md` D1 registered it for codes 2–4 and decided it under the 1.0
+freeze: not adopted, because the O(1) length check stays a format invariant.
+The R-D gap to WebP/AVIF at those anchors is the budget a future wire
+generation would need it to close.
 
 ### Self-describing, no checksum
 Byte 0 (version/tier/flags) + the deterministic length formula = a parser
@@ -273,7 +293,7 @@ attribution above — whatever was true at the v0.5 constants, at v0.7's the
 invented structure is luma, and this paragraph's second sentence should not be
 read as describing the format as it now ships. And at code 2 the lightest taper
 (`w_min 0.85`) is **statistically free** on ΔE00 — a paired CI of
-[−0.030, +0.011] over 31 images — buying a 28% cut in invented detail and a
+[−0.028, +0.011] over 31 images — buying a 28% cut in invented detail and a
 better DSSIM, and failing on SSIMULACRA2 alone. That is a decision resting
 entirely on whether SSIMULACRA2 is right about placeholders, which is U19 and
 is still open.
@@ -315,12 +335,16 @@ already captures the entire benefit a deadzone offers this signal.
 ### One scale factor per channel (max |AC|)
 Review raised MP3/AAC scalefactor bands — one large low-frequency coefficient
 shouldn't crush the resolution of every small high-frequency one. **Measured**
-(`scalefactor-bands` at the default tier, `scalefactor-bands-t1` at code 2): the
-best band split reaches −0.20% at the default and −0.52% at code 2 (split=0.25,
-gain_l=0.6, guards ok). Direction confirmed — the effect grows with
-coefficient count, exactly as the audio analogy predicts — but far below the
-retune threshold. Revisit alongside entropy coding at v0.8, where per-band
-scales become cheap to signal.
+(`scalefactor-bands` at the default tier, `scalefactor-bands-t1` at code 2,
+both taken on the pre-2026-08 corpus): the best band split reached −0.20% at the
+default and −0.52% at code 2 (split=0.25, gain_l=0.6, guards ok) — the effect
+growing with coefficient count, as the audio analogy predicts, but far below
+the retune threshold. Only the default-tier sweep has been re-run since: on the
+current corpus its best arm is −0.14% ΔE00 at code 1, tune (`EXPERIMENTS.md`
+§11.9). `scalefactor-bands-t1` has not been run on the current corpus, and its
+pre-2026-08 output was not kept (`EXPERIMENTS.md` §6), so the growth with tier
+is a pre-revision observation, not a current one. Revisit alongside entropy coding, where per-band scales
+become cheap to signal.
 
 ### Quantization ranges sized to signal — re-validated
 `MAX_A/B_SCALE = 0.125`: the v0.6 corpus maximum chroma AC scale was 0.113 —
@@ -344,10 +368,10 @@ At the default tier it is the wrong answer. The count-vs-precision optimum moves
 budget, and a 32-byte hash has 202 AC bits to spend: sweeping the whole
 equal-byte grid (`EXPERIMENTS.md` §4.2) puts the optimum at 28 luma
 coefficients at 4 bits plus 15 chroma at 3, worth −2.09% mean ΔE00 on the
-never-tuned holdout with every guard improving (§4.5 — §4.2 above is the tune
+holdout split with every guard improving (§4.5 — §4.2 above is the tune
 split, and the −3.5% this sentence used to quote was the whole v0.7 recipe
-rather than the layout alone). So v1 carries a **three-row
-layout table** rather than one base scaled by `4^level` (§3.2).
+rather than the layout alone; that holdout has since been spent, §11.12). So v1
+carries a **three-row layout table** rather than one base scaled by `4^level` (§3.2).
 
 The optimum is broad — L30/C13 and L32/C12 are within noise of L28/C15 — which
 is itself the finding: what matters is moving *off* 26 @ 5, not the exact stop.
@@ -372,8 +396,9 @@ color is closest to the clip-mapped target. Zero wire cost, ~10 µs.
   revision is chasing single-digit-percent gains and has spent the cheaper
   levers first.
 - **ADPCM / predictive coding:** the DCT already decorrelates;
-  inter-coefficient prediction gains ≈ 0. (The image-domain prediction that
-  *does* pay is chroma-from-luma — see roadmap.)
+  inter-coefficient prediction gains ≈ 0. (The image-domain prediction,
+  chroma-from-luma, was built in v0.7: it predicts, but does not pay for the
+  gain field that signals it — future work item 1.)
 - **MDCT / lapped transforms:** exist to cancel block boundaries; there are no
   blocks.
 - **Dither / noise shaping:** determinism is a hard requirement, the blurred
@@ -416,13 +441,13 @@ encoding.
 
 | Technique | Verdict for v1 |
 |---|---|
-| Chroma-from-luma (AVIF CfL, JXL) | **Roadmap v0.8.** At LQIP scale chroma often tracks luma; predicting a/b AC as α·L_AC + residual could cut chroma bits. Structural wire change. |
+| Chroma-from-luma (AVIF CfL, JXL) | **Built in v0.7; does not pay for itself.** The predictor works, but the gain field that signals it costs more than it returns (future work item 1; `V0.8-DECISIONS.md` D7). This row read "Roadmap v0.8" until it was measured. |
 | Adaptive/spatial quantization (JXL quant maps) | **Rejected:** needs per-region signaling; nothing to signal at 32 B. |
-| Frequency-weighted quant matrices (JPEG/JXL) | **= the scalefactor-band experiment** (one mechanism, two framings): −0.20% (t0) / −0.52% (t1) — direction real, below threshold. |
+| Frequency-weighted quant matrices (JPEG/JXL) | **= the scalefactor-band experiment** (one mechanism, two framings): −0.14% at code 1 on the current corpus (`EXPERIMENTS.md` §11.9); −0.20% (code 1) / −0.52% (code 2) on the pre-2026-08 corpus — direction real, below threshold. |
 | DC prediction | **N/A:** one global DC. |
 | Directional intra prediction | **N/A:** no blocks. |
-| Entropy coding (ANS/CABAC) | **Rejected at the default tier / roadmap codes 3–4** (see Architecture). |
-| Progressive / embedded refinement | **Roadmap v0.8**; the capped-decode experiment bounds the value (t1@t0-size −20% ΔE00 vs native t0). |
+| Entropy coding (ANS/CABAC) | **Rejected at the default tier; not adopted at codes 2–4 in 1.0** (`V0.8-DECISIONS.md` D1; see Architecture). |
+| Progressive / embedded refinement | **Built as a sweep-only knob in v0.7; not adopted in 1.0 (`V0.8-DECISIONS.md` D2).** A 32 B interleaved prefix of a code-2 hash is +4.15% ΔE00 against native code 1 (`EXPERIMENTS.md` §7.11, tune); capped decode bounds the value from above (code 2 rendered at code-1 size, −20% ΔE00 against native code 1, pre-2026-08 corpus, not run on the current one). |
 | XYB color space | **Rejected** in favor of OKLAB (see Signal path). |
 | Wavelets (JPEG2000) | **Rejected at the default tier;** reopen at code 4 only if codes 3–4 survive their positioning question. |
 | Gaussian-splat / learned bases | **Rejected:** training dependency, no zero-dep decode. |
@@ -459,8 +484,11 @@ encoding.
 - **Tune/holdout split:** the v0.6 constants were tuned on the evaluation
   corpus. The split immediately quantified the damage: mean ΔE00 6.48
   (CI 4.6–8.4) on the tune split vs **11.36 (CI 10.3–12.5) on the
-  never-tuned holdout**. All v1 experiments tune on `tune` and validate on
-  `holdout` under the pre-registered ≥3%-with-guards rule. (The holdout
+  holdout**. All v1 experiments tuned on `tune` and validated on `holdout`
+  under the pre-registered ≥3%-with-guards rule, until the holdout had been
+  read in every round and was retired as `tune2` (`EXPERIMENTS.md` §11.12);
+  C1 and C2 then read the sealed `holdout2` once, and every shipped constant
+  stands under R1 there (`EXPERIMENTS.md` §13.7). (The holdout
   figure and its interval match the **v1** row of the version table above,
   11.364 [10.30, 12.45], rather than its v0.6 row, 11.312 [10.25, 12.39],
   which is what this bullet describes. No record says which run produced
@@ -473,15 +501,15 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
 1. ~~**Chroma-from-luma**~~ — **built in v0.7, and it does not pay for itself**
    (`EXPERIMENTS.md` §7.10). Implemented as a signalled per-channel
    least-squares gain and measured at every tier. The prediction is real and
-   grows with tier — given away free it is −0.10% ΔE00 at 32 B and −0.90% at
-   code 3 — but the gain field that signals it costs +2.11% at 32 B, which is
-   more than it returns. Note what is *not* being claimed: an earlier reading
-   had a free predictor scoring *worse* than none, which is not physically
-   expected and prompted an audit; on the Wikimedia corpus that anti-correlation
+   grows with tier — given away free it is −0.10% ΔE00 at 32 B, −0.45% at
+   code 3 and −0.90% at code 4 — but the gain field that signals it costs
+   +2.11% at 32 B, which is more than it returns. Note what is *not* being
+   claimed: an earlier reading had a free predictor scoring *worse* than none,
+   which is not physically expected and prompted an audit; on the Wikimedia corpus that anti-correlation
    is gone and the three measurements (residual energy, coefficient error, ΔE00)
    agree. Listed here as "the largest expected v0.8 win" until it was run, and
    kept struck through rather than deleted so the prediction can be read against
-   the outcome.
+   the outcome. `V0.8-DECISIONS.md` D7 records it as decided: not a v0.8 change.
 2. ~~**Alpha-mode default-tier layout**~~ — **resolved in v0.7** (`EXPERIMENTS.md`
    §11.3). It got its own corpus and sweep, and the answer was not the
    arithmetic's `L 22 @ 4, a/b 14 @ 3`. The binding constraint was not the
@@ -492,24 +520,38 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
    images improves. That is in-sample evidence. The never-tuned alpha holdout
    that put it at −16.2% mean ΔE00 with every guard improving has been retired
    (one of its images was deleted from Wikimedia Commons), so that figure can
-   no longer be reproduced (`EXPERIMENTS.md` §11.12); the allocation's
-   out-of-sample evidence returns only with a new sealed alpha split.
-   Still open: codes 3–4 alpha, inherited from the code-2 measurement rather
-   than measured directly.
+   no longer be reproduced (`EXPERIMENTS.md` §11.12). Its sealed replacement,
+   alpha holdout v2, measures the row at −13.66% mean ΔE00 out of sample, and
+   the compact and code-2 alpha rows at −10.19% and −8.99%; all three stand
+   under R1 (`EXPERIMENTS.md` §13.7, `V0.8-DECISIONS.md` C2). Codes 3–4 alpha,
+   inherited from the code-2 measurement rather than measured directly, was
+   registered as D6 and closed unmeasured by the 1.0 freeze.
 3. ~~**Code 3–4 positioning**~~ — **resolved in v0.7 by repositioning them**
    (`README.md` §14.1). Size-matched WebP overtakes code 3 and AVIF/WebP/JPEG
-   beat code 4; entropy coding would recover ~4% of a 20–40% gap and would
-   cost the O(1) length check that is the format's validity check. The spec
+   beat code 4, AVIF by 19% on ΔE00 (`EXPERIMENTS.md` §11.14). Entropy coding
+   has been measured only up to code 2, at −4.8% (`EXPERIMENTS.md` §7.13), and
+   would cost the O(1) length check that is the format's validity check. The spec
    now states that codes 3–4 are kept for their operational properties — no
    codec dependency, no decoder CVE surface, byte-exact reproducibility, one
    code path from 21 B to 1.6 kB — and makes no rate–distortion claim for
    them.
-4. **Entropy-coded AC at codes 3–4** — sized by that same R-D gap.
-5. **Embedded/progressive tiers** — interleave AC by priority so a tier-t hash
-   is a prefix of tier-t+1; capped decode bounds the value at −20% ΔE00 for
-   t1-at-t0-size.
-6. **Scalefactor bands / quant matrices** — real but small (−0.52% at t1);
-   becomes worth its signaling cost only alongside entropy coding.
+4. **Entropy-coded AC at codes 2–4** — sized by that same R-D gap.
+   `V0.8-DECISIONS.md` D1 approved its criteria and decided it: not adopted in
+   1.0, by the freeze rule. Reopening it takes a new wire generation.
+5. **Embedded/progressive tiers** — interleave AC by priority so a code-k hash
+   is a prefix of code k+1. Built as a sweep-only knob in v0.7: the first 32 B
+   of an interleaved code-2 hash score +4.15% ΔE00 against a native code-1
+   encode, on tune (`EXPERIMENTS.md` §7.11). Capped decode bounds the value
+   from above — a code-2 hash rendered at code-1 size scored −20% ΔE00 against
+   native code 1 — but that was measured on the pre-2026-08 corpus and has not
+   been run on the current one (`EXPERIMENTS.md` §6). `V0.8-DECISIONS.md` D2
+   decided it: not adopted in 1.0.
+6. **Scalefactor bands / quant matrices** — real but small. The current figure
+   is −0.14% ΔE00 for the best arm at code 1 (32 B), on tune
+   (`EXPERIMENTS.md` §11.9). The −0.52% this item used to quote is a different
+   measurement — `scalefactor-bands-t1`, at code 2 (108 B), on the pre-2026-08
+   corpus — and has no current-corpus counterpart (Quantization, above).
+   Becomes worth its signaling cost only alongside entropy coding.
 7. **a/b scale field-width swap (6b/5b)** — wire-fixed, unsweepable today; the
    range-asymmetry proxy suggests the current allocation is right.
 8. **Linear-light vs OKLAB DC averaging** — needs a Rust-side averaging knob;

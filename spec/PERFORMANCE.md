@@ -11,164 +11,326 @@ nothing joined them. The cost of every encoder-only lever was unknown, the
 dominant cost driver was never varied, and the shipped `simd` feature had never
 been measured at all.
 
-Numbers here are produced by `mise run benchmark` and `mise run benchmark:full`
-(driver: `tools/comparison/src/perf/`). Each harness times its own loop
-in-process, so no reported figure includes process startup, and the reported
-cost of a cell is the **minimum** over its timed blocks — every source of error
-in a wall-clock benchmark is one-sided, so the minimum is the sample least
-contaminated by the host.
+Numbers here are produced by `mise run benchmark:session` (driver:
+`tools/comparison/src/perf/`). Each harness times its own loop in-process, so no
+reported figure includes process startup. Each cell is timed in several
+independent processes, each reporting the **minimum** over its timed blocks —
+every source of error in a wall-clock benchmark is one-sided, so the minimum is
+the sample least contaminated by the host — and the reported cost is the
+**median of those per-process minima**, beside their range. §0 states the
+method and its revisions.
 
 Every table below is bound to a cell in a committed run, and
 `mise run verify:benchmark` checks each one. A figure that cannot be traced to a
 cell cannot be published here.
 
-> ### Measured 2026-09, except six cells and §12.4's levers
+> ### Measured 2026-10-10, except the cells named below
 >
-> **216 of this document's values are now checked against a committed run**, on
-> an AMD Ryzen 7 7800X3D (16 threads, Linux), from a clean tree. Six are not,
-> and neither are §12.4's 34, which are newer than the run; all of them are
-> named below rather than left for a reader to find.
+> **223 of this document's values are checked against a committed run**, on
+> an AMD Ryzen 7 7800X3D (16 threads, Linux), from a clean tree.
+> **33 table cells** are placeholders no committed run can fill yet, and so
+> are **1 figures in the prose** that depend on them; all of them are named
+> below rather than left for a reader to find.
 >
-> The previous revision carried `TBD` throughout, and the reason is worth
-> keeping: the runs behind the revision before *that* were not reproducible. The
-> committed baseline was a `bounded` sweep taken from a dirty tree while §2–§6
-> quoted a `--full` sweep that was never committed, and checked cell by cell
-> `verify:benchmark` found **50 disagreements in 89 values**, two tables with no
-> measured cell at all, and six duplicate cell ids. That baseline was removed
-> rather than corrected.
+> The revision before last carried `TBD` throughout, and the reason is worth
+> keeping: the runs behind the revision before *that* were not reproducible.
+> The committed baseline was a `bounded` sweep taken from a dirty tree while
+> §2–§6 quoted a `--full` sweep that was never committed, and checked cell by
+> cell `verify:benchmark` found **50 disagreements in 89 values**, two tables
+> with no measured cell at all, and six duplicate cell ids. That baseline was
+> removed rather than corrected.
 >
 > Re-measuring is a deliberate act, on a host that can hold a clock still — and
 > the host is part of the result, so it is stated. An Apple M3 Pro laptop was
 > tried and **rejected**: the same cell across fresh processes spanned 34%, the
 > host drifted ~25% over a few hours, and two independent full sweeps sharing 99
-> cells disagreed by more than 10% on 22 of them. The same bar was applied to
-> this host before anything was published: two independent bounded sweeps at the
-> same commit shared 100 cells, none disagreed by more than 10%, the widest was
-> 5.5%, and the driver flagged a single cell as noisy
-> (`batch/Kotlin/threads=auto`, a JVM thread-pool figure).
->
-> **That last check is not reproducible from this tree, and it is the weakest
-> evidence in the document.** Read it as a statement about the host at the time
-> of measurement, not as a result you can re-derive here. Precisely:
+> cells disagreed by more than 10% on 22 of them. This host now meets the bar on
+> evidence committed to the tree: the two bounded sweeps committed at one commit
+> share **128 cells**, the widest **6.0%** apart.
 >
 > | Claim | Reproducible from the tree? |
 > |---|---|
-> | Every table below equals a cell in `baselines/perf-report.json`, `baselines/perf-stages.json` and `baselines/perf-decode-stages.json` | **Yes** — `mise run verify:benchmark`, cell by cell, exactly |
+> | Every table below agrees with a cell in `baselines/hosts/<host>/perf-report*.json`, `baselines/perf-stages.json` and `baselines/perf-decode-stages.json`, within the cell's range or ±5% | **Yes** — `mise run verify:benchmark`, cell by cell |
 > | The M3 Pro's 34% / ~25% / 22-of-99 figures | **No.** That host's runs were never committed, and the machine was rejected rather than published |
-> | This host's cross-run agreement | **No.** Only one of the two bounded sweeps is committed, so `verify:benchmark`'s host-stability check has nothing to compare and reports itself `SKIP` |
+> | This host's cross-run agreement | **Yes** — two bounded sweeps at one commit: 128 shared cells, widest 6.0% (`verify:benchmark`, host stability) |
 >
-> The gate now has the slot and the rule; what it lacks is the second run. It
-> reads `baselines/perf-report-full.json`, `baselines/perf-report.json` and
-> `baselines/perf-report-2.json`, and **fails** on any cell two of them share
-> that is more than 10% apart — the spread used to be printed as a warning. The
-> stability check itself needs two `bounded` runs at one commit on one CPU,
-> sharing at least one cell, and it holds the row above to its result in both
-> directions: "Yes" fails unless the check passes and the row quotes its
-> figures (`N shared cells`, `widest X.X%`), and "No" fails once it passes.
-> Until a second bounded sweep is committed the cross-run agreement above stands
-> on the maintainer's word and nothing else — which is exactly the standard §11
-> indicts `spec/README` §14 for, kept here only because it is *labelled* rather
-> than presented as a checked result. **The 10%-spread bar remains the rule for
-> publishing a new host; what this tree can prove is that the numbers match one
-> committed run.**
+> **How it was measured, and what that costs.** The session ran on 2026-10-09
+> and 10, on the integration of every change open at the time (`d7f8efa`).
+> - **The host was shared.** Other users' builds held the load at 5–20 for
+>   most of the night. The driver waited out every busy spell: 6.2 hours in
+>   17 waits, the longest 3.2 hours, inside a session that ran from 23:18 to
+>   06:26 UTC. It measured each process round only when the 1-minute load fell
+>   below 2.0.
+> - **The governor and boost were not set.** The governor stayed `powersave`
+>   and boost on, because the root-only steps below need a password the
+>   session did not have. The preflight records both.
+> - **The two checks disagree on 33 cells.** The two runs agree with each
+>   other (the stability row), but 33 cells' own processes spread past the 10%
+>   bar.
+>   - 21 of them have a single outlier process in run 1, taken in a round
+>     admitted on a 1-minute dip while the 5-minute load was 3–6. #125
+>     tightens that admission rule.
+>   - 5 are the `threads=auto` batch cells, which spread in both runs: sixteen
+>     threads on a shared SMT host.
 >
-> **That committed run was annotated after it ran, in two fields that are not
-> measurements.** `baselines/perf-report.json` records commit `e53e6cd` with
-> `dirty: false`, and every cell in it is that run's output, unedited. Its one
-> `unavailable` entry, Swift's, was then changed by hand twice: the `reason` lost
-> the measuring checkout's absolute path (it now reads `spawnSync
-> .build/release/ChromaHashCLI ENOENT`), and `kind: "absent"` was added. The
-> driver at `e53e6cd` could write neither — it recorded no `kind` and quoted the
-> absolute path — so the file is not byte-for-byte what that commit produces.
-> Both edits are what the current driver (`perf/availability.ts`) writes for the
-> same probe outcome: the `ENOENT` kept in the reason is the evidence for
-> `absent`, and the redaction removes nothing else. The run was kept rather than
-> re-measured because the host is no longer quiet, and a re-run would replace a
-> sweep that met the 10% bar with one that has not been tested against it. The
-> next pair of `mise run benchmark` runs on a quiet host replaces it with two
-> unannotated files, and the gate now tests them against that bar.
+>   Those cells are **withheld**: written `TBD`, failed by name, and not
+>   published until a quieter session measures them.
 >
-> **What is still missing, and the one command that closes it:**
+> **What is still missing:**
 >
 > | Cells | Why |
 > |---|---|
-> | §2's tier-3 and tier-4 **encode** at 100×100 | the `bounded` matrix stops at tier 2 |
-> | §3's **128×128 and 1024×1024** rows | `bounded` measures 64/100/256/512 |
-> | §12.4's **34 lever cells** | the `bounded` matrix records them now, but its arms were added after the committed run was taken, and the host was not quiet enough to take another |
-> | §7 and §8's **Swift** rows | its binding consumes a UniFFI xcframework only `xcodebuild` can assemble, so it is empty on **every** run made off macOS — `ci-swift.yml` on `macos-latest` is where Swift is measured. These are marked *macOS only* rather than `TBD`: they are not pending anybody's run. |
+> | the 33 withheld cells, and the 1 prose figure resting on one | their own processes spread past the 10% host bar (`verify:benchmark` names each with its spread) |
+> | §7 and §8's **Swift** rows | its binding consumes a UniFFI xcframework only `xcodebuild` can assemble, so it is empty on **every** run made off macOS — `ci-swift.yml` on `macos-latest` is where Swift is measured. These are marked *macOS only* rather than `TBD`: they are not pending anybody's run, and a macOS session commits its own host directory (below) |
 >
-> The first two groups need `mise run benchmark:full`, whose exhaustive matrix
-> takes hours; the third needs only the bounded pair below; the fourth cannot
-> be produced on this platform at all.
->
-> **`mise run verify:benchmark` therefore still fails**, on those six
-> placeholders and §12.4's 34 cells and nothing else, so `ci-comparison.yml`
-> keeps `continue-on-error`. Note what that
-> means for the comment beside it, which says to remove the line "in the same
-> change that commits the baseline": a Linux runner can never satisfy this gate
-> while the Swift rows are bound, so the gate now reports an unreachable
-> target's rows as **unavailable** rather than failed. Forty cells short of
-> green, every one of them named here, is a state worth naming; sixty-eight
-> unnamed ones was not.
->
-> To fill the rest in:
->
-> ```bash
-> mise run benchmark          # -> tools/comparison/output/perf/perf.json
-> mise run benchmark -- --out tools/comparison/output/perf/perf-2.json
-> mise run benchmark:full     # -> tools/comparison/output/perf/perf-full.json
->
-> # §1's three columns. Each is its own invocation and each writes the committed
-> # baseline directly, so there is no `cp` for these.
-> mise run benchmark:stages 100 100 1
-> mise run benchmark:stages 512 512 1
-> mise run benchmark:stages 512 512 4
->
-> # §1.1's three columns, the same way.
-> mise run benchmark:decode-stages 100 100 1 2000
-> mise run benchmark:decode-stages 100 100 4 20
-> mise run benchmark:decode-stages 100 100 4 200 32x32
->
-> cp tools/comparison/output/perf/perf.json      tools/comparison/baselines/perf-report.json
-> cp tools/comparison/output/perf/perf-2.json    tools/comparison/baselines/perf-report-2.json
-> cp tools/comparison/output/perf/perf-full.json tools/comparison/baselines/perf-report-full.json
-> mise run verify:benchmark -- --fix   # rewrites every TBD from the runs
-> mise run verify:benchmark            # must pass
-> ```
->
-> The two bounded runs are the host-stability pair: independent processes, one
-> commit, one host. Once both are committed, `verify:benchmark` prints `Host
-> stability (§0): PASS` with the shared-cell count and the widest spread, and
-> fails until the reproducibility row above says **Yes** and quotes both.
->
-> **The order is load-bearing, and it is the reason `benchmark:stages` sits in
-> the middle.** Every recorder here stamps its output with `git.dirty`, and the
-> gate fails a run that carries it. `benchmark`/`benchmark:full` write to the
-> ignored `output/`, so they leave the tree clean — but they must therefore go
-> *first*, before anything else has dirtied it. `benchmark:stages` and
-> `benchmark:decode-stages` write tracked files, and their shared recorder
-> excludes exactly those two files from its probe, so the six invocations do
-> not dirty each other but a copied-in `perf-report.json` would dirty all six.
-> Hence: sweeps, then stages, then the copies.
->
-> This block previously omitted `benchmark:stages` altogether, so following the
-> documented procedure left §1's baseline untouched at whatever revision it was
-> last recorded at — the one table in the document with no way to notice.
->
-> The `cp` lines **rename** as they copy, and that is not cosmetic: the gate
-> reads `baselines/perf-report-full.json`, `baselines/perf-report.json` and
-> `baselines/perf-report-2.json` and ignores anything else in the directory
-> (`verify-benchmark.ts`). This block used
-> to say `cp …/perf*.json tools/comparison/baselines/`, which lands the files
-> under their output names, leaves the gate reading nothing, and reports the
-> document as unmeasured with no hint as to why. `TESTING.md` had it right.
->
-> Run it on a quiet machine, from a clean tree — every recorder stamps
-> `git.dirty`, and the gate fails on a run that cannot be traced to a revision.
-> That now includes §1 and §1.1: `benchmark:stages` and
-> `benchmark:decode-stages` commit `perf-stages.json` and
-> `perf-decode-stages.json`, and `verify:benchmark` checks their provenance
-> alongside the sweeps'.
+> **`mise run verify:benchmark` therefore still fails**, on the withheld
+> cells and nothing else, so `ci-comparison.yml` keeps `continue-on-error`. A
+> Linux runner can never satisfy this gate while the Swift rows are bound, so
+> the gate reports an unreachable target's rows as **unavailable** rather than
+> failed. A session on a quieter host, with the root-only steps below taken,
+> fills the rest: `mise run benchmark:session`, from a clean tree — §0 below.
+
+## 0. Procedure and methods
+
+**The session.** One command re-measures the document, after the root-only
+steps that hold a clock still. The driver never runs `sudo`; these are yours:
+
+```bash
+# On the measuring host, as root, once per boot. Each sysfs switch exists only
+# for the frequency driver that owns it.
+echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+echo 0 | sudo tee /sys/devices/system/cpu/cpufreq/boost           # acpi-cpufreq, amd-pstate passive
+echo 0 | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/boost      # amd-pstate active (per policy)
+echo 1 | sudo tee /sys/devices/system/cpu/intel_pstate/no_turbo   # intel_pstate
+# Optional: SMT off, or pin the harnesses to one thread per core below.
+echo off | sudo tee /sys/devices/system/cpu/smt/control
+
+mise run benchmark:session                  # or: mise run benchmark:session --pin 2,4,6,8
+```
+
+It runs, in order: a preflight; two `bounded` sweeps (the host-stability
+pair); the `full` supplement; `benchmark:stages` for §1's three columns
+(`100 100 1`, `512 512 1`, `512 512 4`) and `benchmark:decode-stages` for
+§1.1's (`100 100 1 2000`, `100 100 4 20`, `100 100 4 200 32x32`); a copy of
+the sweeps into `baselines/hosts/<host>/`; `verify:benchmark --fix`; and
+`verify:benchmark`, whose status it exits with. Review the diff, set §0's
+stability row to **Yes** with the figures the gate prints, and commit.
+`--scratch DIR` runs only the sweeps, into `DIR`, to smoke-test the procedure;
+every other flag is passed to the sweeps.
+
+It decides, before measuring, whose document this is. `baselines/hosts/PRIMARY`
+names the host the figures speak for, and a session changes it only when told
+to with `--set-primary` (or when there is none yet). On any other host the
+session commits a secondary set — read only for the targets the primary
+records absent, which is how a macOS session fills the Swift rows — and leaves
+PRIMARY, the stage files and the document's figures alone; it used to repoint
+PRIMARY at whichever host ran last.
+
+The order is no longer load-bearing. This block used to be fifteen commands —
+sweeps first, then stages, then the copies — because every recorder stamped
+`git.dirty` and a copied-in baseline dirtied every recording after it. Every
+recorder now leaves the measurement outputs (`baselines/hosts/`, the two stage
+files) out of its dirty probe: an output is not a source.
+
+**Preflight and load.** Before measuring, the driver reads the load average
+(Linux and macOS), the cpufreq governor, boost (the global switch,
+`intel_pstate/no_turbo`, or amd-pstate's per-policy `boost`) and SMT. The bar
+is a 1-minute load of one runnable task per eight hardware threads, never
+below 1. The session **waits** for the load to fall under it — after the
+build, before each sweep and **before every process round**, and before the
+stages — for up to `--load-timeout` seconds (default 1800) each time, and
+stops with what it saw if it does not. Refusing instead stopped the session at
+its second sweep: the 1-minute average decays over about a minute, so it is
+still high after the build and after each round's `threads=auto` batch cells.
+Run alone, the driver refuses a loaded host unless given `--wait-for-load`;
+`--force-loaded` starts anyway and marks the run `loaded`. A governor other
+than `performance`, boost on and SMT on are reported, not refused — they need
+root. All of it, with `rustc --version`, the kernel, the seconds waited, and
+the load average at the start, at every process round and at the end, is
+recorded in the run's `environment.preflight`. `--pin CPULIST` runs every
+harness under `taskset -c`.
+
+The gate does not take the driver's word for it. It recomputes the bar from
+the run's own core count — so `--max-load 50` does not move it — and holds the
+start and every round to it, so a run that started quiet and became loaded
+fails. (The end reading is recorded and not held: it trails the run's own
+batch cells.) It rejects, as a failure rather than a printed note, a `/3` run
+with fewer than four processes, an odd number, or fewer than five blocks; one
+with no git commit, digest and dirty bit; one with no preflight; and any
+`--quick` or `/1` run, under any file name.
+
+**Method (`chromahash-perf/3`).** One pilot sizes a cell's timed block to
+about 200 ms. The cell is then measured in **P independent processes**
+(`--processes`, default 4) of five timed blocks each (`--reps`), after the
+harness's warmup; each process reports its minimum block, and the cell
+reports the **median of the per-process minima**. Processes are interleaved
+**round-robin** across every cell, so a drift over the sweep lands on every
+cell a little instead of on whichever ran last.
+
+Beside the median the run records the **range** of the process minima — not a
+confidence interval. The range of n independent draws holds their median with
+probability 1 − 2^(1−n): 87.5% at four processes, 75% at three. The run stores
+that coverage beside the range. An earlier draft of this revision called the
+range a "bootstrap 95% interval", which with three processes it could not be.
+A cell is **noisy** when its process minima spread more than 5%. Its range then
+never widens what a documented value may be, so it is checked on the band
+alone.
+
+**A cell whose own processes spread past the host bar is withheld, not
+published.** Past 10%, a cell's processes disagree by more than two runs of
+the host are allowed to, so no figure taken from it is reproducible to this
+document's resolution, however well it agrees with the run. The gate fails
+every value resting on such a cell (or on a pair whose A B / B A blocks spread
+that far) by name, with the spread. `--fix` writes `TBD` in its place, and
+leaves a `TBD` that is already there. This is a property of the cell, not of
+the run, so `--fix` still writes every other value. The summary counts these
+apart from other placeholders ("withheld for process spread"), and they stay
+failing until a quieter session measures them.
+
+The stability pair and the per-cell spread are **separate checks**. The pair
+asks whether two runs of the host agree cell for cell, and its 10% is between
+runs. The spread asks whether one cell's processes agree within a single run.
+A session can pass the first and still withhold cells under the second: the
+2026-10-10 session's pair agreed within 6.0% on all 128 shared cells, while
+21 cells had one outlier process in one of the two runs.
+
+The `threads=auto` batch cells may be **structurally unpublishable on a shared
+SMT host**: they put a runnable thread on every core, so they compete with
+whatever else the host runs, and they spread past the bar in both runs of that
+session. That is the same kind of fact as Swift off macOS, about the host
+rather than the code. Unlike Swift there is no exemption: they stay withheld,
+and failing, until a session on a quieter host measures them within the bar.
+No `/3` figure is drawn by bootstrap, so the resample count `stats.ts`
+defaults to does not reach this document. The committed `/2` baseline's
+`ci95NsPerOp` fields were bootstrap draws at 1,000 resamples — `stats.ts`'s
+default at `e53e6cd`, whatever it is now, and not re-drawn since.
+They describe the median of one process's blocks, and the gate reads none of
+them.
+
+A ratio is measured as one. A lever and the cell it is divided into — every
+§4 and §12.4 arm and its base, §6's separable DCT, §5's scalar and SIMD
+builds, §2's natural and capped decodes, §8's one-thread and auto batches —
+form a unit whose processes run back to back, in reverse order every other
+round: rounds 0 and 1 run a pair A B, then B A, and so do rounds 2 and 3. The
+run stores each such ratio as a **paired record**. The record holds each
+round's base minimum over that round's arm minimum, and the ratio is their
+**geometric mean over complete A B / B A blocks**. Whatever running second does
+to a member multiplies one order's ratio by about what it divides the other's
+by, so the order effect cancels. The record also holds each block's ratio, the
+blocks' range (two blocks cover the median half the time, so this is a range
+too) and their spread. A pair whose blocks spread past 5% gets no range
+acceptance, and one whose blocks spread past 10% is withheld, as for a cell. The
+ratio used to be the median of the rounds. With three rounds (A B, B A, A B)
+that is an A B round, carrying any order effect whole, which is why the count
+is now even. These records are what §2's saving, §4's "vs shipped", §5's gain,
+§6's and §12.4's speedups and §8's scaling read. A `/3` run without the record
+for a ratio it publishes is missing a measurement and fails; only a `/2` run,
+which recorded no pairs, is read as a ratio of two cells.
+
+**One measurement, one cell.** A lever table's `shipped` arm is the base cell
+under another name — `encode/Rust/t1/100x100/gradient/shipped` is
+`encode/Rust/t1/100x100/gradient`, and `decode/Rust/t1/natural/shipped` is
+`decode/Rust/t1/natural` — so it is now recorded as an alias and measured
+once. They used to be measured twice and quoted from different cells in
+different sections; a run old enough to hold both is checked for the two
+agreeing within 10%.
+
+**The full run is a supplement.** `--full` measures only the cell ids the
+bounded matrix does not hold — tier 3 and 4 across languages, the 128×128 and
+1024×1024 sources, two, four and eight batch threads — so committing it fills
+the cells only it can produce and re-baselines nothing. It used to re-measure
+every bounded id as well, and the gate preferred its value, so filling six
+cells rewrote two hundred. The gate fails a full run that holds a bounded id.
+
+**What it costs.** By the harness's own budget (pilot, warmup, blocks), a
+bounded sweep at four processes on this host is about twenty minutes, up from
+about seven for one process per cell, and the full supplement about a quarter
+of an hour. The load waits add a few minutes per sweep, mostly after rounds
+that end in the `threads=auto` batch cells. A whole session, builds and stage
+recordings included, is about an hour and a half. These are estimates from
+that budget, not measurements; each run records its own `wallSeconds` and the
+seconds it waited.
+
+**How a figure is checked.** A documented value passes when it is the
+measured value rounded as written, when it lies inside the cell's range, or
+when it is within **±5%** of the committed run. The 5% is half of the 10% host
+bar, and it is a resolution chosen rather than a noise level measured: a
+figure is rewritten only when it moved more than half of what the bar lets
+two runs of the host differ by, and a change the size of the bar always is.
+How many figures a re-run on this host moves past it is not known yet — the
+one pair of sweeps this host has compared was never committed, so that
+agreement is unverified — and the first committed pair will say. A stage share
+passes within half a point, whatever its size: §1 records two
+recordings back to back agreeing within 0.4 points. A percentage that is a
+difference of two timings (§4's "vs shipped", §5's "2%") is held to the same 5%
+on the ratio it stands for — §4's −36.3% is 0.637×, so ±3.2 points. A ratio or
+timing percentage that states a direction must also keep it: a figure written
+as a speedup fails against a measured slowdown however small the difference,
+and `--fix` writes the measured side; one that rounds to 1× or 0% as written
+states none. `--fix` rewrites only what is outside. It refuses to write at all
+while the committed runs themselves fail — untraceable or stale provenance, a
+dirty tree, a loaded round, too few samples, a rejected run, no preflight,
+cross-run spread or a failed stability pair — because agreeing with a run the
+gate refused would carry its figures into the document. A withheld cell is
+not one of these: it is written as `TBD` and the rest of the fix goes ahead.
+That is the document's
+resolution, stated: a claim within 5% of 1 — §5's SIMD gain — is checked to
+"within 5%" and to its sign, no finer. Every figure the prose restates is bound
+the same way, and one that needs a measurement nobody has committed is written
+`TBD` and fails by name.
+
+**Per-host baselines.** Sweeps are committed under `baselines/hosts/<host>/`,
+where `<host>` is the run's OS, architecture and CPU model, slugged; each run
+also records a one-way hash of the machine id, and two machines with one CPU
+model fail the stability check. `baselines/hosts/PRIMARY` names the host this
+document is measured on: its bounded runs are authoritative and its full run
+supplements them. Spread and stability are checked within a host, never
+across, so a macOS session can commit `baselines/hosts/darwin-arm64-…/` beside
+this one, and is read only for targets the primary host records absent —
+which is how the Swift rows will be filled, and why they stay *macOS only*
+until then. Any host whose cells are read must have a passing stability pair
+of its own, the secondary as much as the primary; only a host whose runs are
+all the legacy `/2` format — the committed one, labelled "No" above — is
+exempt.
+
+**Provenance survives a squash merge.** Pull requests here are squash-merged,
+so the commit a run was taken at is unreachable from `master` once it lands:
+the committed baseline records `e53e6cd`, the stage files `4d68c1f` and
+`8f5f4d1`, and none is an ancestor of `master`. Every recorder now also
+records a SHA-256 over the files that decide a measurement (`rust/`,
+`bindings/`, every harness's language directory, the driver and the stage
+recorder, and the tasks that build and run them — `.mise.toml` and
+`mise-tasks/benchmark/`; `perf/provenance.ts` lists them), less documentation:
+a README or a `docs/` page cannot move a figure, so editing one does not orphan
+a baseline. The gate accepts a run whose commit is an ancestor of `HEAD` and
+has that digest, or — when the commit is not reachable — whose digest some
+commit in `HEAD`'s history has. So: **measure on a branch rebased onto
+`master`, and land it before `master`'s measured sources move.** That is now
+checked before the merge rather than discovered after it: a change that adds
+or changes a baseline must have measured it on `HEAD`'s own sources, and in CI
+`HEAD` is the pull request merged into the current `master`, so a run that went
+stale while its PR was open fails there, and the fix is to rebase and
+re-measure. A run from before digests is reported (`LEGACY`) and not failed.
+`e53e6cd`'s harness sources are `ec2b290`'s, but its branch's `.mise.toml` and
+`mise-tasks/benchmark/stages` never reached `master` in that form, so under the
+current digest it is traceable only by its PR ref.
+
+**Methods revisions.** `chromahash-perf/1` reported each cell's median block.
+`chromahash-perf/2` (2026-09) reported the minimum block of one process, on
+the one-sided-error argument above: on the rejected M3 Pro, ten fresh
+processes timing one cell put the minimum within 0.1% while the median of the
+same blocks spanned 34%. `chromahash-perf/3` (this revision) samples
+processes, not only blocks: the minimum of one process left the variance
+between processes — a different core, heap layout or moment in the host's
+thermal cycle — unsampled, its "interval" was a CI of the median of its
+blocks rather than of the figure reported, and its `noisy` flag was never
+read. It also pairs ratios over A B / B A blocks, makes `--full` a
+supplement, keys baselines by host, records the host's state and a source
+digest, and checks documented figures against a range or a band instead of
+exactly. The gate reads `/2` and `/3`, and a host's runs must share one. A
+`/2` cell has no range, so it is held to the ±5% band alone; the gate lists
+every bound cell the driver flagged noisy, and holds `/2` to none of the `/3`
+record requirements above, which it predates.
 
 ---
 
@@ -222,13 +384,13 @@ anything.
 | `composite` | 0.5% | 4.3% | 0.1% |
 | `selection` | 0.6% | 0.0% | 0.1% |
 | `cos_tables` | 0.3% | 0.1% | 0.0% |
-| **`dct_forward`** | 57.2% | 78.8% | 96.7% |
+| **`dct_forward`** | 60.5% | 79.8% | 96.7% |
 | `dc_search` | 0.2% | 0.0% | 0.0% |
-| `ac_quantize` | 37.2% | 1.9% | 2.6% |
+| `ac_quantize` | 33.9% | 1.9% | 2.6% |
 | `refine` | 0.0% | 0.0% | 0.0% |
 | `pack` | 0.0% | 0.0% | 0.0% |
 | `unmarked` | 0.0% | 2.1% | 0.1% |
-| total | 2.55 ms | 47.20 ms | 1845.11 ms |
+| total | 2.36 ms | 47.20 ms | 1845.11 ms |
 
 **Every row but `unmarked` is a `stage!` mark, and the marks now cover
 `encode_with` end to end.** Until this revision the last four stages —
@@ -244,7 +406,7 @@ which frees every per-pixel buffer the encode allocated, plus the timers' own
 overhead — negligible at 100×100, and 2.1% at 512×512, where the buffers are
 megabytes each.
 
-**The forward DCT is the encoder, above thumbnail size.** 57% of a 100×100
+**The forward DCT is the encoder, above thumbnail size.** 60% of a 100×100
 encode, 79% at 512×512, and **97%** at 512×512 tier 4 — the share rises with both
 size and tier. That is what orders §10: a lever that does not touch
 `dct_encode_selected` cannot be worth much at any size a caller actually
@@ -254,13 +416,13 @@ encodes, however elegant.
 paragraph asserted past both by calling every other stage "a rounding error at
 any size or tier that matters":
 
-* **At 100×100, `ac_quantize` is 37.2%** — the scale and AC code searches,
+* **At 100×100, `ac_quantize` is 33.9%** — the scale and AC code searches,
   not a rounding error at all, and now measured rather than bounded: the rest
   of the old residual (`dc_search`, `refine`, `pack`, `unmarked`) is under half
   a point together. That is exactly the trap §4 documents, and it is
   why the encoder-only levers look decisive on a thumbnail and vanish on a
   photograph.
-* **At 512×512 the per-pixel colour pipeline is 16.6%** — `linearize` 5.4%,
+* **At 512×512 the per-pixel colour pipeline is 16.0%** — `linearize` 5.4%,
   `oklab_forward` 6.9%, `composite` 4.3%. Only the middle one has a SIMD
   backend, which bounds what §5 can buy before §5 is measured at all: the
   `simd` feature covers 6.9 points of a 100-point budget at the size a caller
@@ -296,8 +458,8 @@ spec's bytes, and the artifact records how many it did.
 | `ac_dequant` | 0% | 0% | 1% |
 | `window_filter` | 0% | 0% | 0% |
 | `cos_tables` | 1% | 0% | 0% |
-| `gamma_lut` | 66% | 0% | 4% |
-| **`render`** | 29% | 99% | 55% |
+| `gamma_lut` | 59% | 0% | 4% |
+| **`render`** | 35% | 99% | 57% |
 | `unmarked` | 0% | 0% | 2% |
 
 Every row but `unmarked` is a `stage!` mark in `decode.rs`'s `render_at_size`,
@@ -311,9 +473,9 @@ table) and `render` (the `O(w·h·K)` loop, with the output buffer it fills).
 from `render_at_size` and the timers' own overhead.
 
 **At the default tier, most of a decode is not the decode.** `gamma_lut` is
-**66%** of a tier-1 decode — the transfer table is rebuilt on every call, 4096
+**59%** of a tier-1 decode — the transfer table is rebuilt on every call, 4096
 evaluations of the gamma curve for a 32×32 raster of 1024 pixels, and it costs
-more than the render loop it serves (`render` is **29%**). The table depends only
+more than the render loop it serves (`render` is **35%**). The table depends only
 on the output gamut, so it is the same table every time.
 
 **At tier 4 the render loop is the decode:** **99%** of a natural tier-4 decode,
@@ -332,11 +494,11 @@ sized with that limit stated.
 
 | tier | bytes | encode | decode |
 |---|---:|---:|---:|
-| 0 (compact) | 21 | 1.41 ms | 0.28 ms |
-| 1 (default) | 32 | 2.46 ms | 0.31 ms |
-| 2 | 108 | 7.10 ms | 1.26 ms |
-| 3 | 411 | TBD ms | 15.42 ms |
-| 4 | 1623 | TBD ms | 233.80 ms |
+| 0 (compact) | 21 | 1.41 ms | 0.24 ms |
+| 1 (default) | 32 | 2.46 ms | 0.28 ms |
+| 2 | 108 | 7.10 ms | 1.19 ms |
+| 3 | 411 | 25.97 ms | 15.42 ms |
+| 4 | 1623 | 110.38 ms | 233.80 ms |
 
 Decode grows roughly `4^level`, as `4^level` coefficients over a `4^level`
 raster predicts. A tier-4 decode is the most expensive single operation the
@@ -348,10 +510,10 @@ Rust decode, natural against capped to 32×32:
 
 | tier | natural | capped 32×32 | saving |
 |---|---:|---:|---:|
-| 0 | 280 µs | 279 µs | 1.00× |
-| 1 | 315 µs | 316 µs | 1.00× |
-| 2 | 1261 µs | 528 µs | 2.39× |
-| 3 | 15415 µs | 1571 µs | 9.81× |
+| 0 | 239 µs | 240 µs | 1.00× |
+| 1 | 279 µs | 276 µs | 1.00× |
+| 2 | 1191 µs | 469 µs | 2.53× |
+| 3 | 15415 µs | 1492 µs | 9.81× |
 | 4 | 233797 µs | 4952 µs | 47.22× |
 
 Decode is linear in rendered pixels, so capping harder pays more still. The
@@ -369,12 +531,12 @@ encode is `O(K·W·H)`. Tier 1, gradient:
 
 | source | encode | per megapixel |
 |---|---:|---:|
-| 64×64 | 1.57 ms | 384.49 ms |
+| 64×64 | 1.48 ms | 362.35 ms |
 | 100×100 | 2.46 ms | 246.12 ms |
-| 128×128 | TBD ms | TBD ms |
+| 128×128 | 3.65 ms | 222.68 ms |
 | 256×256 | 12.32 ms | 188.03 ms |
 | 512×512 | 46.74 ms | 178.29 ms |
-| 1024×1024 | TBD ms | TBD ms |
+| 1024×1024 | 185.96 ms | 177.34 ms |
 
 The per-megapixel column falls as the source grows and then flattens, which is
 fixed per-call overhead amortising; the flattened value is the marginal cost,
@@ -394,7 +556,7 @@ deltas are from [`EXPERIMENTS.md`](EXPERIMENTS.md) §4.4; the time column is new
 | scale_fit=0 | 1.56 ms | -36.3% | — |
 | scale_fit=1 | 1.55 ms | -36.6% | 10.381 |
 | ac_nearest=0 | 1.73 ms | -29.2% | 10.392 |
-| dc_search=0 | 2.44 ms | -0.2% | — |
+| dc_search=0 | 2.44 ms | 0.0% | — |
 | no encoder search | 1.54 ms | -37.2% | 10.434 |
 | refine_passes=1 | 20.27 ms | 728.6% | — |
 | refine_passes=2 | 37.42 ms | 1430.0% | — |
@@ -440,7 +602,7 @@ Default build vs `--no-default-features`, both byte-identical:
 
 | source | tier | SIMD | scalar | gain |
 |---|---|---:|---:|---:|
-| 100×100 | 1 | 2.46 ms | 2.52 ms | 1.02× |
+| 100×100 | 1 | 2.46 ms | 2.39 ms | 1.02× |
 | 256×256 | 1 | 12.32 ms | 12.61 ms | 1.02× |
 | 512×512 | 1 | 46.74 ms | 47.63 ms | 1.02× |
 | 512×512 | 0 | 29.19 ms | 30.13 ms | 1.03× |
@@ -476,22 +638,26 @@ Behind `Tunables::dct_separable` (off by default, exposed by no binding):
 
 | source | tier 1 direct | separable | speedup |
 |---|---:|---:|---:|
-| 100×100 | 2.45 ms | 1.19 ms | 2.05× |
-| 256×256 | 12.31 ms | 3.85 ms | 3.20× |
+| 100×100 | 2.45 ms | 1.04 ms | 2.26× |
+| 256×256 | 12.31 ms | TBD ms | TBD× |
 | 512×512 | 46.70 ms | 12.68 ms | 3.68× |
 
-**The prediction holds, and this is the largest lever in the document.** The
-saving grows with size exactly as the `K / Cx` argument says it should —
-2.05× → 3.20× → 3.68×. At 512×512 it takes **34.0 ms off an encode where the
-`simd` feature takes 0.9 ms**: 38× the absolute saving, on the stage §1 prices
-at 79% of the work rather than on the 6.9% stage `simd` covers.
+**The prediction holds.** The saving grows with size exactly as the `K / Cx`
+argument says it should: 2.26× → TBD× → 3.68×. At 512×512 it takes **34.0 ms
+off an encode**, working on the stage §1 prices at 79% of the work. The shipped
+`simd` feature works on the 6.9% stage and takes nothing measurable off the same
+encode: the byte-identical speedup §5 measures for it is 2%, inside the 5% band
+this document holds a figure to.
 
-That it is also the only *large* lever requiring a format change is the tension
-§12 exists to lay out. Stated precisely, because the temptation is to overstate
-it: **the only byte-identical speedup this document has measured is 2%, and the
-only large one measured at all costs a version bump.** §12.1 lists seven
-byte-identical candidates that are located and sized but not built, so what is
-missing is a measurement of them, not an argument for them.
+**It is no longer the largest lever, and it is not the one to adopt.** §12.4's
+`accel_dct_lanes` vectorises the same forward transform across coefficients,
+and it keeps each coefficient's own summation order, so it is byte-identical by
+construction and by test. All seven byte-identical levers together, with
+`accel_dct_lanes` doing nearly all of it, measure **7.58×** at 512×512. That is
+about twice the separable factorisation, at no format cost. §12 set out the
+tension of a large lever that costs a version bump. It has resolved in favour
+of the byte-identical one, and register entry D4 is decided as not adopted
+(`V0.8-DECISIONS.md`, A1).
 
 **On byte-identity, precisely.** Reassociating floating-point addition is not
 guaranteed to preserve quantized codes. Over 40 encodings spanning all five
@@ -508,15 +674,15 @@ measured process startup; these are the operations.
 
 | implementation | encode t0 | encode t1 | encode t2 | decode t1 | decode t2 |
 |---|---:|---:|---:|---:|---:|
-| Rust | 1407 µs | 2461 µs | 7100 µs | 315 µs | 1261 µs |
-| Rust (scalar) | 1466 µs | 2518 µs | 7184 µs | 324 µs | 1254 µs |
-| Go | 1410 µs | 2456 µs | 7093 µs | 320 µs | 1279 µs |
-| C# | 1411 µs | 2453 µs | 7070 µs | 323 µs | 1283 µs |
-| Kotlin | 1499 µs | 2558 µs | 7170 µs | 330 µs | 1316 µs |
+| Rust | 1339 µs | 2461 µs | 7100 µs | 279 µs | 1191 µs |
+| Rust (scalar) | 1466 µs | 2388 µs | 7184 µs | 274 µs | 1170 µs |
+| Go | 1410 µs | 2456 µs | TBD µs | 279 µs | TBD µs |
+| C# | 1411 µs | 2453 µs | 7070 µs | 278 µs | 1283 µs |
+| Kotlin | TBD µs | 2558 µs | 7170 µs | 288 µs | 1247 µs |
 | Swift | *macOS only* | *macOS only* | *macOS only* | *macOS only* | *macOS only* |
-| Python | 6643 µs | 7729 µs | 12600 µs | 344 µs | 1334 µs |
-| TypeScript (wasm) | 1053 µs | 1649 µs | 4617 µs | 398 µs | 1761 µs |
-| TypeScript (pure) | — | — | — | 1536 µs | 17442 µs |
+| Python | TBD µs | TBD µs | TBD µs | TBD µs | 1334 µs |
+| TypeScript (wasm) | TBD µs | TBD µs | TBD µs | TBD µs | TBD µs |
+| TypeScript (pure) | — | — | — | TBD µs | TBD µs |
 
 Every row is a thin binding over the same Rust core, so a row that differs from
 Rust by more than the FFI boundary costs is worth explaining rather than
@@ -557,11 +723,11 @@ published as though they were the algorithm.
 
 | implementation | 1 thread | auto | scaling |
 |---|---:|---:|---:|
-| Rust | 2445 µs | 207 µs | 11.80× |
-| Rust (scalar) | 2521 µs | 213 µs | 11.83× |
-| Go | 2463 µs | 205 µs | 12.02× |
-| C# | 2453 µs | 209 µs | 11.72× |
-| Kotlin | 2538 µs | 278 µs | 9.14× |
+| Rust | 2445 µs | TBD µs | TBD× |
+| Rust (scalar) | 2378 µs | TBD µs | TBD× |
+| Go | 2335 µs | TBD µs | TBD× |
+| C# | 2453 µs | TBD µs | TBD× |
+| Kotlin | 2538 µs | TBD µs | TBD× |
 | Swift | *macOS only* | *macOS only* | *macOS only* |
 | TypeScript (wasm) | 1655 µs | — (serial) | — |
 | Python | 7815 µs | — (serial, GIL) | — |
@@ -611,11 +777,14 @@ file and line, with each entry tagged by whether it moves a byte.
 
 1. **The forward-DCT inner loop.** §1 puts it at 79% of a 512×512 encode and 97%
    at tier 4, so it is the only place where a large win is available at all, and
-   the byte-safe half of it needs no format change.
-2. **Adopt the separable transform** (§6) — **3.68× at 512×512**, now measured,
-   growing with size as its own `K / Cx` argument predicts. It is the largest
-   lever in this document by an order of magnitude, and it costs a format
-   version. Worth deciding deliberately rather than by default.
+   the byte-safe half of it needs no format change. That half is now built and
+   measured. §12.4's levers, `accel_dct_lanes` above all, make a 512×512 encode
+   about 7.6× faster at the same bytes. Turning them on by default is the 1.0
+   speed change: patch-legal and with no wire change.
+2. **The separable transform** (§6): **3.68× at 512×512**, now measured,
+   growing with size as its own `K / Cx` argument predicts. It costs a format
+   version, and the byte-identical lever in item 1 is about twice as fast. It
+   is decided as not adopted (register D4, under the 1.0 freeze).
 3. **Reconsider `ac_nearest` and per-tier `scale_fit`** (§4), for small inputs
    only. Their quality effects are at or below the noise floor at the default
    tier, and their time cost vanishes at photo resolution.
@@ -675,15 +844,15 @@ release; one that reassociates a float sum or moves a coefficient is a format
 version, a regenerated vector set, and nine languages landing together.
 
 The measured context, from §1 and §5: the forward DCT is **79%** of a 512×512
-encode and **97%** at tier 4; `ac_quantize` is **37.2%** of a 100×100 one;
-the per-pixel colour pipeline is **16.6%** at 512×512; and the shipped `simd`
+encode and **97%** at tier 4; `ac_quantize` is **33.9%** of a 100×100 one;
+the per-pixel colour pipeline is **16.0%** at 512×512; and the shipped `simd`
 feature buys **1.02×** because it covers 6.9 of those points.
 
 All four are now marked stages. The second used to be a residual,
 `quantize_and_pack`, which held the quantizer searches *and* the DC search, the
 bit packing, the buffer frees and the instrumentation's overhead, so it could
 only ever be a ceiling on a bucket; §1 now splits it, and the searches are
-37.2 of its old 37.5 points at 100×100.
+33.9 of its old 37.5 points at 100×100.
 
 ### 12.1 Byte-identical — legal in a patch release
 
@@ -695,15 +864,22 @@ and `mise run rd:gate` are sufficient evidence, and no version moves.
 | 1 | `mulaw.rs:50` ← `encode.rs:652` | **Precompute the dequantization table, keyed on `(bits, index)`.** `mu_law_dequantize(index, bits, mu)` is a pure function of its arguments, and `mu` *is* fixed for a channel (`t.mu_l`) — yet `scale_fit=2` calls it inside a 63-code search over every coefficient, each call a `portable_pow` = a 20-term series plus a degree-25 Taylor polynomial. **`bits` is not fixed:** `AcQuantJob::bits_at(i)` (`encode.rs:682`) walks the job's tier list and returns a width that varies with the selection index. `LAYOUT_C` (`constants.rs:193`) is `l_tiers: [(8, 6), (14, 5)]` — 6-bit low band, 5-bit high band, one channel, reachable through `Tunables::layout_upper` and exercised by `constants.rs:863`. A table keyed on the index alone would hand the high band the low band's grid and dequantize it wrongly. Two widths per job at most, ≤ 2^6 − 1 = 63 indices each, so ≤ 128 entries — not the "≤ 32" an index-only table suggests. | The table holds the same values the calls return, *provided* `bits` is part of the key |
 | 2 | `mulaw.rs:6`, `encode.rs:682,694` | **Hoist the loop-invariants.** `mu_compress` recomputes `portable_ln(1.0 + mu)` on every quantize call for a constant `mu`; `bits_at`/`gain_at` walk the tier list per index per call. Note this is the *same* walk item 1 must key its table on: it is an inefficiency worth removing and a correctness constraint at once, so the two entries have to land together. | Same values, computed once |
 | 3 | `dct.rs:251` | **Vectorize across coefficients, not pixels.** The inner sum must keep its exact left-to-right order, which is why `simd/mod.rs` never touched it. Lanes over *distinct `(cx, cy)` pairs* preserve each coefficient's own order and are as parallel as the per-pixel case. | Per-lane arithmetic is unchanged; only which coefficient a lane holds — **but the arithmetic argument alone is not sufficient, and two things break it.** (a) **FMA contraction.** The kernel is `f += channel[x + y*w] * cx_row[x] * fy`; fusing the multiply-add keeps one rounding instead of two and changes the result. Rust does not contract today, but intrinsics backends are written by hand and `fmadd` is the obvious instruction to reach for. The lanes must use separate multiply and add. (b) **Regrouping.** `channel * (cx * fy)` is the natural vector form and is *not* `(channel * cx) * fy`; float multiplication is not associative, and this repo ships four hand-written backends that would each have to resist the same simplification. Both belong in the vector-diff gate, not in review |
-| 4 | `decode.rs:22,420`; `decode.rs:447`, `dct.rs:370` | **Decode, in two parts sized by §1.1.** (a) **Build the gamma LUT once per output gamut, not once per decode.** `build_gamma_lut` evaluates the transfer curve 4096 times — each a `portable_pow` for sRGB and Display P3 — on every call, and §1.1 measures it at **66%** of a default-tier decode, more than the render loop itself. It is a pure function of the gamut, so a table built once (or generated) holds the same 4096 bytes. `average_color` (`decode.rs:660`) builds the same table to convert one pixel. (b) **Flatten `cos_x`/`cos_y`, and vectorize the render loop.** They are `Vec<Vec<f64>>`, a pointer chase per coefficient per pixel in the `O(w·h·K)` loop, and there is **no SIMD in decode at all** — a scalar per-pixel OKLAB inverse plus three gamma lookups. §1.1 puts that loop at **99%** of a natural tier-4 decode, the operation §2 prices at 234 ms, so (b) is bounded by 99% there and by 29% at tier 1. §1.1 does not split the loop's inverse DCT from its colour conversion, so how that bound divides between flattening and SIMD is not measured. | (a) the same function of the same argument, computed fewer times; (b) a layout change reads the same values; a vector colour conversion is byte-identical only if it keeps the scalar path's operation order, and would need the differential tests `simd/` already runs for encode |
+| 4 | `decode.rs:22,420`; `decode.rs:447`, `dct.rs:370` | **Decode, in two parts sized by §1.1.** (a) **Build the gamma LUT once per output gamut, not once per decode.** `build_gamma_lut` evaluates the transfer curve 4096 times — each a `portable_pow` for sRGB and Display P3 — on every call, and §1.1 measures it at **59%** of a default-tier decode, more than the render loop itself. It is a pure function of the gamut, so a table built once (or generated) holds the same 4096 bytes. `average_color` (`decode.rs:660`) builds the same table to convert one pixel. (b) **Flatten `cos_x`/`cos_y`, and vectorize the render loop.** They are `Vec<Vec<f64>>`, a pointer chase per coefficient per pixel in the `O(w·h·K)` loop, and there is **no SIMD in decode at all** — a scalar per-pixel OKLAB inverse plus three gamma lookups. §1.1 puts that loop at **99%** of a natural tier-4 decode, the operation §2 prices at 234 ms, so (b) is bounded by 99% there and by 35% at tier 1. §1.1 does not split the loop's inverse DCT from its colour conversion, so how that bound divides between flattening and SIMD is not measured. | (a) the same function of the same argument, computed fewer times; (b) a layout change reads the same values; a vector colour conversion is byte-identical only if it keeps the scalar path's operation order, and would need the differential tests `simd/` already runs for encode |
 | 5 | `encode.rs:934` | **Early-exit `sse_with_delta`.** `acc` accumulates monotonically and the caller keeps only strict improvements, so it can abort the moment `acc >= best`. Off by default (`refine_passes: 0`) but §4 measures refinement at **20–37 ms against 2.45 ms shipped**, and it is what the `refine-*` sweeps spend their time in. | Changes when the loop stops, never which code wins |
-| 6 | `encode.rs:260,320,328,369` | **Fuse the first three per-pixel passes; `composite` cannot join them.** Four full `W·H` passes and **eight** `W·H` allocations — `lin_r`/`lin_g`/`lin_b`/`alpha_pixels`, `oklab_pixels` (3 f64 each), `l_chan`/`a_chan`/`b_chan` — which is 10 f64 per pixel, or **20 MiB** at 512×512, for a stage §1 prices at 16.6%. **An earlier revision of this row said `linearize` and `composite` fuse. They do not:** `composite` (`encode.rs:369`) reads `avg_l`/`avg_a`/`avg_b`, which are the *completed* `alpha_average` reduction (`328`) after its normalization by `avg_alpha` (`340`). A full-array barrier sits between exactly the two passes that row paired, and fusing across it would composite against a running partial mean — different bytes, not merely a different order. What is available: fuse `linearize` + `oklab_forward` + `alpha_average` into one tiled pass, and drop `alpha_pixels` entirely by re-deriving alpha in `composite` from `rgba[i*4+3] as f64 / 255.0`, the identical expression. That is 8 buffers → 4 and 4 passes → 2; `oklab_pixels` must survive the barrier and cannot be tiled away. | Elementwise work in unchanged order, **and** the reduction still accumulates in flat pixel index order — which holds only if the tile length is a multiple of the SIMD lane count, so no pixel moves between `oklab_forward_batch`'s vector body and its scalar tail. `composite` stays a separate pass; nothing about this makes the barrier crossable |
+| 6 | `encode.rs:260,320,328,369` | **Fuse the first three per-pixel passes; `composite` cannot join them.** Four full `W·H` passes and **eight** `W·H` allocations — `lin_r`/`lin_g`/`lin_b`/`alpha_pixels`, `oklab_pixels` (3 f64 each), `l_chan`/`a_chan`/`b_chan` — which is 10 f64 per pixel, or **20 MiB** at 512×512, for a stage §1 prices at 16.0%. **An earlier revision of this row said `linearize` and `composite` fuse. They do not:** `composite` (`encode.rs:369`) reads `avg_l`/`avg_a`/`avg_b`, which are the *completed* `alpha_average` reduction (`328`) after its normalization by `avg_alpha` (`340`). A full-array barrier sits between exactly the two passes that row paired, and fusing across it would composite against a running partial mean — different bytes, not merely a different order. What is available: fuse `linearize` + `oklab_forward` + `alpha_average` into one tiled pass, and drop `alpha_pixels` entirely by re-deriving alpha in `composite` from `rgba[i*4+3] as f64 / 255.0`, the identical expression. That is 8 buffers → 4 and 4 passes → 2; `oklab_pixels` must survive the barrier and cannot be tiled away. | Elementwise work in unchanged order, **and** the reduction still accumulates in flat pixel index order — which holds only if the tile length is a multiple of the SIMD lane count, so no pixel moves between `oklab_forward_batch`'s vector body and its scalar tail. `composite` stays a separate pass; nothing about this makes the barrier crossable |
 | 7 | `bitpack.rs:3` | **Word-at-a-time bit writing**, against the current divide-and-modulo per bit. Correct and genuinely small — ≤1623 bytes — and listed for completeness rather than for its size. | Same bits |
 
 Items 1 and 2 are the ones worth doing first, and not because they are the
-largest: they sit inside `ac_quantize`, which is 37.2% of a thumbnail encode
+largest: they sit inside `ac_quantize`, which is 33.9% of a thumbnail encode
 and 1.9% of a photograph. That is the shape §4 already documents for the
 encoder-only *quality* levers, and it applies to their cost too.
+
+**Measured (§12.4).** `accel_quant_table` makes a 100×100 tier-1 encode **1.39×**
+faster and a 512×512 one **1.01×**; at tier 4 it is **1.41×**, where the
+quantizer searches ~16× the coefficients over the same source. Item 7,
+`accel_word_bitpack`, measures **0.98×** at 100×100, against a `pack` stage that
+rounds to nothing in §1. Each is a paired ratio from §12.4's tables, and each
+reads `TBD` — failing the gate by name — until a committed run holds it.
 
 **37.2% is now the stage these two levers act in, not a bucket they share.**
 Until §1 marked it, the only figure was `quantize_and_pack`'s 37.5% — a
@@ -713,7 +889,7 @@ item 7 acts in `pack`, which rounds to **0.0%** in every column of §1 — it wa
 listed for completeness, and its stage confirms it — and the DC search, which
 no lever touches, is `dc_search` at 0.2%. A stage is still a ceiling, not a
 speedup: how much of `ac_quantize` items 1 and 2 remove is §12.4's to measure,
-and **nothing in §12.1 is measured yet** (§12.3).
+and the figures above are that measurement, pending (§12.3).
 
 ### 12.2 Format changes — v0.8 work
 
@@ -724,20 +900,21 @@ and **nothing in §12.1 is measured yet** (§12.3).
 
 ### 12.3 What this list does not claim
 
-* **No entry here is yet measured as an implemented speedup** except #8, which
-  is prototyped behind `Tunables::dct_separable`. Items 1–7 are now *built*
-  (§12.4), each behind its own flag and each held to the shipped bytes, and
-  §12.4's tables are bound to the perf cells that will time them — but no
-  committed run holds those cells yet, so the figures there are placeholders
-  and the stage shares above are still the only size any of them has. A stage
-  share bounds a lever; it does not deliver one.
+* **Items 1–7 are built, bound and measured.** #8 is prototyped behind
+  `Tunables::dct_separable`; items 1–7 are built (§12.4), each behind its own
+  flag and each held to the shipped bytes. Measured, all seven levers together
+  measure **7.58×** on a 512×512 encode and **2.94×** on a default-tier decode,
+  and do nothing for a natural tier-4 decode, whose render loop no lever yet
+  touches. A lever cell whose own processes spread past the host bar is
+  withheld as `TBD` (§0) until a quieter session measures it. The stage shares
+  above are bounds; §12.4's ratios are the measured speedups.
 * **The byte-identical column is an argument, not a proof** — and for items
   1–7 it is no longer only an argument. §12.4 lists what now checks "did not
   move" for each; "cannot move" and "did not move" are different claims, and
   this repo has a gate for the second one.
 * **Decode is measured by stage, not below it.** §1.1 is the decode
   equivalent of §1, and item 4 is sized from it rather than from reading
-  `decode.rs`: the gamma LUT is **66%** of a default-tier decode and the render
+  `decode.rs`: the gamma LUT is **59%** of a default-tier decode and the render
   loop **99%** of a tier-4 one. What §1.1 cannot say is how the render loop
   divides between its inverse DCT and its colour conversion, so item 4(b)'s
   two halves share one bound. §1.1 also publishes no absolute time: its shares
@@ -784,40 +961,42 @@ the ones this file already holds every lever to.
 
 **What each buys: bound, not yet measured.** Every cell below is a
 `verify:benchmark` binding to a perf arm the bounded sweep now records
-(`perf/matrix.ts`: `TUNE_ARMS`, `TIER4_ACCEL_ARMS`, `DECODE_ACCEL_ARMS`), each
-lever against a `shipped` cell from the same sweep. None is filled, because no
+(`perf/matrix.ts`: `TUNE_ARMS`, `TIER4_ACCEL_ARMS`, `DECODE_ACCEL_ARMS`), and
+each speedup is the sweep's paired record for that lever — its process minima
+divided round by round into its base's, timed back to back (§0) — not a ratio
+of two cells measured minutes apart. None is filled, because no
 committed run holds those cells: the host this revision was written on was
 under sustained load, and §0's rule is that a wall-clock figure is published
-from a host that holds a clock still. The next pair of §0's `mise run
-benchmark` runs fills them with `--fix`, and until then the gate reports each
-as missing rather than passing it.
+from a host that holds a clock still. §0's `mise run benchmark:session`
+fills them with `--fix`, and until then the gate reports each as missing
+rather than passing it.
 
 Speedup at tier 1 (shipped time ÷ lever time; the early exit is divided into
 `refine_passes=1`, the only encode it can shorten):
 
 | lever | 100×100 | 256×256 | 512×512 |
 |---|---:|---:|---:|
-| accel_quant_table | TBD× | TBD× | TBD× |
-| accel_dct_lanes | TBD× | TBD× | TBD× |
-| accel_fused_pixels | TBD× | TBD× | TBD× |
-| accel_word_bitpack | TBD× | TBD× | TBD× |
-| accel all | TBD× | TBD× | TBD× |
-| refine_passes=1 accel_sse_early_exit | TBD× | TBD× | TBD× |
+| accel_quant_table | 1.39× | TBD× | 1.01× |
+| accel_dct_lanes | 2.22× | TBD× | TBD× |
+| accel_fused_pixels | 0.98× | 1.05× | 1.04× |
+| accel_word_bitpack | 0.98× | 1.01× | 1.01× |
+| accel all | 5.93× | 4.79× | 7.58× |
+| refine_passes=1 accel_sse_early_exit | TBD× | 1.15× | 1.18× |
 
 Tier 4 at 100×100, where the quantizer searches ~16× the coefficients of tier 1
 over the same source:
 
 | lever | encode | speedup |
 |---|---:|---:|
-| shipped | TBD ms | — |
-| accel_quant_table | TBD ms | TBD× |
+| shipped | 110.38 ms | — |
+| accel_quant_table | 77.76 ms | 1.41× |
 | accel_dct_lanes | TBD ms | TBD× |
-| accel all | TBD ms | TBD× |
+| accel all | 13.24 ms | 8.22× |
 
 Decode (§12.1 item 4), 100×100 gradient source, speedup over the shipped decode:
 
 | lever | t1 natural | t4 natural | t4 capped 32×32 |
 |---|---:|---:|---:|
-| accel_gamma_lut_cache | TBD× | TBD× | TBD× |
-| accel_flat_cos | TBD× | TBD× | TBD× |
-| accel all | TBD× | TBD× | TBD× |
+| accel_gamma_lut_cache | TBD× | 1.02× | 1.04× |
+| accel_flat_cos | 1.05× | 0.98× | 1.07× |
+| accel all | 2.94× | 0.98× | 1.12× |
