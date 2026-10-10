@@ -1,13 +1,40 @@
 /**
  * The unified performance driver.
  *
- * Produces one machine-readable document covering time, bytes and (where
- * available) quality across every performance lever, for every distinct
- * implementation — the three axes the repo previously measured with three
- * separate tools that never met.
+ * Produces one machine-readable document covering time and bytes across every
+ * performance lever, for every distinct implementation — the axes the repo
+ * previously measured with separate tools that never met.
  *
  * Usage:
- *   node dist/perf/run.js [--full] [--impls A,B] [--out FILE] [--max-cell-ms N]
+ *   node dist/perf/run.js [--full | --quick] [--impls A,B] [--out FILE]
+ *                         [--processes P] [--reps N] [--max-cell-ms N]
+ *                         [--pin CPULIST] [--max-load L] [--force-loaded]
+ *                         [--wait-for-load [SECONDS]] [--plan] [--host-id]
+ *
+ *   --full          the cells only the exhaustive matrix has; a supplement to
+ *                   the bounded run, never an override (plan.ts)
+ *   --processes P   independent processes per cell, interleaved round-robin
+ *                   across cells (default 4; 1 for --quick). The gate takes
+ *                   an even count of at least 4 as a baseline, and at least
+ *                   5 blocks (--reps); fewer is for smoke tests
+ *   --reps N        timed blocks per process (default 5; 1 for --quick)
+ *   --pin CPULIST   run every harness under `taskset -c CPULIST`
+ *   --max-load L    refuse to start above this 1-minute load average
+ *                   (default max(1, threads/8))
+ *   --force-loaded  start anyway; the run is marked loaded and the gate
+ *                   refuses it as a baseline
+ *   --wait-for-load [SECONDS]
+ *                   instead of refusing a loaded host, wait for the 1-minute
+ *                   load to fall under the bar — before the start and before
+ *                   every process round — for at most SECONDS (default 1800)
+ *                   each time, then exit 3. Without it a round that starts
+ *                   above the bar is only warned about, and the gate will
+ *                   refuse the run
+ *   --plan          print the cells and pairs this run would measure, and exit
+ *   --host-id       print this host's baseline key (baselines/hosts/<key>/)
+ *                   and exit
+ *   --preflight     print the host's state and the tree's, refuse (exit 3/4)
+ *                   as a run would, and exit; --allow-dirty waives the tree
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
@@ -15,47 +42,42 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-  ALL_TIERS,
-  BOUNDED_CROSS_TIERS,
-  BOUNDED_SIZES,
-  BOUNDED_THREADS,
-  DECODE_ACCEL_ARMS,
-  FULL_SIZES,
-  FULL_THREADS,
-  TIER4_ACCEL_ARMS,
-  TIER_BYTES,
-  TUNE_ARMS,
-  makeFixture,
-} from "./matrix.ts";
-import {
   type Availability,
   type ProbeOutcome,
   classifyProbe,
 } from "./availability.ts";
-import { probeCell } from "./probe.ts";
+import {
+  defaultMaxLoad,
+  hostKey,
+  machineId,
+  mayStart,
+  readLoadavg,
+  readPreflight,
+  rustcVersion,
+  waitForLoad,
+} from "./host.ts";
+import { makeFixture } from "./matrix.ts";
+import {
+  type Input,
+  type Mode,
+  type PlannedCell,
+  planRun,
+  roundOrder,
+} from "./plan.ts";
+import {
+  type CellRequest,
+  type CellStats,
+  type PairStats,
+  calibrate,
+  cellStats,
+  measureProcess,
+  pairStats,
+} from "./probe.ts";
+import { MEASURED_PATHS, recordGit } from "./provenance.ts";
 import { ROOT, type Target, allTargets } from "./targets.ts";
 
-interface Cell {
-  id: string;
-  op: string;
-  target: string;
-  tier: number;
-  source: { w: number; h: number; content: string } | null;
-  tune: string | null;
-  decodeCap: [number, number] | null;
-  threads: number | null;
-  bytes: number | null;
-  iters: number;
-  reps: number;
-  samplesNsPerOp: number[];
-  /** The reported cost: the minimum over the timed blocks (see probe.ts). */
-  nsPerOp: number;
-  medianNsPerOp: number;
-  minNsPerOp: number;
-  ci95NsPerOp: [number, number];
-  iqrPct: number;
-  noisy: boolean;
-}
+/** The run format. /3 is per-process sampling; see probe.ts. */
+export const RUN_SCHEMA = "chromahash-perf/3";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(name);
@@ -63,24 +85,50 @@ const value = (name: string): string | null => {
   const i = args.indexOf(name);
   return i >= 0 ? (args[i + 1] ?? null) : null;
 };
+const int = (name: string, fallback: number): number => {
+  const raw = value(name);
+  const n = raw === null ? fallback : Number.parseInt(raw, 10);
+  if (!Number.isInteger(n) || n < 1) {
+    process.stderr.write(
+      `perf: ${name} must be a positive integer, got ${raw}\n`,
+    );
+    process.exit(2);
+  }
+  return n;
+};
 
-const FULL = flag("--full");
 const QUICK = flag("--quick");
-const MAX_CELL_MS = Number.parseInt(value("--max-cell-ms") ?? "5000", 10);
-const REPS = Number.parseInt(value("--reps") ?? (QUICK ? "1" : "7"), 10);
+const FULL = flag("--full") && !QUICK;
+const MODE: Mode = QUICK ? "quick" : FULL ? "full" : "bounded";
+const MAX_CELL_MS = int("--max-cell-ms", 5000);
+const REPS = int("--reps", QUICK ? 1 : 5);
+const PROCESSES = int("--processes", QUICK ? 1 : 4);
+if (!QUICK && (PROCESSES < 4 || PROCESSES % 2 !== 0 || REPS < 5)) {
+  process.stderr.write(
+    `perf: WARNING ${PROCESSES} process(es) x ${REPS} block(s): verify:benchmark takes a run as a baseline only with an even process count of at least 4 and at least 5 blocks\n`,
+  );
+}
+const PIN = value("--pin");
+const FORCE_LOADED = flag("--force-loaded");
+const GATE_MAX_LOAD = defaultMaxLoad(os.cpus().length);
+const MAX_LOAD = Number.parseFloat(
+  value("--max-load") ?? String(GATE_MAX_LOAD),
+);
+/** `--wait-for-load [SECONDS]`: the timeout, or null when not waiting. */
+const WAIT_SECONDS = ((): number | null => {
+  const i = args.indexOf("--wait-for-load");
+  if (i < 0) return null;
+  const next = args[i + 1];
+  return next !== undefined && /^[0-9]+$/.test(next)
+    ? Number.parseInt(next, 10)
+    : 1800;
+})();
 /**
- * The three run shapes must not land on the same file: `verify:benchmark` reads
- * `perf-report-full.json` and `perf-report.json` as two distinct baselines
- * (see verify-benchmark.ts), so a shared default would have `benchmark:full`
- * silently overwrite the bounded run it is meant to sit beside. An explicit
- * `--out` still wins over all three.
- *
- * `--quick` takes precedence over `--full` in the name, which is the one
- * ordering that is not arbitrary. Its own task description says the numbers are
- * "not meaningful": it is a contract smoke test at one rep, and the only way it
- * can do damage is by being mistaken for a baseline. Naming it after the matrix
- * it swept would let `--quick --full` produce a `perf-full.json` that looks
- * exactly like an hours-long sweep, so the reps win the name instead.
+ * The three run shapes must not land on the same file: the gate reads the
+ * bounded pair and the full supplement as distinct baselines, so a shared
+ * default would have `benchmark:full` overwrite the bounded run it sits beside.
+ * `--quick` wins the name over `--full`: it is a one-rep smoke test, and the
+ * only way it can do damage is by being mistaken for a baseline.
  */
 const OUT =
   value("--out") ??
@@ -95,13 +143,142 @@ const OUT =
 const only = value("--impls");
 const ONLY = only ? new Set(only.split(",").map((s) => s.trim())) : null;
 
-const targets = allTargets().filter((t) => (ONLY ? ONLY.has(t.name) : true));
+const universe = allTargets();
+const targets = universe.filter((t) => (ONLY ? ONLY.has(t.name) : true));
+
+const HOST_ENV = {
+  os: process.platform,
+  arch: process.arch,
+  cpuModel: os.cpus()[0]?.model ?? "unknown",
+};
+if (flag("--host-id")) {
+  process.stdout.write(`${hostKey(HOST_ENV)}\n`);
+  process.exit(0);
+}
+
+if (flag("--plan")) {
+  const plan = planRun(MODE, targets, universe);
+  for (const c of plan.cells) console.log(c.id);
+  console.log(
+    `\n${plan.cells.length} cell(s), ${plan.pairs.length} pair(s), ` +
+      `${Object.keys(plan.aliases).length} alias(es), mode=${MODE}, ` +
+      `${PROCESSES} process(es) x ${REPS} block(s) each`,
+  );
+  process.exit(0);
+}
+
+// ─── Preflight ──────────────────────────────────────────────────────────────
+
+/** Seconds waited before the start and each round, for the record. */
+const waited: number[] = [];
 
 /**
- * A target is available if its binary exists and answers `bench-info`. How a
- * failed probe is classified — `absent` (skippable) or `broken` (reported) — is
- * `classifyProbe` in availability.ts.
+ * The load average to record at `at`, after waiting for it to fall under the
+ * bar when `--wait-for-load` asked for that. A timeout exits 3: a run taken
+ * past it would be one the gate refuses, so there is nothing to keep.
  */
+async function settle(at: string): Promise<ReturnType<typeof readLoadavg>> {
+  if (WAIT_SECONDS === null || FORCE_LOADED) {
+    const load = readLoadavg();
+    if (load !== null && load[0] > GATE_MAX_LOAD && at !== "start") {
+      process.stderr.write(
+        `perf: WARNING ${at} starts at a 1-minute load of ${load[0].toFixed(2)}, above the gate's ${GATE_MAX_LOAD.toFixed(2)} — verify:benchmark will refuse this run as a baseline; pass --wait-for-load\n`,
+      );
+    }
+    return load;
+  }
+  let reported = Number.NEGATIVE_INFINITY;
+  const w = await waitForLoad({
+    maxLoad: MAX_LOAD,
+    timeoutMs: WAIT_SECONDS * 1000,
+    onWait: (load1, ms) => {
+      if (ms - reported < 60_000) return;
+      reported = ms;
+      process.stderr.write(
+        `perf: ${at}: 1-minute load ${load1.toFixed(2)} is above ${MAX_LOAD.toFixed(2)}; waiting (${Math.round(ms / 1000)} s of at most ${WAIT_SECONDS} s)\n`,
+      );
+    },
+  });
+  waited.push(Math.round(w.waitedMs / 1000));
+  if (!w.ok) {
+    process.stderr.write(
+      [
+        `perf: giving up at ${at} — the 1-minute load is still ${w.load?.[0].toFixed(2)} after ${WAIT_SECONDS} s, above ${MAX_LOAD.toFixed(2)}.`,
+        "  Something else on this host is using it. Find it (`top`), or raise the",
+        "  timeout with --wait-for-load SECONDS; --force-loaded measures anyway, but",
+        "  verify:benchmark will not accept the run as a baseline.",
+        "",
+      ].join("\n"),
+    );
+    process.exit(3);
+  }
+  return w.load;
+}
+
+await settle("start");
+const preflight = readPreflight(MAX_LOAD, FORCE_LOADED);
+preflight.waitedSeconds = waited;
+if (MAX_LOAD > GATE_MAX_LOAD) {
+  process.stderr.write(
+    `perf: WARNING --max-load ${MAX_LOAD} is above the gate's bar of ${GATE_MAX_LOAD.toFixed(2)} for ${os.cpus().length} threads; verify:benchmark recomputes the bar and will refuse a run that crossed it\n`,
+  );
+}
+for (const w of preflight.warnings)
+  process.stderr.write(`perf: WARNING ${w}\n`);
+if (!mayStart(preflight, FORCE_LOADED)) {
+  process.stderr.write(
+    [
+      `perf: refusing to start — the host is loaded (${preflight.loadavgStart?.join(" ")}).`,
+      "  A wall-clock figure taken now would be about this machine's other work.",
+      "  Pass --wait-for-load to wait for it, or --force-loaded to measure anyway:",
+      "  the run is then marked loaded and verify:benchmark will not accept it as",
+      "  a baseline.",
+      "",
+    ].join("\n"),
+  );
+  process.exit(3);
+}
+if (PIN) {
+  const t = spawnSync("taskset", ["-c", PIN, "true"], { encoding: "utf8" });
+  if (t.status !== 0) {
+    process.stderr.write(
+      `perf: --pin ${PIN} failed (${t.error?.message ?? t.stderr.trim()})\n`,
+    );
+    process.exit(2);
+  }
+}
+const startedAt = new Date();
+const gitAtStart = recordGit(ROOT);
+
+// `--preflight`: what `benchmark:session` checks before committing an hour to
+// a sweep — the host's state, and a tree the gate will accept a run from.
+if (flag("--preflight")) {
+  const show = (v: unknown) => (v === null ? "(not exposed)" : String(v));
+  process.stderr.write(
+    [
+      `perf: preflight on ${hostKey(HOST_ENV)}`,
+      `  load average   ${show(preflight.loadavgStart?.join(" ") ?? null)} (bar ${MAX_LOAD.toFixed(2)}${waited[0] ? `, after waiting ${waited[0]} s` : ""})`,
+      `  governor       ${show(preflight.governor)}`,
+      `  boost          ${show(preflight.boost)}${preflight.boostSource ? ` (${preflight.boostSource})` : ""}`,
+      `  SMT            ${show(preflight.smt)}`,
+      `  driver / EPP   ${show(preflight.scalingDriver)} / ${show(preflight.energyPerformancePreference)}`,
+      `  commit         ${gitAtStart.commit}${gitAtStart.dirty ? " (DIRTY outside the measurement outputs)" : ""}`,
+      "",
+    ].join("\n"),
+  );
+  if (gitAtStart.dirty && !flag("--allow-dirty")) {
+    process.stderr.write(
+      "perf: refusing — the tree has uncommitted changes outside the measurement outputs, so no run\n" +
+        "      taken now can be traced to a revision and verify:benchmark would refuse it.\n",
+    );
+    process.exit(4);
+  }
+  process.exit(0);
+}
+
+// ─── Availability ───────────────────────────────────────────────────────────
+
+/** How a failed probe is classified — `absent` or `broken` — is availability.ts. */
 function probeAvailability(t: Target): ProbeOutcome {
   const proc = spawnSync(t.command, [...t.args, "bench-info"], {
     cwd: t.cwd,
@@ -129,365 +306,215 @@ for (const t of targets) {
     });
   }
 }
-
 const broken = unavailable.filter((u) => u.kind === "broken");
-const brokenNote = broken.length
-  ? ` (${broken.length} present but failing)`
-  : "";
-const unavailableNote = unavailable.length
-  ? `, ${unavailable.length} unavailable${brokenNote}`
-  : "";
-const BROKEN_NOTE =
-  "      recorded as broken, not absent, so verify:benchmark will not skip its rows";
 for (const u of broken) {
   process.stderr.write(
-    `perf: WARNING ${u.target} is built but its probe failed — ${u.reason.split("\n")[0]}\n${BROKEN_NOTE}\n`,
+    `perf: WARNING ${u.target} is built but its probe failed — ${u.reason.split("\n")[0]}\n      recorded as broken, not absent, so verify:benchmark will not skip its rows\n`,
   );
 }
 process.stderr.write(
-  `perf: ${available.length} target(s) available${unavailableNote}\n`,
+  `perf: ${available.length} target(s) available${
+    unavailable.length
+      ? `, ${unavailable.length} unavailable${broken.length ? ` (${broken.length} present but failing)` : ""}`
+      : ""
+  }\n`,
 );
 for (const u of unavailable)
   process.stderr.write(`  - ${u.target}: ${u.reason}\n`);
 
-const cells: Cell[] = [];
-const recorded = new Set<string>();
-let done = 0;
+// ─── Plan ───────────────────────────────────────────────────────────────────
 
-function record(
-  id: string,
-  op: string,
-  t: Target,
-  tier: number,
-  source: { w: number; h: number; content: string } | null,
-  opts: {
-    argv: string[];
-    stdin: Buffer;
-    env?: Record<string, string>;
-    tune?: string | null;
-    decodeCap?: [number, number] | null;
-    threads?: number | null;
-    bytes?: number | null;
-  },
-): void {
-  // The sweep blocks deliberately overlap — block A covers every target at the
-  // bounded cross tiers, block C extends Rust decode to all five. Measuring the
-  // same cell twice does not average: the 2026-08-29 baseline carried
-  // `decode/Rust/t2/natural` at both 1349 us (1.0% IQR) and 2047 us (30.0%),
-  // and the report quoted the noisy one. One id, one measurement — which is
-  // also what lets `verify:benchmark` bind a documented number to a cell.
-  if (recorded.has(id)) return;
-  recorded.add(id);
-  done++;
-  process.stderr.write(`  [${done}] ${id}\n`);
-  let outcome: ReturnType<typeof probeCell>;
+const plan = planRun(MODE, available, universe);
+const byName = new Map(available.map((t) => [t.name, t]));
+const rust = universe.find((t) => t.name === "Rust");
+if (!rust) throw new Error("no Rust target defined");
+
+/** One hash per tier, produced by Rust — the format is byte-identical by spec. */
+const hashes = new Map<string, Buffer>();
+const fixtures = new Map<string, Buffer>();
+function stdinFor(input: Input): Buffer {
+  const key = `${input.kind}/${input.w}x${input.h}/${input.content}/${input.kind === "hash" ? input.tier : ""}`;
+  const fx =
+    fixtures.get(`${input.w}x${input.h}/${input.content}`) ??
+    makeFixture(input.w, input.h, input.content).rgba;
+  fixtures.set(`${input.w}x${input.h}/${input.content}`, fx);
+  if (input.kind === "pixels") return fx;
+  let h = hashes.get(key);
+  if (!h) {
+    h = execFileSync(
+      (rust as Target).command,
+      ["encode", String(input.w), String(input.h), "srgb"],
+      {
+        cwd: (rust as Target).cwd,
+        input: fx,
+        maxBuffer: 16 * 1024 * 1024,
+        env: { ...process.env, CHROMAHASH_TIER: String(input.tier) },
+      },
+    );
+    hashes.set(key, h);
+  }
+  return h;
+}
+
+function requestFor(c: PlannedCell): CellRequest {
+  return {
+    target: byName.get(c.target) as Target,
+    argv: c.argv,
+    stdin: stdinFor(c.input),
+    env: { CHROMAHASH_TIER: String(c.tier), ...c.env },
+    reps: REPS,
+    maxCellMs: MAX_CELL_MS,
+    pin: PIN,
+  };
+}
+
+// ─── Measure ────────────────────────────────────────────────────────────────
+//
+// Calibrate every cell once, then take P rounds; each round spawns one process
+// per cell, in `roundOrder` (units adjacent, every other round reversed).
+
+const skipped: { id: string; reason: string }[] = [];
+const iters = new Map<string, number>();
+process.stderr.write(`\nperf: calibrating ${plan.cells.length} cell(s)\n`);
+for (const c of plan.cells) {
   try {
-    outcome = probeCell({
-      target: t,
-      argv: opts.argv,
-      stdin: opts.stdin,
-      env: { CHROMAHASH_TIER: String(tier), ...(opts.env ?? {}) },
-      reps: REPS,
-      maxCellMs: MAX_CELL_MS,
-    });
+    const cal = calibrate(requestFor(c));
+    if (cal.kind === "skipped") {
+      skipped.push({ id: c.id, reason: cal.reason });
+      process.stderr.write(`  skipped ${c.id}: ${cal.reason}\n`);
+    } else {
+      iters.set(c.id, cal.iters);
+    }
   } catch (e) {
-    process.stderr.write(`      failed: ${(e as Error).message}\n`);
-    return;
+    skipped.push({ id: c.id, reason: (e as Error).message });
+    process.stderr.write(`  failed ${c.id}: ${(e as Error).message}\n`);
   }
-  if (outcome.kind === "skipped") {
-    process.stderr.write(`      skipped: ${outcome.reason}\n`);
-    return;
+}
+
+/** Per cell, each round's blocks; undefined where that round's process failed. */
+const rounds = new Map<string, (number[] | undefined)[]>();
+for (let r = 0; r < PROCESSES; r++) {
+  preflight.loadavgRounds.push(await settle(`round ${r + 1}`));
+  const order = roundOrder(plan, r).filter((c) => iters.has(c.id));
+  process.stderr.write(
+    `\nperf: round ${r + 1}/${PROCESSES}, ${order.length} process(es)\n`,
+  );
+  let n = 0;
+  for (const c of order) {
+    n++;
+    const list = rounds.get(c.id) ?? [];
+    try {
+      const m = measureProcess(
+        requestFor(c),
+        iters.get(c.id) as number,
+        r === 0,
+      );
+      iters.set(c.id, m.iters);
+      list[r] = m.blocks;
+      process.stderr.write(`  [${n}] ${c.id}\n`);
+    } catch (e) {
+      list[r] = undefined;
+      process.stderr.write(
+        `  [${n}] ${c.id} failed: ${(e as Error).message}\n`,
+      );
+    }
+    rounds.set(c.id, list);
   }
-  const r = outcome.result;
+}
+preflight.loadavgEnd = readLoadavg();
+const gitAtEnd = recordGit(ROOT);
+
+// ─── Record ─────────────────────────────────────────────────────────────────
+
+const cells: (Omit<PlannedCell, "argv" | "input" | "env"> &
+  CellStats & { iters: number; reps: number; processes: number })[] = [];
+const minsById = new Map<string, (number | undefined)[]>();
+for (const c of plan.cells) {
+  const per = rounds.get(c.id);
+  const taken = (per ?? []).filter((b): b is number[] => !!b && b.length > 0);
+  if (taken.length === 0) {
+    if (iters.has(c.id)) {
+      skipped.push({ id: c.id, reason: "no process completed" });
+    }
+    continue;
+  }
+  const stats = cellStats(taken);
+  minsById.set(
+    c.id,
+    Array.from({ length: PROCESSES }, (_, r) => {
+      const b = per?.[r];
+      return b && b.length > 0 ? Math.min(...b) : undefined;
+    }),
+  );
+  const { argv: _a, input: _i, env: _e, ...shape } = c;
   cells.push({
-    id,
-    op,
-    target: t.name,
-    tier,
-    source,
-    tune: opts.tune ?? null,
-    decodeCap: opts.decodeCap ?? null,
-    threads: opts.threads ?? null,
-    bytes: opts.bytes ?? null,
-    iters: r.iters,
-    reps: r.reps,
-    samplesNsPerOp: r.samplesNsPerOp,
-    nsPerOp: r.nsPerOp,
-    medianNsPerOp: r.medianNsPerOp,
-    minNsPerOp: r.minNsPerOp,
-    ci95NsPerOp: r.ci95NsPerOp,
-    iqrPct: r.iqrPct,
-    noisy: r.noisy,
+    ...shape,
+    iters: iters.get(c.id) as number,
+    reps: REPS,
+    processes: taken.length,
+    ...stats,
   });
 }
 
-const rustCandidate = allTargets().find((t) => t.name === "Rust");
-if (!rustCandidate) throw new Error("no Rust target defined");
-const rustBin: Target = rustCandidate;
-
-/** One hash per tier, produced by Rust — the format is byte-identical by spec. */
-function hashFor(
-  tier: number,
-  w: number,
-  h: number,
-  content: "gradient" | "noise" | "solid",
-): Buffer {
-  const fx = makeFixture(w, h, content);
-  return execFileSync(
-    rustBin.command,
-    ["encode", String(w), String(h), "srgb"],
-    {
-      cwd: rustBin.cwd,
-      input: fx.rgba,
-      maxBuffer: 16 * 1024 * 1024,
-      env: { ...process.env, CHROMAHASH_TIER: String(tier) },
-    },
-  );
+const pairs: ({ base: string; arm: string } & PairStats)[] = [];
+for (const p of plan.pairs) {
+  const s = pairStats(minsById.get(p.base) ?? [], minsById.get(p.arm) ?? []);
+  if (s) pairs.push({ base: p.base, arm: p.arm, ...s });
 }
 
-const sizes = FULL ? FULL_SIZES : BOUNDED_SIZES;
-const crossTiers = FULL ? ALL_TIERS : BOUNDED_CROSS_TIERS;
-const threadCounts = FULL ? FULL_THREADS : BOUNDED_THREADS;
-const centre = makeFixture(100, 100, "gradient");
-
-process.stderr.write("\nperf: measuring\n");
-
-// A. Cross-language encode/decode at the centre fixture.
-for (const t of available) {
-  for (const tier of QUICK ? [1] : crossTiers) {
-    const bytes = TIER_BYTES[tier] ?? null;
-    if (t.ops.includes("encode")) {
-      record(
-        `encode/${t.name}/t${tier}/100x100/gradient`,
-        "encode",
-        t,
-        tier,
-        { w: 100, h: 100, content: "gradient" },
-        {
-          argv: ["bench-encode", "100", "100", "srgb", "@ITERS@"],
-          stdin: centre.rgba,
-          bytes,
-        },
-      );
-    }
-    if (t.ops.includes("decode")) {
-      record(`decode/${t.name}/t${tier}/natural`, "decode", t, tier, null, {
-        argv: ["bench-decode", "@ITERS@"],
-        stdin: hashFor(tier, 100, 100, "gradient"),
-        bytes,
-      });
-    }
-  }
-}
-
-if (!QUICK) {
-  const rust = available.find((t) => t.name === "Rust");
-
-  // B. Encode scaling in source pixels — the axis nothing varied before.
-  if (rust) {
-    for (const n of sizes) {
-      const fx = makeFixture(n, n, "gradient");
-      record(
-        `encode/Rust/t1/${n}x${n}/gradient`,
-        "encode",
-        rust,
-        1,
-        { w: n, h: n, content: "gradient" },
-        {
-          argv: ["bench-encode", String(n), String(n), "srgb", "@ITERS@"],
-          stdin: fx.rgba,
-          bytes: 32,
-        },
-      );
-    }
-    // C. Decode scaling by tier, natural and capped.
-    for (const tier of ALL_TIERS) {
-      const hash = hashFor(tier, 100, 100, "gradient");
-      record(`decode/Rust/t${tier}/natural`, "decode", rust, tier, null, {
-        argv: ["bench-decode", "@ITERS@"],
-        stdin: hash,
-        bytes: TIER_BYTES[tier] ?? null,
-      });
-      record(`decode/Rust/t${tier}/capped32`, "decode", rust, tier, null, {
-        argv: ["bench-decode", "@ITERS@", "32", "32"],
-        stdin: hash,
-        decodeCap: [32, 32],
-        bytes: TIER_BYTES[tier] ?? null,
-      });
-    }
-    // E. Encoder-only levers, priced against their quality deltas in EXPERIMENTS.
-    //
-    // Three sizes, not two: the separable-DCT arm's whole claim is that its
-    // saving grows with K/Cx, and two points cannot show a trend.
-    for (const arm of TUNE_ARMS) {
-      for (const n of [100, 256, 512]) {
-        const fx = makeFixture(n, n, "gradient");
-        record(
-          `encode/Rust/t1/${n}x${n}/gradient/${arm.label}`,
-          "encode",
-          rust,
-          1,
-          { w: n, h: n, content: "gradient" },
-          {
-            argv: ["bench-encode", String(n), String(n), "srgb", "@ITERS@"],
-            stdin: fx.rgba,
-            env: arm.tune ? { CHROMAHASH_TUNE: arm.tune } : {},
-            tune: arm.tune,
-            bytes: 32,
-          },
-        );
-      }
-    }
-    // E2. §12.1's levers at tier 4, where the quantizer's search is ~16× the
-    // tier-1 one while the source is the same 100×100.
-    for (const arm of TIER4_ACCEL_ARMS) {
-      record(
-        `encode/Rust/t4/100x100/gradient/${arm.label}`,
-        "encode",
-        rust,
-        4,
-        { w: 100, h: 100, content: "gradient" },
-        {
-          argv: ["bench-encode", "100", "100", "srgb", "@ITERS@"],
-          stdin: centre.rgba,
-          env: arm.tune ? { CHROMAHASH_TUNE: arm.tune } : {},
-          tune: arm.tune,
-          bytes: TIER_BYTES[4] ?? null,
-        },
-      );
-    }
-    // E3. §12.1 item 4's decode levers: the default tier, where §1.1 puts the
-    // gamma table at most of a decode, and tier 4 natural and capped, where
-    // the render loop is. Each against a `shipped` cell in the same block.
-    for (const [tier, cap] of [
-      [1, null],
-      [4, null],
-      [4, [32, 32]],
-    ] as const) {
-      const hash = hashFor(tier, 100, 100, "gradient");
-      const raster = cap ? `capped${cap[0]}` : "natural";
-      for (const arm of DECODE_ACCEL_ARMS) {
-        record(
-          `decode/Rust/t${tier}/${raster}/${arm.label}`,
-          "decode",
-          rust,
-          tier,
-          null,
-          {
-            argv: cap
-              ? ["bench-decode", "@ITERS@", String(cap[0]), String(cap[1])]
-              : ["bench-decode", "@ITERS@"],
-            stdin: hash,
-            env: arm.tune ? { CHROMAHASH_TUNE: arm.tune } : {},
-            tune: arm.tune,
-            decodeCap: cap ? [cap[0], cap[1]] : null,
-            bytes: TIER_BYTES[tier] ?? null,
-          },
-        );
-      }
-    }
-    // I. Content classes — what a filled AC band costs the quantizer.
-    for (const content of ["gradient", "noise", "solid"] as const) {
-      const fx = makeFixture(256, 256, content);
-      record(
-        `encode/Rust/t1/256x256/${content}`,
-        "encode",
-        rust,
-        1,
-        { w: 256, h: 256, content },
-        {
-          argv: ["bench-encode", "256", "256", "srgb", "@ITERS@"],
-          stdin: fx.rgba,
-          bytes: 32,
-        },
-      );
-    }
-  }
-
-  // D. SIMD on/off — the shipped feature nothing has ever measured.
-  const scalar = available.find((t) => t.name === "Rust (scalar)");
-  if (scalar) {
-    // Both builds, same sizes and tiers: the feature is only priceable as a
-    // ratio, so every scalar cell needs a default-build cell to divide into.
-    // The tier axis is here because the gain is largest where the per-pixel
-    // OKLAB transform is the biggest share of encode, which is the low tiers.
-    for (const [n, tier] of [
-      [100, 1],
-      [256, 1],
-      [512, 1],
-      [512, 0],
-    ] as const) {
-      const fx = makeFixture(n, n, "gradient");
-      const argv = ["bench-encode", String(n), String(n), "srgb", "@ITERS@"];
-      const src = { w: n, h: n, content: "gradient" as const };
-      const bytes = TIER_BYTES[tier] ?? null;
-      for (const t of [rust, scalar]) {
-        if (!t) continue;
-        record(
-          `encode/${t.name}/t${tier}/${n}x${n}/gradient`,
-          "encode",
-          t,
-          tier,
-          src,
-          { argv, stdin: fx.rgba, bytes },
-        );
-      }
-    }
-  }
-
-  // G. Batch throughput and thread scaling, reported per batch.
-  for (const t of available) {
-    if (!t.ops.includes("batch")) continue;
-    for (const th of t.threadable ? threadCounts : [1]) {
-      record(
-        `batch/${t.name}/t1/100x100/threads=${th === 0 ? "auto" : th}`,
-        "batch",
-        t,
-        1,
-        { w: 100, h: 100, content: "gradient" },
-        {
-          argv: ["bench-batch", "100", "100", "srgb", "200"],
-          stdin: centre.rgba,
-          env: { CHROMAHASH_BATCH_THREADS: String(th) },
-          threads: th,
-          bytes: 32,
-        },
-      );
-    }
-  }
-}
-
+const measured = new Set(cells.map((c) => c.id));
+const environment = {
+  ...HOST_ENV,
+  cores: os.cpus().length,
+  node: process.versions.node,
+  kernel: `${os.type()} ${os.release()}`,
+  rustc: rustcVersion(ROOT),
+  preflight,
+  targetInfo: info,
+};
+const finishedAt = new Date();
 const doc = {
-  schema: "chromahash-perf/2",
-  generatedAt: new Date().toISOString(),
+  schema: RUN_SCHEMA,
+  generatedAt: startedAt.toISOString(),
+  finishedAt: finishedAt.toISOString(),
+  wallSeconds: Math.round((finishedAt.getTime() - startedAt.getTime()) / 1000),
   git: {
-    commit: execFileSync("git", ["rev-parse", "--short", "HEAD"], {
-      cwd: ROOT,
-      encoding: "utf8",
-    }).trim(),
+    commit: gitAtStart.commit,
+    // Dirty at either end: a source edit mid-sweep is as untraceable as one
+    // made before it.
     dirty:
-      execFileSync("git", ["status", "--porcelain"], {
-        cwd: ROOT,
-        encoding: "utf8",
-      }).trim().length > 0,
+      gitAtStart.dirty ||
+      gitAtEnd.dirty ||
+      gitAtStart.commit !== gitAtEnd.commit,
+    digest: gitAtStart.digest,
+    digestPaths: [...MEASURED_PATHS],
   },
-  environment: {
-    os: process.platform,
-    arch: process.arch,
-    cpuModel: os.cpus()[0]?.model ?? "unknown",
-    cores: os.cpus().length,
-    node: process.versions.node,
-    targetInfo: info,
+  host: {
+    id: hostKey(environment),
+    machine: machineId(),
   },
+  environment,
   config: {
-    mode: QUICK ? "quick" : FULL ? "full" : "bounded",
+    mode: MODE,
+    supplementOf: MODE === "full" ? "bounded" : null,
+    processes: PROCESSES,
     reps: REPS,
     maxCellMs: MAX_CELL_MS,
+    pin: PIN,
+    impls: ONLY ? [...ONLY] : null,
   },
   unavailable,
+  skipped,
   cells,
+  pairs,
+  aliases: Object.fromEntries(
+    Object.entries(plan.aliases).filter(([, id]) => measured.has(id)),
+  ),
 };
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, `${JSON.stringify(doc, null, 2)}\n`);
-process.stderr.write(`\nperf: ${cells.length} cell(s) -> ${OUT}\n`);
+process.stderr.write(
+  `\nperf: ${cells.length} cell(s), ${pairs.length} pair(s) in ${doc.wallSeconds} s -> ${OUT}\n` +
+    `perf: host ${doc.host.id}; baselines/hosts/${doc.host.id}/ is where it is committed\n`,
+);

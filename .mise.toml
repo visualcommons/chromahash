@@ -811,14 +811,20 @@ depends = ["build:compare"]
 run = "node tools/comparison/dist/verify-claims.js"
 
 # Check every table in spec/PERFORMANCE.md against the committed perf runs in
-# tools/comparison/baselines/. The document is transcribed by hand, so a re-run
-# silently invalidates it — and it had: the committed baseline was a bounded run
-# from a dirty tree, while §2, §3, §4, §5 and §6 quoted a --full run that was
-# never committed. Sibling of verify:experiments, which does the same for
+# tools/comparison/baselines/hosts/<host>/ and the stage baselines beside them.
+# The document is transcribed by hand, so a re-run silently invalidates it — and
+# it had: the committed baseline was a bounded run from a dirty tree, while §2,
+# §3, §4, §5 and §6 quoted a --full run that was never committed. A value passes
+# inside its cell's range or within ±5%; prose figures are bound too. A baseline
+# the change adds must carry HEAD's measured-source digest; VERIFY_BENCHMARK_BASE
+# overrides the ref "new" is judged against (default: the merge-base with
+# origin/master). Sibling of verify:experiments, which does the same for
 # EXPERIMENTS.md.
 #   --list-unbound   tables with no binding
 #   --list-cells     every cell id the committed runs provide
 #   --section 7      just one section
+#   --fix            rewrite only the figures outside their band; refuses while
+#                    the committed runs themselves fail
 [tasks."verify:benchmark"]
 description = "Check every table in spec/PERFORMANCE.md against the committed perf runs"
 depends = ["build:compare"]
@@ -858,18 +864,24 @@ CARGO_TARGET_DIR=rust/target/scalar cargo build --manifest-path rust/Cargo.toml 
     --release --no-default-features --example encode_stdin
 """
 
+# One bounded sweep, written to tools/comparison/output/perf/. Re-measuring the
+# document is `benchmark:session` (mise-tasks/benchmark/session), which runs the
+# bounded pair, the full supplement and the stage recorders, copies the sweeps
+# into baselines/hosts/<host>/ and runs verify:benchmark --fix. Flags pass
+# through: --processes, --reps, --pin, --max-load, --force-loaded,
+# --wait-for-load [SECONDS], --plan, --host-id.
 [tasks.benchmark]
 description = "Unified perf sweep: time x bytes across every lever and implementation"
 depends = ["build:benchmark", "build:benchmark:scalar", "build:compare"]
 run = "node tools/comparison/dist/perf/run.js"
 
+# Only the cells the bounded matrix does not hold (perf/plan.ts): a supplement,
+# never an override, so committing it re-baselines nothing else.
 [tasks."benchmark:full"]
-description = "Unified perf sweep, exhaustive matrix (hours)"
+description = "Unified perf sweep, the exhaustive matrix's cells the bounded one lacks"
 depends = ["build:benchmark", "build:benchmark:scalar", "build:compare"]
 run = "node tools/comparison/dist/perf/run.js --full"
 
-# Where encode time actually goes. Needs the off-by-default `bench-internals`
-# feature, which is what compiles the stage marks in rust/src/encode.rs.
 [tasks."benchmark:quick"]
 description = "Smoke-test the bench contract across every harness (~2 min, numbers not meaningful)"
 depends = ["build:compare"]
