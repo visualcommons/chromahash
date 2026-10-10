@@ -2,7 +2,7 @@
 #MISE description="Check the byte-identical accel levers on every fixture image, encode and decode"
 #MISE depends=["build:compare"]
 #
-# Usage: mise run lever-identity [--out tools/comparison/results/lever-identity.json]
+# Usage: mise run lever-identity [--out tools/comparison/baselines/lever-identity.json]
 #
 # Encodes every fetched fixture image (sealed holdout2 photographs skipped)
 # with every accel lever off and all seven on, at 100 px and 512 px for tier

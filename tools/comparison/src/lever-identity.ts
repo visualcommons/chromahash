@@ -22,7 +22,7 @@
  * still skipped, so that nothing in their directory is touched outside a
  * frozen read.
  *
- *   node dist/lever-identity.js [--out results/lever-identity.json]
+ *   node dist/lever-identity.js [--out baselines/lever-identity.json]
  *
  * Exits non-zero when any pair differs, or when no image is found.
  */
