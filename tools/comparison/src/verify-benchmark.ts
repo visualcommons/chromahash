@@ -441,13 +441,13 @@ const PROSE_CLAIMS: ProseClaim[] = [
   },
   {
     what: "§6: `dct_forward`'s share, against the SIMD stage",
-    pattern: /at ([\d.]+)% of the work rather than/,
+    pattern: /the stage §1 prices at ([\d.]+)% of the work\. The shipped/,
     cell: "512x512-t1",
     stages: ["dct_forward"],
   },
   {
     what: "§6: `oklab_forward`'s share, the stage SIMD covers",
-    pattern: /on the ([\d.]+)% stage `simd` covers/,
+    pattern: /`simd` feature works on the ([\d.]+)% stage/,
     cell: "512x512-t1",
     stages: ["oklab_forward"],
   },
@@ -863,25 +863,18 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     resolve: (R) => saving(R, t1(512), `${t1(512)}/dct_separable`),
   },
   {
-    what: "§6: the simd feature's absolute saving at 512x512",
-    pattern: new RegExp(String.raw`\`simd\` feature takes ${FIG} ms\*\*`),
-    unit: "ms",
-    decimals: 1,
-    resolve: (R) => saving(R, scalarT1(512), t1(512)),
-  },
-  {
-    what: "§6: the separable saving over the simd saving",
-    pattern: new RegExp(String.raw`${FIG}× the absolute saving`),
+    what: "§6: the byte-identical levers together, against the separable DCT",
+    pattern: new RegExp(
+      String.raw`doing nearly all of it, measure \*\*${FIG}×\*\* at 512×512`,
+    ),
     unit: "ratio",
-    decimals: 0,
-    resolve: (R) =>
-      saving(R, t1(512), `${t1(512)}/dct_separable`) /
-      saving(R, scalarT1(512), t1(512)),
+    decimals: 2,
+    resolve: (R) => R.ratio(t1(512), `${t1(512)}/accel all`),
   },
   {
     what: "§6: the only byte-identical speedup measured so far",
     pattern: new RegExp(
-      String.raw`byte-identical speedup §5 measures is ${FIG}%`,
+      String.raw`byte-identical speedup §5 measures for it is ${FIG}%`,
     ),
     unit: "percent",
     decimals: 0,
