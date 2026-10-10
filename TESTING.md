@@ -222,7 +222,10 @@ run to:
   interleaved round-robin across cells. The reported cost is the median of the
   per-process minima, beside their *range* (87.5% coverage of the median at
   four, not a 95% interval). A cell whose processes spread past 5% is checked
-  on the band alone; past 10% it fails. A lever, the `simd` build, a capped
+  on the band alone. Past 10% it is *withheld*: every value resting on it
+  fails by name and `--fix` writes it as `TBD`, but the rest of the fix goes
+  ahead. This is separate from the stability pair, and `threads=auto` batch
+  cells on a shared SMT host may stay withheld. A lever, the `simd` build, a capped
   decode and a batch thread count are each a *paired* ratio against their
   base: the geometric mean over A B / B A blocks, so an order effect cancels.
   A `/3` run missing a pair it publishes fails.
@@ -237,8 +240,9 @@ run to:
 - **Tolerance.** A documented value passes inside its cell's range or within
   ±5% of the committed run (a timing percentage within 5% of its ratio, a
   stage share within half a point). A stated speedup or slowdown must also
-  keep its sign. `--fix` rewrites only what is outside, and refuses to write
-  while the committed runs themselves fail.
+  keep its sign. `--fix` rewrites only what is outside. It refuses to write
+  only while a run-level check fails (provenance, dirty, load, sampling,
+  rejected runs, cross-run spread, stability), never for a withheld cell.
 - **Provenance.** Every recorder writes its commit and a digest of the measured
   sources, `.mise.toml` and `mise-tasks/benchmark/` included and documentation
   excluded (`perf/provenance.ts`). The gate accepts the commit when it is an

@@ -188,8 +188,32 @@ that coverage beside the range. An earlier draft of this revision called the
 range a "bootstrap 95% interval", which with three processes it could not be.
 A cell is **noisy** when its process minima spread more than 5%. Its range then
 never widens what a documented value may be, so it is checked on the band
-alone. A bound cell whose processes spread more than the 10% host bar
-**fails**: within one run it has already broken the bar two runs are held to.
+alone.
+
+**A cell whose own processes spread past the host bar is withheld, not
+published.** Past 10%, a cell's processes disagree by more than two runs of
+the host are allowed to, so no figure taken from it is reproducible to this
+document's resolution, however well it agrees with the run. The gate fails
+every value resting on such a cell (or on a pair whose A B / B A blocks spread
+that far) by name, with the spread. `--fix` writes `TBD` in its place, and
+leaves a `TBD` that is already there. This is a property of the cell, not of
+the run, so `--fix` still writes every other value. The summary counts these
+apart from other placeholders ("withheld for process spread"), and they stay
+failing until a quieter session measures them.
+
+The stability pair and the per-cell spread are **separate checks**. The pair
+asks whether two runs of the host agree cell for cell, and its 10% is between
+runs. The spread asks whether one cell's processes agree within a single run.
+A session can pass the first and still withhold cells under the second: the
+2026-10-10 session's pair agreed within 6.0% on all 128 shared cells, while
+21 cells had one outlier process in one of the two runs.
+
+The `threads=auto` batch cells may be **structurally unpublishable on a shared
+SMT host**: they put a runnable thread on every core, so they compete with
+whatever else the host runs, and they spread past the bar in both runs of that
+session. That is the same kind of fact as Swift off macOS, about the host
+rather than the code. Unlike Swift there is no exemption: they stay withheld,
+and failing, until a session on a quieter host measures them within the bar.
 No `/3` figure is drawn by bootstrap, so the resample count `stats.ts`
 defaults to does not reach this document. The committed `/2` baseline's
 `ci95NsPerOp` fields were bootstrap draws at 1,000 resamples — `stats.ts`'s
@@ -209,7 +233,7 @@ to a member multiplies one order's ratio by about what it divides the other's
 by, so the order effect cancels. The record also holds each block's ratio, the
 blocks' range (two blocks cover the median half the time, so this is a range
 too) and their spread. A pair whose blocks spread past 5% gets no range
-acceptance, and one whose blocks spread past 10% fails, as for a cell. The
+acceptance, and one whose blocks spread past 10% is withheld, as for a cell. The
 ratio used to be the median of the rounds. With three rounds (A B, B A, A B)
 that is an A B round, carrying any order effect whole, which is why the count
 is now even. These records are what §2's saving, §4's "vs shipped", §5's gain,
@@ -257,10 +281,13 @@ on the ratio it stands for — §4's −36.3% is 0.637×, so ±3.2 points. A rat
 timing percentage that states a direction must also keep it: a figure written
 as a speedup fails against a measured slowdown however small the difference,
 and `--fix` writes the measured side; one that rounds to 1× or 0% as written
-states none. `--fix` rewrites only what is outside, and refuses to write at
-all while the committed runs themselves fail (dirty, loaded, rejected,
-unstable, untraceable): agreeing with a run the gate refused would carry its
-figures into the document. That is the document's
+states none. `--fix` rewrites only what is outside. It refuses to write at all
+while the committed runs themselves fail — untraceable or stale provenance, a
+dirty tree, a loaded round, too few samples, a rejected run, no preflight,
+cross-run spread or a failed stability pair — because agreeing with a run the
+gate refused would carry its figures into the document. A withheld cell is
+not one of these: it is written as `TBD` and the rest of the fix goes ahead.
+That is the document's
 resolution, stated: a claim within 5% of 1 — §5's SIMD gain — is checked to
 "within 5%" and to its sign, no finer. Every figure the prose restates is bound
 the same way, and one that needs a measurement nobody has committed is written
