@@ -581,6 +581,12 @@ export class Runs {
   /** Every paired record a binding resolved, by `base|arm`. */
   private readonly touchedPairs = new Set<string>();
   /**
+   * What the resolve in progress has touched — cell ids and `base|arm` pair
+   * keys — so one documented value can be withheld for the cells it rests on
+   * (`trace`). Null outside a trace.
+   */
+  private tracing: { cells: Set<string>; pairs: Set<string> } | null = null;
+  /**
    * Targets no loaded run could measure.
    *
    * A cell for one of these is not a document that has drifted and not a
@@ -831,6 +837,7 @@ export class Runs {
   est(id: string): Estimate {
     const real = this.resolveId(id);
     this.touched.add(real);
+    this.tracing?.cells.add(real);
     const hit = this.byId.get(real);
     if (!hit) throw new MissingCell(id);
     return { value: hit.us, interval: hit.interval };
@@ -853,6 +860,9 @@ export class Runs {
       this.touched.add(b);
       this.touched.add(a);
       this.touchedPairs.add(`${b}|${a}`);
+      this.tracing?.cells.add(b);
+      this.tracing?.cells.add(a);
+      this.tracing?.pairs.add(`${b}|${a}`);
       const spread = blockSpread(pair);
       return {
         value: pair.ratio,
@@ -897,24 +907,61 @@ export class Runs {
    * run: no figure transcribed from it is reproducible to the document's
    * resolution, whatever the band says.
    */
-  unstableTouched(): { id: string; spread: number }[] {
-    const out: { id: string; spread: number }[] = [];
-    for (const id of [...this.touched].sort()) {
+  unstableTouched(): Unstable[] {
+    return this.unstableAmong(this.touched, this.touchedPairs);
+  }
+
+  private unstableAmong(
+    cells: Iterable<string>,
+    pairs: Iterable<string>,
+  ): Unstable[] {
+    const out: Unstable[] = [];
+    for (const id of [...cells].sort()) {
       const spread = this.byId.get(id)?.spread;
       if (spread != null && spread > CROSS_RUN_TOLERANCE) {
-        out.push({ id, spread });
+        out.push({ id, spread, kind: "process" });
       }
     }
     // A ratio whose AB/BA blocks disagree past the bar is as unreproducible as
     // a cell whose processes do, even when both cells are steady on their own.
-    for (const key of [...this.touchedPairs].sort()) {
+    for (const key of [...pairs].sort()) {
       const pair = this.pairById.get(key);
       const spread = pair ? blockSpread(pair) : null;
       if (spread !== null && spread > CROSS_RUN_TOLERANCE) {
-        out.push({ id: key.replace("|", " / "), spread });
+        out.push({ id: key.replace("|", " / "), spread, kind: "block" });
       }
     }
     return out;
+  }
+
+  /**
+   * Run one resolve and report, beside its outcome, every cell and pair it
+   * rested on that spread past the host bar. The resolve's own exception (a
+   * MissingCell) is returned, not thrown, so the trace always closes.
+   */
+  trace<T>(fn: () => T): {
+    value?: T;
+    error?: unknown;
+    unstable: Unstable[];
+  } {
+    const outer = this.tracing;
+    const mine = { cells: new Set<string>(), pairs: new Set<string>() };
+    this.tracing = mine;
+    try {
+      return {
+        value: fn(),
+        unstable: this.unstableAmong(mine.cells, mine.pairs),
+      };
+    } catch (error) {
+      return { error, unstable: this.unstableAmong(mine.cells, mine.pairs) };
+    } finally {
+      // A nested trace's cells belong to the one around it too.
+      if (outer) {
+        for (const c of mine.cells) outer.cells.add(c);
+        for (const p of mine.pairs) outer.pairs.add(p);
+      }
+      this.tracing = outer;
+    }
   }
 
   get ids(): string[] {
@@ -1035,26 +1082,43 @@ export function runFailures(R: Runs): Failure[] {
   return out;
 }
 
+/** A bound cell or pair whose own samples spread past the host bar. */
+export interface Unstable {
+  /** A cell id, or `base / arm` for a pair. */
+  id: string;
+  spread: number;
+  /** Across processes (a cell) or across A B / B A blocks (a pair). */
+  kind: "process" | "block";
+}
+
 /**
- * Bound cells whose processes disagree past the host bar (`unstableTouched`).
- * Call after every binding and claim has resolved, since `touched` is what
- * they asked for.
+ * Why a documented value is withheld: the cells and pairs it rests on whose
+ * own samples spread past CROSS_RUN_TOLERANCE.
+ *
+ * Withholding is a property of one cell, not of the run. A cell whose
+ * processes disagree by more than two runs of the host may cannot back a
+ * figure to the document's resolution, so its figure is not published: the
+ * gate fails it by name and `--fix` writes `TBD` in its place. But it says
+ * nothing about the run's other cells, so unlike a run-level failure it does
+ * not stop `--fix` from writing them. It used to: one outlier process in one
+ * cell refused the whole fix.
  */
-export function noiseFailures(R: Runs): Failure[] {
+export function withheldReason(unstable: readonly Unstable[]): string {
   const bar = `${(CROSS_RUN_TOLERANCE * 100).toFixed(0)}%`;
-  return R.unstableTouched().map(({ id, spread }) => {
-    const pair = id.includes(" / ");
-    return {
-      where: "committed runs",
-      column: pair ? "block spread" : "process spread",
-      row: id,
-      documented: `${pair ? "AB/BA blocks" : "processes"} within ${bar} of each other`,
-      measured: `${(spread * 100).toFixed(1)}% apart`,
-      detail: pair
-        ? `a bound ratio whose AB/BA blocks spread past the ${bar} host bar cannot back a figure — re-measure on a quieter host`
-        : `a bound cell whose own processes spread past the ${bar} host bar cannot back a figure — re-measure on a quieter host`,
-    };
-  });
+  return `withheld — ${unstable
+    .map(
+      (u) =>
+        `${u.id}: ${u.kind === "block" ? "A B / B A blocks" : "processes"} ${(u.spread * 100).toFixed(1)}% apart`,
+    )
+    .join(
+      "; ",
+    )}, past the ${bar} host bar; not published until a quieter session measures it`;
+}
+
+/** The placeholder a withheld value is written as: `TBD` in its own unit. */
+export function withheldText(doc: DocNumber, raw: string): string {
+  const body = `TBD${suffixOf(doc.unit)}`;
+  return /^\*\*.*\*\*$/.test(raw.trim()) ? `**${body}**` : body;
 }
 
 /**
@@ -1534,6 +1598,11 @@ export interface Counters {
   placeholders: number;
   /** TBD cells no committed run can fill yet. */
   pending: number;
+  /**
+   * Values withheld because a cell or pair they rest on spread past the host
+   * bar (`withheldReason`); written as TBD by `--fix`, and failed by name.
+   */
+  withheld: number;
   unavailable: number;
   /** Checked values that passed on the interval or the band, not exactly. */
   tolerated: number;
@@ -1765,9 +1834,11 @@ export function checkTable(
       }
       if (!doc) continue;
 
+      const traced = R.trace(() => resolve(row, R));
       let resolved: number | Estimate | null;
       try {
-        resolved = resolve(row, R);
+        if (traced.error !== undefined) throw traced.error;
+        resolved = traced.value as number | Estimate | null;
       } catch (e) {
         if (e instanceof MissingCell) {
           failures.push({
@@ -1791,6 +1862,29 @@ export function checkTable(
         ? resolved
         : { value: resolved, interval: null };
       const expected = measured.value;
+
+      // Withheld before anything else: a figure resting on a cell whose own
+      // samples spread past the host bar is not published, however well it
+      // agrees. A number becomes TBD; a TBD stays one.
+      if (traced.unstable.length > 0) {
+        counters.withheld++;
+        if (!placeholder) {
+          edits.push({
+            line: sourceLine,
+            cellIndex: i,
+            text: withheldText(doc, raw),
+          });
+        }
+        failures.push({
+          where: `§${binding.section} ${binding.title} (line ${sourceLine})`,
+          column,
+          row: rowLabel,
+          documented: raw,
+          measured: "withheld",
+          detail: withheldReason(traced.unstable),
+        });
+        continue;
+      }
 
       // A placeholder is a bound cell whose number has not been measured yet.
       // It always fails, so a document cannot be published still carrying one,
@@ -2254,6 +2348,8 @@ export function checkSweepClaims(
   checked: number;
   pending: number;
   placeholders: number;
+  /** Figures withheld for a cell spread past the host bar. */
+  withheld: number;
   edits: ProseEdit[];
 } {
   const failures: Failure[] = [];
@@ -2261,6 +2357,7 @@ export function checkSweepClaims(
   let checked = 0;
   let pending = 0;
   let placeholders = 0;
+  let withheld = 0;
   const where = "PERFORMANCE.md prose";
   for (const claim of claims) {
     // A sentence wraps wherever the prose reflows it, so a space in the
@@ -2288,9 +2385,11 @@ export function checkSweepClaims(
     }
     const raw = hit.text;
     const tbd = /^TBD$/i.test(raw.trim());
+    const traced = R.trace(() => claim.resolve(R, ctx));
     let resolved: ReturnType<SweepClaim["resolve"]>;
     try {
-      resolved = claim.resolve(R, ctx);
+      if (traced.error !== undefined) throw traced.error;
+      resolved = traced.value as ReturnType<SweepClaim["resolve"]>;
     } catch (e) {
       if (!(e instanceof MissingCell)) throw e;
       if (tbd) pending++;
@@ -2318,6 +2417,25 @@ export function checkSweepClaims(
           ? "placeholder — not measurable from the committed runs yet"
           : "nothing committed backs this figure",
       });
+      continue;
+    }
+    if (traced.unstable.length > 0) {
+      withheld++;
+      failures.push({
+        where,
+        column: claim.what,
+        row: "—",
+        documented: raw,
+        measured: "withheld",
+        detail: withheldReason(traced.unstable),
+      });
+      if (!tbd) {
+        edits.push({
+          index: hit.index as number,
+          length: raw.length,
+          text: "TBD",
+        });
+      }
       continue;
     }
     const values = (Array.isArray(resolved) ? resolved : [resolved]).map(
@@ -2390,5 +2508,5 @@ export function checkSweepClaims(
       });
     }
   }
-  return { failures, checked, pending, placeholders, edits };
+  return { failures, checked, pending, placeholders, withheld, edits };
 }

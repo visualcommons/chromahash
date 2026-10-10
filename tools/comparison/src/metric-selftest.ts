@@ -196,7 +196,6 @@ import {
   checkStagesProvenance,
   checkTable,
   clean,
-  noiseFailures,
   parseDecodeStages,
   parseStages,
   parseTables,
@@ -1421,6 +1420,7 @@ function gate(
     unbound: 0,
     placeholders: 0,
     pending: 0,
+    withheld: 0,
     unavailable: 0,
     tolerated: 0,
   };
@@ -2415,6 +2415,7 @@ const est = (value: number, interval: [number, number] | null = null) => ({
     unbound: 0,
     placeholders: 0,
     pending: 0,
+    withheld: 0,
     unavailable: 0,
     tolerated: 0,
   };
@@ -2761,6 +2762,88 @@ for (const order of ["full first", "bounded first"] as const) {
   );
 }
 
+// V5d. A cell spread past the host bar is withheld, not a run failure: it fails
+//      by name and --fix writes TBD there, while every other cell is still
+//      fixed. A TBD it rests on stays TBD on the next pass. A run-level failure
+//      still refuses the whole fix.
+{
+  const rows: [string, string][] = [
+    ["Rust", "1.20 ms"],
+    ["Go", "1.00 ms"],
+  ];
+  const quietAndWide = (overrides: Partial<RunDoc> = {}): RunDoc =>
+    run3(
+      "perf-report.json",
+      {
+        "encode/Rust/t1": { us: 1000, mins: [995, 1000, 1000, 1010] },
+        "encode/Go/t1": { us: 1000, mins: [900, 1000, 1000, 1150] },
+      },
+      overrides,
+    );
+  const pass = (text: string, R: Runs) => {
+    const table = parseTables(text)[0];
+    const failures: Failure[] = [];
+    const counters: Counters = {
+      checked: 0,
+      unbound: 0,
+      placeholders: 0,
+      pending: 0,
+      withheld: 0,
+      unavailable: 0,
+      tolerated: 0,
+    };
+    const edits: Edit[] = [];
+    if (table) checkTable(FIXTURE_BINDING, table, R, failures, counters, edits);
+    return { failures, counters, edits, fixed: applyEdits(text, edits, []) };
+  };
+  const R = new Runs([quietAndWide()]);
+  const first = pass(fixtureTable(rows), R);
+  const again = pass(first.fixed, new Runs([quietAndWide()]));
+  const loaded = new Runs([
+    quietAndWide({
+      environment: {
+        cpuModel: "fixture",
+        arch: "x64",
+        cores: 1,
+        preflight: { ...quietPreflight(), loaded: true },
+      },
+    }),
+  ]);
+  // Prose resting on the wide cell is withheld the same way.
+  const ctx: ClaimContext = {
+    counters: first.counters,
+    stability: checkStability(R),
+  };
+  const prose = checkSweepClaims("Go encodes in 1.00 ms here", R, ctx, [
+    {
+      what: "go",
+      pattern: /encodes in (TBD|[\d.]+) ms/,
+      unit: "ms",
+      decimals: 2,
+      resolve: (RR) => RR.est("encode/Go/t1"),
+    },
+  ]);
+  check(
+    "one cell spread past the bar is withheld as TBD and does not stop --fix writing the others; a run-level failure still does",
+    first.counters.withheld === 1 &&
+      first.counters.checked === 1 &&
+      first.failures.length === 2 &&
+      first.failures.some(
+        (f) => f.row === "Go" && (f.detail ?? "").startsWith("withheld"),
+      ) &&
+      first.fixed.includes("| Rust | 1.00 ms |") &&
+      first.fixed.includes("| Go | TBD ms |") &&
+      fixRefusal(runFailures(R)) === null &&
+      again.counters.withheld === 1 &&
+      again.edits.length === 0 &&
+      again.fixed === first.fixed &&
+      prose.withheld === 1 &&
+      prose.edits[0]?.text === "TBD" &&
+      fixRefusal(runFailures(loaded)) !== null,
+    `first=${details(first.failures)} edits=${JSON.stringify(first.edits)} again=${JSON.stringify(again.counters)} prose=${details(prose.failures)}`,
+  );
+}
+
 // V6. Aliases: one measurement under two names. A /3 run resolves `…/shipped`
 //     to its base; an old run that holds both is checked for agreeing.
 {
@@ -2846,19 +2929,20 @@ for (const order of ["full first", "bounded first"] as const) {
     ),
   ]);
   const s = split.ratio(b, a);
-  const splitFails = noiseFailures(split);
+  const splitUnstable = split.unstableTouched();
   check(
     "a speedup is the run's paired record, a /3 run without one is missing it, and blocks that disagree past the bar fail",
     p.value === 2.4 &&
       p.interval?.[0] === 2.35 &&
-      noiseFailures(paired).length === 0 &&
+      paired.unstableTouched().length === 0 &&
       thrown.includes("no paired record") &&
       Math.abs(u.value - 2.335) < 1e-9 &&
       u.interval === null &&
       s.interval === null &&
-      splitFails.length === 1 &&
-      (splitFails[0]?.row ?? "").includes(" / "),
-    `paired=${JSON.stringify(p)} unpaired=${thrown} legacy=${JSON.stringify(u)} split=${JSON.stringify(s)} ${details(splitFails)}`,
+      splitUnstable.length === 1 &&
+      splitUnstable[0]?.kind === "block" &&
+      (splitUnstable[0]?.id ?? "").includes(" / "),
+    `paired=${JSON.stringify(p)} unpaired=${thrown} legacy=${JSON.stringify(u)} split=${JSON.stringify(s)} ${JSON.stringify(splitUnstable)}`,
   );
 }
 
@@ -3194,19 +3278,19 @@ for (const order of ["full first", "bounded first"] as const) {
   const q = R.est(quiet);
   const w = R.est(wide);
   const verdict = agreement(num(1.055, "ms", 3), w).verdict;
-  const unstable = noiseFailures(R);
+  const unstable = R.unstableTouched();
   const legacy = new Runs([fixtureRun("perf-report.json", ["x"])]);
   legacy.est("x");
   check(
-    "a noisy cell's range never widens acceptance, and a bound cell spread past the host bar fails",
+    "a noisy cell's range never widens acceptance, and a bound cell spread past the host bar is unstable",
     q.interval?.join() === "1000,1030" &&
       w.interval === null &&
       verdict === "outside" &&
       R.noisyTouched().join() === wide &&
       unstable.length === 1 &&
-      unstable[0]?.row === wide &&
-      noiseFailures(legacy).length === 0,
-    `quiet=${JSON.stringify(q)} wide=${JSON.stringify(w)} verdict=${verdict} unstable=${details(unstable)}`,
+      unstable[0]?.id === wide &&
+      legacy.unstableTouched().length === 0,
+    `quiet=${JSON.stringify(q)} wide=${JSON.stringify(w)} verdict=${verdict} unstable=${JSON.stringify(unstable)}`,
   );
 }
 
@@ -3333,6 +3417,7 @@ for (const order of ["full first", "bounded first"] as const) {
       unbound: 0,
       placeholders: 0,
       pending: 0,
+      withheld: 0,
       unavailable: 0,
       tolerated: 0,
     },
