@@ -2674,9 +2674,14 @@ mod tests {
                 if i % 4 == 3 { 255 } else { (s >> 24) as u8 }
             })
             .collect();
+        // A 9-bit luma scale field also moves the flag to bit 57, where its
+        // byte (7) and its offset in the byte (1) differ; at the shipped
+        // widths both are 6 (bit 54) or 7 (bit 63), so a decoder reading the
+        // wrong one of the two would pass every other test.
         let t = Tunables {
             ac_coder: 2,
             mu_l: 9.0,
+            l_scale_bits: 9,
             ..Tunables::DEFAULT
         };
         let plain = Tunables { ac_coder: 0, ..t };
@@ -2686,6 +2691,31 @@ mod tests {
         assert_eq!(
             crate::decode::decode_with(&hash, &t),
             crate::decode::decode_with(&fixed, &plain)
+        );
+        // And the coded branch at the same field width: between the two, a
+        // flag read from the wrong bit is wrong for one of them whatever
+        // that bit holds.
+        // The image the adaptive test above shows choosing the coded stream.
+        let mut smooth = lever_image(40, 30, false, 21);
+        for px in smooth.chunks_exact_mut(4) {
+            px[0] = px[1] / 2;
+            px[2] = px[1] / 3;
+        }
+        let wide = Tunables {
+            mu_l: 9.0,
+            l_scale_bits: 9,
+            ..bound_x2(2)
+        };
+        let hash = encode_with(40, 30, &smooth, Gamut::Srgb, &wide, 2);
+        assert_eq!(adaptive_flag(&hash, &wide, false), 1);
+        let coded_wide = Tunables {
+            ac_coder: 1,
+            ..wide
+        };
+        let (inner, _) = encode_parts(40, 30, &smooth, Gamut::Srgb, &coded_wide, 2, 1, false);
+        assert_eq!(
+            crate::decode::decode_with(&hash, &wide),
+            crate::decode::decode_with(&inner, &coded_wide)
         );
     }
 
