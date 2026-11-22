@@ -369,14 +369,20 @@ impl AcModels {
         }
         let q = q.min(2 * center);
         let band = ac_band(index);
-        let significant = q != center;
+        // One three-way comparison: a `<` beside a `!=` would leave its own
+        // `<=` mutant equivalent, since the sign is only coded when `q`
+        // differs from the centre.
+        let (significant, negative, mag) = match q.cmp(&center) {
+            core::cmp::Ordering::Equal => (false, false, 0),
+            core::cmp::Ordering::Less => (true, true, center - q),
+            core::cmp::Ordering::Greater => (true, false, q - center),
+        };
         enc.encode(significant, &mut self.sig[group][band][hist.context()]);
         hist.push(significant);
         if !significant {
             return;
         }
-        enc.encode_bypass(q < center);
-        let mag = q.abs_diff(center);
+        enc.encode_bypass(negative);
         for j in 0..center - 1 {
             let more = mag > j + 1;
             enc.encode(
