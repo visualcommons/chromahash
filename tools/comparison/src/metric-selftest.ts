@@ -5307,8 +5307,9 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
   );
 
   // The shipped register's D-entries (#131): each has exactly one status
-  // line, `open`, with `Criteria approved` dated and tied to a commit, the
-  // register table agrees with it, and the real gate refuses each one.
+  // line, with `Criteria approved` dated and tied to a commit, the register
+  // table agrees with it, and the real gate opens holdout3 for exactly the
+  // entries it records as `frozen` (D1 froze in #132), refusing the rest.
   const dEntries = ["D1", "D2", "D3", "D4", "D5", "D6", "D8", "D9"];
   const tableStatus = (id: string): string | undefined => {
     const row = registerText.split("\n").find((l) => l.startsWith(`| ${id} |`));
@@ -5323,18 +5324,19 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
     // A date, then the commit that records the approval: a SHA, or the
     // squash commit of a numbered change.
     const approved =
-      /- \*\*Status:\*\* open\. Criteria approved: 2026-\d\d-\d\d at /.test(
+      /- \*\*Status:\*\* (open|frozen|decided)\. Criteria approved: 2026-\d\d-\d\d at /.test(
         section,
       ) && /2026-11-22[^.]*?at the commit of\s+#\d+\b/.test(section);
+    const status = "status" in found ? found.status : undefined;
     const refusal = thrown(() => openHoldout3(id));
+    const gate =
+      status === "frozen"
+        ? refusal === ""
+        : refusal.includes(`"${id}" as "${status}"`);
     check(
-      `the shipped register records ${id} as open with its criteria approved, its table row agrees, and the holdout3 gate refuses it`,
-      "status" in found &&
-        found.status === "open" &&
-        tableStatus(id) === "open" &&
-        approved &&
-        refusal.includes(`"${id}" as "open"`),
-      `${"status" in found ? found.status : found.error}; table ${tableStatus(id)}; approved ${approved}; ${refusal}`,
+      `the shipped register records ${id} with one status and its criteria approved, its table row agrees, and the holdout3 gate opens only if it is frozen`,
+      status !== undefined && tableStatus(id) === status && approved && gate,
+      `${status ?? ("error" in found ? found.error : "")}; table ${tableStatus(id)}; approved ${approved}; ${refusal || "opens"}`,
     );
   }
 
