@@ -109,13 +109,32 @@ function sameBudget(
   return a.every((v, i) => v === b[i]);
 }
 
+/** Holdout2 images pinned in each corpus's pin table. */
+export interface Holdout2Pinned {
+  photo: number;
+  alpha: number;
+}
+
+/** The holdout2 pin counts of the shipped pin tables. */
+export function shippedHoldout2Pinned(): Holdout2Pinned {
+  const holdout2 = (specs: readonly { split: string }[]) =>
+    specs.filter((s) => s.split === "holdout2").length;
+  return { photo: holdout2(CURATED_IMAGES), alpha: holdout2(ALPHA_IMAGES) };
+}
+
 /**
  * Read every committed photographic and alpha tune sweep in `resultsDir`. Only
  * arms at their incumbent's bytes on every image are kept unless `allBudgets`:
  * the register compares arms at one tier, and an arm at another budget is a
- * different question with a far larger spread.
+ * different question with a far larger spread. `pinned` sets the holdout2
+ * sizes; it defaults to the shipped pin tables and exists so the self-check
+ * can drive the unpinned-photo fallback.
  */
-export function readSpread(resultsDir: string, allBudgets = false): SpreadData {
+export function readSpread(
+  resultsDir: string,
+  allBudgets = false,
+  pinned: Holdout2Pinned = shippedHoldout2Pinned(),
+): SpreadData {
   const comparisons: Record<MdeCorpus, Comparison[]> = {
     photo: [],
     alpha: [],
@@ -181,10 +200,8 @@ export function readSpread(resultsDir: string, allBudgets = false): SpreadData {
     }
     return n;
   };
-  const holdout2 = (specs: readonly { split: string }[]) =>
-    specs.filter((s) => s.split === "holdout2").length;
-  const alphaPinned = holdout2(ALPHA_IMAGES);
-  const photoPinned = holdout2(CURATED_IMAGES);
+  const alphaPinned = pinned.alpha;
+  const photoPinned = pinned.photo;
 
   const splits: MdeSplit[] = [
     {

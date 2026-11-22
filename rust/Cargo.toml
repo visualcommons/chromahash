@@ -132,6 +132,18 @@ proptest = { version = "1.11.0", default-features = false, features = ["std"] }
 # unaffected (they are integer byte arrays).
 serde_json = { version = "1", features = ["float_roundtrip"] }
 
+# Line tables only for this crate and no debug info for dependencies, so
+# `target/` stays small under fast iteration. Backtraces in chromahash keep
+# file:line; dependency frames keep symbol names but lose file:line. `cargo test`
+# inherits both settings. For full debug info, use `CARGO_PROFILE_DEV_DEBUG=2`
+# (this crate) and `cargo --config 'profile.dev.package."*".debug=2' ...`
+# (dependencies).
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 # Profile for the cargo-mutants sweep (see rust/.cargo/mutants.toml).
 #
 # Optimized, because the sweep re-runs the whole suite once per mutant and the
