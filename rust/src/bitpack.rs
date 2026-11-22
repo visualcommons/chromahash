@@ -183,8 +183,10 @@ impl ArithEncoder {
             } else {
                 break;
             }
+            // `+ 1`, not `| 1`: the shift leaves bit 0 clear, so the two are
+            // the same value, and `+` is the one whose mutants change it.
             self.low <<= 1;
-            self.high = (self.high << 1) | 1;
+            self.high = (self.high << 1) + 1;
         }
     }
 
@@ -205,12 +207,15 @@ impl ArithEncoder {
     /// (= a half), and both lie inside `[low, high]` after renormalisation.
     /// Trailing zero bits are then dropped, since the decoder reads every bit
     /// past the stream as zero. Returns the bytes and the bit count.
+    ///
+    /// The strip needs no `nbits > 0` guard: the termination always emits a
+    /// one (the `1` itself, or the pending `1` after a `0`), so it stops at
+    /// that bit at the latest.
     pub(crate) fn finish(mut self) -> (Vec<u8>, usize) {
         self.pending += 1;
         let bit = self.low >= QUARTER;
         self.emit(bit);
-        while self.nbits > 0 && (self.out[(self.nbits - 1) / 8] >> ((self.nbits - 1) % 8)) & 1 == 0
-        {
+        while (self.out[(self.nbits - 1) / 8] >> ((self.nbits - 1) % 8)) & 1 == 0 {
             self.nbits -= 1;
         }
         self.out.truncate(self.nbits.div_ceil(8));
@@ -241,7 +246,7 @@ impl<'a> ArithDecoder<'a> {
             value: 0,
         };
         for _ in 0..32 {
-            d.value = (d.value << 1) | d.next_bit();
+            d.value = (d.value << 1) + d.next_bit();
         }
         d
     }
@@ -278,8 +283,8 @@ impl<'a> ArithDecoder<'a> {
                 break;
             }
             self.low <<= 1;
-            self.high = (self.high << 1) | 1;
-            self.value = (self.value << 1) | self.next_bit();
+            self.high = (self.high << 1) + 1;
+            self.value = (self.value << 1) + self.next_bit();
         }
         bit
     }
@@ -664,6 +669,20 @@ mod tests {
         assert_eq!(zero.finish(), (vec![0b100], 3));
         // And an empty stream is the termination alone: 0 then 1.
         assert_eq!(ArithEncoder::new().finish(), (vec![0b10], 2));
+    }
+
+    /// A value exactly on the split belongs to the zero branch `[low,
+    /// split]`. Random streams almost never land on it in 32 bits, so this
+    /// reads one that does: the first 32 bits, most significant first, are
+    /// `0x7FFF_FFFF`, the first even-odds split (`0 + 2^31 − 1`).
+    #[test]
+    fn a_value_on_the_split_decodes_as_zero() {
+        // Bit 0 of the stream is 0, bits 1..=31 are 1 (each byte LSB first).
+        let data = [0xFEu8, 0xFF, 0xFF, 0xFF];
+        assert!(!ArithDecoder::new(&data, 0, 32).decode_bypass());
+        // One above it is the one branch.
+        let data = [0x01u8, 0x00, 0x00, 0x00];
+        assert!(ArithDecoder::new(&data, 0, 32).decode_bypass());
     }
 
     const GOLDEN_STREAM_BITS: usize = 305;
