@@ -1308,16 +1308,19 @@ impl CodedAc<'_> {
         enc.finish()
     }
 
-    /// The stream at the largest fit step whose coded length is at most
-    /// `budget` bits, found by bisection between step 0 (every code zero)
-    /// and [`FIT_STEPS`] (every code kept). Only a step that was coded and
-    /// measured to fit is ever returned.
+    /// The stream at a fit step whose coded length is at most `budget` bits,
+    /// with the bytes, the bit count and the step: every code when that
+    /// fits, and otherwise the step bisection between step 0 (every code
+    /// zero) and [`FIT_STEPS`] settles on, which fits while the step above
+    /// it does not. Only a step that was coded and measured to fit is ever
+    /// returned. The coded length is not strictly monotone in the step (the
+    /// models adapt to what they see), so this is a boundary the bisection
+    /// found, not a proof that no larger step fits.
     ///
     /// # Panics
     ///
     /// If even the all-zero stream exceeds `budget`: the layout bounds more
     /// codes than the hash can carry, which is a sweep-configuration error.
-    /// Returns the bytes, the bit count and the step.
     pub(crate) fn fit(&self, budget: usize) -> (Vec<u8>, usize, usize) {
         let full = self.code(FIT_STEPS);
         if full.1 <= budget {
@@ -2536,6 +2539,63 @@ mod tests {
         coded(Tunables::DEFAULT)
     }
 
+    /// `ac_coder` at twice the shipped upper-tier counts, in both alpha
+    /// modes, in mode `mode`: the bound D1's sweep calls `x2`.
+    fn bound_x2(mode: u32) -> Tunables {
+        let mut t = Tunables {
+            ac_coder: mode,
+            ..Tunables::DEFAULT
+        };
+        t.layout_upper.l_tiers = [(52, 5), (0, 5)];
+        t.layout_upper.c_count = 18;
+        t.layout_upper.la_tiers = [(44, 4), (0, 4)];
+        t.layout_upper.ca_count = 6;
+        t.layout_upper.a_count = 56;
+        t
+    }
+
+    /// Coded and adaptive hashes are wire bytes too. A round trip cannot pin
+    /// them: a fit search that cut one step too early, a pad that coded a
+    /// different count, or an adaptive choice that flipped would each still
+    /// decode its own output. These hold one code-2 hash per mode and alpha
+    /// mode, on an image whose stream has to be cut to fit.
+    #[test]
+    fn coded_hashes_are_bit_exact() {
+        let opaque = lever_image(40, 30, false, 9);
+        let alpha = lever_image(40, 30, true, 9);
+        let got =
+            |rgba: &[u8], mode: u32| encode_with(40, 30, rgba, Gamut::Srgb, &bound_x2(mode), 2);
+        assert_eq!(got(&opaque, 1).as_ref(), &GOLDEN_CODED_OPAQUE[..]);
+        assert_eq!(got(&alpha, 1).as_ref(), &GOLDEN_CODED_ALPHA[..]);
+        assert_eq!(got(&opaque, 2).as_ref(), &GOLDEN_ADAPTIVE_OPAQUE[..]);
+    }
+
+    const GOLDEN_CODED_OPAQUE: [u8; 108] = [
+        16, 141, 209, 32, 208, 112, 202, 223, 81, 245, 173, 93, 31, 130, 12, 220, 38, 27, 46, 66,
+        65, 227, 85, 77, 1, 72, 124, 14, 248, 210, 247, 161, 35, 221, 74, 216, 239, 178, 96, 73,
+        227, 254, 131, 164, 103, 79, 11, 179, 242, 215, 200, 208, 175, 141, 90, 72, 212, 181, 228,
+        246, 76, 131, 40, 97, 240, 54, 102, 250, 210, 23, 184, 93, 18, 161, 171, 197, 231, 224,
+        234, 142, 232, 52, 3, 116, 227, 146, 41, 239, 124, 121, 251, 204, 88, 186, 215, 255, 39,
+        121, 40, 65, 58, 126, 175, 222, 239, 39, 41, 7,
+    ];
+    const GOLDEN_CODED_ALPHA: [u8; 103] = [
+        80, 141, 212, 96, 80, 32, 4, 155, 47, 95, 253, 101, 99, 131, 27, 62, 131, 96, 108, 71, 176,
+        118, 201, 105, 36, 110, 219, 73, 36, 223, 161, 102, 202, 97, 49, 107, 182, 126, 134, 94,
+        77, 153, 143, 125, 139, 67, 126, 254, 236, 29, 107, 64, 181, 171, 110, 209, 39, 138, 82,
+        127, 75, 183, 105, 229, 102, 180, 227, 172, 39, 195, 69, 94, 213, 100, 230, 75, 116, 156,
+        50, 236, 179, 122, 217, 3, 167, 234, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    ];
+    // The same image's coded stream one bit later, behind a set flag: byte 6
+    // keeps bits 48..54 of the prefix and gains bit 54 = 1.
+    const GOLDEN_ADAPTIVE_OPAQUE: [u8; 108] = [
+        16, 141, 209, 32, 208, 112, 202, 191, 163, 234, 91, 187, 62, 4, 25, 184, 77, 54, 92, 132,
+        130, 198, 171, 154, 2, 144, 248, 28, 240, 165, 239, 67, 71, 186, 149, 176, 223, 101, 193,
+        146, 198, 253, 7, 73, 207, 158, 22, 102, 229, 175, 145, 161, 95, 27, 181, 144, 168, 107,
+        201, 237, 153, 6, 81, 194, 224, 109, 204, 244, 165, 47, 112, 187, 36, 66, 87, 139, 207,
+        193, 213, 29, 209, 105, 6, 232, 198, 37, 83, 222, 249, 242, 246, 153, 177, 116, 175, 255,
+        79, 242, 80, 130, 116, 252, 94, 189, 223, 79, 82, 14,
+    ];
+
     #[test]
     #[should_panic(expected = "leaves no bit for the flag")]
     fn the_adaptive_mode_refuses_a_tier_with_no_spare_bit() {
@@ -2548,7 +2608,7 @@ mod tests {
     }
 
     #[test]
-    fn the_fit_search_keeps_the_largest_step_that_fits() {
+    fn the_fit_search_settles_on_a_step_that_fits_below_one_that_does_not() {
         let codes: Vec<u32> = (0..200u32).map(|i| (i * 7919) % 31).collect();
         let widths = vec![5u32; codes.len()];
         let s = CodedAc {
@@ -2572,7 +2632,7 @@ mod tests {
         assert!(n <= budget);
         assert_eq!(s.code(k), (bytes, n));
         assert!(k > 0 && k < FIT_STEPS);
-        assert!(s.code(k + 1).1 > budget, "step {k} is not the largest");
+        assert!(s.code(k + 1).1 > budget, "step {k} is not a boundary");
     }
 
     #[test]

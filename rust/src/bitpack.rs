@@ -623,6 +623,55 @@ mod tests {
         }
     }
 
+    /// The coded stream is a wire format: were the coder adopted, every
+    /// language would have to emit these exact bits. A round trip cannot pin
+    /// that — a coder whose constants moved (the interval's top, a quarter,
+    /// the adaptation rate) still decodes its own output — so this holds the
+    /// bytes of one fixed stream, and the stream of a single decision, as
+    /// golden values.
+    #[test]
+    fn the_coded_stream_is_bit_exact() {
+        let mut next = lcg(29);
+        let mut enc = ArithEncoder::new();
+        let mut models = AcModels::new();
+        let mut hist = [AcHistory::default(); 3];
+        for i in 0..120usize {
+            let g = i % 3;
+            let bits = [5u32, 4, 3][g];
+            let center = (1u32 << (bits - 1)) - 1;
+            let r = next();
+            // Mostly zero, some small, a few at the edges of the range.
+            let q = match r % 8 {
+                0..=3 => center,
+                4 | 5 => center + 1,
+                6 => center - 1,
+                _ => (r >> 3) % (2 * center + 1),
+            };
+            models.encode(&mut enc, &mut hist[g], g, i, bits, q);
+        }
+        let (bytes, nbits) = enc.finish();
+        assert_eq!(nbits, GOLDEN_STREAM_BITS);
+        assert_eq!(bytes, GOLDEN_STREAM);
+
+        // One decision at even odds: the bit itself (renormalised out at
+        // once), then the termination's `0` and its pending `1` — 1, 0, 1
+        // for a one and 0, 0, 1 for a zero, least significant bit first.
+        let mut one = ArithEncoder::new();
+        one.encode_bypass(true);
+        assert_eq!(one.finish(), (vec![0b101], 3));
+        let mut zero = ArithEncoder::new();
+        zero.encode_bypass(false);
+        assert_eq!(zero.finish(), (vec![0b100], 3));
+        // And an empty stream is the termination alone: 0 then 1.
+        assert_eq!(ArithEncoder::new().finish(), (vec![0b10], 2));
+    }
+
+    const GOLDEN_STREAM_BITS: usize = 305;
+    const GOLDEN_STREAM: [u8; 39] = [
+        88, 75, 12, 105, 141, 43, 60, 172, 254, 195, 136, 104, 131, 132, 230, 2, 179, 221, 92, 196,
+        124, 81, 134, 222, 197, 116, 186, 145, 239, 242, 27, 231, 186, 109, 14, 2, 197, 45, 1,
+    ];
+
     #[test]
     fn the_decoder_is_total_over_arbitrary_bits() {
         // Any bytes, any window into them: every decoded code is in range and
