@@ -2977,6 +2977,14 @@ graphics part, that no decision has read:
     order, one pick per axis per round, with slot quotas lifted, until it is
     full; a draw that still misses a size or a stratum minimum fails rather
     than pins.
+  - **Amendment 1, after the first draw.** The first draw ended one cut-out
+    short, 23 of 24, and so failed. It had consumed the whole alpha pool,
+    refusing 165 candidates only because their cell was full, and the
+    shortfall walk resumed from the end of the pool, where nothing was left.
+    With slot quotas lifted, a short axis now first reconsiders the
+    candidates it passed over only for a full slot, in seeded order. The
+    amendment changes no test, cut or quota, and was made with no encoder run
+    on any candidate (`corpus-covariates.ts` `HOLDOUT3_AMENDMENTS`).
 
 The alpha allocation validated emphatically on that split: SSIMULACRA2
 −307.2 → −242.7, Butteraugli 57.56 → 44.36, DSSIM 0.2319 → 0.2179, αMAE

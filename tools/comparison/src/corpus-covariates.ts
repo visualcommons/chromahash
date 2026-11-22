@@ -1119,6 +1119,14 @@ export const HOLDOUT3_DRAW: readonly DrawAxis[] = [
   ),
 ];
 
+/**
+ * Amendments to the draw after it first ran, each for the reason it states
+ * and none for how any image scores: no encoder has run on any candidate.
+ */
+export const HOLDOUT3_AMENDMENTS: readonly string[] = [
+  "1 (shortfall): the first draw ended with 23 of 24 cut-outs. Every alpha candidate had been consumed, 165 of them refused only because their cell was already full, and the shortfall walk resumed from the end of the pool, so it found nothing. With slot quotas lifted, a short axis now reconsiders the candidates it passed over only for a full slot, in seeded order, before moving its cursor. The 87 picks of the first draw are unchanged by this; only the shortfall pass differs.",
+];
+
 /** Hits taken from each query, in Commons' relevance order. */
 export const HOLDOUT3_POOL_PER_QUERY = 200;
 
@@ -1288,6 +1296,8 @@ async function runDrawHoldout3(outPath: string): Promise<void> {
     axis: DrawAxis;
     pool: { title: string; query: string; key: string }[];
     cursor: number;
+    /** Candidates refused only because their slot was full, in seeded order. */
+    passedOver: { title: string; query: string; key: string }[];
     filled: Map<string, number>;
     perQuery: Map<string, number>;
     cameras: Set<string>;
@@ -1334,6 +1344,7 @@ async function runDrawHoldout3(outPath: string): Promise<void> {
         }))
         .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
       cursor: 0,
+      passedOver: [],
       filled: new Map(),
       perQuery: new Map(),
       cameras: new Set(),
@@ -1349,11 +1360,21 @@ async function runDrawHoldout3(outPath: string): Promise<void> {
   const quota = (a: DrawAxis): number =>
     Object.values(a.slots).reduce((x, y) => x + y, 0);
 
-  /** Walk one axis from its cursor until it takes one pick, or its pool ends. */
+  /**
+   * Walk one axis until it takes one pick, or its pool ends. With slot quotas
+   * lifted, the candidates passed over only because their slot was full are
+   * reconsidered first, in seeded order, before the cursor moves on
+   * (amendment 1, #129).
+   */
   async function takeOne(s: AxisState, liftSlots: boolean): Promise<boolean> {
     const { axis } = s;
-    while (s.cursor < s.pool.length) {
-      const entry = s.pool[s.cursor++];
+    for (;;) {
+      const entry =
+        liftSlots && s.passedOver.length > 0
+          ? s.passedOver.shift()
+          : s.cursor < s.pool.length
+            ? s.pool[s.cursor++]
+            : undefined;
       if (entry === undefined) break;
       const { title, query, key } = entry;
       if (takenTitles.has(title)) {
@@ -1440,6 +1461,7 @@ async function runDrawHoldout3(outPath: string): Promise<void> {
       }
       if (!liftSlots && (s.filled.get(slot) ?? 0) >= (axis.slots[slot] ?? 0)) {
         refuse(s, `slot ${slot} full`);
+        s.passedOver.push(entry);
         continue;
       }
       if (axis.onePerCamera && c.camera !== null && s.cameras.has(c.camera)) {
@@ -1530,6 +1552,7 @@ async function runDrawHoldout3(outPath: string): Promise<void> {
   );
   const record = {
     protocol: P,
+    amendments: HOLDOUT3_AMENDMENTS,
     drawnAt: new Date().toISOString(),
     poolPerQuery: HOLDOUT3_POOL_PER_QUERY,
     axes: states.map((s) => ({
