@@ -3917,8 +3917,8 @@ readings go beyond the verdict:
    better than the shipped `L19@4 C6@3`. That is significant after Holm, every
    guard is `ok` on intervals, and no seed moves it. §11.10 called the compact
    tier a plateau, tie-broken across corpora, and this split leans the other
-   way. It is under R1's 3%, so it changes nothing in 1.0, and a reopening
-   would start from it.
+   way. It is under R1's 3%, so it changes nothing on its own, and a code-0
+   retune entry would start from it.
 
 **The compact tier's admission holds, on point means, as the criterion is
 written.** In `rd-budget` on the same split, the shipped compact row's mean
@@ -3992,6 +3992,17 @@ No R1 outcome turns in either entry.
    replacements, and reports the equal-budget arms (above). The narrowing was
    made before the read.
 
-Both entries are therefore `decided`, and the 1.0 freeze (`V0.8-DECISIONS.md`
-A1) stands on them.
+Neither post-read deviation decides an outcome. Deviation 1 applies the
+pre-registered guard rule, at its recorded tolerances, to the baseline the
+freeze named, and the comparison that "passes partly on it", C2's compact
+row, has every guard interval wholly on the improving side of zero against
+that baseline: SSIMULACRA2 +26.92 [+10.28, +49.54], Butteraugli −8.806
+[−15.314, −3.574] and DSSIM −0.0078 [−0.0129, −0.0027]
+(`mise run arms v07-holdout-alpha-holdout2 --baseline "compact 21B shipped
+shape"`). Deviation 2 changed which check was run, and no outcome turns under
+either.
+
+Both entries are therefore `decided`. They confirm the v0.7 constants out of
+sample, and are the baseline the register's open format entries (D1–D6) are
+measured against.
 
