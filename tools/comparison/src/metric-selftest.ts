@@ -242,7 +242,14 @@ import {
   normalQuantile,
   studentTQuantile,
 } from "./stats.ts";
-import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
+import {
+  alignmentError,
+  equalCountBins,
+  pearson,
+  realCorpusOf,
+  tierBaselinePairs,
+} from "./stratify-core.ts";
+import { expectedLength, realOnlyInputs } from "./sweep-core.ts";
 import {
   type Binding,
   CROSS_RUN_TOLERANCE,
@@ -6477,6 +6484,78 @@ console.log(
     pinned
       ? `${pinned.label}: ${holdout3StrataOf(pinned.label).join(",")}`
       : "no pin",
+  );
+}
+
+{
+  console.log(
+    "\nsweep's per-tier expectBytes, realOnly, and stratify --strata",
+  );
+  const perTier = {
+    "3": { opaque: 411, alpha: 388 },
+    "4": { opaque: 1623, alpha: 1528 },
+  };
+  // Byte 0 bit 6 is the alpha flag; the other bits must not be read.
+  const opaqueHash = Uint8Array.of(0b1011_1111);
+  const alphaHash = Uint8Array.of(0b0100_0000);
+  let unnamed = "";
+  try {
+    expectedLength(perTier, 2, opaqueHash);
+  } catch (e) {
+    unnamed = (e as Error).message;
+  }
+  check(
+    "expectedLength: the per-tier map's length for the hash's own alpha mode, read off byte 0 bit 6 alone",
+    expectedLength(perTier, 3, opaqueHash) === 411 &&
+      expectedLength(perTier, 3, alphaHash) === 388 &&
+      expectedLength(perTier, 4, opaqueHash) === 1623 &&
+      expectedLength(perTier, 4, alphaHash) === 1528,
+    `${expectedLength(perTier, 3, opaqueHash)}/${expectedLength(perTier, 3, alphaHash)} ${expectedLength(perTier, 4, opaqueHash)}/${expectedLength(perTier, 4, alphaHash)}`,
+  );
+  check(
+    "expectedLength: no per-image length for an unset or single-mean expectBytes, and a throw for a tier the map does not name",
+    expectedLength(undefined, 3, alphaHash) === null &&
+      expectedLength(32, 3, alphaHash) === null &&
+      unnamed === "expectBytes names no length for tier 2",
+    unnamed || "no throw",
+  );
+
+  const names = [
+    "kodak01",
+    "cutout-3d-star-greek",
+    "graphic-chart",
+    "alpha-gradient",
+    "solid-blue",
+    "sealed3-graphic-logo",
+    "sealed3-cutout-cat",
+  ];
+  const kept = realOnlyInputs(names, (n) => n);
+  check(
+    "realOnlyInputs drops the generated fixtures and keeps every real corpus, sealed ones included",
+    kept.join(",") ===
+      "kodak01,cutout-3d-star-greek,graphic-chart,sealed3-graphic-logo,sealed3-cutout-cat",
+    kept.join(","),
+  );
+  const corpora = names.map((n) => realCorpusOf(n) ?? "none").join(",");
+  check(
+    "realCorpusOf places an image by corpus.ts's prefixes, a sealed one by the prefix after its seal, and a generated fixture in none",
+    corpora === "photo,alpha,graphic,none,none,graphic,alpha",
+    corpora,
+  );
+
+  const pairs = tierBaselinePairs([
+    { tier: 2 },
+    { tier: 2 },
+    { tier: 3 },
+    { tier: 3 },
+    { tier: 4 },
+    { tier: 3 },
+    { tier: 4 },
+  ]);
+  check(
+    "tierBaselinePairs reads every arm against the first arm of its own tier, never across tiers",
+    JSON.stringify(pairs) === "[[1,0],[3,2],[5,2],[6,4]]",
+    JSON.stringify(pairs),
   );
 }
 

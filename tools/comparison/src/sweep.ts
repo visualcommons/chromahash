@@ -64,8 +64,12 @@ import {
   parseCorpusSet,
   parseSplit,
   splitFor,
-  tierFor,
 } from "./corpus.ts";
+import {
+  type ExpectBytes,
+  expectedLength,
+  realOnlyInputs,
+} from "./sweep-core.ts";
 import { gamutToSrgbReference } from "./gamut.ts";
 import { DEFAULT_TIER } from "./rd/lineup.ts";
 import { generateFixtures } from "./generate-fixtures.ts";
@@ -147,29 +151,6 @@ interface SweepVariant {
    * silently dropped.
    */
   version?: string;
-}
-
-/** The byte lengths one tier's hashes must have, by alpha mode. */
-interface TierBytes {
-  opaque: number;
-  alpha: number;
-}
-
-/**
- * The byte length `hash` must have under a per-tier `expectBytes`, read off
- * its own alpha flag (byte 0, bit 6), or null when the config sets none.
- */
-function expectedLength(
-  expect: SweepConfig["expectBytes"],
-  tier: number,
-  hash: Uint8Array,
-): number | null {
-  if (expect === undefined || typeof expect === "number") return null;
-  const lengths = expect[String(tier)];
-  if (!lengths) {
-    throw new Error(`expectBytes names no length for tier ${tier}`);
-  }
-  return ((hash[0] ?? 0) >> 6) & 1 ? lengths.alpha : lengths.opaque;
 }
 
 interface SweepConfig {
@@ -280,7 +261,7 @@ interface SweepConfig {
    * holds a mixed corpus to a budget: an alpha image's hash is shorter, so
    * a mean over the corpus is neither length.
    */
-  expectBytes?: number | Record<string, TierBytes>;
+  expectBytes?: ExpectBytes;
   /**
    * Composite every input over the scoring backdrop and force alpha to opaque
    * before encoding, so the same pictures are measured in the format's *opaque*
@@ -875,9 +856,7 @@ async function main(): Promise<void> {
     );
   }
   if (config.realOnly) {
-    inputs = inputs.filter(
-      (i) => tierFor(path.parse(i.filePath).name) === "real",
-    );
+    inputs = realOnlyInputs(inputs, (i) => path.parse(i.filePath).name);
   }
   if (maxImages !== null) {
     inputs = inputs.slice(0, maxImages);

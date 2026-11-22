@@ -47,7 +47,13 @@ import {
   correlationInference,
   holm,
 } from "./stats.ts";
-import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
+import {
+  alignmentError,
+  equalCountBins,
+  pearson,
+  realCorpusOf,
+  tierBaselinePairs,
+} from "./stratify-core.ts";
 
 /** The three covariates `natural-images.ts` records, parsed out of `notes`. */
 interface Covariates {
@@ -183,11 +189,10 @@ async function printStrata(name: string): Promise<void> {
     `${name} (${file.split}, ${file.imageNames.length} images): each arm against the first arm of its tier, overall and per stratum`,
   );
   for (const [s, idx] of members) console.log(`  ${s}: ${idx.length} images`);
-  for (const [i, row] of file.rows.entries()) {
-    const bi = file.rows.findIndex((r) => r.tier === row.tier);
-    if (bi === i) continue;
+  for (const [ai, bi] of tierBaselinePairs(file.rows)) {
+    const row = file.rows[ai];
     const base = file.rows[bi];
-    if (!base) continue;
+    if (!row || !base) continue;
     const [cmp] = compareArms([base, row], 0);
     const d = statFor(cmp, "ciede2000");
     if (!d) continue;
@@ -221,11 +226,11 @@ async function measuredStrata(
       process.exit(1);
     }
     const c = await measureFile(await fs.readFile(f));
-    const corpus = name.startsWith("graphic-")
-      ? "graphic"
-      : name.startsWith("cutout-") || name.startsWith("alpha-")
-        ? "alpha"
-        : "photo";
+    const corpus = realCorpusOf(name);
+    if (corpus === null) {
+      console.error(`${name}: in no real corpus, so it has no strata`);
+      process.exit(1);
+    }
     out.set(
       name,
       holdout3Strata({
