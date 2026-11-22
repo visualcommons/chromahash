@@ -141,14 +141,14 @@ fn synthesize_detail(
     }
     let p_k = l_sel.p_k as f64;
     let mut state = hash_seed(hash) | 1;
-    for j in l_count..ext.coeffs.len() {
+    for &priority in &ext.priorities[l_count..ext.coeffs.len()] {
         // xorshift64*, a deterministic integer PRNG with no platform floats.
         state ^= state >> 12;
         state ^= state << 25;
         state ^= state >> 27;
         let r = state.wrapping_mul(0x2545_F491_4F6C_DD1D);
         let sign = if r & 1 == 0 { -1.0 } else { 1.0 };
-        let decay = (p_k / ext.priorities[j] as f64).sqrt();
+        let decay = (p_k / priority as f64).sqrt();
         l_ac.push(sign * t.synth_gain * rms * decay);
     }
     (ext, l_ac)

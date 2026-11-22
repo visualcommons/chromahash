@@ -139,12 +139,12 @@ pub fn interleaved_order(
     c_count: usize,
 ) -> Vec<(u8, usize)> {
     let mut v: Vec<(u64, u8, usize)> = Vec::with_capacity(l_count + 2 * c_count);
-    for i in 0..l_count.min(l_sel.priorities.len()) {
-        v.push((l_sel.priorities[i], 0, i));
+    for (i, &p) in l_sel.priorities.iter().enumerate().take(l_count) {
+        v.push((p, 0, i));
     }
     for ch in [1u8, 2] {
-        for i in 0..c_count.min(c_sel.priorities.len()) {
-            v.push((c_sel.priorities[i], ch, i));
+        for (i, &p) in c_sel.priorities.iter().enumerate().take(c_count) {
+            v.push((p, ch, i));
         }
     }
     v.sort_unstable();
