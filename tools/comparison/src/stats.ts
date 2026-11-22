@@ -30,15 +30,27 @@
 export const BOOTSTRAP_SEED = 42;
 
 /**
- * Resamples behind a bootstrap p-value. Higher than the intervals' 1,000
- * because a p-value is fed to a multiplicity correction: with B resamples the
- * smallest p the bootstrap can report is about 2/(B+1), so at B = 1,000 a
- * 33-arm sweep could never clear a Holm threshold of 0.05/32 however large
- * its effect. At 10,000 the floor is 2×10⁻⁴, and 32 comparisons adjust it to
- * 0.0064. The intervals stay at 1,000 so every interval the document quotes is
- * unchanged.
+ * Resamples behind every bootstrap here: the paired intervals, the p-values fed
+ * to Holm, and the timing intervals of the perf harness. One constant, so an
+ * interval and the p-value of the same test can never be drawn at different B.
+ *
+ * It is 10,000 for two reasons. A p-value is fed to a multiplicity correction,
+ * and with B resamples the smallest p the bootstrap can report is about
+ * 2/(B+1): at B = 1,000 a 33-arm sweep could never clear a Holm threshold of
+ * 0.05/32 however large its effect, while at 10,000 the floor is 2×10⁻⁴ and 32
+ * comparisons adjust it to 0.0064. And an interval at 1,000 was decided by the
+ * seed whenever a bound sat within about a tenth of its width of zero: over
+ * every committed ΔE00 interval, 26 changed whether they excluded zero under
+ * one of 20 other seeds (EXPERIMENTS.md §13.5). The remedy for that is more
+ * resamples, not another seed, and it had to land before any v0.8 register
+ * entry froze, because a freeze pins the instrument (V0.8-DECISIONS.md,
+ * "Freezing an entry also pins its instrument").
+ *
+ * The intervals were drawn at 1,000 until that change; `mise run arms
+ * --resample-change` re-derives every committed ΔE00 interval at both and
+ * counts what moved.
  */
-export const P_VALUE_RESAMPLES = 10_000;
+export const BOOTSTRAP_RESAMPLES = 10_000;
 
 /** Deterministic pseudo-random using a simple LCG (same recipe as generate-fixtures). */
 function lcg(seed: number): () => number {
@@ -76,7 +88,7 @@ export function quantile(sorted: number[], p: number): number {
  */
 export function bootstrapCI(
   values: number[],
-  nResamples = 1000,
+  nResamples = BOOTSTRAP_RESAMPLES,
   alpha = 0.05,
   seed = BOOTSTRAP_SEED,
 ): [number, number] {
@@ -109,7 +121,7 @@ function mean(sample: number[]): number {
 export function bootstrapCIOf(
   values: number[],
   statistic: (sample: number[]) => number,
-  nResamples = 1000,
+  nResamples = BOOTSTRAP_RESAMPLES,
   alpha = 0.05,
   seed = BOOTSTRAP_SEED,
 ): [number, number] {
@@ -153,14 +165,15 @@ function resampledStatistics(
  * p = 0 (Davison & Hinkley 1997, §4.4).
  *
  * Built for paired per-image deltas, where it is the p-value of the same test
- * the paired interval already reports — so "the interval excludes zero" and
- * "p < 0.05" say one thing, up to the resampling error between the interval's
- * 1,000 resamples and this function's {@link P_VALUE_RESAMPLES}. A sample of
- * all zeros (two bit-identical arms) returns 1.
+ * the paired interval already reports, over the very same resamples (both
+ * default to {@link BOOTSTRAP_RESAMPLES} and the same seed) — so "the interval
+ * excludes zero" and "p < 0.05" say one thing, up to how the interval's
+ * interpolated quantile and this count round at the boundary. A sample of all
+ * zeros (two bit-identical arms) returns 1.
  */
 export function bootstrapP(
   values: number[],
-  nResamples = P_VALUE_RESAMPLES,
+  nResamples = BOOTSTRAP_RESAMPLES,
   seed = BOOTSTRAP_SEED,
 ): number {
   const means = resampledStatistics(values, mean, nResamples, seed);

@@ -154,4 +154,113 @@ exclude_re = [
     # (Unanchored, those two also match `mu_compress_by`, which is
     # `mu_compress`'s body with the denominator passed in — PERFORMANCE.md
     # §12.1 item 2 — and so carries the same two hanging mutations.)
+
+    # ── Equivalent mutants left by the #119 sweep ───────────────────────────
+    #
+    # Every other survivor that sweep reported is now killed by a test. These
+    # cannot be, and each comment is the proof. All are line-anchored, so a
+    # shifted line fails safe (one extra MISSED, never a silent new exemption).
+
+    # The deadzone guard `deadzone > 0.0 && |n| < deadzone`: at deadzone == 0,
+    # the only input where `>` and `>=` differ, the second operand `|n| < 0` is
+    # false for every n (NaN included), so the conjunction is false either way.
+    # `compand_quantize` carries the same guard; `compand_quantize_hoisted`
+    # drops it for this reason.
+    "src/encode.rs:712:34: replace > with >= in quantize_one",
+    "src/mulaw.rs:201:17: replace > with >= in compand_quantize",
+    # `quantize_one`'s search scans q + {0, -1, 1, -2, 2}; deleting the minus on
+    # -2 drops candidate q-2, which can never win. q is the companded-nearest
+    # code, so the value lies at or above level q-1, and every family's levels
+    # rise with the code (a `Table` codebook is the positive half of a
+    # symmetric quantizer, and its q is already the nearest level outright).
+    # So q-2 is never nearer than q-1, which is scored first, and the strict
+    # `<` keeps the earlier of two equal errors.
+    "src/encode.rs:719:28: delete - in quantize_one",
+    # `gamma_of` computes its LUT index as round(clamp01(x) · 4095), already in
+    # [0, 4095] (clamp01 passes NaN through, and NaN as i64 is 0). The clamp
+    # after it never binds, so widening its ceiling to 4097 or 4096 is inert.
+    "src/encode.rs:840:47: replace - with (\\+|/) in PixelObjective::gamma_of",
+    # `encode_with` refines only `if t.refine_passes > 0`. With `>=` it also
+    # calls `refine_codes` at 0 passes, whose loop `for _ in 0..refine_passes`
+    # then never runs: it builds a reconstruction and writes nothing back.
+    "src/encode.rs:1486:24: replace > with >= in encode_with",
+    # A-law expand's knee: at x = 1/(1 + ln A) the linear segment is t/A and
+    # the log one exp(t - 1)/A with t = x·(1 + ln A) within an ulp of 1, where
+    # portable_exp(t - 1) rounds to t. `a_law_expand_segments_agree_at_the_knee`
+    # asserts it bit for bit over A in [1.01, 200.99], so this rests on a test.
+    # (The compress knee is *not* equivalent; a test pins its owner.)
+    "src/mulaw.rs:123:20: replace < with <= in a_law_expand",
+    # `table_dequantize` has already returned on `offset == 0` when it tests
+    # `offset < 0`, so `<=` is the same test.
+    "src/mulaw.rs:186:15: replace < with <= in table_dequantize",
+    # `render_at_size` fills `l_bits_at[i]` behind `if i < l_count`, but i walks
+    # the luma tier counts, which sum to l_count: the guard is always true, and
+    # `<=` is too.
+    "src/decode.rs:273:22: replace < with <= in render_at_size",
+    # Detail synthesis is gated on `synth_count > 0`. At synth_count == 0,
+    # `synthesize_detail` takes zero extra coefficients and returns its input
+    # unchanged (its `ext.coeffs.len() <= l_count` early return), so `>=` is
+    # the same render.
+    "src/decode.rs:360:42: replace > with >= in render_at_size",
+
+    # ── `refine_codes`: research-only, mostly unproven ─────────────────────
+    #
+    # Pixel-domain refinement is off in `Tunables::DEFAULT` (`refine_passes =
+    # 0`) and reachable only through the comparison harness's sweep. Its code
+    # paths are pinned by `refinement_goldens`,
+    # `band_gain_refine_cfl_and_shared_scale_goldens` (passes, ±2 moves, DC and
+    # scale refinement, the decoder-raster target, the convergence break) and
+    # `refinement_keeps_a_code_on_an_exact_tie` (a tie with the current code
+    # keeps it, for scale, DC and AC moves). What those leave is below. Only
+    # the first entry is a proof; the rest are excluded as unproven,
+    # research-only.
+
+    # Equivalent: the `live` test is `cx < src.0 && cy < src.1 && cx < w &&
+    # cy < h`. With `refine_grid = 0`, (w, h) *is* src, so `cx < w` repeats
+    # `cx < src.0`; with `refine_grid = 1`, (w, h) is the decoder raster the
+    # selection is drawn from, so every selected pair has cx < w and cy < h.
+    # Either way the last two conjuncts never decide, and `<=` cannot differ.
+    "src/encode.rs:1106:40: replace < with <= in refine_codes",
+    "src/encode.rs:1106:50: replace < with <= in refine_codes",
+    # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT):
+    # `cx <= src.0` also refines the one frequency a source exactly cx pixels
+    # wide cannot hold (refine_grid = 1 on a strip). That basis carries no
+    # source energy, so moving its code away from zero has not lowered the
+    # objective on any image tried, and the strict improvement test never
+    # accepts it. Not proven.
+    "src/encode.rs:1106:12: replace < with <= in refine_codes",
+    # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT): tie
+    # order between two improving candidates. Each candidate set is symmetric
+    # ({±1, ±2} for scale, {±1} for DC, ±d for AC), so `cur + d` → `cur - d`
+    # only reorders it, and `<=` in the second-candidate test (`e < be`) only
+    # changes which of two equally improving candidates wins. Both differ
+    # only when two distinct codes give exactly the same pixel-domain SSE
+    # *below* the current one. No fixture here produces that, and none is
+    # proven impossible: the gamma-LUT objective (0) and the clipped ones (2,
+    # 3) are flat in places, so such a tie may be reachable.
+    "src/encode.rs:1149:44: replace \\+ with - in refine_codes",
+    "src/encode.rs:1188:44: replace \\+ with - in refine_codes",
+    "src/encode.rs:1229:48: replace \\+ with - in refine_codes",
+    "src/encode.rs:1167:85: replace < with <= in refine_codes",
+    "src/encode.rs:1241:84: replace < with <= in refine_codes",
+    # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT): the DC
+    # second-candidate test `e < be`. `==` is not a tie-order change: it
+    # differs whenever both DC neighbours strictly improve and the second is
+    # strictly better, and `<=` whenever both improve equally.
+    #
+    # For refine_obj = 1 (plain OKLAB SSE) both are equivalent. A DC move adds
+    # the same delta to every pixel of one channel, the DC grid is uniform
+    # (step s), and that channel's SSE is a quadratic in the delta, so over N
+    # pixels f(cur + 1) + f(cur - 1) - 2·f(cur) = 2·N·s² > 0, far above
+    # rounding error. The two neighbours cannot both be below f(cur), the
+    # second test is never reached with a strict improvement in hand, and
+    # `<`, `<=` and `==` all answer false. (This assumes accel_sse_early_exit
+    # off; with it on, the second candidate's SSE may be a partial sum, which
+    # `==`/`<=` could match only if it landed exactly on `be`.)
+    #
+    # For refine_obj = 0, 2 and 3 it is *not* equivalent: the clip and the
+    # gamma LUT break the quadratic, so both neighbours can improve, and
+    # these mutants would pick the wrong one. Excluded only because the
+    # whole function is research-only.
+    "src/encode.rs:1200:80: replace < with (<=|==) in refine_codes",
 ]

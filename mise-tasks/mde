@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#MISE description="Minimum detectable ΔE00 effect per split, from the committed tune results' paired spread"
+#MISE depends=["build:compare"]
+#
+# Usage: mise run mde [--power 0.8] [--alpha 0.05] [--all-budgets]
+#
+# Reads the per-image ΔE00 of every committed tune sweep in
+# tools/comparison/results/, takes the SD of each arm's paired difference
+# against its incumbent, and turns it into the smallest relative effect each
+# split resolves at the given power: photographic tune, photographic holdout2,
+# alpha tune and alpha holdout2, for Holm families of one and two arms.
+# Re-scores nothing and reads no sealed image; the holdout2 sizes come from the
+# pin tables (and #103's candidate count while the photographic half is
+# unpinned). EXPERIMENTS.md §13.6 records the result.
+#
+# A file task rather than an inline one, because mise appends an inline task's
+# arguments instead of passing them as "$@".
+set -euo pipefail
+
+node tools/comparison/dist/mde.js "$@"

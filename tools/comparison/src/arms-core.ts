@@ -24,7 +24,7 @@ import {
   guardsHold,
   summarize,
 } from "./results.ts";
-import { bootstrapCI, bootstrapP, holm } from "./stats.ts";
+import { BOOTSTRAP_RESAMPLES, bootstrapCI, bootstrapP, holm } from "./stats.ts";
 
 /** A metric that can be compared per image, and which direction is better. */
 export interface PairedMetricSpec {
@@ -66,7 +66,7 @@ export interface PairedStat {
   baseMean: number;
   /** Mean per-image difference, **arm − reference**, in the metric's units. */
   meanDelta: number;
-  /** 95% paired bootstrap interval of `meanDelta` (1,000 resamples, seed 42). */
+  /** 95% paired bootstrap interval of `meanDelta` ({@link BOOTSTRAP_RESAMPLES}, seed 42). */
   ci: [number, number];
   /** Two-sided bootstrap p for a zero mean difference (`bootstrapP`). */
   p: number;
@@ -118,10 +118,15 @@ export function pairedDeltas(
  * that is the set of tests a reader scans when they pick the best row of a
  * table. Metrics are not pooled into one family, because they answer different
  * questions and a guard is not a search.
+ *
+ * `intervalResamples` exists for `arms --resample-change` alone, which re-draws
+ * the intervals at the count they used before {@link BOOTSTRAP_RESAMPLES}. The
+ * p-values are always drawn at {@link BOOTSTRAP_RESAMPLES}.
  */
 export function compareArms(
   rows: readonly PairableRow[],
   baseIndex = 0,
+  intervalResamples = BOOTSTRAP_RESAMPLES,
 ): ArmComparison[] {
   const base = rows[baseIndex];
   if (!base) return [];
@@ -144,7 +149,7 @@ export function compareArms(
         pairs: deltas.length,
         baseMean: baseValues.reduce((s, v) => s + v, 0) / baseValues.length,
         meanDelta: deltas.reduce((s, v) => s + v, 0) / deltas.length,
-        ci: bootstrapCI(deltas),
+        ci: bootstrapCI(deltas, intervalResamples),
         p: bootstrapP(deltas),
         pHolm: Number.NaN,
       };
@@ -319,7 +324,7 @@ export function addSummaries(
 
 /**
  * `p` to four decimals. The bootstrap's floor is 2/(B + 1) ≈ 0.0002 at
- * {@link P_VALUE_RESAMPLES}, so four decimals never round a p to zero.
+ * {@link BOOTSTRAP_RESAMPLES}, so four decimals never round a p to zero.
  */
 export function formatP(p: number): string {
   return Number.isFinite(p) ? p.toFixed(4) : "—";

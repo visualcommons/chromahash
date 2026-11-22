@@ -273,7 +273,7 @@ attribution above — whatever was true at the v0.5 constants, at v0.7's the
 invented structure is luma, and this paragraph's second sentence should not be
 read as describing the format as it now ships. And at code 2 the lightest taper
 (`w_min 0.85`) is **statistically free** on ΔE00 — a paired CI of
-[−0.030, +0.011] over 31 images — buying a 28% cut in invented detail and a
+[−0.028, +0.011] over 31 images — buying a 28% cut in invented detail and a
 better DSSIM, and failing on SSIMULACRA2 alone. That is a decision resting
 entirely on whether SSIMULACRA2 is right about placeholders, which is U19 and
 is still open.
