@@ -334,10 +334,13 @@ impl AcHistory {
         ((self.0 & 1) + ((self.0 >> 1) & 1)) as usize
     }
     fn push(&mut self, significant: bool) {
-        self.0 = ((self.0 << 1) | significant as u8) & 3;
+        // `+`, not `|`: the shift leaves bit 0 clear (see `encode_p`).
+        self.0 = ((self.0 << 1) + significant as u8) & 3;
     }
 }
 
+/// The frequency band of selection index `index`: `floor(log2(index + 1))`,
+/// capped at the last band.
 fn ac_band(index: usize) -> usize {
     ((usize::BITS - 1 - (index + 1).leading_zeros()) as usize).min(AC_BANDS - 1)
 }
@@ -669,6 +672,26 @@ mod tests {
         assert_eq!(zero.finish(), (vec![0b100], 3));
         // And an empty stream is the termination alone: 0 then 1.
         assert_eq!(ArithEncoder::new().finish(), (vec![0b10], 2));
+    }
+
+    /// The bands are normative context labels, so their values are pinned,
+    /// not only their partition: an offset band would relabel every context
+    /// and still round-trip, until the cap merged two of them.
+    #[test]
+    fn bands_are_floor_log2_of_the_index_plus_one_capped_at_eleven() {
+        let got: Vec<usize> = [0, 1, 2, 3, 6, 7, 2046, 2047, 4094, 4095, 6655]
+            .iter()
+            .map(|&i| ac_band(i))
+            .collect();
+        assert_eq!(got, [0, 1, 1, 2, 2, 3, 10, 11, 11, 11, 11]);
+        // History context: how many of the last two codes were significant.
+        let mut h = AcHistory::default();
+        let mut seen = Vec::new();
+        for s in [true, false, true, true, false, false] {
+            h.push(s);
+            seen.push(h.context());
+        }
+        assert_eq!(seen, [1, 1, 1, 2, 1, 0]);
     }
 
     /// A value exactly on the split belongs to the zero branch `[low,
