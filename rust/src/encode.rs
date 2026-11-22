@@ -1439,14 +1439,24 @@ fn encode_adaptive(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     let use_coded = ac_sse(&order, truth, &rc.recon) < ac_sse(&order, truth, &rf.recon);
     let src = if use_coded { &hc } else { &hf };
 
-    // The chosen hash's prefix, the flag, then its payload one bit later.
+    // The chosen hash's prefix, the flag, then its payload one bit later. The
+    // payload's last bit is always zero (padding, or the bit the coded stream
+    // was told to leave free), so it is the one dropped, and the length check
+    // is what makes dropping it, rather than keeping it, observable.
+    let total = src.len() * 8;
+    let bits: Vec<u32> = (0..start)
+        .map(|b| read_bit(src, b))
+        .chain(core::iter::once(use_coded as u32))
+        .chain((start..total - 1).map(|b| read_bit(src, b)))
+        .collect();
+    assert_eq!(
+        bits.len(),
+        total,
+        "the flag moves the payload, it adds no bit"
+    );
     let mut out = vec![0u8; src.len()];
-    for bit in 0..start {
-        write_bits(&mut out, bit, 1, read_bit(src, bit));
-    }
-    write_bits(&mut out, start, 1, use_coded as u32);
-    for bit in start + 1..src.len() * 8 {
-        write_bits(&mut out, bit, 1, read_bit(src, bit - 1));
+    for (i, &b) in bits.iter().enumerate() {
+        write_bits(&mut out, i, 1, b);
     }
     debug_assert!(use_coded || (fixed_end..src.len() * 8).all(|b| read_bit(src, b) == 0));
     out.into_boxed_slice()
