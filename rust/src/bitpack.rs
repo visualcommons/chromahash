@@ -208,16 +208,19 @@ impl ArithEncoder {
     /// Trailing zero bits are then dropped, since the decoder reads every bit
     /// past the stream as zero. Returns the bytes and the bit count.
     ///
-    /// The strip needs no `nbits > 0` guard: the termination always emits a
-    /// one (the `1` itself, or the pending `1` after a `0`), so it stops at
-    /// that bit at the latest.
+    /// The strip keeps the stream up to its last one, which always exists:
+    /// the termination emits a one (the `1` itself, or the pending `1` after
+    /// a `0`).
     pub(crate) fn finish(mut self) -> (Vec<u8>, usize) {
         self.pending += 1;
         let bit = self.low >= QUARTER;
         self.emit(bit);
-        while (self.out[(self.nbits - 1) / 8] >> ((self.nbits - 1) % 8)) & 1 == 0 {
-            self.nbits -= 1;
-        }
+        let bit = |i: usize| (self.out[i / 8] >> (i % 8)) & 1;
+        self.nbits = (0..self.nbits)
+            .rev()
+            .find(|&i| bit(i) == 1)
+            .expect("the termination emits a one")
+            + 1;
         self.out.truncate(self.nbits.div_ceil(8));
         (self.out, self.nbits)
     }

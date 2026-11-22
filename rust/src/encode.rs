@@ -540,6 +540,12 @@ pub(crate) fn quantize_scale(scale: f64, range: f64, bits: u32, scale_mu: f64) -
 }
 
 /// Dequantize an AC scale code.
+/// The alpha AC scale an alpha scale code stands for: the linear grid the
+/// decoder reads (`code / (2^bits − 1) · max_alpha_scale`).
+pub(crate) fn dequantize_alpha_scale(code: u32, t: &Tunables) -> f64 {
+    code as f64 / ((1u32 << t.alpha_scale_bits) - 1) as f64 * t.max_alpha_scale
+}
+
 pub(crate) fn dequantize_scale(code: u32, range: f64, bits: u32, scale_mu: f64) -> f64 {
     let code_max = ((1u32 << bits) - 1) as f64;
     let x = code as f64 / code_max;
@@ -1268,6 +1274,20 @@ fn center_code(bits: u32) -> u32 {
     (1u32 << (bits - 1)) - 1
 }
 
+/// `codes` at fit step `k`: every index at or past
+/// `ceil(padded · k / FIT_STEPS)` replaced by its centre code, `width(i)`
+/// wide. `padded` is the channel's full count in the stream, which the cut is
+/// a fraction of; the coded stream and the adaptive mode's reconstruction
+/// both cut through this one function.
+fn cut_codes(codes: &[u32], padded: usize, k: usize, width: &dyn Fn(usize) -> u32) -> Vec<u32> {
+    let kept = (padded * k).div_ceil(FIT_STEPS);
+    codes
+        .iter()
+        .enumerate()
+        .map(|(i, &q)| if i < kept { q } else { center_code(width(i)) })
+        .collect()
+}
+
 /// Every AC code of one hash, in the order the coded stream carries them
 /// (register D1, [`Tunables::ac_coder`]): luma with its per-index widths,
 /// then chroma a and b, then alpha.
@@ -1285,12 +1305,10 @@ impl CodedAc<'_> {
     fn code(&self, k: usize) -> (Vec<u8>, usize) {
         let mut enc = ArithEncoder::new();
         let mut models = AcModels::new();
-        let keep = |n: usize| (n * k).div_ceil(FIT_STEPS);
         let (l, widths) = self.l;
         let mut hist = AcHistory::default();
-        let kept = keep(l.len());
+        let l = cut_codes(l, l.len(), k, &|i| widths[i]);
         for (i, (&q, &w)) in l.iter().zip(widths).enumerate() {
-            let q = if i < kept { q } else { center_code(w) };
             models.encode(&mut enc, &mut hist, 0, i, w, q);
         }
         for (group, codes, w) in [
@@ -1299,9 +1317,7 @@ impl CodedAc<'_> {
             (2, self.alpha, self.alpha_bits),
         ] {
             let mut hist = AcHistory::default();
-            let kept = keep(codes.len());
-            for (i, &q) in codes.iter().enumerate() {
-                let q = if i < kept { q } else { center_code(w) };
+            for (i, &q) in cut_codes(codes, codes.len(), k, &|_| w).iter().enumerate() {
                 models.encode(&mut enc, &mut hist, group, i, w, q);
             }
         }
@@ -1332,8 +1348,10 @@ impl CodedAc<'_> {
             "ac_coder: the all-zero stream takes {} bits of a {budget}-bit budget; the layout bounds too many codes",
             best.1
         );
+        // FIT_STEPS is 2^8, so eight halvings leave `hi = lo + 1`. A bounded
+        // loop, so a mutated bound ends with a wrong step rather than none.
         let (mut lo, mut hi) = (0usize, FIT_STEPS);
-        while hi - lo > 1 {
+        for _ in 0..FIT_STEPS.trailing_zeros() {
             let mid = (lo + hi) / 2;
             let trial = self.code(mid);
             if trial.1 <= budget {
@@ -1408,24 +1426,17 @@ fn encode_adaptive(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
 
     let (_, aspect) = quantize_aspect(encode_aspect(w, h), t.aspect_bits);
     let order = SelectionOrder::new(aspect, tier, t.aniso_oblique, t.sel_hv);
-    let error = |r: &AcRecon| -> f64 {
-        let mut sse = 0.0;
-        for ch in 0..4 {
-            let truth = if rc.truth[ch].len() >= rf.truth[ch].len() {
-                &rc.truth[ch]
-            } else {
-                &rf.truth[ch]
-            };
-            let coeffs = order.take(truth.len()).coeffs;
-            for (i, (&c, &(cx, cy))) in truth.iter().zip(&coeffs).enumerate() {
-                let weight = parseval_weight(cx, cy);
-                let d = c - r.recon[ch].get(i).copied().unwrap_or(0.0);
-                sse += weight * d * d;
-            }
+    // Each channel's truth over every coefficient either encode selects: the
+    // longer of the two, since both are prefixes of one selection order.
+    let truth: [&[f64]; 4] = core::array::from_fn(|ch| {
+        if rc.truth[ch].len() >= rf.truth[ch].len() {
+            rc.truth[ch].as_slice()
+        } else {
+            rf.truth[ch].as_slice()
         }
-        sse
-    };
-    let use_coded = error(&rc) < error(&rf);
+    });
+    // On a tie the shipped fields stand.
+    let use_coded = ac_sse(&order, truth, &rc.recon) < ac_sse(&order, truth, &rf.recon);
     let src = if use_coded { &hc } else { &hf };
 
     // The chosen hash's prefix, the flag, then its payload one bit later.
@@ -1434,8 +1445,8 @@ fn encode_adaptive(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
         write_bits(&mut out, bit, 1, read_bit(src, bit));
     }
     write_bits(&mut out, start, 1, use_coded as u32);
-    for bit in start..src.len() * 8 - 1 {
-        write_bits(&mut out, bit + 1, 1, read_bit(src, bit));
+    for bit in start + 1..src.len() * 8 {
+        write_bits(&mut out, bit, 1, read_bit(src, bit - 1));
     }
     debug_assert!(use_coded || (fixed_end..src.len() * 8).all(|b| read_bit(src, b) == 0));
     out.into_boxed_slice()
@@ -1447,6 +1458,21 @@ fn encode_adaptive(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
 fn parseval_weight(cx: usize, cy: usize) -> f64 {
     let axis = |f: usize| if f == 0 { 1.0 } else { 2.0 };
     axis(cx) * axis(cy)
+}
+
+/// The adaptive mode's error: the Parseval-weighted squared difference of
+/// each channel's `truth` and `recon`, index by index in selection order, a
+/// missing reconstruction counting as zero.
+fn ac_sse(order: &SelectionOrder, truth: [&[f64]; 4], recon: &[Vec<f64>; 4]) -> f64 {
+    let mut sse = 0.0;
+    for (t, r) in truth.iter().zip(recon) {
+        let coeffs = order.take(t.len()).coeffs;
+        for (i, (&c, &(cx, cy))) in t.iter().zip(&coeffs).enumerate() {
+            let d = c - r.get(i).copied().unwrap_or(0.0);
+            sse += parseval_weight(cx, cy) * d * d;
+        }
+    }
+    sse
 }
 
 fn read_bit(bytes: &[u8], bit: usize) -> u32 {
@@ -1807,25 +1833,12 @@ fn encode_parts(
     // each channel's codes past `ceil(padded count · k / FIT_STEPS)` read as
     // the zero centre, as the coded stream carries them.
     let recon_at = |k: usize| -> AcRecon {
-        let cut = |codes: &[u32], padded: usize, width: &dyn Fn(usize) -> u32| -> Vec<u32> {
-            let kept = (padded * k).div_ceil(FIT_STEPS);
-            (0..codes.len())
-                .map(|i| {
-                    if i < kept {
-                        codes[i]
-                    } else {
-                        center_code(width(i))
-                    }
-                })
-                .collect()
-        };
-        let l = cut(&l_codes, shape.l_count(), &|i| l_job.bits_at(i));
-        let a = cut(&a_codes, shape.c_count, &|_| c_bits);
-        let b = cut(&b_codes, shape.c_count, &|_| c_bits);
+        let l = cut_codes(&l_codes, shape.l_count(), k, &|i| l_job.bits_at(i));
+        let a = cut_codes(&a_codes, shape.c_count, k, &|_| c_bits);
+        let b = cut_codes(&b_codes, shape.c_count, k, &|_| c_bits);
         let alpha_n = if has_alpha { shape.alpha_ac_count } else { 0 };
-        let al = cut(&alpha_codes, alpha_n, &|_| shape.alpha_ac_bits);
-        let alpha_scale =
-            alpha_scl_q as f64 / ((1u32 << t.alpha_scale_bits) - 1) as f64 * t.max_alpha_scale;
+        let al = cut_codes(&alpha_codes, alpha_n, k, &|_| shape.alpha_ac_bits);
+        let alpha_scale = dequantize_alpha_scale(alpha_scl_q, t);
         AcRecon {
             truth: [l_ac.clone(), a_ac.clone(), b_ac.clone(), alpha_ac.clone()],
             recon: [
@@ -1872,9 +1885,8 @@ fn encode_parts(
             alpha_bits: shape.alpha_ac_bits,
         };
         let (bytes, nbits, step) = streams.fit(body_len * 8 - bitpos - reserve);
-        for (k, &byte) in bytes.iter().enumerate() {
-            let n = (nbits - 8 * k).min(8) as u32;
-            put(&mut hash, bitpos + 8 * k, n, byte as u32);
+        for i in 0..nbits {
+            put(&mut hash, bitpos + i, 1, read_bit(&bytes, i));
         }
         stage!("pack");
         return (hash.into_boxed_slice(), want_recon.then(|| recon_at(step)));
@@ -2745,6 +2757,46 @@ mod tests {
                 alpha_bits: 4,
             };
             assert_eq!(s.code(k), by_hand.code(FIT_STEPS), "step {k}");
+        }
+    }
+
+    /// The adaptive mode's error, on numbers small enough to check by hand:
+    /// each channel's differences squared, weighted by the frequency at that
+    /// selection index, a missing reconstruction counting as zero.
+    #[test]
+    fn the_adaptive_error_is_the_weighted_squared_difference() {
+        let order = SelectionOrder::new(128, 2, 1.2, 0.15);
+        let coeffs = order.take(3).coeffs;
+        let w: Vec<f64> = coeffs.iter().map(|&(x, y)| parseval_weight(x, y)).collect();
+        let truth: [&[f64]; 4] = [&[1.0, 2.0, 3.0], &[0.5], &[], &[-1.0, 1.0]];
+        let recon = [vec![1.0, 1.5], vec![0.0], vec![], vec![-1.0, 0.0]];
+        let want = w[1] * 0.25 + w[2] * 9.0 + w[0] * 0.25 + w[1] * 1.0;
+        assert_eq!(ac_sse(&order, truth, &recon), want);
+        assert_eq!(
+            ac_sse(
+                &order,
+                truth,
+                &[vec![1.0, 2.0, 3.0], vec![0.5], vec![], vec![-1.0, 1.0]]
+            ),
+            0.0
+        );
+    }
+
+    /// A tie keeps the shipped fields: a smooth image at the shipped bound
+    /// codes every shipped code, so both encodes reconstruct the same.
+    #[test]
+    fn the_adaptive_mode_keeps_the_fixed_fields_on_a_tie() {
+        let (w, h) = (24, 16);
+        let rgba: Vec<u8> = (0..w * h)
+            .flat_map(|i| [(i % w * 10) as u8, (i / w * 15) as u8, 80, 255])
+            .collect();
+        let t = Tunables {
+            ac_coder: 2,
+            ..Tunables::DEFAULT
+        };
+        for tier in 2..=MAX_TIER {
+            let hash = encode_with(w as u32, h as u32, &rgba, Gamut::Srgb, &t, tier);
+            assert_eq!(adaptive_flag(&hash, &t, false), 0, "tier {tier}");
         }
     }
 

@@ -9,8 +9,8 @@ use crate::dct::{
     precompute_cos_table_flat, window_weights,
 };
 use crate::encode::{
-    band_split_index, dequantize_aspect, dequantize_c_dc, dequantize_cfl_gain, dequantize_l_dc,
-    dequantize_scale, stage,
+    band_split_index, dequantize_alpha_scale, dequantize_aspect, dequantize_c_dc,
+    dequantize_cfl_gain, dequantize_l_dc, dequantize_scale, stage,
 };
 use crate::math_utils::{clamp01, round_half_away_from_zero};
 use crate::mulaw::compand_dequantize;
@@ -263,9 +263,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
         let adc = read_bits(hash, bitpos, t.alpha_dc_bits) as f64
             / ((1u32 << t.alpha_dc_bits) - 1) as f64;
         bitpos += t.alpha_dc_bits as usize;
-        let ascl = read_bits(hash, bitpos, t.alpha_scale_bits) as f64
-            / ((1u32 << t.alpha_scale_bits) - 1) as f64
-            * t.max_alpha_scale;
+        let ascl = dequantize_alpha_scale(read_bits(hash, bitpos, t.alpha_scale_bits), t);
         bitpos += t.alpha_scale_bits as usize;
         (adc, ascl)
     } else {
