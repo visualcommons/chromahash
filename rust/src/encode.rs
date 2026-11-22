@@ -1387,9 +1387,10 @@ fn encode_adaptive(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
         t.cfl_bits == 0 && !t.b_scale_from_a,
         "ac_coder 2 decides on the AC reconstruction, which CfL and a shared b scale change"
     );
-    let coded = Tunables { ac_coder: 1, ..*t };
+    // `encode_parts` codes the stream for any non-zero `ac_coder`, so `t`
+    // itself is the coded half.
     let fixed = shipped_fields(t);
-    let (hc, rc) = encode_parts(w, h, rgba, gamut, &coded, tier, 1, true);
+    let (hc, rc) = encode_parts(w, h, rgba, gamut, t, tier, 1, true);
     let (hf, rf) = encode_parts(w, h, rgba, gamut, &fixed, tier, 0, true);
     let (rc, rf) = (rc.expect("asked for"), rf.expect("asked for"));
     let has_alpha = hf[0] >> ALPHA_FLAG_BIT & 1 == 1;
@@ -1417,7 +1418,7 @@ fn encode_adaptive(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
             };
             let coeffs = order.take(truth.len()).coeffs;
             for (i, (&c, &(cx, cy))) in truth.iter().zip(&coeffs).enumerate() {
-                let weight = if cx > 0 { 2.0 } else { 1.0 } * if cy > 0 { 2.0 } else { 1.0 };
+                let weight = parseval_weight(cx, cy);
                 let d = c - r.recon[ch].get(i).copied().unwrap_or(0.0);
                 sse += weight * d * d;
             }
@@ -1438,6 +1439,14 @@ fn encode_adaptive(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     }
     debug_assert!(use_coded || (fixed_end..src.len() * 8).all(|b| read_bit(src, b) == 0));
     out.into_boxed_slice()
+}
+
+/// The pixel-domain cost of a unit coefficient error at `(cx, cy)` under the
+/// decoder's basis (`2` per non-zero axis frequency, `1` per zero one), up to
+/// a factor common to every coefficient.
+fn parseval_weight(cx: usize, cy: usize) -> f64 {
+    let axis = |f: usize| if f == 0 { 1.0 } else { 2.0 };
+    axis(cx) * axis(cy)
 }
 
 fn read_bit(bytes: &[u8], bit: usize) -> u32 {
@@ -2705,6 +2714,44 @@ mod tests {
         assert_eq!(s.code(k), (bytes, n));
         assert!(k > 0 && k < FIT_STEPS);
         assert!(s.code(k + 1).1 > budget, "step {k} is not a boundary");
+
+        // Step `k` is exactly the full stream of the codes with every index
+        // at or past `ceil(count · k / FIT_STEPS)` set to the centre, in
+        // every channel.
+        let chroma: Vec<u32> = (0..60u32).map(|i| (i * 31) % 15).collect();
+        let s = CodedAc {
+            l: (&codes, &widths),
+            a: &chroma,
+            b: &chroma,
+            c_bits: 4,
+            alpha: &chroma,
+            alpha_bits: 4,
+        };
+        for k in [1, 77, 128, 255] {
+            let cut = |c: &[u32], center: u32| -> Vec<u32> {
+                let kept = (c.len() * k).div_ceil(FIT_STEPS);
+                c.iter()
+                    .enumerate()
+                    .map(|(i, &q)| if i < kept { q } else { center })
+                    .collect()
+            };
+            let (l, ch) = (cut(&codes, 15), cut(&chroma, 7));
+            let by_hand = CodedAc {
+                l: (&l, &widths),
+                a: &ch,
+                b: &ch,
+                c_bits: 4,
+                alpha: &ch,
+                alpha_bits: 4,
+            };
+            assert_eq!(s.code(k), by_hand.code(FIT_STEPS), "step {k}");
+        }
+    }
+
+    #[test]
+    fn parseval_weights_count_each_nonzero_axis_twice() {
+        let got = [(0, 0), (1, 0), (0, 3), (2, 5), (7, 0)].map(|(x, y)| parseval_weight(x, y));
+        assert_eq!(got, [1.0, 2.0, 2.0, 4.0, 2.0]);
     }
 
     #[test]
