@@ -639,7 +639,7 @@ decoder must understand.
 | # | Idea | Sizing |
 |---|---|---|
 | U10 | **A compact tier below 32 B** (tier codes 4–7 were reserved at the time). | Measured (§4.3): a 21 B layout beats ThumbHash on all four metrics, on holdout (−6.7% ΔE00). The highest-value structural gap. |
-| U11 | **Entropy-coded AC with a per-index context model.** | Measured (§4.9): −22.3% of the AC payload in sample, 8.7% out of sample (§7.13). Costs the O(1) length check. |
+| U11 | **Entropy-coded AC with a per-index context model.** | Measured (§4.9): −22.3% of the AC payload in sample, 8.7% out of sample (§7.13). That per-index-table design costs the O(1) length check; register entry D1's table-free total code keeps it, and passes R1 at code 3 only (§13.8). |
 | U12 | **Decoder-side detail synthesis** — deterministic, hash-seeded high-frequency texture added at render time. | Untested, and the only idea here that attacks the format's actual weakness: it loses SSIMULACRA2/DSSIM to WebP and lqip-modern at every budget above ~84 B while winning ΔE00. Costs zero bytes. Risk: it fabricates detail, which some callers will consider a bug rather than a feature. |
 | U13 | **Per-image signaled selection.** | Measured (§4.10): +9 energy points, but only pays alongside U11. |
 | U14 | **Chroma-from-luma.** | Measured (§4.8): does not pay at tier 0. Reopen at tier 2–3 only. |
@@ -3089,8 +3089,11 @@ What is still not measured, and is now the honest list for v0.8:
   them once on the sealed alpha half of `holdout2` (#93, §11.12).
 * **Smartphone-source photographs** — sensor noise, motion blur, heavy JPEG
   history. Both photographic corpora are professional captures.
-* **Entropy-coded AC** (−1.6% at 32 B, −4.8% at 108 B), which remains refused
-  on the fail-fast O(1) length check rather than on its quality (§7.13).
+* **Entropy-coded AC** (−1.6% at 32 B, −4.8% at 108 B, §7.13), refused here
+  on the fail-fast O(1) length check rather than on its quality. Register
+  entry D1 has since built a total code that keeps the check, and decided it
+  at codes 2–4 on `holdout3`: it passes R1 at code 3 and not at codes 2 and 4
+  (§13.8).
 
 ### 11.14 Cross-format positioning, re-measured against the shipped constants
 

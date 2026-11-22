@@ -1671,9 +1671,10 @@ WebP overtakes ChromaHash on ΔE00 between 193 and 411 bytes. At ~1.6 kB AVIF sc
 5.471 mean ΔE00 against code 4's 6.768, and WebP and JPEG also beat code 4 on every
 metric. Even uncoded RGB565 pixels edge code 4 on ΔE00 there, 6.570, though not on
 SSIMULACRA2 or Butteraugli, and not on the tune split, where code 4 wins (§2).
-Entropy coding would recover a few percent (`EXPERIMENTS.md` §7.13: 1.6% at 32 B, 4.8%
-at 108 B, on tune; nothing has measured it at codes 3–4) — well short of that gap, and
-it would cost the O(1) length check that *is* this format's validity check (§2.6).
+Entropy coding recovers a few percent (`EXPERIMENTS.md` §7.13: 1.6% at 32 B, 4.8% at
+108 B, on tune; §13.8: 6.04% at code 3 and 2.80% at code 4, on `holdout3`) — well short
+of that gap at code 4. Its total-code design keeps the O(1) length check that *is* this
+format's validity check (§2.6), at the cost of random access to an AC code.
 
 They are kept for the operational properties they share with the rest of the format, and
 those are real: no codec dependency, no decoder CVE surface, no container or metadata
@@ -1703,7 +1704,7 @@ is a few hundred bytes and the target is intentionally low-pass.
 | Edge-preserving filter (EPF) | Adaptive deringing loop filter | **Reject** — a blurred placeholder has few edges to preserve. |
 | DC image + DC predictors | Separate DC plane with spatial predictors | **N/A** — chromahash has a single average-color DC per channel, already chosen by the decode-aware DC search (§10.3). |
 | **Quantization weighting matrices (HVS/CSF)** | Frequency-dependent quant step | **Built as scalefactor bands; below threshold, not adopted** — `EXPERIMENTS.md` §11.9 measured a frequency-shaped scale split on the current corpus: the best arm is −0.14% ΔE00, far under the ≥3% retune rule and unable to pay for signalling it. This row read "evaluate / adopt" until that sweep ran, and is kept as the prediction it scored against. |
-| **Entropy coding (rANS + context modeling + clustering, HybridUint tokens)** | Adaptive entropy coding of quantized coefficients | **Measured on tune; a few percent, and open for v0.8** — `EXPERIMENTS.md` §7.13 coded the AC stream with a real adaptive coder, scored leave-one-image-out so the coder's tables are paid for, and spent the bits it saved on more coefficients: **−1.6% ΔE00** at 32 B and **−4.8%** at 108 B, on tune only, each against the best layout the fixed-width fields can reach at the same budget rather than against the shipped layout. The coder was a measurement tool outside the format, and adopting one would also replace the O(1) length check that is today's validity check (§2.6). Entry D1 of [`V0.8-DECISIONS.md`](V0.8-DECISIONS.md) registers the trade for codes 2–4 and is open: its criteria are approved, its out-of-sample split is the sealed `holdout3`, which has not been read for it, its sweep does not exist yet, and adoption also needs an approved design that keeps a hash that validates guaranteed to decode once the length formula stops being the check. Adopting it would be a new wire generation (a `version` bump, §2.5). This row read "**Highest-impact v0.8+** — fixed-width µ-law leaves the most on the table … deferred deliberately" until that experiment was run, and is kept as the prediction it scored against. |
+| **Entropy coding (rANS + context modeling + clustering, HybridUint tokens)** | Adaptive entropy coding of quantized coefficients | **Decided: passes R1 at code 3, not at codes 2 and 4** — `EXPERIMENTS.md` §7.13 first coded the AC stream with an adaptive coder outside the format, scored leave-one-image-out so the coder's tables are paid for, and spent the bits it saved on more coefficients: **−1.6% ΔE00** at 32 B and **−4.8%** at 108 B, on tune only, each against the best layout the fixed-width fields can reach at the same budget rather than against the shipped layout. Entry D1 of [`V0.8-DECISIONS.md`](V0.8-DECISIONS.md) then built a table-free binary arithmetic coder into the format behind an off-by-default knob and read it once on the sealed `holdout3` at equal bytes (`EXPERIMENTS.md` §13.8): **−6.04%** at code 3, Holm-significant with every guard `ok`, and **−2.80%** at code 4, under R1's 3%; code 2 qualified on tune and was decided without a read by the register's two-arm cap. Its validity design is a total code, so every byte string of the header-implied length decodes and the O(1) length check stays the validity check (§2.6); a coded hash gives up random access to an AC code, error locality and a canonical form. Adopting it at code 3 would be a new wire generation (a `version` bump, §2.5), which the v0.8 verdict lands in every language or declines. This row read "**Highest-impact v0.8+** — fixed-width µ-law leaves the most on the table … deferred deliberately" until that experiment was run, and is kept as the prediction it scored against. |
 | Coefficient ordering / scan + nonzero context | Frequency-ordered scan, run/EOB modeling | **Already frequency-ordered** — the top-K isotropic selection is exactly this; pairs naturally with entropy coding when added. |
 | Patches / splines / dots | Reference repeated elements / smooth gradients / point sources | **Reject** — no repeated elements or point sources in a placeholder; the DCT already models smooth gradients compactly. |
 | Noise synthesis | Add a per-image perceptual noise model at decode | **Low-priority option** — a few bits of noise amplitude could add cheap perceptual texture; minor. |
@@ -1718,8 +1719,9 @@ predicts, but cannot pay for the gain field that signals it (§7.10),
 frequency-weighted quantization is −0.14% and below threshold (§11.9), embedded tiers
 cost ~4% against a native encode at the same 32 bytes and are an operational feature
 rather than a quality one (§7.11), and entropy coding buys −1.6% at 32 B and −4.8% at
-108 B on tune, at the cost of the O(1) length check that is today's validity check
-(§7.13, §2.6), and is an open register entry (`V0.8-DECISIONS.md` D1). The list is kept as written so the predictions can be read against
+108 B on tune (§7.13) and, built into the format, passes R1 at code 3 and not at
+codes 2 and 4 on `holdout3` while keeping the O(1) length check (`EXPERIMENTS.md` §13.8, §2.6;
+`V0.8-DECISIONS.md` D1, decided). The list is kept as written so the predictions can be read against
 the outcomes; `EXPERIMENTS.md` §11.13 and §12 carry the current one.
 
 ---

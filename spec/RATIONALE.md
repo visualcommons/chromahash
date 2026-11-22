@@ -190,11 +190,15 @@ bits the saving is small. An adaptive coder scored leave-one-image-out, so that
 its tables are paid for, saves 7.5% of the AC bits at 32 B, not the ~20–40%
 this section used to assume for near-Laplacian AC; spent on more
 coefficients that is −1.6% ΔE00 at 32 B and −4.8% at 108 B (`EXPERIMENTS.md`
-§7.13, tune). Neither is worth losing those properties at the default tier. At
-codes 3–4 (3–13 kbit) the trade may reverse, but nothing has measured it there.
-`V0.8-DECISIONS.md` D1 registers it for codes 2–4 and is open. Adopting it
-needs, besides R1, an approved design that keeps a hash that validates
-guaranteed to decode once the length formula stops being the check.
+§7.13, tune). Neither is worth losing those properties at the default tier.
+`V0.8-DECISIONS.md` D1 measured the trade at codes 2–4 with a table-free
+coder in the format and is decided: it passes R1 at code 3 (−6.04% ΔE00 on
+the sealed `holdout3`) and not at codes 2 and 4 (`EXPERIMENTS.md` §13.8). Its
+validity design is a total code, whose decoder reads a fixed number of in-range
+codes from any bits, so the O(1) length formula stays the validity check and a
+hash that validates still decodes. What a coded hash gives up is random access
+to an AC code, error locality and a canonical form. Adopting it at code 3 is a
+format change that the v0.8 verdict lands in every language or declines.
 The R-D gap to WebP/AVIF at those anchors is the budget a future wire
 generation would need it to close.
 
@@ -448,7 +452,7 @@ encoding.
 | Frequency-weighted quant matrices (JPEG/JXL) | **= the scalefactor-band experiment** (one mechanism, two framings): −0.14% at code 1 on the current corpus (`EXPERIMENTS.md` §11.9); −0.20% (code 1) / −0.52% (code 2) on the pre-2026-08 corpus — direction real, below threshold. |
 | DC prediction | **N/A:** one global DC. |
 | Directional intra prediction | **N/A:** no blocks. |
-| Entropy coding (ANS/CABAC) | **Rejected at the default tier; open at codes 2–4** (`V0.8-DECISIONS.md` D1; see Architecture). |
+| Entropy coding (ANS/CABAC) | **Rejected at the default tier; passes R1 at code 3 and not at codes 2 and 4** (`V0.8-DECISIONS.md` D1, decided; adoption at code 3 is the v0.8 verdict's to make; see Architecture). |
 | Progressive / embedded refinement | **Built as a sweep-only knob in v0.7; open (`V0.8-DECISIONS.md` D2).** A 32 B interleaved prefix of a code-2 hash is +4.15% ΔE00 against native code 1 (`EXPERIMENTS.md` §7.11, tune); capped decode bounds the value from above (code 2 rendered at code-1 size, −20% ΔE00 against native code 1, pre-2026-08 corpus, not run on the current one). |
 | XYB color space | **Rejected** in favor of OKLAB (see Signal path). |
 | Wavelets (JPEG2000) | **Rejected at the default tier;** reopen at code 4 only if codes 3–4 survive their positioning question. |
@@ -531,16 +535,17 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
 3. ~~**Code 3–4 positioning**~~ — **resolved in v0.7 by repositioning them**
    (`README.md` §14.1). Size-matched WebP overtakes code 3 and AVIF/WebP/JPEG
    beat code 4, AVIF by 19% on ΔE00 (`EXPERIMENTS.md` §11.14). Entropy coding
-   has been measured only up to code 2, at −4.8% (`EXPERIMENTS.md` §7.13), and
-   would replace the O(1) length check that is today's validity check. The spec
+   recovers 6.04% at code 3 and 2.80% at code 4 on `holdout3`
+   (`EXPERIMENTS.md` §13.8), short of that gap at code 4. The spec
    now states that codes 3–4 are kept for their operational properties — no
    codec dependency, no decoder CVE surface, byte-exact reproducibility, one
    code path from 21 B to 1.6 kB — and makes no rate–distortion claim for
    them.
 4. **Entropy-coded AC at codes 2–4** — sized by that same R-D gap.
-   `V0.8-DECISIONS.md` D1 approved its criteria and is open: the only
-   measurement is §7.13's, on tune and up to code 2, and the sweep at codes 2–4
-   does not exist yet. Adopting it is a new wire generation.
+   `V0.8-DECISIONS.md` D1 is decided: the coder passes R1 at code 3 (−6.04%
+   ΔE00 on `holdout3`) and not at codes 2 and 4 (`EXPERIMENTS.md` §13.8). Its
+   total code keeps the O(1) length check. Adopting it at code 3 is a new wire
+   generation, which the v0.8 verdict lands or declines.
 5. **Embedded/progressive tiers** — interleave AC by priority so a code-k hash
    is a prefix of code k+1. Built as a sweep-only knob in v0.7: the first 32 B
    of an interleaved code-2 hash score +4.15% ΔE00 against a native code-1

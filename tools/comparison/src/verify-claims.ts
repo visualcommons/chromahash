@@ -714,7 +714,7 @@ const REGISTER: Claim[] = [
   {
     file: "spec/README.md",
     what: "entropy coding's ΔE00 headroom at 108 B, in §14.1",
-    pattern: /at 32 B, ([\d.]+)%\nat 108 B, on tune/,
+    pattern: /at 32 B, ([\d.]+)% at\n108 B, on tune/,
     section: "9.5",
     row: "Entropy-coding headroom at 108 B",
     column: "Wikimedia",
@@ -779,15 +779,6 @@ const REGISTER: Claim[] = [
     file: "spec/RATIONALE.md",
     what: "entropy coding's ΔE00 headroom at 108 B",
     pattern: /ΔE00 at 32 B and −([\d.]+)% at 108 B \(`EXPERIMENTS/,
-    section: "9.5",
-    row: "Entropy-coding headroom at 108 B",
-    column: "Wikimedia",
-    transform: abs,
-  },
-  {
-    file: "spec/RATIONALE.md",
-    what: "entropy coding's ΔE00 headroom at 108 B, in future work",
-    pattern: /measured only up to code 2, at −([\d.]+)%/,
     section: "9.5",
     row: "Entropy-coding headroom at 108 B",
     column: "Wikimedia",
@@ -909,6 +900,69 @@ const REGISTER: Claim[] = [
     column: "relative",
     transform: abs,
   },
+  // The README and RATIONALE.md quote the same two readings where they
+  // record D1's verdict.
+  ...(
+    [
+      [
+        "spec/RATIONALE.md",
+        "no entropy coding",
+        3,
+        /passes R1 at code 3 \(−([\d.]+)% ΔE00 on\nthe sealed/,
+      ],
+      [
+        "spec/RATIONALE.md",
+        "future work's code 3–4 positioning",
+        3,
+        /recovers ([\d.]+)% at code 3/,
+      ],
+      [
+        "spec/RATIONALE.md",
+        "future work's code 3–4 positioning",
+        4,
+        /recovers [\d.]+% at code 3 and ([\d.]+)% at code 4/,
+      ],
+      [
+        "spec/RATIONALE.md",
+        "future work's entropy-coded AC",
+        3,
+        /passes R1 at code 3 \(−([\d.]+)%\n {3}ΔE00 on/,
+      ],
+      [
+        "spec/README.md",
+        "the JPEG XL table",
+        3,
+        /\*\*−([\d.]+)%\*\* at code 3, Holm/,
+      ],
+      [
+        "spec/README.md",
+        "the JPEG XL table",
+        4,
+        /\*\*−([\d.]+)%\*\* at code 4, under R1/,
+      ],
+      ["spec/README.md", "§14.1", 3, /§13\.8: ([\d.]+)% at code 3/],
+      [
+        "spec/README.md",
+        "§14.1",
+        4,
+        /§13\.8: [\d.]+% at code 3 and ([\d.]+)% at code 4/,
+      ],
+    ] as const
+  ).map(
+    ([file, where, code, pattern]): Claim => ({
+      file,
+      what: `D1: the code-${code} holdout3 gain, in ${where}`,
+      pattern,
+      section: "13.8",
+      table: 3,
+      row:
+        code === 3
+          ? "code 3: `t3 coded x3` vs `t3 shipped`"
+          : "code 4: `t4 coded x4` vs `t4 shipped`",
+      column: "relative",
+      transform: abs,
+    }),
+  ),
 
   // ── Register D8's prior evidence (#131) ──────────────────────────────────
   // The code-0 retune entry quotes the tune plateau's top two (§11.10) and
