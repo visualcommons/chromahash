@@ -32,9 +32,10 @@
 # so a stray experiment still cannot quietly become the baseline.
 #
 # This deliberately does NOT follow `benchmark`/`benchmark:full`, which write to
-# output/perf/ and are copied into baselines/ by hand (PERFORMANCE.md §0). Those
-# runs are a whole-machine wall-clock sweep a maintainer publishes on a quiet
-# host, and the copy step is the decision to publish. A stage share is a ratio
+# output/perf/ and are copied into baselines/hosts/<host>/ by
+# `benchmark:session` (PERFORMANCE.md §0). Those runs are a whole-machine
+# wall-clock sweep a maintainer publishes on a quiet host, and the copy step is
+# the decision to publish. A stage share is a ratio
 # taken inside one process, reproducible on any host, and merged one cell per
 # invocation — there is no run to decide about, only a cell to record, and an
 # uncopied cell is just a measurement the gate cannot see.
