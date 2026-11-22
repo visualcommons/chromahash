@@ -16,6 +16,9 @@ round (`spec/EXPERIMENTS.md` §11.12), so it is tuning data now, together with
 the Kodak24 suite (`src/holdout-images.ts`, not listed here). `holdout2`, if
 any entry carries it, is the sealed holdout: no tool fetches it until
 `spec/V0.8-DECISIONS.md` records the decision it answers as frozen.
+`holdout3` (#129), labelled `sealed3-*`, is the third sealed split, drawn on
+covariates alone (`spec/EXPERIMENTS.md` §11.12) and opened the same way, once
+per register entry; each of its entries lists the strata it sits in.
 
 **Axis** is the §9.1 corpus-audit axis the image was chosen to cover.
 **Notes** are its covariates on the upright 512 px scoring reference:
@@ -24,7 +27,7 @@ absolute 4-neighbour Laplacian of L\*), all measured by
 `src/corpus-covariates.ts --files` (#102).
 
 
-71 images — 31 tune, 8 tune2, 32 holdout2.
+119 images — 31 tune, 8 tune2, 32 holdout2, 48 holdout3.
 
 ### `chroma-black-and-white`
 
@@ -806,3 +809,579 @@ absolute 4-neighbour Laplacian of L\*), all measured by
 - Split: holdout2
 - Axis: skin tone: medium
 - Notes: portrait, SONY DSC-HX400V, mean L* 48.0, mean C* 17.3, detail 10.30
+
+### `sealed3-chroma-ewe-sheep-black-and`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Ewe_sheep_black_and_white.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/5/56/Ewe_sheep_black_and_white.jpg>
+- Author: George Gastin
+- License: CC BY-SA 3.0
+- Dimensions: 3037x2578
+- Split: holdout3
+- Axis: chroma floor
+- Notes: landscape, NIKON CORPORATION NIKON D40X, mean L* 41.8, mean C* 0.0, detail 4.91
+- Drawn as: chroma floor; strata: none
+
+### `sealed3-chroma-morning-mist-lake-tinaroo`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Morning_mist_Lake_Tinaroo_Tinaroo_State_Forest_Atherton_Tableland_Queensland_1986_IMG_0016_(2).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/63/Morning_mist_Lake_Tinaroo_Tinaroo_State_Forest_Atherton_Tableland_Queensland_1986_IMG_0016_%282%29.jpg>
+- Author: John Robert McPherson
+- License: CC BY-SA 4.0
+- Dimensions: 6533x4309
+- Split: holdout3
+- Axis: chroma floor
+- Notes: landscape, Canon CanoScan 8800F, mean L* 40.8, mean C* 0.0, detail 3.05
+- Drawn as: chroma floor; strata: none
+
+### `sealed3-chroma-not-so-urban-morning`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Not_So_Urban_Morning_(251257351).jpeg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/69/Not_So_Urban_Morning_%28251257351%29.jpeg>
+- Author: Nicu Buculei
+- License: CC BY-SA 3.0
+- Dimensions: 2048x1365
+- Split: holdout3
+- Axis: chroma floor
+- Notes: landscape, Canon Canon EOS 6D, mean L* 64.7, mean C* 0.0, detail 3.91
+- Drawn as: chroma floor; strata: none
+
+### `sealed3-chroma-waltensburg-vuorz-panoramaweg-20`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Waltensburg-Vuorz._Panoramaweg._20-09-2025._(actm.)_39.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/ec/Waltensburg-Vuorz._Panoramaweg._20-09-2025._%28actm.%29_39.jpg>
+- Author: Agnes Monkelbaan
+- License: CC BY-SA 4.0
+- Dimensions: 5143x2893
+- Split: holdout3
+- Axis: chroma floor
+- Notes: landscape, Canon Canon EOS M, mean L* 53.1, mean C* 0.0, detail 7.66
+- Drawn as: chroma floor; strata: none
+
+### `sealed3-daylight-2024-09-28-a`
+
+- Source: <https://commons.wikimedia.org/wiki/File:2024-09-28_A_view_from_the_hiking_trail_to_L%27Arche_de_Corte_06.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/60/2024-09-28_A_view_from_the_hiking_trail_to_L%27Arche_de_Corte_06.jpg>
+- Author: Alexkom000
+- License: CC BY 4.0
+- Dimensions: 5484x3656
+- Split: holdout3
+- Axis: daylight
+- Notes: landscape, SONY ILCE-7M3, mean L* 53.3, mean C* 25.1, detail 10.60
+- Drawn as: daylight; strata: none
+
+### `sealed3-daylight-iss067-e-152527-view`
+
+- Source: <https://commons.wikimedia.org/wiki/File:ISS067-E-152527_-_View_of_Earth.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/63/ISS067-E-152527_-_View_of_Earth.jpg>
+- Author: Earth Science and Remote Sensing Unit, Lyndon B. Johnson Space Center
+- License: Public domain
+- Dimensions: 5568x3712
+- Split: holdout3
+- Axis: daylight
+- Notes: landscape, NIKON CORPORATION NIKON D5, mean L* 45.9, mean C* 6.0, detail 8.81
+- Drawn as: daylight; strata: none
+
+### `sealed3-daylight-summer-at-knole-park`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Summer_at_Knole_Park_-_geograph.org.uk_-_6856983.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/44/Summer_at_Knole_Park_-_geograph.org.uk_-_6856983.jpg>
+- Author: Peter S
+- License: CC BY-SA 2.0
+- Dimensions: 4608x3456
+- Split: holdout3
+- Axis: daylight
+- Notes: landscape, NIKON COOLPIX A10, mean L* 49.1, mean C* 22.4, detail 10.79
+- Drawn as: daylight; strata: none
+
+### `sealed3-daylight-summer-park-concert-4618857`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Summer_Park_Concert_(4618857).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/2/25/Summer_Park_Concert_%284618857%29.jpg>
+- Author: U.S. Marine Corps photo by Cpl. Cristian Ricardo
+- License: Public domain
+- Dimensions: 3456x5184
+- Split: holdout3
+- Axis: daylight
+- Notes: portrait, Canon Canon EOS-1D X, mean L* 80.3, mean C* 5.1, detail 2.70
+- Drawn as: daylight; strata: none
+
+### `sealed3-highkey-canon-ef-100mm-f2`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Canon_EF_100mm_F2.8_Macro_USM_n02.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/a/a2/Canon_EF_100mm_F2.8_Macro_USM_n02.jpg>
+- Author: Marie-Lan Nguyen
+- License: CC BY 2.5
+- Dimensions: 3338x5000
+- Split: holdout3
+- Axis: high key
+- Notes: portrait, NIKON CORPORATION NIKON D800E, mean L* 54.5, mean C* 1.0, detail 4.37
+- Drawn as: high key; strata: none
+
+### `sealed3-highkey-chaise-lounges-on-the`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Chaise_lounges_on_the_beautiful_tropical_beach_with_white_sand,_Bali,_Indonesia.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/4b/Chaise_lounges_on_the_beautiful_tropical_beach_with_white_sand%2C_Bali%2C_Indonesia.jpg>
+- Author: Artem Beliaikin
+- License: CC BY 2.0
+- Dimensions: 6000x4000
+- Split: holdout3
+- Axis: high key
+- Notes: landscape, Canon Canon EOS 80D, mean L* 71.3, mean C* 19.3, detail 12.67
+- Drawn as: high key; strata: none
+
+### `sealed3-highkey-runcam-eagle-black-fpv`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Runcam_Eagle_black_FPV_camera_with_bracket.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/8/81/Runcam_Eagle_black_FPV_camera_with_bracket.jpg>
+- Author: Lucasbosch
+- License: CC BY-SA 3.0
+- Dimensions: 3384x3087
+- Split: holdout3
+- Axis: high key
+- Notes: landscape, Canon Canon EOS 6D, mean L* 62.7, mean C* 1.0, detail 3.85
+- Drawn as: high key; strata: none
+
+### `sealed3-highkey-white-sand-beach-galapagos`
+
+- Source: <https://commons.wikimedia.org/wiki/File:White_Sand_Beach,_Galapagos_(50138582752).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/1/14/White_Sand_Beach%2C_Galapagos_%2850138582752%29.jpg>
+- Author: kuhnmi
+- License: CC BY 2.0
+- Dimensions: 5979x3363
+- Split: holdout3
+- Axis: high key
+- Notes: landscape, NIKON CORPORATION NIKON D7100, mean L* 84.6, mean C* 6.8, detail 2.28
+- Drawn as: high key; strata: none
+
+### `sealed3-lowlight-aurora-16067336322`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Aurora_-_16067336322.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/b/bf/Aurora_-_16067336322.jpg>
+- Author: mmmavocado
+- License: CC BY 2.0
+- Dimensions: 5616x3744
+- Split: holdout3
+- Axis: low light
+- Notes: landscape, Canon Canon EOS 5D Mark II, mean L* 8.0, mean C* 5.2, detail 1.29
+- Drawn as: low light; strata: low-light
+
+### `sealed3-lowlight-aurora-borealis-svolv-rgeita`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Aurora_Borealis_Svolv%C3%A6rgeita_001.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/1/13/Aurora_Borealis_Svolv%C3%A6rgeita_001.jpg>
+- Author: Birgit Fostervold
+- License: CC BY-SA 4.0
+- Dimensions: 3204x2132
+- Split: holdout3
+- Axis: low light
+- Notes: landscape, NIKON CORPORATION NIKON Z 6_2, mean L* 9.3, mean C* 5.8, detail 2.39
+- Drawn as: low light; strata: low-light
+
+### `sealed3-lowlight-fireworks-lugano-2011-3`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Fireworks_lugano_2011-3.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/d/d2/Fireworks_lugano_2011-3.jpg>
+- Author: Philippe Moret
+- License: CC BY-SA 4.0
+- Dimensions: 1733x2600
+- Split: holdout3
+- Axis: low light
+- Notes: portrait, Canon Canon EOS 400D DIGITAL, mean L* 32.8, mean C* 17.8, detail 6.26
+- Drawn as: low light; strata: skin, low-light
+
+### `sealed3-lowlight-freedom-250-national-memorial`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Freedom_250_National_Memorial_Day_Observance_-_An_Evening_of_Stories_of_Service_at_Memorial_Amphitheater_in_Arlington_National_Cemetery,_Virginia_on_May_25,_2026_-_73.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/7/7d/Freedom_250_National_Memorial_Day_Observance_-_An_Evening_of_Stories_of_Service_at_Memorial_Amphitheater_in_Arlington_National_Cemetery%2C_Virginia_on_May_25%2C_2026_-_73.jpg>
+- Author: usarmyband
+- License: CC BY 4.0
+- Dimensions: 3679x5519
+- Split: holdout3
+- Axis: low light
+- Notes: portrait, Canon Canon EOS R6m2, mean L* 26.0, mean C* 27.6, detail 2.86
+- Drawn as: low light; strata: low-light
+
+### `sealed3-lowlight-korea-yeosu-dolsan-bridge`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Korea-Yeosu-Dolsan_Bridge_at_night-01.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/c/ca/Korea-Yeosu-Dolsan_Bridge_at_night-01.jpg>
+- Author: Doo-ho Kim from Seoul, Republic of Korea
+- License: CC BY-SA 2.0
+- Dimensions: 1917x2935
+- Split: holdout3
+- Axis: low light
+- Notes: portrait, NIKON CORPORATION NIKON D70, mean L* 11.6, mean C* 10.0, detail 5.60
+- Drawn as: low light; strata: low-light
+
+### `sealed3-lowlight-pszczyna-train-station-by`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Pszczyna_train_station_by_night_(2).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/5/55/Pszczyna_train_station_by_night_%282%29.jpg>
+- Author: Michał Bulsa
+- License: CC0
+- Dimensions: 4624x3472
+- Split: holdout3
+- Axis: low light
+- Notes: landscape, Xiaomi 22021211RG, mean L* 21.2, mean C* 7.9, detail 7.63
+- Drawn as: low light; strata: smartphone, skin, low-light
+
+### `sealed3-lowlight-rishikesh-and-the-river`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Rishikesh_and_The_River_Ganga_at_Night_and_Illuminated_Janki_Bridge_07.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/0/0a/Rishikesh_and_The_River_Ganga_at_Night_and_Illuminated_Janki_Bridge_07.jpg>
+- Author: Goutam1962
+- License: CC BY-SA 4.0
+- Dimensions: 3840x2160
+- Split: holdout3
+- Axis: low light
+- Notes: landscape, Xiaomi Redmi Note 7 Pro, mean L* 24.1, mean C* 8.5, detail 5.37
+- Drawn as: low light; strata: smartphone, low-light
+
+### `sealed3-lowlight-south-train-station-at`
+
+- Source: <https://commons.wikimedia.org/wiki/File:South_Train_Station_at_night,_2019.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/64/South_Train_Station_at_night%2C_2019.jpg>
+- Author: Shum3rR
+- License: CC BY-SA 4.0
+- Dimensions: 5248x2952
+- Split: holdout3
+- Axis: low light
+- Notes: landscape, Motorola XT1254, mean L* 26.5, mean C* 7.7, detail 7.42
+- Drawn as: low light; strata: smartphone, low-light
+
+### `sealed3-lowlight-watching-starry-sky-at`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Watching_Starry_Sky_at_Lake_Kasumigaura_at_Tsuchiura,_Japan_(56536614).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/f/ff/Watching_Starry_Sky_at_Lake_Kasumigaura_at_Tsuchiura%2C_Japan_%2856536614%29.jpg>
+- Author: Chibi Medako
+- License: CC BY 3.0
+- Dimensions: 1363x2048
+- Split: holdout3
+- Axis: low light
+- Notes: portrait, NIKON CORPORATION NIKON D700, mean L* 28.7, mean C* 48.8, detail 8.71
+- Drawn as: low light; strata: low-light
+
+### `sealed3-pano-miami-late-afternoon-skyline`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Miami_Late_Afternoon_Skyline_2026.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/5/56/Miami_Late_Afternoon_Skyline_2026.jpg>
+- Author: Euthman
+- License: CC BY 4.0
+- Dimensions: 12869x3169
+- Split: holdout3
+- Axis: extreme aspect
+- Notes: landscape, Apple iPhone 14 Pro, mean L* 62.2, mean C* 18.5, detail 14.33
+- Drawn as: extreme aspect; strata: smartphone, extreme-aspect
+
+### `sealed3-pano-panorama-of-the-interior`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Panorama_of_the_Interior_of_a_Piccadilly_Line_Train_(August_2023)_02.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/7/7e/Panorama_of_the_Interior_of_a_Piccadilly_Line_Train_%28August_2023%29_02.jpg>
+- Author: DiscoA340
+- License: CC BY-SA 4.0
+- Dimensions: 17022x2800
+- Split: holdout3
+- Axis: extreme aspect
+- Notes: landscape, Canon Canon EOS R10, mean L* 57.5, mean C* 12.9, detail 12.38
+- Drawn as: extreme aspect; strata: extreme-aspect
+
+### `sealed3-pano-panoramic-view-into-the`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Panoramic_view_into_the_Rh%C3%B4ne_valley_(14842361192).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/2/28/Panoramic_view_into_the_Rh%C3%B4ne_valley_%2814842361192%29.jpg>
+- Author: Björn S...
+- License: CC BY-SA 2.0
+- Dimensions: 12483x2476
+- Split: holdout3
+- Axis: extreme aspect
+- Notes: landscape, Canon Canon EOS 600D, mean L* 62.3, mean C* 13.9, detail 7.35
+- Drawn as: extreme aspect; strata: extreme-aspect
+
+### `sealed3-pano-phra-nang-beach-panorama`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Phra_Nang_beach_panorama_3.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/5/55/Phra_Nang_beach_panorama_3.jpg>
+- Author: kallerna
+- License: CC BY-SA 3.0
+- Dimensions: 10870x2800
+- Split: holdout3
+- Axis: extreme aspect
+- Notes: landscape, SONY DSLR-A700, mean L* 55.5, mean C* 17.7, detail 10.86
+- Drawn as: extreme aspect; strata: extreme-aspect
+
+### `sealed3-pano-singapore-night-time-skyline`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Singapore_Night_Time_Skyline_Panorama_(54212129482).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/8/82/Singapore_Night_Time_Skyline_Panorama_%2854212129482%29.jpg>
+- Author: Mustang Joe
+- License: CC0
+- Dimensions: 8907x2844
+- Split: holdout3
+- Axis: extreme aspect
+- Notes: landscape, NIKON CORPORATION NIKON D750, mean L* 15.7, mean C* 11.8, detail 9.26
+- Drawn as: extreme aspect; strata: low-light, extreme-aspect
+
+### `sealed3-pano-sta-cruz-sand-bar`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Sta._Cruz_Sand_Bar.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/a/a4/Sta._Cruz_Sand_Bar.jpg>
+- Author: Aldous Mariano Cariño
+- License: CC BY-SA 4.0
+- Dimensions: 10013x2802
+- Split: holdout3
+- Axis: extreme aspect
+- Notes: landscape, DJI FC3682, mean L* 42.2, mean C* 20.1, detail 8.72
+- Drawn as: extreme aspect; strata: extreme-aspect
+
+### `sealed3-pano-times-square-10147934665`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Times_Square_(10147934665).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/4c/Times_Square_%2810147934665%29.jpg>
+- Author: Andrew Napier
+- License: CC BY 2.0
+- Dimensions: 3613x1062
+- Split: holdout3
+- Axis: extreme aspect
+- Notes: landscape, LGE Nexus 4, mean L* 36.1, mean C* 10.4, detail 13.83
+- Drawn as: extreme aspect; strata: smartphone, skin, extreme-aspect
+
+### `sealed3-pano-view-north-from-ben`
+
+- Source: <https://commons.wikimedia.org/wiki/File:View_north_from_Ben_Lawers,_Scotland.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/c/c1/View_north_from_Ben_Lawers%2C_Scotland.jpg>
+- Author: Michal Klajban
+- License: CC BY-SA 4.0
+- Dimensions: 21276x3143
+- Split: holdout3
+- Axis: extreme aspect
+- Notes: landscape, Canon Canon EOS 6D, mean L* 49.3, mean C* 17.1, detail 7.68
+- Drawn as: extreme aspect; strata: skin, extreme-aspect
+
+### `sealed3-phone-00525355`
+
+- Source: <https://commons.wikimedia.org/wiki/File:%CE%A3%CE%B9%CE%B4%CE%B7%CF%81%CE%BF%CE%B4%CF%81%CE%BF%CE%BC%CE%B9%CE%BA%CF%8C%CF%82_%CE%A3%CF%84%CE%B1%CE%B8%CE%BC%CF%8C%CF%82_%CE%92%CF%8C%CE%BB%CE%BF%CF%85.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/3/39/%CE%A3%CE%B9%CE%B4%CE%B7%CF%81%CE%BF%CE%B4%CF%81%CE%BF%CE%BC%CE%B9%CE%BA%CF%8C%CF%82_%CE%A3%CF%84%CE%B1%CE%B8%CE%BC%CF%8C%CF%82_%CE%92%CF%8C%CE%BB%CE%BF%CF%85.jpg>
+- Author: PLAKLE
+- License: CC BY-SA 4.0
+- Dimensions: 3264x2448
+- Split: holdout3
+- Axis: smartphone
+- Notes: landscape, Xiaomi Redmi Note 9 Pro, mean L* 57.8, mean C* 7.8, detail 8.09
+- Drawn as: smartphone; strata: smartphone, skin
+
+### `sealed3-phone-2018-american-athletic-conference`
+
+- Source: <https://commons.wikimedia.org/wiki/File:2018_American_Athletic_Conference_Championship_Trophy_Presentation_(31199404377).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/8/84/2018_American_Athletic_Conference_Championship_Trophy_Presentation_%2831199404377%29.jpg>
+- Author: elisfkc from Orlando, FL, United States
+- License: CC BY-SA 2.0
+- Dimensions: 4032x3024
+- Split: holdout3
+- Axis: smartphone
+- Notes: landscape, Google Pixel 3, mean L* 40.2, mean C* 14.7, detail 19.53
+- Drawn as: smartphone; strata: smartphone
+
+### `sealed3-phone-aitana-madrid`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Aitana_Madrid.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/1/1e/Aitana_Madrid.jpg>
+- Author: EddyLlrg
+- License: CC BY-SA 4.0
+- Dimensions: 2267x2934
+- Split: holdout3
+- Axis: smartphone
+- Notes: portrait, Google Pixel 6, mean L* 27.0, mean C* 49.9, detail 4.44
+- Drawn as: smartphone; strata: smartphone, low-light
+
+### `sealed3-phone-arco-manuelino-de-abiul`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Arco_Manuelino_de_Abiul_em_2021.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/6c/Arco_Manuelino_de_Abiul_em_2021.jpg>
+- Author: Threeohsix
+- License: CC BY-SA 4.0
+- Dimensions: 6936x9248
+- Split: holdout3
+- Axis: smartphone
+- Notes: portrait, samsung SM-A525F, mean L* 44.3, mean C* 5.9, detail 10.18
+- Drawn as: smartphone; strata: smartphone
+
+### `sealed3-phone-clingmans-dome-panorama-at`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Clingmans_Dome_panorama_at_sunset_-_July_2019.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/3/3a/Clingmans_Dome_panorama_at_sunset_-_July_2019.jpg>
+- Author: Nheyob
+- License: CC BY-SA 4.0
+- Dimensions: 16380x3796
+- Split: holdout3
+- Axis: smartphone
+- Notes: landscape, Apple iPhone 8, mean L* 54.0, mean C* 11.7, detail 4.40
+- Drawn as: smartphone; strata: smartphone, extreme-aspect
+
+### `sealed3-phone-libreoffice-conference-2019-by`
+
+- Source: <https://commons.wikimedia.org/wiki/File:LibreOffice_Conference_2019,_by_Ismael_Olea_011.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/c/c2/LibreOffice_Conference_2019%2C_by_Ismael_Olea_011.jpg>
+- Author: Ismael Olea
+- License: CC BY 4.0
+- Dimensions: 4608x3456
+- Split: holdout3
+- Axis: smartphone
+- Notes: landscape, motorola moto g(7) plus, mean L* 25.6, mean C* 17.9, detail 6.67
+- Drawn as: smartphone; strata: smartphone, low-light
+
+### `sealed3-phone-luxembourg-place-auguste-engel`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Luxembourg,_place_Auguste_Engel_(101).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/1/1a/Luxembourg%2C_place_Auguste_Engel_%28101%29.jpg>
+- Author: GilPe
+- License: CC BY-SA 3.0
+- Dimensions: 3648x2736
+- Split: holdout3
+- Axis: smartphone
+- Notes: landscape, HUAWEI LYA-L29, mean L* 52.1, mean C* 21.7, detail 18.93
+- Drawn as: smartphone; strata: smartphone, skin
+
+### `sealed3-phone-nagaoka-city-ojima-jr`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Nagaoka_City_Ojima_Jr_High_School_at_Gate_2019.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/a/ac/Nagaoka_City_Ojima_Jr_High_School_at_Gate_2019.jpg>
+- Author: Rebirth10
+- License: CC BY-SA 4.0
+- Dimensions: 4618x3464
+- Split: holdout3
+- Axis: smartphone
+- Notes: landscape, Sony D6603, mean L* 54.9, mean C* 4.7, detail 9.63
+- Drawn as: smartphone; strata: smartphone
+
+### `sealed3-phone-national-museum-of-anthropology`
+
+- Source: <https://commons.wikimedia.org/wiki/File:National_Museum_of_Anthropology_-_wm2015_-_6.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/41/National_Museum_of_Anthropology_-_wm2015_-_6.jpg>
+- Author: Benoît Prieur
+- License: CC0
+- Dimensions: 2832x2180
+- Split: holdout3
+- Axis: smartphone
+- Notes: landscape, Apple iPhone 6, mean L* 37.4, mean C* 11.6, detail 14.43
+- Drawn as: smartphone; strata: smartphone, skin
+
+### `sealed3-phone-pvjlvlja-montenegro-33239`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Pvjlvlja_montenegro_(33239).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/4d/Pvjlvlja_montenegro_%2833239%29.jpg>
+- Author: Andre Hospers
+- License: CC BY 4.0
+- Dimensions: 4032x3024
+- Split: holdout3
+- Axis: smartphone
+- Notes: landscape, samsung SM-G955F, mean L* 48.2, mean C* 20.2, detail 19.86
+- Drawn as: smartphone; strata: smartphone
+
+### `sealed3-skin-banana-vendor-uganda-15166221095`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Banana_Vendor,_Uganda_(15166221095).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/1/16/Banana_Vendor%2C_Uganda_%2815166221095%29.jpg>
+- Author: Rod Waddington from Kergunyah, Australia
+- License: CC BY-SA 2.0
+- Dimensions: 4016x5670
+- Split: holdout3
+- Axis: skin: medium
+- Notes: portrait, NIKON CORPORATION NIKON D600, mean L* 54.2, mean C* 32.9, detail 6.84
+- Drawn as: skin: medium; strata: skin
+
+### `sealed3-skin-domkirken-kristiansand-norway-nygotisk`
+
+- Source: <https://commons.wikimedia.org/wiki/File:DOMKIRKEN_KRISTIANSAND_Norway_Nygotisk_korskirke_Thrap-Meyer_1885_Cathedral_Neo-Gothic_church_2023-10-18_INTERIOR_Alter_altertavle_av_Eilif_Peterssen_alterring_koret_Altar_piece_etc_IMG_3915.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/2/2b/DOMKIRKEN_KRISTIANSAND_Norway_Nygotisk_korskirke_Thrap-Meyer_1885_Cathedral_Neo-Gothic_church_2023-10-18_INTERIOR_Alter_altertavle_av_Eilif_Peterssen_alterring_koret_Altar_piece_etc_IMG_3915.jpg>
+- Author: Wolfmann
+- License: CC BY-SA 4.0
+- Dimensions: 5619x7493
+- Split: holdout3
+- Axis: skin: light
+- Notes: portrait, Apple iPhone 14 Pro, mean L* 50.7, mean C* 18.6, detail 7.98
+- Drawn as: skin: light; strata: smartphone, skin
+
+### `sealed3-skin-emmy-at-esc2025-for`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Emmy_at_ESC2025_for_Ireland_5.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/d/d7/Emmy_at_ESC2025_for_Ireland_5.jpg>
+- Author: Quejaytee
+- License: CC BY 4.0
+- Dimensions: 4562x3650
+- Split: holdout3
+- Axis: skin: dark
+- Notes: landscape, Canon Canon EOS R1, mean L* 31.6, mean C* 20.7, detail 6.13
+- Drawn as: skin: dark; strata: skin
+
+### `sealed3-skin-her-majesty`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Her_Majesty.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/d/d3/Her_Majesty.jpg>
+- Author: Nikonambassug
+- License: CC BY-SA 4.0
+- Dimensions: 3744x5616
+- Split: holdout3
+- Axis: skin: light
+- Notes: portrait, Canon Canon EOS 5D Mark II, mean L* 74.1, mean C* 15.4, detail 4.64
+- Drawn as: skin: light; strata: skin
+
+### `sealed3-skin-indonesia-traffic-signs-warning`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Indonesia_Traffic-signs_Warning-sign-07.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/62/Indonesia_Traffic-signs_Warning-sign-07.jpg>
+- Author: CEphoto, Uwe Aranas
+- License: CC BY-SA 3.0
+- Dimensions: 3306x4278
+- Split: holdout3
+- Axis: skin: dark
+- Notes: portrait, Canon Canon EOS 5D Mark III, mean L* 37.9, mean C* 24.3, detail 18.65
+- Drawn as: skin: dark; strata: skin
+
+### `sealed3-skin-mumtaz-alia-akbari-2`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Mumtaz_Alia_Akbari_2.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/c/c3/Mumtaz_Alia_Akbari_2.jpg>
+- Author: Kazi Riton
+- License: CC BY-SA 4.0
+- Dimensions: 1488x2240
+- Split: holdout3
+- Axis: skin: light
+- Notes: portrait, NIKON CORPORATION NIKON D100, mean L* 49.9, mean C* 15.5, detail 4.88
+- Drawn as: skin: light; strata: skin
+
+### `sealed3-skin-portrait-gallery-cafe-geograph`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Portrait_Gallery_caf%C3%A9_-_geograph.org.uk_-_7883755.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/0/08/Portrait_Gallery_caf%C3%A9_-_geograph.org.uk_-_7883755.jpg>
+- Author: Anthony O'Neil
+- License: CC BY-SA 2.0
+- Dimensions: 5131x3256
+- Split: holdout3
+- Axis: skin: medium
+- Notes: landscape, FUJIFILM X-Pro3, mean L* 43.4, mean C* 15.2, detail 7.03
+- Drawn as: skin: medium; strata: skin
+
+### `sealed3-skin-portrait-head-jar-peru`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Portrait_head_jar,_Peru,_Moche_IV_or_V,_north_coast,_c._500_AD,_earthenware_-_Krannert_Art_Museum,_UIUC_-_DSC06498.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/9/95/Portrait_head_jar%2C_Peru%2C_Moche_IV_or_V%2C_north_coast%2C_c._500_AD%2C_earthenware_-_Krannert_Art_Museum%2C_UIUC_-_DSC06498.jpg>
+- Author: Daderot
+- License: Public domain
+- Dimensions: 3495x3178
+- Split: holdout3
+- Axis: skin: medium
+- Notes: landscape, SONY DSC-RX100M3, mean L* 47.2, mean C* 25.9, detail 1.80
+- Drawn as: skin: medium; strata: skin
+
+### `sealed3-skin-washare-from-the-hamer`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Washare_from_the_Hamer_tribe_in_Logara,_near_Turmi,_Omo_Valley,_Ethiopia_(16882803797).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/c/cc/Washare_from_the_Hamer_tribe_in_Logara%2C_near_Turmi%2C_Omo_Valley%2C_Ethiopia_%2816882803797%29.jpg>
+- Author: Alfred Weidinger from Vienna, Austria
+- License: CC BY 2.0
+- Dimensions: 4992x7512
+- Split: holdout3
+- Axis: skin: dark
+- Notes: portrait, Leica Camera AG Leica S2, mean L* 56.2, mean C* 17.4, detail 8.70
+- Drawn as: skin: dark; strata: skin

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ensurePinnedFixture } from "./corpus-pin.ts";
-import type { CorpusSplit } from "./corpus.ts";
+import { type CorpusSplit, type Holdout3Record, isSealed } from "./corpus.ts";
 
 const NATURAL_DIR = path.resolve(import.meta.dirname, "../fixtures/natural");
 
@@ -52,6 +52,11 @@ export interface NaturalImageSpec {
    * back out of this string.
    */
   notes: string;
+  /**
+   * A holdout3 pin's draw record and strata (#129); present on every holdout3
+   * pin and on no other (`holdout-images.ts` `holdout3Specs`).
+   */
+  holdout3?: Holdout3Record;
 }
 
 /**
@@ -85,6 +90,13 @@ export interface NaturalImageSpec {
  *
  * Adding or removing an image changes every mean in `spec/EXPERIMENTS.md`, so
  * the whole sweep set is re-run in the same change (see §9 and §12 there).
+ * The sealed splits are the exception: no committed tune result scores them.
+ *
+ * The `sealed3-*` entries are the photographic part of holdout3 (#129),
+ * drawn by `corpus-covariates.ts --draw-holdout3` under the protocol
+ * `spec/EXPERIMENTS.md` §11.12 records, with no encoder run on any
+ * candidate. Their `axis` is the draw axis that took them, and each carries
+ * its draw record and strata.
  */
 export const CURATED_IMAGES: NaturalImageSpec[] = [
   {
@@ -1320,6 +1332,1293 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     notes:
       "landscape, Canon Canon PowerShot SX280 HS, mean L* 50.2, mean C* 16.3, detail 8.25",
   },
+  // holdout3 pins (#129): written by `corpus-covariates.js --pin-holdout3` from fixtures/holdout3-draw.json; never edit by hand.
+  {
+    label: "sealed3-phone-arco-manuelino-de-abiul",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/6/6c/Arco_Manuelino_de_Abiul_em_2021.jpg",
+    ],
+    ext: ".jpg",
+    width: 6936,
+    height: 9248,
+    split: "holdout3",
+    sha256: "dab6e8e44138179804587ea146d04b392cc08c182739e4fd45ec06367f4db448",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Arco_Manuelino_de_Abiul_em_2021.jpg",
+    author: "Threeohsix",
+    licence: "CC BY-SA 4.0",
+    axis: "smartphone",
+    notes:
+      "portrait, samsung SM-A525F, mean L* 44.3, mean C* 5.9, detail 10.18",
+    holdout3: {
+      drawnAs: "smartphone",
+      camera: "samsung SM-A525F",
+      phone: true,
+      meanL: 44.2869,
+      lowKey: 0.0954,
+      skin: 0.0309,
+      strata: ["smartphone"],
+    },
+  },
+  {
+    label: "sealed3-phone-pvjlvlja-montenegro-33239",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/4/4d/Pvjlvlja_montenegro_%2833239%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 4032,
+    height: 3024,
+    split: "holdout3",
+    sha256: "fbf4db07a196429c7e7610da7464e556be4354a0f5fe774ca51899cd665deb31",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Pvjlvlja_montenegro_(33239).jpg",
+    author: "Andre Hospers",
+    licence: "CC BY 4.0",
+    axis: "smartphone",
+    notes:
+      "landscape, samsung SM-G955F, mean L* 48.2, mean C* 20.2, detail 19.86",
+    holdout3: {
+      drawnAs: "smartphone",
+      camera: "samsung SM-G955F",
+      phone: true,
+      meanL: 48.1655,
+      lowKey: 0.0138,
+      skin: 0.0196,
+      strata: ["smartphone"],
+    },
+  },
+  {
+    label: "sealed3-phone-aitana-madrid",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/1/1e/Aitana_Madrid.jpg",
+    ],
+    ext: ".jpg",
+    width: 2267,
+    height: 2934,
+    split: "holdout3",
+    sha256: "aa490085b972cba8f5f610a717a6ebf4a7b330e871a6cf3097f3c41a2e7a2c2d",
+    source: "https://commons.wikimedia.org/wiki/File:Aitana_Madrid.jpg",
+    author: "EddyLlrg",
+    licence: "CC BY-SA 4.0",
+    axis: "smartphone",
+    notes: "portrait, Google Pixel 6, mean L* 27.0, mean C* 49.9, detail 4.44",
+    holdout3: {
+      drawnAs: "smartphone",
+      camera: "Google Pixel 6",
+      phone: true,
+      meanL: 27.0083,
+      lowKey: 0.2822,
+      skin: 0.0051,
+      strata: ["smartphone", "low-light"],
+    },
+  },
+  {
+    label: "sealed3-phone-nagaoka-city-ojima-jr",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/a/ac/Nagaoka_City_Ojima_Jr_High_School_at_Gate_2019.jpg",
+    ],
+    ext: ".jpg",
+    width: 4618,
+    height: 3464,
+    split: "holdout3",
+    sha256: "d1964d50f1418d6366dc8320b1c11bc96b57984dac69d23b4fb0b94c6dd1f590",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Nagaoka_City_Ojima_Jr_High_School_at_Gate_2019.jpg",
+    author: "Rebirth10",
+    licence: "CC BY-SA 4.0",
+    axis: "smartphone",
+    notes: "landscape, Sony D6603, mean L* 54.9, mean C* 4.7, detail 9.63",
+    holdout3: {
+      drawnAs: "smartphone",
+      camera: "Sony D6603",
+      phone: true,
+      meanL: 54.8663,
+      lowKey: 0.0346,
+      skin: 0.0113,
+      strata: ["smartphone"],
+    },
+  },
+  {
+    label: "sealed3-phone-national-museum-of-anthropology",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/4/41/National_Museum_of_Anthropology_-_wm2015_-_6.jpg",
+    ],
+    ext: ".jpg",
+    width: 2832,
+    height: 2180,
+    split: "holdout3",
+    sha256: "e602390f073a26ca71bfa16e58eea02e3a41070ef651bfc2d9ed502321db5549",
+    source:
+      "https://commons.wikimedia.org/wiki/File:National_Museum_of_Anthropology_-_wm2015_-_6.jpg",
+    author: "Benoît Prieur",
+    licence: "CC0",
+    axis: "smartphone",
+    notes:
+      "landscape, Apple iPhone 6, mean L* 37.4, mean C* 11.6, detail 14.43",
+    holdout3: {
+      drawnAs: "smartphone",
+      camera: "Apple iPhone 6",
+      phone: true,
+      meanL: 37.4178,
+      lowKey: 0.1244,
+      skin: 0.2119,
+      strata: ["smartphone", "skin"],
+    },
+  },
+  {
+    label: "sealed3-phone-00525355",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/3/39/%CE%A3%CE%B9%CE%B4%CE%B7%CF%81%CE%BF%CE%B4%CF%81%CE%BF%CE%BC%CE%B9%CE%BA%CF%8C%CF%82_%CE%A3%CF%84%CE%B1%CE%B8%CE%BC%CF%8C%CF%82_%CE%92%CF%8C%CE%BB%CE%BF%CF%85.jpg",
+    ],
+    ext: ".jpg",
+    width: 3264,
+    height: 2448,
+    split: "holdout3",
+    sha256: "cc609839c1ee9526a2b8b4b60dce033544b21a227e5f103ba1afe07bd2ceb4ce",
+    source:
+      "https://commons.wikimedia.org/wiki/File:%CE%A3%CE%B9%CE%B4%CE%B7%CF%81%CE%BF%CE%B4%CF%81%CE%BF%CE%BC%CE%B9%CE%BA%CF%8C%CF%82_%CE%A3%CF%84%CE%B1%CE%B8%CE%BC%CF%8C%CF%82_%CE%92%CF%8C%CE%BB%CE%BF%CF%85.jpg",
+    author: "PLAKLE",
+    licence: "CC BY-SA 4.0",
+    axis: "smartphone",
+    notes:
+      "landscape, Xiaomi Redmi Note 9 Pro, mean L* 57.8, mean C* 7.8, detail 8.09",
+    holdout3: {
+      drawnAs: "smartphone",
+      camera: "Xiaomi Redmi Note 9 Pro",
+      phone: true,
+      meanL: 57.8041,
+      lowKey: 0.119,
+      skin: 0.1042,
+      strata: ["smartphone", "skin"],
+    },
+  },
+  {
+    label: "sealed3-phone-libreoffice-conference-2019-by",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/c/c2/LibreOffice_Conference_2019%2C_by_Ismael_Olea_011.jpg",
+    ],
+    ext: ".jpg",
+    width: 4608,
+    height: 3456,
+    split: "holdout3",
+    sha256: "28f468b7f50d950bf90a4793f23171bc4dad3fa07f6f80e9971dab796a96f9df",
+    source:
+      "https://commons.wikimedia.org/wiki/File:LibreOffice_Conference_2019,_by_Ismael_Olea_011.jpg",
+    author: "Ismael Olea",
+    licence: "CC BY 4.0",
+    axis: "smartphone",
+    notes:
+      "landscape, motorola moto g(7) plus, mean L* 25.6, mean C* 17.9, detail 6.67",
+    holdout3: {
+      drawnAs: "smartphone",
+      camera: "motorola moto g(7) plus",
+      phone: true,
+      meanL: 25.5919,
+      lowKey: 0.3663,
+      skin: 0.0767,
+      strata: ["smartphone", "low-light"],
+    },
+  },
+  {
+    label: "sealed3-phone-clingmans-dome-panorama-at",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/3/3a/Clingmans_Dome_panorama_at_sunset_-_July_2019.jpg",
+    ],
+    ext: ".jpg",
+    width: 16380,
+    height: 3796,
+    split: "holdout3",
+    sha256: "bd37adaf753504698dedb68568f054094c7b960f7dcd4a972607fa216008c96e",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Clingmans_Dome_panorama_at_sunset_-_July_2019.jpg",
+    author: "Nheyob",
+    licence: "CC BY-SA 4.0",
+    axis: "smartphone",
+    notes: "landscape, Apple iPhone 8, mean L* 54.0, mean C* 11.7, detail 4.40",
+    holdout3: {
+      drawnAs: "smartphone",
+      camera: "Apple iPhone 8",
+      phone: true,
+      meanL: 53.9903,
+      lowKey: 0.1602,
+      skin: 0.0361,
+      strata: ["smartphone", "extreme-aspect"],
+    },
+  },
+  {
+    label: "sealed3-phone-2018-american-athletic-conference",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/8/84/2018_American_Athletic_Conference_Championship_Trophy_Presentation_%2831199404377%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 4032,
+    height: 3024,
+    split: "holdout3",
+    sha256: "b9d0e588585ebb6e6a385bacd340c29f7711d0d31923bce029738b95c1c79501",
+    source:
+      "https://commons.wikimedia.org/wiki/File:2018_American_Athletic_Conference_Championship_Trophy_Presentation_(31199404377).jpg",
+    author: "elisfkc from Orlando, FL, United States",
+    licence: "CC BY-SA 2.0",
+    axis: "smartphone",
+    notes:
+      "landscape, Google Pixel 3, mean L* 40.2, mean C* 14.7, detail 19.53",
+    holdout3: {
+      drawnAs: "smartphone",
+      camera: "Google Pixel 3",
+      phone: true,
+      meanL: 40.2001,
+      lowKey: 0.1103,
+      skin: 0.0379,
+      strata: ["smartphone"],
+    },
+  },
+  {
+    label: "sealed3-phone-luxembourg-place-auguste-engel",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/1/1a/Luxembourg%2C_place_Auguste_Engel_%28101%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 3648,
+    height: 2736,
+    split: "holdout3",
+    sha256: "80d2ce30b084944841371cf7fea8c79c33d126ecba64dd056f07733657106e92",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Luxembourg,_place_Auguste_Engel_(101).jpg",
+    author: "GilPe",
+    licence: "CC BY-SA 3.0",
+    axis: "smartphone",
+    notes:
+      "landscape, HUAWEI LYA-L29, mean L* 52.1, mean C* 21.7, detail 18.93",
+    holdout3: {
+      drawnAs: "smartphone",
+      camera: "HUAWEI LYA-L29",
+      phone: true,
+      meanL: 52.145,
+      lowKey: 0.0239,
+      skin: 0.3038,
+      strata: ["smartphone", "skin"],
+    },
+  },
+  {
+    label: "sealed3-pano-miami-late-afternoon-skyline",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/5/56/Miami_Late_Afternoon_Skyline_2026.jpg",
+    ],
+    ext: ".jpg",
+    width: 12869,
+    height: 3169,
+    split: "holdout3",
+    sha256: "8c0b4d40cdef5ed91f84de57b5a408cad8b3a232130325452551d073ed0bfb0c",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Miami_Late_Afternoon_Skyline_2026.jpg",
+    author: "Euthman",
+    licence: "CC BY 4.0",
+    axis: "extreme aspect",
+    notes:
+      "landscape, Apple iPhone 14 Pro, mean L* 62.2, mean C* 18.5, detail 14.33",
+    holdout3: {
+      drawnAs: "extreme aspect",
+      camera: "Apple iPhone 14 Pro",
+      phone: true,
+      meanL: 62.2374,
+      lowKey: 0.0149,
+      skin: 0,
+      strata: ["smartphone", "extreme-aspect"],
+    },
+  },
+  {
+    label: "sealed3-pano-times-square-10147934665",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/4/4c/Times_Square_%2810147934665%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 3613,
+    height: 1062,
+    split: "holdout3",
+    sha256: "be3f8cd688d30864a5982fe4c360c51e3bca2694271241eab13e097b0fb07f6a",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Times_Square_(10147934665).jpg",
+    author: "Andrew Napier",
+    licence: "CC BY 2.0",
+    axis: "extreme aspect",
+    notes: "landscape, LGE Nexus 4, mean L* 36.1, mean C* 10.4, detail 13.83",
+    holdout3: {
+      drawnAs: "extreme aspect",
+      camera: "LGE Nexus 4",
+      phone: true,
+      meanL: 36.1458,
+      lowKey: 0.2361,
+      skin: 0.1158,
+      strata: ["smartphone", "skin", "extreme-aspect"],
+    },
+  },
+  {
+    label: "sealed3-pano-panoramic-view-into-the",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/2/28/Panoramic_view_into_the_Rh%C3%B4ne_valley_%2814842361192%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 12483,
+    height: 2476,
+    split: "holdout3",
+    sha256: "87f09a82dd57c60e383da00eb389288793c74f114cce35789c4260aabbe32ca5",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Panoramic_view_into_the_Rh%C3%B4ne_valley_(14842361192).jpg",
+    author: "Björn S...",
+    licence: "CC BY-SA 2.0",
+    axis: "extreme aspect",
+    notes:
+      "landscape, Canon Canon EOS 600D, mean L* 62.3, mean C* 13.9, detail 7.35",
+    holdout3: {
+      drawnAs: "extreme aspect",
+      camera: "Canon Canon EOS 600D",
+      phone: false,
+      meanL: 62.2748,
+      lowKey: 0.0006,
+      skin: 0.012,
+      strata: ["extreme-aspect"],
+    },
+  },
+  {
+    label: "sealed3-pano-panorama-of-the-interior",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/7/7e/Panorama_of_the_Interior_of_a_Piccadilly_Line_Train_%28August_2023%29_02.jpg",
+    ],
+    ext: ".jpg",
+    width: 17022,
+    height: 2800,
+    split: "holdout3",
+    sha256: "ddbcd7307fb2e9f3ad7d81bce804be445f4eec2a9d26958c509b22bd6c6b0923",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Panorama_of_the_Interior_of_a_Piccadilly_Line_Train_(August_2023)_02.jpg",
+    author: "DiscoA340",
+    licence: "CC BY-SA 4.0",
+    axis: "extreme aspect",
+    notes:
+      "landscape, Canon Canon EOS R10, mean L* 57.5, mean C* 12.9, detail 12.38",
+    holdout3: {
+      drawnAs: "extreme aspect",
+      camera: "Canon Canon EOS R10",
+      phone: false,
+      meanL: 57.5238,
+      lowKey: 0.0767,
+      skin: 0.0489,
+      strata: ["extreme-aspect"],
+    },
+  },
+  {
+    label: "sealed3-pano-sta-cruz-sand-bar",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/a/a4/Sta._Cruz_Sand_Bar.jpg",
+    ],
+    ext: ".jpg",
+    width: 10013,
+    height: 2802,
+    split: "holdout3",
+    sha256: "e6189de67a9714b08071c1248b3011e5ee3722f1fe7f8b10fea648e02ea6a0f6",
+    source: "https://commons.wikimedia.org/wiki/File:Sta._Cruz_Sand_Bar.jpg",
+    author: "Aldous Mariano Cariño",
+    licence: "CC BY-SA 4.0",
+    axis: "extreme aspect",
+    notes: "landscape, DJI FC3682, mean L* 42.2, mean C* 20.1, detail 8.72",
+    holdout3: {
+      drawnAs: "extreme aspect",
+      camera: "DJI FC3682",
+      phone: false,
+      meanL: 42.1512,
+      lowKey: 0.0492,
+      skin: 0.0288,
+      strata: ["extreme-aspect"],
+    },
+  },
+  {
+    label: "sealed3-pano-phra-nang-beach-panorama",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/5/55/Phra_Nang_beach_panorama_3.jpg",
+    ],
+    ext: ".jpg",
+    width: 10870,
+    height: 2800,
+    split: "holdout3",
+    sha256: "54481b2f3503be66c61b0a644852c6e40ece79d6745b8fd8b6fbb403699f133b",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Phra_Nang_beach_panorama_3.jpg",
+    author: "kallerna",
+    licence: "CC BY-SA 3.0",
+    axis: "extreme aspect",
+    notes:
+      "landscape, SONY DSLR-A700, mean L* 55.5, mean C* 17.7, detail 10.86",
+    holdout3: {
+      drawnAs: "extreme aspect",
+      camera: "SONY DSLR-A700",
+      phone: false,
+      meanL: 55.549,
+      lowKey: 0.0322,
+      skin: 0.0023,
+      strata: ["extreme-aspect"],
+    },
+  },
+  {
+    label: "sealed3-pano-view-north-from-ben",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/c/c1/View_north_from_Ben_Lawers%2C_Scotland.jpg",
+    ],
+    ext: ".jpg",
+    width: 21276,
+    height: 3143,
+    split: "holdout3",
+    sha256: "c7986994d9a283ed803d87742ec724713e2cb8def79bab0f92143a99c86dc3fe",
+    source:
+      "https://commons.wikimedia.org/wiki/File:View_north_from_Ben_Lawers,_Scotland.jpg",
+    author: "Michal Klajban",
+    licence: "CC BY-SA 4.0",
+    axis: "extreme aspect",
+    notes:
+      "landscape, Canon Canon EOS 6D, mean L* 49.3, mean C* 17.1, detail 7.68",
+    holdout3: {
+      drawnAs: "extreme aspect",
+      camera: "Canon Canon EOS 6D",
+      phone: false,
+      meanL: 49.2887,
+      lowKey: 0.0142,
+      skin: 0.1523,
+      strata: ["skin", "extreme-aspect"],
+    },
+  },
+  {
+    label: "sealed3-pano-singapore-night-time-skyline",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/8/82/Singapore_Night_Time_Skyline_Panorama_%2854212129482%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 8907,
+    height: 2844,
+    split: "holdout3",
+    sha256: "897f9d9ec39cf4279fd6089112396385ddd1e35283e47555930bb64105962cde",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Singapore_Night_Time_Skyline_Panorama_(54212129482).jpg",
+    author: "Mustang Joe",
+    licence: "CC0",
+    axis: "extreme aspect",
+    notes:
+      "landscape, NIKON CORPORATION NIKON D750, mean L* 15.7, mean C* 11.8, detail 9.26",
+    holdout3: {
+      drawnAs: "extreme aspect",
+      camera: "NIKON CORPORATION NIKON D750",
+      phone: false,
+      meanL: 15.7382,
+      lowKey: 0.5481,
+      skin: 0.0318,
+      strata: ["low-light", "extreme-aspect"],
+    },
+  },
+  {
+    label: "sealed3-lowlight-freedom-250-national-memorial",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/7/7d/Freedom_250_National_Memorial_Day_Observance_-_An_Evening_of_Stories_of_Service_at_Memorial_Amphitheater_in_Arlington_National_Cemetery%2C_Virginia_on_May_25%2C_2026_-_73.jpg",
+    ],
+    ext: ".jpg",
+    width: 3679,
+    height: 5519,
+    split: "holdout3",
+    sha256: "b73ad60dd7ef564b8682bb6aa62dbece7268e8cdc948ed49c7dfcfebb4c58b77",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Freedom_250_National_Memorial_Day_Observance_-_An_Evening_of_Stories_of_Service_at_Memorial_Amphitheater_in_Arlington_National_Cemetery,_Virginia_on_May_25,_2026_-_73.jpg",
+    author: "usarmyband",
+    licence: "CC BY 4.0",
+    axis: "low light",
+    notes:
+      "portrait, Canon Canon EOS R6m2, mean L* 26.0, mean C* 27.6, detail 2.86",
+    holdout3: {
+      drawnAs: "low light",
+      camera: "Canon Canon EOS R6m2",
+      phone: false,
+      meanL: 25.995,
+      lowKey: 0.6017,
+      skin: 0.0218,
+      strata: ["low-light"],
+    },
+  },
+  {
+    label: "sealed3-lowlight-pszczyna-train-station-by",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/5/55/Pszczyna_train_station_by_night_%282%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 4624,
+    height: 3472,
+    split: "holdout3",
+    sha256: "f6792b6ed8a55ecc5bf79b65862d82e698530be2ba33e5738cd74d87cf06b20b",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Pszczyna_train_station_by_night_(2).jpg",
+    author: "Michał Bulsa",
+    licence: "CC0",
+    axis: "low light",
+    notes:
+      "landscape, Xiaomi 22021211RG, mean L* 21.2, mean C* 7.9, detail 7.63",
+    holdout3: {
+      drawnAs: "low light",
+      camera: "Xiaomi 22021211RG",
+      phone: true,
+      meanL: 21.2236,
+      lowKey: 0.4398,
+      skin: 0.1566,
+      strata: ["smartphone", "skin", "low-light"],
+    },
+  },
+  {
+    label: "sealed3-lowlight-rishikesh-and-the-river",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/0/0a/Rishikesh_and_The_River_Ganga_at_Night_and_Illuminated_Janki_Bridge_07.jpg",
+    ],
+    ext: ".jpg",
+    width: 3840,
+    height: 2160,
+    split: "holdout3",
+    sha256: "976666e9838178fab9adaf23adee63f07b6ee77582bcc2dd438932749c7f6574",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Rishikesh_and_The_River_Ganga_at_Night_and_Illuminated_Janki_Bridge_07.jpg",
+    author: "Goutam1962",
+    licence: "CC BY-SA 4.0",
+    axis: "low light",
+    notes:
+      "landscape, Xiaomi Redmi Note 7 Pro, mean L* 24.1, mean C* 8.5, detail 5.37",
+    holdout3: {
+      drawnAs: "low light",
+      camera: "Xiaomi Redmi Note 7 Pro",
+      phone: true,
+      meanL: 24.0594,
+      lowKey: 0.0454,
+      skin: 0.0306,
+      strata: ["smartphone", "low-light"],
+    },
+  },
+  {
+    label: "sealed3-lowlight-aurora-borealis-svolv-rgeita",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/1/13/Aurora_Borealis_Svolv%C3%A6rgeita_001.jpg",
+    ],
+    ext: ".jpg",
+    width: 3204,
+    height: 2132,
+    split: "holdout3",
+    sha256: "d0fc4cb84eea8cc25e9609277bd4d61ace13b46a5fdfdf510ce2a04f3f82986f",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Aurora_Borealis_Svolv%C3%A6rgeita_001.jpg",
+    author: "Birgit Fostervold",
+    licence: "CC BY-SA 4.0",
+    axis: "low light",
+    notes:
+      "landscape, NIKON CORPORATION NIKON Z 6_2, mean L* 9.3, mean C* 5.8, detail 2.39",
+    holdout3: {
+      drawnAs: "low light",
+      camera: "NIKON CORPORATION NIKON Z 6_2",
+      phone: false,
+      meanL: 9.3269,
+      lowKey: 0.6547,
+      skin: 0.0215,
+      strata: ["low-light"],
+    },
+  },
+  {
+    label: "sealed3-lowlight-aurora-16067336322",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/b/bf/Aurora_-_16067336322.jpg",
+    ],
+    ext: ".jpg",
+    width: 5616,
+    height: 3744,
+    split: "holdout3",
+    sha256: "03b643c3448521a821f22c0faf999dd0b6c9e57f8b52bca41bdd2b039d1add31",
+    source: "https://commons.wikimedia.org/wiki/File:Aurora_-_16067336322.jpg",
+    author: "mmmavocado",
+    licence: "CC BY 2.0",
+    axis: "low light",
+    notes:
+      "landscape, Canon Canon EOS 5D Mark II, mean L* 8.0, mean C* 5.2, detail 1.29",
+    holdout3: {
+      drawnAs: "low light",
+      camera: "Canon Canon EOS 5D Mark II",
+      phone: false,
+      meanL: 8.007,
+      lowKey: 0.6917,
+      skin: 0,
+      strata: ["low-light"],
+    },
+  },
+  {
+    label: "sealed3-lowlight-watching-starry-sky-at",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/f/ff/Watching_Starry_Sky_at_Lake_Kasumigaura_at_Tsuchiura%2C_Japan_%2856536614%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 1363,
+    height: 2048,
+    split: "holdout3",
+    sha256: "87e26d80af439511dd4bdabff3e6c6381b4e87ef7b29a19a585c1b2326fdb9de",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Watching_Starry_Sky_at_Lake_Kasumigaura_at_Tsuchiura,_Japan_(56536614).jpg",
+    author: "Chibi Medako",
+    licence: "CC BY 3.0",
+    axis: "low light",
+    notes:
+      "portrait, NIKON CORPORATION NIKON D700, mean L* 28.7, mean C* 48.8, detail 8.71",
+    holdout3: {
+      drawnAs: "low light",
+      camera: "NIKON CORPORATION NIKON D700",
+      phone: false,
+      meanL: 28.6557,
+      lowKey: 0.0876,
+      skin: 0,
+      strata: ["low-light"],
+    },
+  },
+  {
+    label: "sealed3-lowlight-korea-yeosu-dolsan-bridge",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/c/ca/Korea-Yeosu-Dolsan_Bridge_at_night-01.jpg",
+    ],
+    ext: ".jpg",
+    width: 1917,
+    height: 2935,
+    split: "holdout3",
+    sha256: "403dd5a55566b13f76543dd7754ae0abfb2719d0367ec953f0cfa3023291914c",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Korea-Yeosu-Dolsan_Bridge_at_night-01.jpg",
+    author: "Doo-ho Kim from Seoul, Republic of Korea",
+    licence: "CC BY-SA 2.0",
+    axis: "low light",
+    notes:
+      "portrait, NIKON CORPORATION NIKON D70, mean L* 11.6, mean C* 10.0, detail 5.60",
+    holdout3: {
+      drawnAs: "low light",
+      camera: "NIKON CORPORATION NIKON D70",
+      phone: false,
+      meanL: 11.6277,
+      lowKey: 0.7464,
+      skin: 0.0333,
+      strata: ["low-light"],
+    },
+  },
+  {
+    label: "sealed3-lowlight-south-train-station-at",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/6/64/South_Train_Station_at_night%2C_2019.jpg",
+    ],
+    ext: ".jpg",
+    width: 5248,
+    height: 2952,
+    split: "holdout3",
+    sha256: "c74b4e24f83a007b009fa76475825d6ccbd4df7c04d671c1c6945dbe5f2c8219",
+    source:
+      "https://commons.wikimedia.org/wiki/File:South_Train_Station_at_night,_2019.jpg",
+    author: "Shum3rR",
+    licence: "CC BY-SA 4.0",
+    axis: "low light",
+    notes: "landscape, Motorola XT1254, mean L* 26.5, mean C* 7.7, detail 7.42",
+    holdout3: {
+      drawnAs: "low light",
+      camera: "Motorola XT1254",
+      phone: true,
+      meanL: 26.5138,
+      lowKey: 0.3875,
+      skin: 0.0074,
+      strata: ["smartphone", "low-light"],
+    },
+  },
+  {
+    label: "sealed3-lowlight-fireworks-lugano-2011-3",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/d/d2/Fireworks_lugano_2011-3.jpg",
+    ],
+    ext: ".jpg",
+    width: 1733,
+    height: 2600,
+    split: "holdout3",
+    sha256: "6154480528d8b9541baaa7a871d24396931f1fe059cbfa83e65cf6915a13b012",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Fireworks_lugano_2011-3.jpg",
+    author: "Philippe Moret",
+    licence: "CC BY-SA 4.0",
+    axis: "low light",
+    notes:
+      "portrait, Canon Canon EOS 400D DIGITAL, mean L* 32.8, mean C* 17.8, detail 6.26",
+    holdout3: {
+      drawnAs: "low light",
+      camera: "Canon Canon EOS 400D DIGITAL",
+      phone: false,
+      meanL: 32.7992,
+      lowKey: 0.3839,
+      skin: 0.3221,
+      strata: ["skin", "low-light"],
+    },
+  },
+  {
+    label: "sealed3-skin-indonesia-traffic-signs-warning",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/6/62/Indonesia_Traffic-signs_Warning-sign-07.jpg",
+    ],
+    ext: ".jpg",
+    width: 3306,
+    height: 4278,
+    split: "holdout3",
+    sha256: "63b483e0a3e800a656c90816e0b976d0312b5431de603f6567881675c8eda303",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Indonesia_Traffic-signs_Warning-sign-07.jpg",
+    author: "CEphoto, Uwe Aranas",
+    licence: "CC BY-SA 3.0",
+    axis: "skin: dark",
+    notes:
+      "portrait, Canon Canon EOS 5D Mark III, mean L* 37.9, mean C* 24.3, detail 18.65",
+    holdout3: {
+      drawnAs: "skin: dark",
+      camera: "Canon Canon EOS 5D Mark III",
+      phone: false,
+      meanL: 37.8865,
+      lowKey: 0.0879,
+      skin: 0.1314,
+      strata: ["skin"],
+    },
+  },
+  {
+    label: "sealed3-skin-portrait-head-jar-peru",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/9/95/Portrait_head_jar%2C_Peru%2C_Moche_IV_or_V%2C_north_coast%2C_c._500_AD%2C_earthenware_-_Krannert_Art_Museum%2C_UIUC_-_DSC06498.jpg",
+    ],
+    ext: ".jpg",
+    width: 3495,
+    height: 3178,
+    split: "holdout3",
+    sha256: "8b514b2c207f1517ddea2d7b760f8655543ec21c6992af86f8df9d7194f1ce1b",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Portrait_head_jar,_Peru,_Moche_IV_or_V,_north_coast,_c._500_AD,_earthenware_-_Krannert_Art_Museum,_UIUC_-_DSC06498.jpg",
+    author: "Daderot",
+    licence: "Public domain",
+    axis: "skin: medium",
+    notes:
+      "landscape, SONY DSC-RX100M3, mean L* 47.2, mean C* 25.9, detail 1.80",
+    holdout3: {
+      drawnAs: "skin: medium",
+      camera: "SONY DSC-RX100M3",
+      phone: false,
+      meanL: 47.2007,
+      lowKey: 0.0193,
+      skin: 0.2174,
+      strata: ["skin"],
+    },
+  },
+  {
+    label: "sealed3-skin-portrait-gallery-cafe-geograph",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/0/08/Portrait_Gallery_caf%C3%A9_-_geograph.org.uk_-_7883755.jpg",
+    ],
+    ext: ".jpg",
+    width: 5131,
+    height: 3256,
+    split: "holdout3",
+    sha256: "2adf0c29877dd35a3e975f3cee80e946a8849c04f1e71148de812211dd93209f",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Portrait_Gallery_caf%C3%A9_-_geograph.org.uk_-_7883755.jpg",
+    author: "Anthony O'Neil",
+    licence: "CC BY-SA 2.0",
+    axis: "skin: medium",
+    notes:
+      "landscape, FUJIFILM X-Pro3, mean L* 43.4, mean C* 15.2, detail 7.03",
+    holdout3: {
+      drawnAs: "skin: medium",
+      camera: "FUJIFILM X-Pro3",
+      phone: false,
+      meanL: 43.4371,
+      lowKey: 0.1205,
+      skin: 0.2997,
+      strata: ["skin"],
+    },
+  },
+  {
+    label: "sealed3-skin-emmy-at-esc2025-for",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/d/d7/Emmy_at_ESC2025_for_Ireland_5.jpg",
+    ],
+    ext: ".jpg",
+    width: 4562,
+    height: 3650,
+    split: "holdout3",
+    sha256: "8602c74e165f9b00088497d23a9c3961383c7c47b21abadcd6888fcab01038d4",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Emmy_at_ESC2025_for_Ireland_5.jpg",
+    author: "Quejaytee",
+    licence: "CC BY 4.0",
+    axis: "skin: dark",
+    notes:
+      "landscape, Canon Canon EOS R1, mean L* 31.6, mean C* 20.7, detail 6.13",
+    holdout3: {
+      drawnAs: "skin: dark",
+      camera: "Canon Canon EOS R1",
+      phone: false,
+      meanL: 31.5779,
+      lowKey: 0.1713,
+      skin: 0.4735,
+      strata: ["skin"],
+    },
+  },
+  {
+    label: "sealed3-skin-banana-vendor-uganda-15166221095",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/1/16/Banana_Vendor%2C_Uganda_%2815166221095%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 4016,
+    height: 5670,
+    split: "holdout3",
+    sha256: "c8a6efe943158bc9f4249a2618fd491edf33f9875a0c24591dbdb4c2580cea71",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Banana_Vendor,_Uganda_(15166221095).jpg",
+    author: "Rod Waddington from Kergunyah, Australia",
+    licence: "CC BY-SA 2.0",
+    axis: "skin: medium",
+    notes:
+      "portrait, NIKON CORPORATION NIKON D600, mean L* 54.2, mean C* 32.9, detail 6.84",
+    holdout3: {
+      drawnAs: "skin: medium",
+      camera: "NIKON CORPORATION NIKON D600",
+      phone: false,
+      meanL: 54.2356,
+      lowKey: 0.0267,
+      skin: 0.4255,
+      strata: ["skin"],
+    },
+  },
+  {
+    label: "sealed3-skin-washare-from-the-hamer",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/c/cc/Washare_from_the_Hamer_tribe_in_Logara%2C_near_Turmi%2C_Omo_Valley%2C_Ethiopia_%2816882803797%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 4992,
+    height: 7512,
+    split: "holdout3",
+    sha256: "7572ce5eea2ae7844c6ecd8ebe2eb71eb363c0c475b9131bd9b59c5b64842ed2",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Washare_from_the_Hamer_tribe_in_Logara,_near_Turmi,_Omo_Valley,_Ethiopia_(16882803797).jpg",
+    author: "Alfred Weidinger from Vienna, Austria",
+    licence: "CC BY 2.0",
+    axis: "skin: dark",
+    notes:
+      "portrait, Leica Camera AG Leica S2, mean L* 56.2, mean C* 17.4, detail 8.70",
+    holdout3: {
+      drawnAs: "skin: dark",
+      camera: "Leica Camera AG Leica S2",
+      phone: false,
+      meanL: 56.1924,
+      lowKey: 0.0362,
+      skin: 0.1706,
+      strata: ["skin"],
+    },
+  },
+  {
+    label: "sealed3-skin-domkirken-kristiansand-norway-nygotisk",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/2/2b/DOMKIRKEN_KRISTIANSAND_Norway_Nygotisk_korskirke_Thrap-Meyer_1885_Cathedral_Neo-Gothic_church_2023-10-18_INTERIOR_Alter_altertavle_av_Eilif_Peterssen_alterring_koret_Altar_piece_etc_IMG_3915.jpg",
+    ],
+    ext: ".jpg",
+    width: 5619,
+    height: 7493,
+    split: "holdout3",
+    sha256: "e7d3d862f1a8daca3790fd47f549385c04f9ed3ca0005e5e4a590d9420f3542c",
+    source:
+      "https://commons.wikimedia.org/wiki/File:DOMKIRKEN_KRISTIANSAND_Norway_Nygotisk_korskirke_Thrap-Meyer_1885_Cathedral_Neo-Gothic_church_2023-10-18_INTERIOR_Alter_altertavle_av_Eilif_Peterssen_alterring_koret_Altar_piece_etc_IMG_3915.jpg",
+    author: "Wolfmann",
+    licence: "CC BY-SA 4.0",
+    axis: "skin: light",
+    notes:
+      "portrait, Apple iPhone 14 Pro, mean L* 50.7, mean C* 18.6, detail 7.98",
+    holdout3: {
+      drawnAs: "skin: light",
+      camera: "Apple iPhone 14 Pro",
+      phone: true,
+      meanL: 50.6984,
+      lowKey: 0.0392,
+      skin: 0.6309,
+      strata: ["smartphone", "skin"],
+    },
+  },
+  {
+    label: "sealed3-skin-mumtaz-alia-akbari-2",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/c/c3/Mumtaz_Alia_Akbari_2.jpg",
+    ],
+    ext: ".jpg",
+    width: 1488,
+    height: 2240,
+    split: "holdout3",
+    sha256: "72cffd27b4658217ae3f6fe82b1bbb45abe9824433ba00486bb53e2b4315f67f",
+    source: "https://commons.wikimedia.org/wiki/File:Mumtaz_Alia_Akbari_2.jpg",
+    author: "Kazi Riton",
+    licence: "CC BY-SA 4.0",
+    axis: "skin: light",
+    notes:
+      "portrait, NIKON CORPORATION NIKON D100, mean L* 49.9, mean C* 15.5, detail 4.88",
+    holdout3: {
+      drawnAs: "skin: light",
+      camera: "NIKON CORPORATION NIKON D100",
+      phone: false,
+      meanL: 49.8971,
+      lowKey: 0.147,
+      skin: 0.1958,
+      strata: ["skin"],
+    },
+  },
+  {
+    label: "sealed3-skin-her-majesty",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/d/d3/Her_Majesty.jpg",
+    ],
+    ext: ".jpg",
+    width: 3744,
+    height: 5616,
+    split: "holdout3",
+    sha256: "3855dbe227a5b6b384ed9b69ff1bb078d538acfe10bf4c41f387e2947a31d3fc",
+    source: "https://commons.wikimedia.org/wiki/File:Her_Majesty.jpg",
+    author: "Nikonambassug",
+    licence: "CC BY-SA 4.0",
+    axis: "skin: light",
+    notes:
+      "portrait, Canon Canon EOS 5D Mark II, mean L* 74.1, mean C* 15.4, detail 4.64",
+    holdout3: {
+      drawnAs: "skin: light",
+      camera: "Canon Canon EOS 5D Mark II",
+      phone: false,
+      meanL: 74.0514,
+      lowKey: 0.0012,
+      skin: 0.1611,
+      strata: ["skin"],
+    },
+  },
+  {
+    label: "sealed3-highkey-canon-ef-100mm-f2",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/a/a2/Canon_EF_100mm_F2.8_Macro_USM_n02.jpg",
+    ],
+    ext: ".jpg",
+    width: 3338,
+    height: 5000,
+    split: "holdout3",
+    sha256: "83c6b2ff2a7fd742d405187c21949d7ce74d734420bffc5945e7d63b09c803a1",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Canon_EF_100mm_F2.8_Macro_USM_n02.jpg",
+    author: "Marie-Lan Nguyen",
+    licence: "CC BY 2.5",
+    axis: "high key",
+    notes:
+      "portrait, NIKON CORPORATION NIKON D800E, mean L* 54.5, mean C* 1.0, detail 4.37",
+    holdout3: {
+      drawnAs: "high key",
+      camera: "NIKON CORPORATION NIKON D800E",
+      phone: false,
+      meanL: 54.4692,
+      lowKey: 0.0427,
+      skin: 0.0051,
+      strata: [],
+    },
+  },
+  {
+    label: "sealed3-highkey-runcam-eagle-black-fpv",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/8/81/Runcam_Eagle_black_FPV_camera_with_bracket.jpg",
+    ],
+    ext: ".jpg",
+    width: 3384,
+    height: 3087,
+    split: "holdout3",
+    sha256: "0defdf25c8ebb285fb86e53a955d9dc0bc34809183dc52417ee4edcfbd569a21",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Runcam_Eagle_black_FPV_camera_with_bracket.jpg",
+    author: "Lucasbosch",
+    licence: "CC BY-SA 3.0",
+    axis: "high key",
+    notes:
+      "landscape, Canon Canon EOS 6D, mean L* 62.7, mean C* 1.0, detail 3.85",
+    holdout3: {
+      drawnAs: "high key",
+      camera: "Canon Canon EOS 6D",
+      phone: false,
+      meanL: 62.7189,
+      lowKey: 0.0677,
+      skin: 0.0001,
+      strata: [],
+    },
+  },
+  {
+    label: "sealed3-highkey-chaise-lounges-on-the",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/4/4b/Chaise_lounges_on_the_beautiful_tropical_beach_with_white_sand%2C_Bali%2C_Indonesia.jpg",
+    ],
+    ext: ".jpg",
+    width: 6000,
+    height: 4000,
+    split: "holdout3",
+    sha256: "309d21246a95dd088a45ce76f8c8de1281c1f056987e4826c1f807630d546c49",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Chaise_lounges_on_the_beautiful_tropical_beach_with_white_sand,_Bali,_Indonesia.jpg",
+    author: "Artem Beliaikin",
+    licence: "CC BY 2.0",
+    axis: "high key",
+    notes:
+      "landscape, Canon Canon EOS 80D, mean L* 71.3, mean C* 19.3, detail 12.67",
+    holdout3: {
+      drawnAs: "high key",
+      camera: "Canon Canon EOS 80D",
+      phone: false,
+      meanL: 71.3014,
+      lowKey: 0.0257,
+      skin: 0.0907,
+      strata: [],
+    },
+  },
+  {
+    label: "sealed3-highkey-white-sand-beach-galapagos",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/1/14/White_Sand_Beach%2C_Galapagos_%2850138582752%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 5979,
+    height: 3363,
+    split: "holdout3",
+    sha256: "f38b54cc31792ce73105c2a64c4d474b38fcf7340e5ff8fa482a241efde3d7a7",
+    source:
+      "https://commons.wikimedia.org/wiki/File:White_Sand_Beach,_Galapagos_(50138582752).jpg",
+    author: "kuhnmi",
+    licence: "CC BY 2.0",
+    axis: "high key",
+    notes:
+      "landscape, NIKON CORPORATION NIKON D7100, mean L* 84.6, mean C* 6.8, detail 2.28",
+    holdout3: {
+      drawnAs: "high key",
+      camera: "NIKON CORPORATION NIKON D7100",
+      phone: false,
+      meanL: 84.6242,
+      lowKey: 0,
+      skin: 0,
+      strata: [],
+    },
+  },
+  {
+    label: "sealed3-chroma-ewe-sheep-black-and",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/5/56/Ewe_sheep_black_and_white.jpg",
+    ],
+    ext: ".jpg",
+    width: 3037,
+    height: 2578,
+    split: "holdout3",
+    sha256: "a2bd1d8e47697d8c23c3ace0756b6f7b33c7b24f1b94eba1a3000a319f53c960",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Ewe_sheep_black_and_white.jpg",
+    author: "George Gastin",
+    licence: "CC BY-SA 3.0",
+    axis: "chroma floor",
+    notes:
+      "landscape, NIKON CORPORATION NIKON D40X, mean L* 41.8, mean C* 0.0, detail 4.91",
+    holdout3: {
+      drawnAs: "chroma floor",
+      camera: "NIKON CORPORATION NIKON D40X",
+      phone: false,
+      meanL: 41.7838,
+      lowKey: 0.2322,
+      skin: 0,
+      strata: [],
+    },
+  },
+  {
+    label: "sealed3-chroma-morning-mist-lake-tinaroo",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/6/63/Morning_mist_Lake_Tinaroo_Tinaroo_State_Forest_Atherton_Tableland_Queensland_1986_IMG_0016_%282%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 6533,
+    height: 4309,
+    split: "holdout3",
+    sha256: "063ca041b5b74a8071b393696b6a0c99b7d14632a15ad34bf8fc8903c699e0be",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Morning_mist_Lake_Tinaroo_Tinaroo_State_Forest_Atherton_Tableland_Queensland_1986_IMG_0016_(2).jpg",
+    author: "John Robert McPherson",
+    licence: "CC BY-SA 4.0",
+    axis: "chroma floor",
+    notes:
+      "landscape, Canon CanoScan 8800F, mean L* 40.8, mean C* 0.0, detail 3.05",
+    holdout3: {
+      drawnAs: "chroma floor",
+      camera: "Canon CanoScan 8800F",
+      phone: false,
+      meanL: 40.7978,
+      lowKey: 0,
+      skin: 0,
+      strata: [],
+    },
+  },
+  {
+    label: "sealed3-chroma-waltensburg-vuorz-panoramaweg-20",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/e/ec/Waltensburg-Vuorz._Panoramaweg._20-09-2025._%28actm.%29_39.jpg",
+    ],
+    ext: ".jpg",
+    width: 5143,
+    height: 2893,
+    split: "holdout3",
+    sha256: "201b1948604d0198ae841fd1b438a7db3609d60a281baa104ce4fb08764698d6",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Waltensburg-Vuorz._Panoramaweg._20-09-2025._(actm.)_39.jpg",
+    author: "Agnes Monkelbaan",
+    licence: "CC BY-SA 4.0",
+    axis: "chroma floor",
+    notes:
+      "landscape, Canon Canon EOS M, mean L* 53.1, mean C* 0.0, detail 7.66",
+    holdout3: {
+      drawnAs: "chroma floor",
+      camera: "Canon Canon EOS M",
+      phone: false,
+      meanL: 53.0811,
+      lowKey: 0.0271,
+      skin: 0,
+      strata: [],
+    },
+  },
+  {
+    label: "sealed3-chroma-not-so-urban-morning",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/6/69/Not_So_Urban_Morning_%28251257351%29.jpeg",
+    ],
+    ext: ".jpg",
+    width: 2048,
+    height: 1365,
+    split: "holdout3",
+    sha256: "c9d15122558d1c5854cae8a56b236b1d0b20f355b3a3decfc8e7f084c74f0a64",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Not_So_Urban_Morning_(251257351).jpeg",
+    author: "Nicu Buculei",
+    licence: "CC BY-SA 3.0",
+    axis: "chroma floor",
+    notes:
+      "landscape, Canon Canon EOS 6D, mean L* 64.7, mean C* 0.0, detail 3.91",
+    holdout3: {
+      drawnAs: "chroma floor",
+      camera: "Canon Canon EOS 6D",
+      phone: false,
+      meanL: 64.6802,
+      lowKey: 0.0001,
+      skin: 0,
+      strata: [],
+    },
+  },
+  {
+    label: "sealed3-daylight-summer-park-concert-4618857",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/2/25/Summer_Park_Concert_%284618857%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 3456,
+    height: 5184,
+    split: "holdout3",
+    sha256: "5dfb1c989bc28810c9d1ccef7ed878a1039f410cfd4e0bc14c02d8cc3c0a674b",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Summer_Park_Concert_(4618857).jpg",
+    author: "U.S. Marine Corps photo by Cpl. Cristian Ricardo",
+    licence: "Public domain",
+    axis: "daylight",
+    notes:
+      "portrait, Canon Canon EOS-1D X, mean L* 80.3, mean C* 5.1, detail 2.70",
+    holdout3: {
+      drawnAs: "daylight",
+      camera: "Canon Canon EOS-1D X",
+      phone: false,
+      meanL: 80.3406,
+      lowKey: 0.0009,
+      skin: 0.0909,
+      strata: [],
+    },
+  },
+  {
+    label: "sealed3-daylight-summer-at-knole-park",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/4/44/Summer_at_Knole_Park_-_geograph.org.uk_-_6856983.jpg",
+    ],
+    ext: ".jpg",
+    width: 4608,
+    height: 3456,
+    split: "holdout3",
+    sha256: "14eb3c39b6a2ec211299c25bb3d9c35190d35780e5dc65f21cd0697f8ca7f711",
+    source:
+      "https://commons.wikimedia.org/wiki/File:Summer_at_Knole_Park_-_geograph.org.uk_-_6856983.jpg",
+    author: "Peter S",
+    licence: "CC BY-SA 2.0",
+    axis: "daylight",
+    notes:
+      "landscape, NIKON COOLPIX A10, mean L* 49.1, mean C* 22.4, detail 10.79",
+    holdout3: {
+      drawnAs: "daylight",
+      camera: "NIKON COOLPIX A10",
+      phone: false,
+      meanL: 49.0646,
+      lowKey: 0.0307,
+      skin: 0.0159,
+      strata: [],
+    },
+  },
+  {
+    label: "sealed3-daylight-iss067-e-152527-view",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/6/63/ISS067-E-152527_-_View_of_Earth.jpg",
+    ],
+    ext: ".jpg",
+    width: 5568,
+    height: 3712,
+    split: "holdout3",
+    sha256: "f642f808fc7d18c33d843ec66c23b50ba4e59ac6de0f9f0c00bf6df975078c8e",
+    source:
+      "https://commons.wikimedia.org/wiki/File:ISS067-E-152527_-_View_of_Earth.jpg",
+    author:
+      "Earth Science and Remote Sensing Unit, Lyndon B. Johnson Space Center",
+    licence: "Public domain",
+    axis: "daylight",
+    notes:
+      "landscape, NIKON CORPORATION NIKON D5, mean L* 45.9, mean C* 6.0, detail 8.81",
+    holdout3: {
+      drawnAs: "daylight",
+      camera: "NIKON CORPORATION NIKON D5",
+      phone: false,
+      meanL: 45.8935,
+      lowKey: 0,
+      skin: 0.0001,
+      strata: [],
+    },
+  },
+  {
+    label: "sealed3-daylight-2024-09-28-a",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/6/60/2024-09-28_A_view_from_the_hiking_trail_to_L%27Arche_de_Corte_06.jpg",
+    ],
+    ext: ".jpg",
+    width: 5484,
+    height: 3656,
+    split: "holdout3",
+    sha256: "d4a049322ece3e3ede6ccab4729fc5eba08d5d6988d1414968ca3cb855c938fa",
+    source:
+      "https://commons.wikimedia.org/wiki/File:2024-09-28_A_view_from_the_hiking_trail_to_L%27Arche_de_Corte_06.jpg",
+    author: "Alexkom000",
+    licence: "CC BY 4.0",
+    axis: "daylight",
+    notes: "landscape, SONY ILCE-7M3, mean L* 53.3, mean C* 25.1, detail 10.60",
+    holdout3: {
+      drawnAs: "daylight",
+      camera: "SONY ILCE-7M3",
+      phone: false,
+      meanL: 53.3099,
+      lowKey: 0.0041,
+      skin: 0.0793,
+      strata: [],
+    },
+  },
+  // end of the holdout3 pins
 ];
 
 /** Where a curated image is cached. */
@@ -1329,10 +2628,10 @@ export function naturalImagePath(spec: NaturalImageSpec): string {
 
 /**
  * The curated pins `ensureNaturalImages` fetches: every one that is not in
- * the sealed holdout2 split, or only the labels in `only`. A label that is
- * unknown, or that names a holdout2 pin, throws before anything is fetched.
- * `images` is the table to select from, so the self-test can drive it with
- * fixtures.
+ * a sealed split (holdout2, holdout3), or only the labels in `only`. A label
+ * that is unknown, or that names a sealed pin, throws before anything is
+ * fetched. `images` is the table to select from, so the self-test can drive
+ * it with fixtures.
  */
 export function naturalImagesToFetch(
   only?: readonly string[],
@@ -1346,16 +2645,20 @@ export function naturalImagesToFetch(
       if (spec === undefined) {
         throw new Error(`unknown curated image label: ${label}`);
       }
-      if (spec.split === "holdout2") {
+      if (isSealed(spec.split)) {
+        const fetcher =
+          spec.split === "holdout2"
+            ? "ensureHoldout2Images"
+            : "ensureHoldout3Images";
         throw new Error(
-          `${label} is in the sealed holdout2 split; only ensureHoldout2Images fetches it, through the register gate`,
+          `${label} is in the sealed ${spec.split} split; only ${fetcher} fetches it, through the register gate`,
         );
       }
     }
   }
   return images.filter(
     (spec) =>
-      spec.split !== "holdout2" && (wanted === null || wanted.has(spec.label)),
+      !isSealed(spec.split) && (wanted === null || wanted.has(spec.label)),
   );
 }
 

@@ -3,7 +3,7 @@
  * of the corpus and emit a decision table.
  *
  * Usage: node dist/sweep.js <config.json>
- *                          [--split tune|tune2|holdout|holdout2 [--decision ID]]
+ *                          [--split tune|tune2|holdout|holdout2|holdout3 [--decision ID]]
  *                          [--max-images N] [--out-dir DIR]
  *
  * A full run writes `tools/comparison/results/<name>[-<split>].json` (no
@@ -37,6 +37,11 @@
  * read once, whole, into a committed result the run refuses to overwrite.
  * The config's corpus says which sealed holdout2 is read: the photographic one
  * (#76) or the alpha one (#93); the corpus "all" names both and is refused.
+ * `--split holdout3` (#129) opens the same way, for a frozen entry, and reads
+ * whichever of its three parts — photographic, alpha, graphics — the config's
+ * corpus names ("all" reads all three, so every stratum is in one run). Each
+ * entry reads it at most once: a second sweep for the same decision, under
+ * any result name, refuses (`assertHoldout3Unread`).
  * `--split holdout` is the graphics corpus's
  * holdout, and refuses a photographic or alpha corpus.
  */
@@ -75,10 +80,14 @@ import { bootstrapCI } from "./stats.ts";
 import { ensureGraphicImages } from "./graphic-images.ts";
 import {
   type Holdout2Opening,
+  type Holdout3Opening,
   assertHoldout2Unread,
+  assertHoldout3Unread,
   ensureHoldout2Images,
+  ensureHoldout3Images,
   ensureHoldoutImages,
   openHoldout2,
+  openHoldout3,
 } from "./holdout-images.ts";
 import { loadImage } from "./image-loader.ts";
 import {
@@ -356,7 +365,7 @@ const { values, positionals } = parseArgs({
 const configPathArg = positionals[0];
 if (!configPathArg) {
   console.error(
-    "Usage: node dist/sweep.js <config.json> [--split tune|tune2|holdout|holdout2] [--decision ID] [--max-images N] [--out-dir DIR]",
+    "Usage: node dist/sweep.js <config.json> [--split tune|tune2|holdout|holdout2|holdout3] [--decision ID] [--max-images N] [--out-dir DIR]",
   );
   process.exit(1);
 }
@@ -364,21 +373,28 @@ if (!configPathArg) {
 const configPath: string = configPathArg;
 let split: CorpusSplit;
 let holdout2: Holdout2Opening | null = null;
+let holdout3: Holdout3Opening | null = null;
 try {
   split = parseSplit(values.split ?? "tune", false);
-  if (values.decision !== undefined && split !== "holdout2") {
+  const sealed = split === "holdout2" || split === "holdout3";
+  if (values.decision !== undefined && !sealed) {
     throw new Error(
-      `--decision names the register decision a holdout2 reading answers; it means nothing on --split ${split}`,
+      `--decision names the register decision a sealed reading (holdout2, holdout3) answers; it means nothing on --split ${split}`,
     );
   }
-  if (split === "holdout2") {
-    // A partial or side-channel look at the sealed split is still a look.
-    if (values["max-images"] !== undefined || values["out-dir"] !== undefined) {
-      throw new Error(
-        "--split holdout2 takes neither --max-images nor --out-dir: the sealed split is read whole, once, into a committed result",
-      );
-    }
-    holdout2 = openHoldout2(values.decision);
+  // A partial or side-channel look at the sealed split is still a look.
+  if (
+    sealed &&
+    (values["max-images"] !== undefined || values["out-dir"] !== undefined)
+  ) {
+    throw new Error(
+      `--split ${split} takes neither --max-images nor --out-dir: the sealed split is read whole, once, into a committed result`,
+    );
+  }
+  if (split === "holdout2") holdout2 = openHoldout2(values.decision);
+  if (split === "holdout3") {
+    holdout3 = openHoldout3(values.decision);
+    assertHoldout3Unread(holdout3.decision, "sweep");
   }
 } catch (e) {
   console.error(e instanceof Error ? e.message : String(e));
@@ -428,7 +444,10 @@ async function loadCorpus(corpus: CorpusSet): Promise<ImageInput[]> {
   if (split === "holdout2" && holdout2 === null) {
     throw new Error("holdout2 was not opened");
   }
-  const opening = holdout2 ?? undefined;
+  if (split === "holdout3" && holdout3 === null) {
+    throw new Error("holdout3 was not opened");
+  }
+  const opening = holdout2 ?? holdout3 ?? undefined;
   // Only fetch a corpus a run will actually score: the alpha and graphics sets
   // are ~40 MB the photographic sweeps would never look at, and each sealed
   // holdout2 (photographic, #76; alpha, #93) is fetched only for its corpus,
@@ -436,11 +455,14 @@ async function loadCorpus(corpus: CorpusSet): Promise<ImageInput[]> {
   // never reaches here with "all": `assertHoldout2Corpus` refuses it first.
   const photo = corpus === "photo" || corpus === "all";
   if (photo && split === "tune2") await ensureHoldoutImages();
-  if (photo && opening !== undefined) await ensureHoldout2Images(opening);
+  if (photo && holdout2 !== null) await ensureHoldout2Images(holdout2);
+  if (photo && holdout3 !== null) await ensureHoldout3Images(holdout3);
   if (corpus === "alpha" || corpus === "all") {
     await ensureAlphaImages(split, opening);
   }
-  if (corpus === "graphic" || corpus === "all") await ensureGraphicImages();
+  if (corpus === "graphic" || corpus === "all") {
+    await ensureGraphicImages(split, holdout3 ?? undefined);
+  }
 
   const paths: string[] = [];
   for await (const entry of glob(
@@ -796,7 +818,9 @@ async function main(): Promise<void> {
     outDir,
     `${config.name}${split === "tune" ? "" : `-${split}`}`,
   );
-  if (split === "holdout2") assertHoldout2Unread(outPath);
+  if (split === "holdout2" || split === "holdout3") {
+    assertHoldout2Unread(outPath, split);
+  }
   let inputs = await loadCorpus(corpus);
   if (corpus !== "all") {
     inputs = inputs.filter((i) =>
@@ -892,6 +916,7 @@ async function main(): Promise<void> {
       forceOpaque: config.forceOpaque ?? false,
       expectBytes: config.expectBytes ?? null,
       ...(holdout2 !== null ? { holdout2 } : {}),
+      ...(holdout3 !== null ? { holdout3 } : {}),
       guardTolerances: {
         ssimulacra2Drop: GUARD_SSIM2_DROP,
         relativeRise: GUARD_REL_RISE,

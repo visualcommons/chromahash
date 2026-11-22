@@ -28,8 +28,20 @@ import { CURATED_IMAGES } from "./natural-images.ts";
  *   `spec/V0.8-DECISIONS.md` records the decision being answered as frozen
  *   (`holdout-images.ts` `openHoldout2`), and nothing reads it by accident:
  *   see {@link isSealed}.
+ * - `holdout3` — the third sealed split (#129): a photographic, an alpha and
+ *   a graphics part, labelled `sealed3-*`, `sealed3-cutout-*` and
+ *   `sealed3-graphic-*`, drawn on covariates alone under
+ *   {@link HOLDOUT3_PROTOCOL}. It exists because C1 and C2 read holdout2, so
+ *   the v0.8 D-entries need a split no decision has read. It opens through
+ *   the same register gate as holdout2, and each register entry reads it at
+ *   most once per tool (`holdout-images.ts` `assertHoldout3Unread`).
  */
-export type CorpusSplit = "tune" | "tune2" | "holdout" | "holdout2";
+export type CorpusSplit =
+  | "tune"
+  | "tune2"
+  | "holdout"
+  | "holdout2"
+  | "holdout3";
 
 /** Every split, in the order a tool lists them. */
 export const CORPUS_SPLITS: readonly CorpusSplit[] = [
@@ -37,6 +49,7 @@ export const CORPUS_SPLITS: readonly CorpusSplit[] = [
   "tune2",
   "holdout",
   "holdout2",
+  "holdout3",
 ];
 
 /**
@@ -81,9 +94,23 @@ export const HOLDOUT2_PREFIX = "sealed-";
 export const ALPHA_HOLDOUT2_PREFIX = `${HOLDOUT2_PREFIX}cutout-`;
 
 /**
+ * Filename prefix of every holdout3 image (#129). It does not start with
+ * {@link HOLDOUT2_PREFIX} (`sealed3-` is not `sealed-`), so the two seals
+ * never claim each other's images.
+ */
+export const HOLDOUT3_PREFIX = "sealed3-";
+
+/** The alpha part of holdout3: the seal, then the alpha corpus's prefix. */
+export const ALPHA_HOLDOUT3_PREFIX = `${HOLDOUT3_PREFIX}cutout-`;
+
+/** The graphics part of holdout3: the seal, then the graphics corpus's prefix. */
+export const GRAPHIC_HOLDOUT3_PREFIX = `${HOLDOUT3_PREFIX}graphic-`;
+
+/**
  * Resolve the corpus split for an image by its report name (the filename
  * without extension). Explicit rules:
  *
+ * - `sealed3-*` is holdout3, whatever any table says, in all three corpora.
  * - `sealed-*` is holdout2, whatever any table says — `sealed-cutout-*`
  *   included, which is the alpha corpus's sealed split.
  * - `kodak*` (the Kodak True Color suite) is tune2: it was holdout by
@@ -92,6 +119,7 @@ export const ALPHA_HOLDOUT2_PREFIX = `${HOLDOUT2_PREFIX}cutout-`;
  * - Everything else — all synthetic fixtures and realistic images — is tune.
  */
 export function splitFor(imageName: string): CorpusSplit {
+  if (imageName.startsWith(HOLDOUT3_PREFIX)) return "holdout3";
   if (imageName.startsWith(HOLDOUT2_PREFIX)) return "holdout2";
   if (imageName.startsWith("kodak")) return "tune2";
   return declaredSplit(imageName) ?? "tune";
@@ -104,7 +132,7 @@ export function splitFor(imageName: string): CorpusSplit {
  * and "all" never includes it.
  */
 export function isSealed(split: CorpusSplit): boolean {
-  return split === "holdout2";
+  return split === "holdout2" || split === "holdout3";
 }
 
 /**
@@ -161,16 +189,17 @@ export function parseSplit(
 /**
  * Parse `--split` for a photographs-only tool whose output is scratch — JSON
  * under `output/`, with no provenance and nothing committed. `holdout` is
- * refused because no photograph is in it any more; `holdout2` because a
- * reading of the sealed split has to be a committed result that records the
- * register decision it answers, which only `sweep` and `rd-budget` write.
+ * refused because no photograph is in it any more; `holdout2` and `holdout3`
+ * because a reading of a sealed split has to be a committed result that
+ * records the register decision it answers, which only `sweep` and
+ * `rd-budget` write.
  */
 export function parseScratchPhotoSplit(value: string): CorpusSplit | "all" {
   const split = parseSplit(value, true);
   if (split === "holdout") throw new Error(PHOTO_HOLDOUT_RETIRED);
-  if (split === "holdout2") {
+  if (split !== "all" && isSealed(split)) {
     throw new Error(
-      "this tool does not read holdout2: its output is scratch with no provenance, and a reading of the sealed split must be a committed result (results.ts) recording the register decision it answers — use sweep or rd-budget with --decision",
+      `this tool does not read ${split}: its output is scratch with no provenance, and a reading of a sealed split must be a committed result (results.ts) recording the register decision it answers — use sweep or rd-budget with --decision`,
     );
   }
   return split;
@@ -203,12 +232,16 @@ const CORPUS_PREFIXES: Record<Exclude<CorpusSet, "all">, readonly string[]> = {
 };
 
 /**
- * The corpus a sealed (`sealed-*`) image belongs to: the one whose prefix
- * follows the seal — `sealed-cutout-*` is alpha (#93) — and otherwise photo,
- * since the photographic holdout2 labels name an axis, not a corpus (#76).
+ * The corpus a sealed (`sealed-*` or `sealed3-*`) image belongs to: the one
+ * whose prefix follows the seal — `sealed-cutout-*` is alpha (#93),
+ * `sealed3-graphic-*` is graphics (#129) — and otherwise photo, since the
+ * photographic sealed labels name an axis, not a corpus (#76).
  */
-function sealedCorpus(imageName: string): Exclude<CorpusSet, "all"> {
-  const rest = imageName.slice(HOLDOUT2_PREFIX.length);
+function sealedCorpus(
+  imageName: string,
+  seal: string,
+): Exclude<CorpusSet, "all"> {
+  const rest = imageName.slice(seal.length);
   if (CORPUS_PREFIXES.alpha.some((p) => rest.startsWith(p))) return "alpha";
   if (CORPUS_PREFIXES.graphic.some((p) => rest.startsWith(p))) {
     return "graphic";
@@ -219,8 +252,10 @@ function sealedCorpus(imageName: string): Exclude<CorpusSet, "all"> {
 /** Does an image (by report name, i.e. filename without extension) belong to `set`? */
 export function inCorpus(imageName: string, set: CorpusSet): boolean {
   if (set === "all") return true;
-  if (imageName.startsWith(HOLDOUT2_PREFIX)) {
-    return sealedCorpus(imageName) === set;
+  for (const seal of [HOLDOUT3_PREFIX, HOLDOUT2_PREFIX]) {
+    if (imageName.startsWith(seal)) {
+      return sealedCorpus(imageName, seal) === set;
+    }
   }
   return CORPUS_PREFIXES[set].some((p) => imageName.startsWith(p));
 }
@@ -284,4 +319,118 @@ export function parseCorpusSet(value: string): CorpusSet {
   throw new Error(
     `unknown corpus "${value}" (expected photo, alpha, graphic or all)`,
   );
+}
+
+// ─── holdout3: the protocol, fixed before the draw (#129) ───────────────────
+
+/**
+ * A holdout3 stratum. A pin may sit in several. Each is decided by a
+ * covariate or by licence and EXIF metadata alone ({@link holdout3Strata}),
+ * never by how any encoder does on the image, so a conditional v0.8
+ * candidate can name a stratum as its activation class and a reader can
+ * detect it from the input.
+ */
+export type Holdout3Stratum =
+  | "smartphone"
+  | "graphics"
+  | "alpha"
+  | "skin"
+  | "low-light"
+  | "extreme-aspect";
+
+/** Every stratum, in the order a report lists them. */
+export const HOLDOUT3_STRATA: readonly Holdout3Stratum[] = [
+  "smartphone",
+  "graphics",
+  "alpha",
+  "skin",
+  "low-light",
+  "extreme-aspect",
+];
+
+/**
+ * The holdout3 protocol: the seed, the stratum thresholds and the sizes,
+ * committed before any candidate was measured (#129). The draw itself — the
+ * queries, the admission rules and the per-axis quotas — is
+ * `corpus-covariates.ts`' `HOLDOUT3_DRAW`, and the skin region is its
+ * `SKIN_REGION`. Changing any figure here after the pins exist changes what
+ * the split is, so it is a new split, not an edit.
+ */
+export const HOLDOUT3_PROTOCOL = {
+  /**
+   * Candidates are taken in ascending SHA-256 of `"<seed>:" + Commons title`
+   * (`File:…`, spaces not underscores): an order nobody chose, and anyone
+   * can recompute.
+   */
+  seed: "holdout3",
+  /** Minimum pins per part. */
+  sizes: { photo: 48, alpha: 24, graphic: 16 },
+  /** Minimum pins in every stratum, over all three parts. */
+  strataMin: 8,
+  /** `skin`: at least this fraction of pixels inside the skin region. */
+  skinMin: 0.1,
+  /** `low-light`: mean L* at most this, or … */
+  lowLightMeanL: 30,
+  /** … at least this fraction of pixels at L* ≤ 10 (`LOW_KEY_L`). */
+  lowLightLowKey: 0.25,
+  /** `extreme-aspect`: long edge ÷ short edge at least this. */
+  aspectMin: 3,
+} as const;
+
+/**
+ * What a holdout3 pin records about itself, so its strata can be re-derived
+ * from the table alone (`metric-selftest.ts` checks that they are). The
+ * colour figures are `corpus-covariates.ts` covariates on the 512 px scoring
+ * reference, rounded to four places; `phone` and `camera` come from the
+ * file's own EXIF.
+ */
+export interface Holdout3Record {
+  /** The draw axis (photographic), cell (alpha) or content type (graphics) that took it. */
+  drawnAs: string;
+  /** EXIF Make and Model, as stored, or null when the file records none. */
+  camera: string | null;
+  /** Whether {@link camera} names a phone (`corpus-covariates.ts` `isPhoneCamera`). */
+  phone: boolean;
+  /** Mean CIELAB L*. */
+  meanL: number;
+  /** Fraction of pixels at L* ≤ 10. */
+  lowKey: number;
+  /** Fraction of pixels inside the skin region. */
+  skin: number;
+  /** The strata {@link holdout3Strata} derives from the figures above; checked, not trusted. */
+  strata: readonly Holdout3Stratum[];
+}
+
+/**
+ * The strata of a holdout3 pin, from its recorded figures, its dimensions,
+ * its corpus and its non-opaque fraction (0 for a raster that stores no
+ * alpha). On the alpha part the colour figures describe the stored RGB under
+ * transparent pixels, which is not content, so an alpha pin is never placed
+ * in `skin` or `low-light` by them.
+ */
+export function holdout3Strata(pin: {
+  corpus: Exclude<CorpusSet, "all">;
+  width: number;
+  height: number;
+  nonOpaqueFraction: number;
+  phone: boolean;
+  meanL: number;
+  lowKey: number;
+  skin: number;
+}): Holdout3Stratum[] {
+  const p = HOLDOUT3_PROTOCOL;
+  const colour = pin.corpus !== "alpha";
+  const long = Math.max(pin.width, pin.height);
+  const short = Math.min(pin.width, pin.height);
+  const member: Record<Holdout3Stratum, boolean> = {
+    smartphone: pin.phone,
+    graphics: pin.corpus === "graphic",
+    alpha: pin.nonOpaqueFraction > 0,
+    skin: colour && pin.skin >= p.skinMin,
+    "low-light":
+      colour &&
+      (pin.meanL <= p.lowLightMeanL || pin.lowKey >= p.lowLightLowKey),
+    "extreme-aspect": short > 0 && long / short >= p.aspectMin,
+  };
+  return HOLDOUT3_STRATA.filter((s) => member[s]);
 }

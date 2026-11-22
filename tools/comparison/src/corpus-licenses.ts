@@ -38,7 +38,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ALPHA_IMAGES } from "./alpha-images.ts";
-import { CORPUS_SPLITS, type CorpusSplit } from "./corpus.ts";
+import {
+  CORPUS_SPLITS,
+  type CorpusSplit,
+  type Holdout3Record,
+} from "./corpus.ts";
 import { GRAPHIC_IMAGES } from "./graphic-images.ts";
 import { CURATED_IMAGES } from "./natural-images.ts";
 
@@ -62,6 +66,9 @@ round (\`spec/EXPERIMENTS.md\` §11.12), so it is tuning data now, together with
 the Kodak24 suite (\`src/holdout-images.ts\`, not listed here). \`holdout2\`, if
 any entry carries it, is the sealed holdout: no tool fetches it until
 \`spec/V0.8-DECISIONS.md\` records the decision it answers as frozen.
+\`holdout3\` (#129), labelled \`sealed3-*\`, is the third sealed split, drawn on
+covariates alone (\`spec/EXPERIMENTS.md\` §11.12) and opened the same way, once
+per register entry; each of its entries lists the strata it sits in.
 
 **Axis** is the §9.1 corpus-audit axis the image was chosen to cover.
 **Notes** are its covariates on the upright 512 px scoring reference:
@@ -102,6 +109,7 @@ function renderNatural(): string {
         `- Split: ${r.split}`,
         `- Axis: ${r.axis}`,
         `- Notes: ${r.notes}`,
+        ...holdout3Lines(r),
         "",
       ].join("\n"),
     );
@@ -129,6 +137,9 @@ only its withdrawn image is still marked \`holdout\`, so a cached copy joins no
 sweep. \`holdout2\`, if any entry carries it, is the sealed replacement: every
 such entry is labelled \`sealed-cutout-*\`, and no tool fetches it until
 \`spec/V0.8-DECISIONS.md\` records the decision it answers as frozen.
+\`holdout3\` (#129), labelled \`sealed3-cutout-*\`, is the alpha part of the
+third sealed split, opened the same way, once per register entry; each of its
+entries lists the strata it sits in.
 
 **This file is generated.** Edit the table in \`src/alpha-images.ts\` and run
 \`mise run corpus:licenses\`; \`--check\` fails when the two disagree.
@@ -169,6 +180,7 @@ function renderAlpha(): string {
         `- Split: ${r.split}`,
         `- Alpha: ${percent(r.nonOpaqueFraction)} non-opaque, ${percent(r.softAlphaFraction)} soft-edged`,
         `- Notes: ${r.notes}`,
+        ...holdout3Lines(r),
         "",
       ].join("\n"),
     );
@@ -189,7 +201,20 @@ fatal: the corpus a number was measured on is part of what the number means.
 **This file is generated.** Edit the table in \`src/graphic-images.ts\` and run
 \`mise run corpus:licenses\`; \`--check\` fails when the two disagree.
 
+**Splits.** \`tune\` is what constants are chosen on; \`holdout\` is the graphics
+holdout, which no committed result has read. \`holdout3\` (#129), labelled
+\`sealed3-graphic-*\`, is the graphics part of the third sealed split: no tool
+fetches it until \`spec/V0.8-DECISIONS.md\` records the decision it answers as
+frozen, and then once per entry. Each of its entries lists the strata it sits in.
+
 `;
+
+/** The draw record line a holdout3 entry carries, or nothing. */
+function holdout3Lines(r: { holdout3?: Holdout3Record }): string[] {
+  if (r.holdout3 === undefined) return [];
+  const strata = r.holdout3.strata.join(", ") || "none";
+  return [`- Drawn as: ${r.holdout3.drawnAs}; strata: ${strata}`];
+}
 
 function renderGraphic(): string {
   const rows = [...GRAPHIC_IMAGES].sort((a, b) =>
@@ -197,9 +222,7 @@ function renderGraphic(): string {
   );
 
   const parts = [GRAPHIC_HEADER];
-  parts.push(
-    `${rows.length} images — ${rows.filter((r) => r.split === "tune").length} tune, ${rows.filter((r) => r.split === "holdout").length} holdout.\n`,
-  );
+  parts.push(`${rows.length} images — ${splitCounts(rows)}.\n`);
 
   for (const r of rows) {
     parts.push(
@@ -213,6 +236,7 @@ function renderGraphic(): string {
         `- Dimensions: ${r.width}x${r.height}`,
         `- Split: ${r.split}`,
         `- Notes: ${r.notes}`,
+        ...holdout3Lines(r),
         "",
       ].join("\n"),
     );

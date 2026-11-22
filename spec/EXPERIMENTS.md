@@ -2908,6 +2908,120 @@ photographic one:
   hold one image each. No encoder has run on a pinned image either; the
   split is fetched only when the gate opens.
 
+**What #129 adds: `holdout3`.** C1 read the photographic half of `holdout2`
+and C2 its alpha half (§13.7), so neither is unread for the v0.8 D-entries.
+`holdout3` is a third sealed split, with a photographic, an alpha and a
+graphics part, that no decision has read:
+
+- **The seal.** Labels `sealed3-*`, `sealed3-cutout-*` and `sealed3-graphic-*`,
+  the split `holdout3`. `sealed3-` does not start with `sealed-`, so the two
+  seals never claim each other's images. `sweep` and `rd-budget` read it only
+  with `--split holdout3 --decision <ID>`, only for an entry
+  `V0.8-DECISIONS.md` records as `frozen`, only whole, and **once per entry**:
+  a second read by the same tool for the same entry refuses under any result
+  name, because the gate counts the committed results that record a holdout3
+  reading for that entry, not a file name. `sweep` reads the parts its
+  config's corpus names, and `all` reads all three in one run; `rd-budget`
+  reads the photographic part. No other tool reads it.
+- **The protocol**, committed before any candidate was measured
+  (`corpus.ts` `HOLDOUT3_PROTOCOL`, `corpus-covariates.ts` `HOLDOUT3_DRAW` and
+  `SKIN_REGION`). No encoder, decoder or metric runs on a candidate.
+  - **Strata**, each decided by a covariate or by licence and EXIF metadata
+    alone, so a conditional candidate can name one as its activation class.
+    A pin may sit in several, and records them.
+    - *smartphone*: the file's EXIF Make and Model name a phone
+      (`isPhoneCamera`; tablets are not phones).
+    - *graphics*: a pin of the graphics part.
+    - *alpha*: stores an alpha channel with a non-opaque fraction above 0.
+    - *skin*: at least 0.10 of the 512 px reference's pixels inside the skin
+      region, CIELAB L\* 20–88, C\* 10–50 and hue 25°–80° (the hue band
+      holds every skin swatch it was set from, 44.3°–78.4°, and stops short
+      of sand at 93.6°; amendment 2).
+    - *low-light*: mean L\* ≤ 30, or a low-key fraction (L\* ≤ 10) ≥ 0.25.
+    - *extreme aspect*: long edge ÷ short edge ≥ 3.
+
+    On the alpha part the colour covariates describe the stored RGB under
+    transparent pixels, so an alpha pin is placed in neither colour stratum.
+    The skin region is a colour test, not a detector: sand, wood and warm walls
+    fall in it too, and the stratum means "this much skin-coloured area".
+  - **Sizes.** At least 48 photographs, 24 cut-outs and 16 graphics, and at
+    least 8 pins in every stratum.
+  - **Order.** Each axis pools the first 200 hits of each of its Commons
+    searches, attributes each file to its first query in list order, and
+    takes candidates in ascending `sha256("holdout3:" + title)`.
+  - **Admission, on Commons' facts, before any download.** A free licence
+    (`isFreeLicence`), a recorded author, no deletion, unfree or
+    machine-generated category, at most 100 MP, and not pinned in any corpus
+    by title or by SHA-256, Kodak24 included. No author already pinned in any
+    corpus, and none twice. Photographs: JPEG, long edge ≥ 2000 px, an EXIF
+    camera model, at most 50 MB, and no art, scan, map, diagram, poster,
+    screenshot, collage, HDR or composite category; the smartphone axis also
+    refuses an EXIF Software naming a desktop editor or stitcher. Cut-outs:
+    PNG, long edge ≥ 512 px, at most 25 MB, and none of #107's excluded words
+    nor heraldry or insignia (the reason #107's police patch was dropped).
+    Graphics: long edge ≥ 1000 px, at most 25 MB, no EXIF camera model, and no
+    logo, photograph or scan category.
+  - **Axes and tests**, each run in order, an image one axis took being out
+    of every later one. At most two picks per query (one on the smartphone
+    axis, three on the alpha one), and one per camera model on the smartphone
+    axis. Photographs, 48: smartphone 10 (a phone camera, one per model,
+    from 19 `Taken with …` categories); extreme aspect 8 (aspect ≥ 3); low
+    light 9 (the stratum's test); skin 9 (skin ≥ 0.10, three per tone band by
+    the skin pixels' mean L\*: dark below 45, medium below 60, light above);
+    high key 4 (high-key fraction ≥ 0.35); chroma floor 4 (mean C\* ≤ 4);
+    daylight 4 (mean L\* ≥ 35 and low-key fraction < 0.25). Cut-outs, 24:
+    three in each of #107's eight cells (an alpha channel, non-opaque 0.05–0.95,
+    not animated, assigned by #107's cuts). Graphics, 16: screenshot, chart,
+    map and diagram 3 each, comic and text 2 each (no transparency, not
+    animated).
+
+  - **Shortfall.** A part that ends short walks its axes again, in list
+    order, one pick per axis per round, with slot quotas lifted, until it is
+    full; a draw that still misses a size or a stratum minimum fails rather
+    than pins.
+  - **Amendment 1, after the first draw.** The first draw ended one cut-out
+    short, 23 of 24, and so failed. It had consumed the whole alpha pool,
+    refusing 165 candidates only because their cell was full, and the
+    shortfall walk resumed from the end of the pool, where nothing was left.
+    With slot quotas lifted, a short axis now first reconsiders the
+    candidates it passed over only for a full slot, in seeded order. The
+    amendment changes no test, cut or quota, and was made with no encoder run
+    on any candidate (`corpus-covariates.ts` `HOLDOUT3_AMENDMENTS`).
+  - **Amendment 2, after review.** The skin region's hue band ended at 70°,
+    which contradicted its recorded basis: the swatches it was set from sit at
+    44.3°–78.4°, and 70° refused the palette's two light swatches, sRGB
+    (241,194,125) at 78.4° and (224,172,105) at 74.8°, so the skin axis's
+    light band under-sampled light skin. The band now ends at 80°. That
+    changes every candidate's skin figure, so the split was drawn again from
+    the start with the same queries, seed and quotas. The re-draw excludes
+    only the other splits' pins (the first run's own picks were in the tables
+    by then), and its record lists every candidate the walk reached with what
+    its facts and bytes answered. No encoder had run on any candidate.
+- **The draw, 2026-11-22**, under amendments 1 and 2. Every axis's pool had
+  the same size as in the run before it; the walk reached 2442 candidates and
+  pinned 48 photographs, 24 cut-outs and 16 graphics. Against the amendment-1 run, 84
+  picks are unchanged and four skin picks differ: the wider hue band moved
+  enough pixels into the region to change which candidates fill the dark and
+  light bands first. The strata hold smartphone 17, graphics 16, alpha 24,
+  skin 17, low-light 12 and extreme aspect 16. The record is committed as
+  `tools/comparison/fixtures/holdout3-draw.json`: the protocol, skin region
+  and exclusions it ran under, every query's hits, every walked candidate in
+  seeded order with its refusal or its covariates, and the picks. `mise run
+  selftest:metrics` replays it offline (`replayHoldout3`) under the
+  committed `HOLDOUT3_DRAW` and checks that the replay re-derives the
+  record's picks, refusals and strata, and that the shipped pins are exactly
+  those picks; the pins themselves are written from the replay by
+  `corpus-covariates.js --pin-holdout3`. Every source was probed present
+  under its recorded licence (`mise run corpus:licenses --probe`), and the
+  self-test also checks the sizes, the strata minima, each pin's strata
+  against its recorded figures, and disjointness from every other pinned
+  image, Kodak24 included, by SHA-256 and by Commons title. The pins name
+  what the protocol admits, not what anyone chose: the skin stratum holds a
+  Peruvian portrait head jar and a neo-Gothic cathedral (whose mean skin-pixel
+  L\* 61.0 makes it a light-band pick), the chroma floor a scan whose EXIF
+  names a flatbed scanner, and the graphics part a 1976 comic strip Commons
+  records as public domain. Nothing has read the split.
+
 The alpha allocation validated emphatically on that split: SSIMULACRA2
 −307.2 → −242.7, Butteraugli 57.56 → 44.36, DSSIM 0.2319 → 0.2179, αMAE
 0.2696 → 0.1675. Those figures are from the retired split and cannot be

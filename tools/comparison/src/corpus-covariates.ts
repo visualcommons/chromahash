@@ -9,8 +9,11 @@
  * the high-key and low-key pixel fractions, and a Laplacian detail energy. An
  * image with an alpha channel also gets the three covariates the alpha corpus
  * is curated on (#93): its non-opaque and soft-alpha fractions and its
- * silhouette complexity ({@link AlphaCovariates}). No encoder is built or run
- * here, and nothing reads a result.
+ * silhouette complexity ({@link AlphaCovariates}). For holdout3 (#129) every
+ * image also gets a skin-tone covariate — the fraction of pixels inside a
+ * fixed CIELAB {@link SKIN_REGION} — and the capture device its own EXIF
+ * names, with whether that device is a phone ({@link isPhoneCamera}). No
+ * encoder is built or run here, and nothing reads a result.
  *
  * This is also the tool the covariates in `natural-images.ts`' `notes` are
  * measured with (`--files` over the cached corpus; #102). The figures first
@@ -20,6 +23,18 @@
  *
  *   node dist/corpus-covariates.js --commons <titles.txt> [--out <file.json>]
  *   node dist/corpus-covariates.js --files <image> [<image> ...]
+ *   node dist/corpus-covariates.js --draw-holdout3 --out <file.json>
+ *   node dist/corpus-covariates.js --pin-holdout3 fixtures/holdout3-draw.json
+ *
+ * `--draw-holdout3` runs the holdout3 draw exactly as {@link HOLDOUT3_DRAW}
+ * and `corpus.ts`' `HOLDOUT3_PROTOCOL` fix it, and writes the record: every
+ * query's hits, every candidate the walk reached with what its facts and
+ * bytes answered ({@link Holdout3Verdict}), every axis's refusals by reason,
+ * and the picks with what a pin needs. It pins nothing. The record is
+ * committed as `fixtures/holdout3-draw.json`; `--pin-holdout3` replays it
+ * offline ({@link replayHoldout3}) and writes the three tables' holdout3
+ * pins from the replay, and the self-test replays it again and checks the
+ * shipped pins against it.
  *
  * `--commons` reads one Commons file title per line (`File:…`; blank lines
  * and `#` comments skipped), asks Commons for each file's licence, author,
@@ -30,13 +45,27 @@
  * output is a candidate list for a human to approve.
  */
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import sharp from "sharp";
+import { ALPHA_IMAGES } from "./alpha-images.ts";
+import {
+  ALPHA_HOLDOUT3_PREFIX,
+  GRAPHIC_HOLDOUT3_PREFIX,
+  HOLDOUT3_PREFIX,
+  HOLDOUT3_PROTOCOL,
+  HOLDOUT3_STRATA,
+  type Holdout3Record,
+  holdout3Strata,
+} from "./corpus.ts";
+import { GRAPHIC_IMAGES } from "./graphic-images.ts";
+import { KODAK_SHA256 } from "./holdout-images.ts";
 import { REFERENCE_CAP, orientedSize, upright } from "./image-loader.ts";
+import { CURATED_IMAGES } from "./natural-images.ts";
 
 /** Covariates of one image, measured on its scoring reference. */
 export interface Covariates {
@@ -72,6 +101,22 @@ export interface Covariates {
    * local structure the image has, in L* units per pixel.
    */
   detail: number;
+  /**
+   * Fraction of pixels inside the fixed CIELAB {@link SKIN_REGION} (#129).
+   * It is a colour test, not a detector: sand, wood and warm-lit walls fall
+   * in the region too, and a stratum built on it says "this much skin-coloured
+   * area", which is the property an encoder can see.
+   */
+  skin: number;
+  /** Mean L* of the pixels inside the skin region, or null when there are none. */
+  skinL: number | null;
+  /**
+   * The capture device the file's own EXIF names: Make and Model as stored,
+   * joined by a space, or null when it records neither ({@link exifCamera}).
+   */
+  camera: string | null;
+  /** Whether {@link camera} names a phone ({@link isPhoneCamera}). */
+  phone: boolean;
   /**
    * The alpha covariates, for an image that stores an alpha channel; null for
    * one that does not. The colour covariates above are taken over every pixel
@@ -112,6 +157,132 @@ export interface AlphaCovariates {
 export const HIGH_KEY_L = 90;
 /** A pixel this dark counts toward the low-key fraction. */
 export const LOW_KEY_L = 10;
+
+/**
+ * The skin region (#129), fixed before the holdout3 draw: CIELAB (D65)
+ * lightness, chroma C*ab and hue angle h_ab in degrees, each bound inclusive.
+ * The hue band brackets the yellow-red angles human skin occupies across
+ * tone, the chroma band excludes near-neutrals and saturated paint, and the
+ * lightness band excludes clipped highlights and near-black.
+ *
+ * The bounds come from the Lab of a common five-swatch skin palette (sRGB
+ * 255,219,172 · 241,194,125 · 224,172,105 · 198,134,66 · 141,85,36) and two
+ * darker and redder browns (92,51,23 and 180,120,100): their hues run 44.3°
+ * to 78.4°, sand (194,178,128) sits at 93.6° and green at 137.8°. The hue
+ * band ends at 80°, the first round bound holding every swatch, 13.6° short
+ * of sand (amendment 2: the first draw ran with 70°, which refused the
+ * palette's two light swatches at 74.8° and 78.4°). The lightest swatch
+ * (L* 89.3) is refused by the lightness band, as a clipped highlight is.
+ */
+export const SKIN_REGION = {
+  minL: 20,
+  maxL: 88,
+  minC: 10,
+  maxC: 50,
+  minHue: 25,
+  maxHue: 80,
+} as const;
+
+/** Is a CIELAB colour inside {@link SKIN_REGION}? */
+export function inSkinRegion(L: number, a: number, b: number): boolean {
+  const r = SKIN_REGION;
+  const c = Math.hypot(a, b);
+  const h = ((Math.atan2(b, a) * 180) / Math.PI + 360) % 360;
+  return (
+    L >= r.minL &&
+    L <= r.maxL &&
+    c >= r.minC &&
+    c <= r.maxC &&
+    h >= r.minHue &&
+    h <= r.maxHue
+  );
+}
+
+/**
+ * Makes whose every camera is a phone, matched at the start of EXIF Make.
+ * Apple, Samsung, Sony, Google, Microsoft and Asus also make cameras, tablets
+ * or computers, so {@link isPhoneCamera} decides them by model instead.
+ */
+const PHONE_MAKES =
+  /^(xiaomi|redmi|poco|huawei|honor|oneplus|oppo|vivo|realme|motorola|hmd global|nokia|lge|lg electronics|htc|fairphone|meizu|zte|nothing|blackberry|research in motion)\b/i;
+
+/**
+ * Does an EXIF Make and Model name a phone? Fixed before the holdout3 draw
+ * (#129): a tablet (`iPad`, Samsung `SM-T`/`SM-P`/`SM-X`, any model naming a
+ * pad, tab or tablet) is not a phone, and neither is a camera from a maker
+ * that also makes phones (Sony `ILCE-`, Samsung `NX`, …).
+ */
+export function isPhoneCamera(
+  make: string | null,
+  model: string | null,
+): boolean {
+  const mk = (make ?? "").trim();
+  const md = (model ?? "").trim();
+  if (mk === "" && md === "") return false;
+  if (/iphone/i.test(md)) return true;
+  if (/ipad|ipod|\b(pad|tab|tablet)\b|pixel c\b/i.test(md)) return false;
+  if (/^samsung/i.test(mk)) {
+    return (
+      /^(SM-[A-Z]|GT-[IN]|SGH-|SCH-|SHV-|SPH-|SC-\d|galaxy)/i.test(md) &&
+      !/^SM-[TPX]/i.test(md)
+    );
+  }
+  if (/^sony/i.test(mk)) {
+    return /^(xperia|SO-|SOV|SOG|XQ-|[CDEFGHJ]\d{4})/i.test(md);
+  }
+  if (/^google/i.test(mk)) return /pixel|nexus/i.test(md);
+  if (/^microsoft/i.test(mk)) return /lumia/i.test(md);
+  if (/^asus/i.test(mk)) return /zenfone|^ASUS_[XZ]/i.test(md);
+  return PHONE_MAKES.test(mk);
+}
+
+/**
+ * EXIF Make and Model from the IFD0 of a raw EXIF block (`sharp`'s
+ * `metadata().exif`, which starts `Exif\0\0`, or a bare TIFF header), each
+ * null when absent. A malformed block reads as neither, never as a throw: the
+ * device is a covariate, and an image whose EXIF cannot be read simply names
+ * none.
+ */
+export function exifCamera(exif: Buffer | undefined): {
+  make: string | null;
+  model: string | null;
+} {
+  const none = { make: null, model: null };
+  if (exif === undefined || exif.length < 8) return none;
+  try {
+    const t = exif.toString("latin1", 0, 6) === "Exif\0\0" ? 6 : 0;
+    const order = exif.toString("latin1", t, t + 2);
+    if (order !== "II" && order !== "MM") return none;
+    const le = order === "II";
+    const u16 = (o: number): number =>
+      le ? exif.readUInt16LE(o) : exif.readUInt16BE(o);
+    const u32 = (o: number): number =>
+      le ? exif.readUInt32LE(o) : exif.readUInt32BE(o);
+    if (u16(t + 2) !== 42) return none;
+    const ifd = t + u32(t + 4);
+    const n = u16(ifd);
+    let make: string | null = null;
+    let model: string | null = null;
+    for (let i = 0; i < n; i++) {
+      const e = ifd + 2 + 12 * i;
+      const tag = u16(e);
+      if ((tag !== 0x010f && tag !== 0x0110) || u16(e + 2) !== 2) continue;
+      const count = u32(e + 4);
+      const at = count <= 4 ? e + 8 : t + u32(e + 8);
+      if (at + count > exif.length) continue;
+      const text = exif
+        .toString("latin1", at, at + count)
+        .replace(/\0[\s\S]*$/, "")
+        .trim();
+      if (text === "") continue;
+      if (tag === 0x010f) make = text;
+      else model = text;
+    }
+    return { make, model };
+  } catch {
+    return none;
+  }
+}
 
 const srgbToLinear = (c: number): number => {
   const v = c / 255;
@@ -209,6 +380,9 @@ export function covariatesOf(
     height: number;
     exifOrientation?: number | null;
     alpha?: AlphaCovariates | null;
+    /** EXIF Make and Model ({@link exifCamera}). */
+    make?: string | null;
+    model?: string | null;
   },
 ): Covariates {
   const n = w * h;
@@ -219,6 +393,8 @@ export function covariatesOf(
   let sumB = 0;
   let high = 0;
   let low = 0;
+  let skin = 0;
+  let sumSkinL = 0;
   for (let i = 0; i < n; i++) {
     const [l, a, b] = srgbToLab(
       rgba[4 * i] ?? 0,
@@ -232,6 +408,10 @@ export function covariatesOf(
     sumB += b;
     if (l >= HIGH_KEY_L) high++;
     if (l <= LOW_KEY_L) low++;
+    if (inSkinRegion(l, a, b)) {
+      skin++;
+      sumSkinL += l;
+    }
   }
   let lap = 0;
   let interior = 0;
@@ -249,6 +429,9 @@ export function covariatesOf(
     }
   }
   const { width, height } = native;
+  const make = native.make ?? null;
+  const model = native.model ?? null;
+  const camera = [make, model].filter((s) => s !== null).join(" ") || null;
   return {
     width,
     height,
@@ -262,6 +445,10 @@ export function covariatesOf(
     highKey: high / n,
     lowKey: low / n,
     detail: interior > 0 ? lap / interior : 0,
+    skin: skin / n,
+    skinL: skin > 0 ? sumSkinL / skin : null,
+    camera,
+    phone: isPhoneCamera(make, model),
     alpha: native.alpha ?? null,
   };
 }
@@ -308,6 +495,7 @@ export async function measureFile(bytes: Buffer): Promise<Covariates> {
     height,
     exifOrientation: meta.orientation ?? null,
     alpha,
+    ...exifCamera(meta.exif),
   });
 }
 
@@ -344,8 +532,14 @@ export interface CommonsFacts {
   author: string;
   make: string | null;
   model: string | null;
+  /** EXIF Software, which names an editor a file passed through. */
+  software: string | null;
   dateTimeOriginal: string | null;
   categories: string[];
+  /** Stored dimensions and byte size, as Commons records them. */
+  width: number;
+  height: number;
+  size: number;
 }
 
 interface ImageInfoPage {
@@ -356,6 +550,9 @@ interface ImageInfoPage {
     descriptionurl: string;
     sha1: string;
     mime: string;
+    width?: number;
+    height?: number;
+    size?: number;
     extmetadata?: Record<string, { value: string }>;
     metadata?: { name: string; value: unknown }[] | null;
   }[];
@@ -381,7 +578,7 @@ async function commonsFacts(
       format: "json",
       formatversion: "1",
       prop: "imageinfo",
-      iiprop: "url|sha1|mime|extmetadata|metadata",
+      iiprop: "url|sha1|mime|size|extmetadata|metadata",
       iiextmetadatafilter:
         "LicenseShortName|Artist|Categories|DateTimeOriginal",
       titles: batch.join("|"),
@@ -421,13 +618,17 @@ async function commonsFacts(
         mime: info.mime,
         licence: stripHtml(ext.LicenseShortName?.value ?? ""),
         author: stripHtml(ext.Artist?.value ?? ""),
-        make: exif.get("Make")?.trim() ?? null,
-        model: exif.get("Model")?.trim() ?? null,
+        make: exif.get("Make")?.trim() || null,
+        model: exif.get("Model")?.trim() || null,
+        software: exif.get("Software")?.trim() || null,
         dateTimeOriginal: stripHtml(ext.DateTimeOriginal?.value ?? "") || null,
         categories: (ext.Categories?.value ?? "")
           .split("|")
           .map((c) => c.trim())
           .filter(Boolean),
+        width: info.width ?? 0,
+        height: info.height ?? 0,
+        size: info.size ?? 0,
       });
     }
     for (const t of batch) {
@@ -553,6 +754,1285 @@ async function runFiles(files: string[]): Promise<void> {
   process.stdout.write(`${JSON.stringify(rows, null, 2)}\n`);
 }
 
+// ─── holdout3: the seeded draw (#129) ───────────────────────────────────────
+//
+// The draw is part of the protocol, and was committed with it, before any
+// candidate was measured: the queries, the admission rules, the order, the
+// caps, the per-axis tests and quotas, and what happens when an axis runs
+// short. `--draw-holdout3` runs it and writes the record; nothing here pins
+// anything, builds an encoder or reads a result.
+
+/** The SHA-256 a candidate's seeded position is: `"<seed>:" + title`, hex. */
+export function holdout3OrderKey(title: string): string {
+  return createHash("sha256")
+    .update(`${HOLDOUT3_PROTOCOL.seed}:${title}`)
+    .digest("hex");
+}
+
+/**
+ * The Commons title (`File:Name with spaces.jpg`) of a pin's `source` page,
+ * percent-decoded and with underscores as spaces — the form a Commons search
+ * returns, so a candidate and a pin compare as equal strings. Null for a
+ * source that is not a Commons file page.
+ */
+export function pinnedCommonsTitle(source: string): string | null {
+  const m = /^https:\/\/commons\.wikimedia\.org\/wiki\/(.+)$/.exec(source);
+  if (m?.[1] === undefined) return null;
+  let t: string;
+  try {
+    t = decodeURIComponent(m[1]);
+  } catch {
+    return null;
+  }
+  t = t.replace(/_/g, " ");
+  return t.startsWith("File:") ? t : null;
+}
+
+/** One Commons search, `srnamespace=6`, in Commons' own relevance order. */
+interface DrawQuery {
+  /** Short name, for the record. */
+  name: string;
+  query: string;
+}
+
+/** Which part of holdout3 an axis fills. */
+type DrawPart = "photo" | "alpha" | "graphic";
+
+/**
+ * One axis of the draw: its own pool (the union of its queries' hits), its
+ * test, and its quota, split into slots. A measured candidate the axis's
+ * {@link DrawAxis.slot} maps to null fails the test; one whose slot is full is
+ * passed over.
+ */
+interface DrawAxis {
+  part: DrawPart;
+  /** What a pin records as `drawnAs`. */
+  name: string;
+  /** The label segment after the part's seal. */
+  stem: string;
+  /** The test, in words, for the record. */
+  test: string;
+  queries: readonly DrawQuery[];
+  /** At most this many picks attributed to one query. */
+  perQuery: number;
+  /** At most one pick per EXIF camera (Make and Model). */
+  onePerCamera: boolean;
+  /** Quota per slot; the axis's quota is their sum. */
+  slots: Readonly<Record<string, number>>;
+  slot: (c: Covariates, aspect: number) => string | null;
+}
+
+const P = HOLDOUT3_PROTOCOL;
+const phoneQuery = (model: string): DrawQuery => ({
+  name: model,
+  query: `incategory:"Taken with ${model}" filemime:image/jpeg`,
+});
+const jpeg = (name: string, terms: string): DrawQuery => ({
+  name,
+  query: `filemime:image/jpeg ${terms}`,
+});
+const png = (name: string, terms: string): DrawQuery => ({
+  name,
+  query: `filemime:image/png ${terms}`,
+});
+const one =
+  (slot: string, test: (c: Covariates, aspect: number) => boolean) =>
+  (c: Covariates, aspect: number): string | null =>
+    test(c, aspect) ? slot : null;
+
+/** The alpha cuts, as #107 fixed them, with a gap on two axes. */
+export function alphaCell(a: AlphaCovariates): string | null {
+  const t = a.nonOpaqueFraction < 0.5 ? "opaque" : "transparent";
+  const s = a.softAlphaFraction;
+  const edge = s <= 0.01 ? "hard" : s >= 0.03 ? "soft" : null;
+  const g = a.silhouette;
+  const shape =
+    g === null ? null : g <= 1.5 ? "simple" : g >= 2.0 ? "detailed" : null;
+  return edge === null || shape === null ? null : `${t}/${edge}/${shape}`;
+}
+
+/** The skin axis's tone band, by the mean L* of the skin-region pixels. */
+export function skinBand(skinL: number | null): string | null {
+  if (skinL === null) return null;
+  return skinL < 45 ? "dark" : skinL < 60 ? "medium" : "light";
+}
+
+const ALPHA_CELLS = [
+  "opaque/hard/simple",
+  "opaque/hard/detailed",
+  "opaque/soft/simple",
+  "opaque/soft/detailed",
+  "transparent/hard/simple",
+  "transparent/hard/detailed",
+  "transparent/soft/simple",
+  "transparent/soft/detailed",
+] as const;
+
+/**
+ * The draw, in the order it runs. Axes run in list order, and an image one
+ * axis takes is not considered by a later one. Photographic quotas sum to 48,
+ * alpha to 24 (three per #107 cell), graphics to 16.
+ */
+export const HOLDOUT3_DRAW: readonly DrawAxis[] = [
+  {
+    part: "photo",
+    name: "smartphone",
+    stem: "phone",
+    test: "EXIF Make and Model name a phone (isPhoneCamera), and EXIF Software names no desktop editor or stitcher",
+    queries: [
+      "iPhone 6",
+      "iPhone 8",
+      "iPhone 11",
+      "iPhone 13 Pro",
+      "iPhone SE (2nd generation)",
+      "Samsung Galaxy S7",
+      "Samsung Galaxy S8",
+      "Samsung Galaxy S10",
+      "Samsung Galaxy A52",
+      "Google Pixel 3",
+      "Google Pixel 6",
+      "Xiaomi Mi 9",
+      "Xiaomi Redmi Note 9 Pro",
+      "OnePlus 6",
+      "Huawei Mate 20 Pro",
+      "Motorola Moto G7 Plus",
+      "Nokia Lumia 1020",
+      "Sony Xperia Z3",
+      "Fairphone 3",
+    ].map(phoneQuery),
+    perQuery: 1,
+    onePerCamera: true,
+    slots: { phone: 10 },
+    slot: one("phone", (c) => c.phone),
+  },
+  {
+    part: "photo",
+    name: "extreme aspect",
+    stem: "pano",
+    test: `long edge ÷ short edge ≥ ${P.aspectMin}`,
+    queries: [
+      jpeg("panoramic", 'incategory:"Panoramic photographs"'),
+      jpeg("skyline", "filew:>6000 panorama skyline"),
+      jpeg("city", "filew:>6000 panorama city"),
+      jpeg("mountains", "filew:>6000 panorama mountains"),
+      jpeg("beach", "filew:>6000 panorama beach"),
+      jpeg("interior", "filew:>6000 panorama interior"),
+    ],
+    perQuery: 2,
+    onePerCamera: false,
+    slots: { pano: 8 },
+    slot: one("pano", (_c, aspect) => aspect >= P.aspectMin),
+  },
+  {
+    part: "photo",
+    name: "low light",
+    stem: "lowlight",
+    test: `mean L* ≤ ${P.lowLightMeanL} or low-key fraction ≥ ${P.lowLightLowKey}`,
+    queries: [
+      jpeg("train-station", "night train station"),
+      jpeg("fireworks", "fireworks"),
+      jpeg("aurora", "aurora borealis"),
+      jpeg("candlelit", "candlelit"),
+      jpeg("cave", "cave interior"),
+      jpeg("bridge", "illuminated bridge night"),
+      jpeg("stars", "starry sky"),
+    ],
+    perQuery: 2,
+    onePerCamera: false,
+    slots: { lowlight: 9 },
+    slot: one(
+      "lowlight",
+      (c) => c.meanL <= P.lowLightMeanL || c.lowKey >= P.lowLightLowKey,
+    ),
+  },
+  {
+    part: "photo",
+    name: "skin",
+    stem: "skin",
+    test: `skin fraction ≥ ${P.skinMin}; three per tone band by the skin pixels' mean L* (dark < 45 ≤ medium < 60 ≤ light)`,
+    queries: [
+      "Senegal",
+      "Ethiopia",
+      "Uganda",
+      "Bangladesh",
+      "Indonesia",
+      "Peru",
+      "Brazil",
+      "Vietnam",
+      "Norway",
+      "Ireland",
+    ].map((place) => jpeg(place.toLowerCase(), `portrait ${place}`)),
+    perQuery: 2,
+    onePerCamera: false,
+    slots: { dark: 3, medium: 3, light: 3 },
+    slot: (c) => (c.skin >= P.skinMin ? skinBand(c.skinL) : null),
+  },
+  {
+    part: "photo",
+    name: "high key",
+    stem: "highkey",
+    test: "high-key fraction (L* ≥ 90) ≥ 0.35",
+    queries: [
+      jpeg("snow", "snow landscape sunny"),
+      jpeg("sand", "white sand beach"),
+      jpeg("studio", '"white background" studio'),
+      jpeg("overexposed", "overexposed bright white"),
+    ],
+    perQuery: 2,
+    onePerCamera: false,
+    slots: { highkey: 4 },
+    slot: one("highkey", (c) => c.highKey >= 0.35),
+  },
+  {
+    part: "photo",
+    name: "chroma floor",
+    stem: "chroma",
+    test: "mean C* ≤ 4",
+    queries: [
+      jpeg(
+        "bw-buildings",
+        'incategory:"Black and white photographs of buildings"',
+      ),
+      jpeg("bw-animals", 'incategory:"Black and white photographs of animals"'),
+      jpeg("bw-streets", 'incategory:"Black and white photographs of streets"'),
+      jpeg("mist", "mist morning lake"),
+      jpeg("overcast-snow", "overcast snow field"),
+    ],
+    perQuery: 2,
+    onePerCamera: false,
+    slots: { chroma: 4 },
+    slot: one("chroma", (c) => c.meanC <= 4),
+  },
+  {
+    part: "photo",
+    name: "daylight",
+    stem: "daylight",
+    test: "mean L* ≥ 35 and low-key fraction < 0.25",
+    queries: [
+      jpeg("park", "park summer"),
+      jpeg("village", "village street daytime"),
+      jpeg("garden", "garden flowers sunny"),
+      jpeg("trail", "mountain hiking trail"),
+    ],
+    perQuery: 2,
+    onePerCamera: false,
+    slots: { daylight: 4 },
+    slot: one("daylight", (c) => c.meanL >= 35 && c.lowKey < 0.25),
+  },
+  {
+    part: "alpha",
+    name: "alpha",
+    stem: "cutout",
+    test: "an alpha channel; non-opaque fraction 0.05–0.95; not animated; assigned to a #107 cell (non-opaque < 0.5 | ≥ 0.5; soft-alpha ≤ 0.01 | ≥ 0.03; silhouette ≤ 1.5 | ≥ 2.0), three per cell",
+    queries: [
+      png("objects", 'incategory:"Objects with transparent background"'),
+      png("food", 'incategory:"Food on transparent background"'),
+      png("cutout-photo", 'incategory:"Cut out photography"'),
+      png("organisms", 'deepcat:"Organisms on transparent background"'),
+      png("icons", 'incategory:"Icons with transparent background"'),
+      png("planets", 'incategory:"Planets with transparent background"'),
+      png("science", 'incategory:"Science images with transparent background"'),
+      png("medical", 'incategory:"Medical images with transparent background"'),
+      png(
+        "ornaments",
+        'incategory:"Graphic ornaments with transparent background"',
+      ),
+      png("kitchen", 'incategory:"Kitchen images with transparent background"'),
+      png("gameart", 'incategory:"Media from OpenGameArt"'),
+      png("plants", 'incategory:"Plants with transparent background"'),
+      png("vehicles", 'incategory:"Vehicles with transparent background"'),
+      png("clothing", 'incategory:"Clothing with transparent background"'),
+      png("glow", 'glow "transparent background"'),
+      png("smoke", 'smoke "transparent background"'),
+      png("glass", 'glass "transparent background"'),
+      png("hair", 'hair "transparent background"'),
+      png("shadow", '"drop shadow" "transparent background"'),
+    ],
+    perQuery: 3,
+    onePerCamera: false,
+    slots: Object.fromEntries(ALPHA_CELLS.map((c) => [c, 3])),
+    slot: (c) => {
+      const a = c.alpha;
+      if (a === null) return null;
+      if (a.nonOpaqueFraction < 0.05 || a.nonOpaqueFraction > 0.95) {
+        return null;
+      }
+      return alphaCell(a);
+    },
+  },
+  ...(
+    [
+      [
+        "screenshot",
+        3,
+        [
+          png("free-software", 'screenshot "free software"'),
+          png("website", "screenshot website"),
+          png("ui", 'screenshot "user interface"'),
+        ],
+      ],
+      [
+        "chart",
+        3,
+        [
+          png("bar", '"bar chart"'),
+          png("line", '"line graph"'),
+          png("pie", '"pie chart"'),
+        ],
+      ],
+      [
+        "map",
+        3,
+        [
+          png("location", '"location map"'),
+          png("topographic", '"topographic map"'),
+          png("election", '"election results" map'),
+        ],
+      ],
+      [
+        "diagram",
+        3,
+        [
+          png("block", '"block diagram"'),
+          png("flowchart", "flowchart"),
+          png("circuit", '"circuit diagram"'),
+        ],
+      ],
+      [
+        "comic",
+        2,
+        [
+          png("strip", '"comic strip"'),
+          png("webcomic", "webcomic"),
+          jpeg("strip-jpeg", '"comic strip"'),
+        ],
+      ],
+      [
+        "text",
+        2,
+        [
+          png("font", '"font sample"'),
+          png("specimen", '"typeface specimen"'),
+          png("infographic", "infographic"),
+        ],
+      ],
+    ] as const
+  ).map(
+    ([name, quota, queries]): DrawAxis => ({
+      part: "graphic",
+      name,
+      stem: name,
+      test: "stores no transparency (no alpha channel, or none below 255); not animated",
+      queries,
+      perQuery: 2,
+      onePerCamera: false,
+      slots: { [name]: quota },
+      slot: one(
+        name,
+        (c) => c.alpha === null || c.alpha.nonOpaqueFraction === 0,
+      ),
+    }),
+  ),
+];
+
+/**
+ * Amendments to the draw after it first ran, each for the reason it states
+ * and none for how any image scores: no encoder has run on any candidate.
+ */
+export const HOLDOUT3_AMENDMENTS: readonly string[] = [
+  "1 (shortfall): the first draw ended with 23 of 24 cut-outs. Every alpha candidate had been consumed, 165 of them refused only because their cell was already full, and the shortfall walk resumed from the end of the pool, so it found nothing. With slot quotas lifted, a short axis now reconsiders the candidates it passed over only for a full slot, in seeded order, before moving its cursor. The 87 picks of the first draw are unchanged by this; only the shortfall pass differs.",
+  "2 (skin hue): SKIN_REGION's hue band ended at 70°, contradicting its recorded basis: the skin swatches it was set from sit at 44.3°–78.4°, and 70° refused the palette's two light swatches (74.8° and 78.4°), so the skin axis's light band under-sampled light skin. The band now ends at 80°, holding every swatch and 13.6° short of sand. The region changes every candidate's skin figure, so the split is drawn again from the same queries, seed and quotas; nothing else in the protocol changes. The re-draw excludes only the pins of the other splits, not holdout3's own earlier pins, and its record now lists every candidate the walk reached with what its facts and bytes answered, so the picks can be re-derived offline (`replayHoldout3`).",
+];
+
+/** Hits taken from each query, in Commons' relevance order. */
+export const HOLDOUT3_POOL_PER_QUERY = 200;
+
+/** A title or category naming a deleted, disputed or unfree file. */
+const UNFREE =
+  /deletion|copyright violation|copyvio|possibly unfree|fair use|non-free|unfree/i;
+/** A title or category naming machine-generated content. */
+const GENERATED =
+  /\bAI[- ]generated|artificial intelligence|midjourney|stable diffusion|dall[-·]?e\b|generated by ai/i;
+/** Categories that make a photograph something other than a camera's output. */
+const NOT_A_PHOTO =
+  /\b(paintings?|artworks?|drawings?|illustrations?|scans?|scanned|maps?|diagrams?|posters?|screenshots?|collages?|HDR|composites?|photomontages?|retouched|infographics?)\b/i;
+/**
+ * Titles or categories the alpha part refuses: the #107 list (the #83 lesson:
+ * the deleted cut-out was a logo), and heraldry and insignia, whose
+ * public-domain tags were the reason #107's LAPD patch was dropped.
+ */
+const NOT_A_CUTOUT =
+  /\b(logos?|wordmarks?|trademarks?|signatures?|autographs?|screenshots?|diagrams?|charts?|maps?|insignias?|patch(es)?|seals?|coats? of arms|emblems?|badges?|flags?)\b/i;
+/** Titles or categories the graphics part refuses. */
+const NOT_A_GRAPHIC =
+  /\b(logos?|wordmarks?|trademarks?|photographs?|scans?|scanned)\b/i;
+/** EXIF Software naming a desktop editor or a panorama stitcher. */
+const EDITOR =
+  /photoshop|lightroom|gimp|capture one|darktable|affinity|luminar|dxo|rawtherapee|paint\.net|picasa|hugin|ptgui|microsoft ice|image composite editor/i;
+
+/**
+ * Why Commons' facts refuse a candidate for a part, or null when they admit
+ * it. Applied before anything is downloaded, on top of {@link admit}.
+ */
+export function holdout3Admission(
+  part: DrawPart,
+  f: CommonsFacts,
+  axis?: { onePerCamera: boolean },
+): string | null {
+  const words = [f.title, ...f.categories].join(" | ");
+  const long = Math.max(f.width, f.height);
+  if (f.author === "") return "Commons records no author";
+  if (UNFREE.test(words)) return "a deletion or unfree category";
+  if (GENERATED.test(words)) return "machine-generated";
+  if (f.width * f.height > 100_000_000) return "over 100 MP";
+  if (part === "photo") {
+    if (f.mime !== "image/jpeg") return "not a JPEG";
+    if (long < 2000) return "long edge under 2000 px";
+    if (f.size > 50_000_000) return "over 50 MB";
+    if (f.model === null) return "no EXIF camera model";
+    if (NOT_A_PHOTO.test(words))
+      return "an art, scan, map or composite category";
+    if (axis?.onePerCamera === true && EDITOR.test(f.software ?? "")) {
+      return "EXIF Software names an editor";
+    }
+    return null;
+  }
+  if (f.size > 25_000_000) return "over 25 MB";
+  if (part === "alpha") {
+    if (f.mime !== "image/png") return "not a PNG";
+    if (long < 512) return "long edge under 512 px";
+    if (NOT_A_CUTOUT.test(words)) return "a logo, insignia or graphic";
+    return null;
+  }
+  if (long < 1000) return "long edge under 1000 px";
+  if (f.model !== null) return "an EXIF camera model: a photograph";
+  if (NOT_A_GRAPHIC.test(words)) return "a logo, photograph or scan";
+  return null;
+}
+
+/** A label for a pick: the part's seal, the axis stem, and the title's first words. */
+export function holdout3Label(
+  part: DrawPart,
+  stem: string,
+  title: string,
+  taken: ReadonlySet<string>,
+): string {
+  const seal =
+    part === "alpha"
+      ? ALPHA_HOLDOUT3_PREFIX
+      : part === "graphic"
+        ? `${GRAPHIC_HOLDOUT3_PREFIX}${stem}-`
+        : `${HOLDOUT3_PREFIX}${stem}-`;
+  const words = title
+    .replace(/^File:/, "")
+    .replace(/\.[^.]+$/, "")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .slice(0, 4)
+    .join("-");
+  const base = `${seal}${words || holdout3OrderKey(title).slice(0, 8)}`;
+  let label = base;
+  for (let i = 2; taken.has(label); i++) label = `${base}-${i}`;
+  return label;
+}
+
+/** One pick of the walk, with what its pin records about it. */
+export interface Holdout3Pick {
+  part: DrawPart;
+  label: string;
+  title: string;
+  /** The axis that took it. */
+  drawnAs: string;
+  slot: string;
+  query: string;
+  orderKey: string;
+  sha256: string;
+  covariates: Covariates;
+  record: Holdout3Record;
+}
+
+/**
+ * What the draw learnt about one candidate for one axis, as far as the walk
+ * asked: each stage is answered by the candidate's own facts or bytes, never
+ * by what the walk had already taken. A refusal with no `author` came from
+ * Commons' facts (licence, admission); one with an `author` but no `sha256`
+ * from the download; one with a `sha256` from reading the bytes. A verdict
+ * with `covariates` was measured, and the axis test is applied to them.
+ */
+export interface Holdout3Verdict {
+  refused?: string;
+  author?: string;
+  sha256?: string;
+  covariates?: Covariates;
+}
+
+/** Answers the walk's three questions about a candidate, for one axis. */
+export interface Holdout3Evaluator {
+  /** Commons' facts: an `author`, or a refusal. `ahead` may be prefetched. */
+  admission(
+    axis: number,
+    title: string,
+    ahead: readonly string[],
+  ): Promise<Holdout3Verdict>;
+  /** The bytes: a `sha256`, or a refusal. */
+  bytes(axis: number, title: string): Promise<Holdout3Verdict>;
+  /** The measurement: `covariates`, or a refusal (unreadable, animated). */
+  measure(axis: number, title: string): Promise<Holdout3Verdict>;
+}
+
+/** The images the draw may not take: every pin outside holdout3, and Kodak24. */
+export interface Holdout3Exclusions {
+  /** Commons titles ({@link pinnedCommonsTitle}). */
+  titles: string[];
+  sha256: string[];
+  /** Authors, trimmed and lower-cased. */
+  authors: string[];
+}
+
+const authorKey = (a: string): string => a.trim().toLowerCase();
+
+/** The exclusions as the pin tables give them now, sorted. */
+export function holdout3Exclusions(): Holdout3Exclusions {
+  const pins = [...CURATED_IMAGES, ...ALPHA_IMAGES, ...GRAPHIC_IMAGES].filter(
+    (p) => p.split !== "holdout3",
+  );
+  const sorted = (xs: Iterable<string>): string[] => [...new Set(xs)].sort();
+  return {
+    titles: sorted(
+      pins.map((p) => pinnedCommonsTitle(p.source)).filter((t) => t !== null),
+    ),
+    sha256: sorted([...pins.map((p) => p.sha256), ...KODAK_SHA256]),
+    authors: sorted(pins.map((p) => authorKey(p.author))),
+  };
+}
+
+/** One pool entry: a Commons title and the query it is attributed to. */
+export interface Holdout3PoolEntry {
+  title: string;
+  query: string;
+}
+
+/** What one axis's walk did. */
+export interface Holdout3AxisWalk {
+  /** The pool prefix the walk reached, in seeded order. */
+  walked: Holdout3PoolEntry[];
+  refusals: Record<string, number>;
+  picks: string[];
+}
+
+/** What the whole walk did. */
+export interface Holdout3Walk {
+  axes: Holdout3AxisWalk[];
+  picks: Holdout3Pick[];
+  shortfalls: string[];
+  sizes: Record<DrawPart, number>;
+  strata: Record<string, number>;
+}
+
+/**
+ * The draw's walk, given each axis's pool, the exclusions and an evaluator.
+ * Everything that depends on what the walk has already taken — titles,
+ * authors, bytes and cameras taken, query caps and slot quotas — is decided
+ * here; everything a candidate is on its own comes from the evaluator. The
+ * live draw passes Commons; {@link replayHoldout3} passes a committed record,
+ * so the picks are re-derived from it rather than trusted. A pool may be a
+ * prefix of `poolSizes[i]` entries: reaching past it throws.
+ */
+export async function walkHoldout3(input: {
+  pools: readonly (readonly Holdout3PoolEntry[])[];
+  poolSizes: readonly number[];
+  exclusions: Holdout3Exclusions;
+  evaluator: Holdout3Evaluator;
+  axes?: readonly DrawAxis[];
+}): Promise<Holdout3Walk> {
+  const axes = input.axes ?? HOLDOUT3_DRAW;
+  const ev = input.evaluator;
+  const takenTitles = new Set(input.exclusions.titles);
+  const takenSha = new Set(input.exclusions.sha256);
+  const takenAuthors = new Set(input.exclusions.authors);
+  const labels = new Set<string>();
+  const picks: Holdout3Pick[] = [];
+
+  interface AxisState {
+    index: number;
+    axis: DrawAxis;
+    pool: (Holdout3PoolEntry & { key: string })[];
+    size: number;
+    cursor: number;
+    /** Candidates refused only because their slot was full, in seeded order. */
+    passedOver: (Holdout3PoolEntry & { key: string })[];
+    filled: Map<string, number>;
+    perQuery: Map<string, number>;
+    cameras: Set<string>;
+    refusals: Map<string, number>;
+    asked: Set<string>;
+  }
+  const states: AxisState[] = axes.map((axis, index) => ({
+    index,
+    axis,
+    pool: (input.pools[index] ?? [])
+      .map((e) => ({ ...e, key: holdout3OrderKey(e.title) }))
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
+    size: input.poolSizes[index] ?? 0,
+    cursor: 0,
+    passedOver: [],
+    filled: new Map(),
+    perQuery: new Map(),
+    cameras: new Set(),
+    refusals: new Map(),
+    asked: new Set(),
+  }));
+
+  const refuse = (s: AxisState, reason: string): void => {
+    s.refusals.set(reason, (s.refusals.get(reason) ?? 0) + 1);
+  };
+  const quota = (a: DrawAxis): number =>
+    Object.values(a.slots).reduce((x, y) => x + y, 0);
+  const next = (s: AxisState): AxisState["pool"][number] | undefined => {
+    if (s.cursor >= s.size) return undefined;
+    const e = s.pool[s.cursor];
+    if (e === undefined) {
+      throw new Error(
+        `${s.axis.name}: the walk reaches pool entry ${s.cursor + 1} of ${s.size}, past the ${s.pool.length} recorded`,
+      );
+    }
+    s.cursor++;
+    return e;
+  };
+
+  /**
+   * Walk one axis until it takes one pick, or its pool ends. With slot quotas
+   * lifted, the candidates passed over only because their slot was full are
+   * reconsidered first, in seeded order, before the cursor moves on
+   * (amendment 1, #129).
+   */
+  async function takeOne(s: AxisState, liftSlots: boolean): Promise<boolean> {
+    const { axis } = s;
+    for (;;) {
+      const entry =
+        liftSlots && s.passedOver.length > 0 ? s.passedOver.shift() : next(s);
+      if (entry === undefined) break;
+      const { title, query, key } = entry;
+      if (takenTitles.has(title)) {
+        refuse(s, "already pinned or picked");
+        continue;
+      }
+      if ((s.perQuery.get(query) ?? 0) >= axis.perQuery) {
+        refuse(s, "its query's cap is reached");
+        continue;
+      }
+      const ahead = s.asked.has(title)
+        ? []
+        : s.pool
+            .slice(s.cursor - 1, s.cursor + 19)
+            .map((e) => e.title)
+            .filter((t) => !s.asked.has(t));
+      for (const t of ahead) s.asked.add(t);
+      const admitted = await ev.admission(s.index, title, ahead);
+      if (admitted.author === undefined) {
+        refuse(s, admitted.refused ?? "no verdict");
+        continue;
+      }
+      if (takenAuthors.has(authorKey(admitted.author))) {
+        refuse(s, "author already pinned or picked");
+        continue;
+      }
+      const read = await ev.bytes(s.index, title);
+      if (read.sha256 === undefined) {
+        refuse(s, read.refused ?? "no verdict");
+        continue;
+      }
+      const sha256 = read.sha256;
+      if (takenSha.has(sha256)) {
+        refuse(s, "bytes already pinned or picked");
+        continue;
+      }
+      const measured = await ev.measure(s.index, title);
+      const c = measured.covariates;
+      if (c === undefined) {
+        refuse(s, measured.refused ?? "no verdict");
+        continue;
+      }
+      const aspect = Math.max(c.width, c.height) / Math.min(c.width, c.height);
+      const slot = axis.slot(c, aspect);
+      if (slot === null) {
+        refuse(s, "fails the axis test");
+        continue;
+      }
+      if (!liftSlots && (s.filled.get(slot) ?? 0) >= (axis.slots[slot] ?? 0)) {
+        refuse(s, `slot ${slot} full`);
+        s.passedOver.push(entry);
+        continue;
+      }
+      if (axis.onePerCamera && c.camera !== null && s.cameras.has(c.camera)) {
+        refuse(s, "camera already picked");
+        continue;
+      }
+      const record = {
+        drawnAs:
+          axis.name === "skin" || axis.part === "alpha"
+            ? `${axis.name}: ${slot}`
+            : axis.name,
+        camera: c.camera,
+        phone: c.phone,
+        meanL: round4(c.meanL),
+        lowKey: round4(c.lowKey),
+        skin: round4(c.skin),
+      };
+      const label = holdout3Label(axis.part, axis.stem, title, labels);
+      labels.add(label);
+      takenTitles.add(title);
+      takenSha.add(sha256);
+      takenAuthors.add(authorKey(admitted.author));
+      s.filled.set(slot, (s.filled.get(slot) ?? 0) + 1);
+      s.perQuery.set(query, (s.perQuery.get(query) ?? 0) + 1);
+      if (c.camera !== null) s.cameras.add(c.camera);
+      picks.push({
+        part: axis.part,
+        label,
+        title,
+        drawnAs: axis.name,
+        slot,
+        query,
+        orderKey: key,
+        sha256,
+        covariates: c,
+        record: {
+          ...record,
+          strata: holdout3Strata({
+            corpus: axis.part,
+            width: c.width,
+            height: c.height,
+            nonOpaqueFraction: round4(c.alpha?.nonOpaqueFraction ?? 0),
+            phone: record.phone,
+            meanL: record.meanL,
+            lowKey: record.lowKey,
+            skin: record.skin,
+          }),
+        },
+      });
+      return true;
+    }
+    return false;
+  }
+
+  for (const s of states) {
+    const q = quota(s.axis);
+    let n = 0;
+    while (n < q && (await takeOne(s, false))) n++;
+  }
+  // A part that ends short walks its axes again, in list order, one pick per
+  // axis per round, slot quotas lifted, until it is full or every pool ends.
+  const shortfalls: string[] = [];
+  for (const part of ["photo", "alpha", "graphic"] as const) {
+    const size = P.sizes[part];
+    const mine = states.filter((s) => s.axis.part === part);
+    let progress = true;
+    while (picks.filter((p) => p.part === part).length < size && progress) {
+      progress = false;
+      for (const s of mine) {
+        if (picks.filter((p) => p.part === part).length >= size) break;
+        if (await takeOne(s, true)) {
+          progress = true;
+          shortfalls.push(
+            `${part} was short: ${picks.at(-1)?.label} taken by ${s.axis.name} with its slot quotas lifted`,
+          );
+        }
+      }
+    }
+  }
+  return {
+    axes: states.map((s) => ({
+      walked: s.pool
+        .slice(0, s.cursor)
+        .map(({ title, query }) => ({ title, query })),
+      refusals: Object.fromEntries(s.refusals),
+      picks: picks.filter((p) => p.drawnAs === s.axis.name).map((p) => p.label),
+    })),
+    picks,
+    shortfalls,
+    sizes: {
+      photo: picks.filter((p) => p.part === "photo").length,
+      alpha: picks.filter((p) => p.part === "alpha").length,
+      graphic: picks.filter((p) => p.part === "graphic").length,
+    },
+    strata: Object.fromEntries(
+      HOLDOUT3_STRATA.map((st) => [
+        st,
+        picks.filter((p) => p.record.strata.includes(st)).length,
+      ]),
+    ),
+  };
+}
+
+/** What a pin needs from Commons about a pick. */
+export interface Holdout3PickFacts {
+  label: string;
+  title: string;
+  url: string;
+  descriptionUrl: string;
+  mime: string;
+  licence: string;
+  author: string;
+  sha256: string;
+}
+
+/**
+ * The committed record of a draw (`fixtures/holdout3-draw.json`): the
+ * protocol and skin region it ran under, the exclusions, every query's hits,
+ * every axis's walked prefix with each candidate's {@link Holdout3Verdict},
+ * the refusals by reason, and the picks with what their pins need.
+ */
+export interface Holdout3DrawRecord {
+  protocol: typeof HOLDOUT3_PROTOCOL;
+  skinRegion: typeof SKIN_REGION;
+  amendments: readonly string[];
+  drawnAt: string;
+  poolPerQuery: number;
+  exclusions: Holdout3Exclusions;
+  axes: {
+    part: DrawPart;
+    name: string;
+    test: string;
+    slots: Readonly<Record<string, number>>;
+    queries: {
+      name: string;
+      query: string;
+      totalhits: number;
+      returned: number;
+      attributed: number;
+    }[];
+    pool: number;
+    consumed: number;
+    refusals: Record<string, number>;
+    picks: string[];
+    walked: (Holdout3PoolEntry & Holdout3Verdict)[];
+  }[];
+  sizes: Record<DrawPart, number>;
+  strata: Record<string, number>;
+  shortfalls: string[];
+  picks: Holdout3PickFacts[];
+}
+
+/** The committed draw record, relative to this package. */
+export const HOLDOUT3_DRAW_RECORD = path.resolve(
+  import.meta.dirname,
+  "../fixtures/holdout3-draw.json",
+);
+
+/**
+ * Re-run the walk from a committed record, offline: the pools are the walked
+ * prefixes, and every candidate's facts and bytes are what the record says
+ * they answered. Throws where the walk asks something the record does not
+ * hold. The result is what the draw picks from that evidence under the
+ * committed {@link HOLDOUT3_DRAW}, whatever the record's own `picks` claim.
+ */
+export async function replayHoldout3(
+  record: Holdout3DrawRecord,
+): Promise<Holdout3Walk> {
+  if (record.axes.length !== HOLDOUT3_DRAW.length) {
+    throw new Error(
+      `the record has ${record.axes.length} axes; the draw has ${HOLDOUT3_DRAW.length}`,
+    );
+  }
+  const verdicts = record.axes.map((a, i) => {
+    if (a.name !== HOLDOUT3_DRAW[i]?.name) {
+      throw new Error(
+        `record axis ${i} is ${a.name}; the draw's is ${HOLDOUT3_DRAW[i]?.name}`,
+      );
+    }
+    return new Map(a.walked.map((w) => [w.title, w]));
+  });
+  const get = (axis: number, title: string): Holdout3Verdict => {
+    const v = verdicts[axis]?.get(title);
+    if (v === undefined) {
+      throw new Error(`the record holds no verdict on ${title}`);
+    }
+    return v;
+  };
+  const lacks = (title: string, what: string): Error =>
+    new Error(`the record does not say what ${title}'s ${what} answered`);
+  const evaluator: Holdout3Evaluator = {
+    admission: async (axis, title) => {
+      const v = get(axis, title);
+      if (v.author !== undefined) return { author: v.author };
+      if (v.refused !== undefined) return { refused: v.refused };
+      throw lacks(title, "facts");
+    },
+    bytes: async (axis, title) => {
+      const v = get(axis, title);
+      if (v.sha256 !== undefined) return { sha256: v.sha256 };
+      if (v.refused !== undefined) return { refused: v.refused };
+      throw lacks(title, "download");
+    },
+    measure: async (axis, title) => {
+      const v = get(axis, title);
+      if (v.covariates !== undefined) return { covariates: v.covariates };
+      if (v.refused !== undefined) return { refused: v.refused };
+      throw lacks(title, "measurement");
+    },
+  };
+  return walkHoldout3({
+    pools: record.axes.map((a) =>
+      a.walked.map(({ title, query }) => ({ title, query })),
+    ),
+    poolSizes: record.axes.map((a) => a.pool),
+    exclusions: record.exclusions,
+    evaluator,
+  });
+}
+
+/**
+ * JSON with the top four levels expanded and everything deeper on one line,
+ * so the record diffs a candidate per line.
+ */
+function compactJson(value: unknown, depth = 0): string {
+  const pad = "  ".repeat(depth);
+  if (depth >= 4 || value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  const inner = "  ".repeat(depth + 1);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    return `[\n${value.map((v) => inner + compactJson(v, depth + 1)).join(",\n")}\n${pad}]`;
+  }
+  const entries = Object.entries(value).filter(([, v]) => v !== undefined);
+  if (entries.length === 0) return "{}";
+  return `{\n${entries.map(([k, v]) => `${inner}${JSON.stringify(k)}: ${compactJson(v, depth + 1)}`).join(",\n")}\n${pad}}`;
+}
+
+async function commonsSearch(
+  query: string,
+): Promise<{ totalhits: number; titles: string[] }> {
+  const params = new URLSearchParams({
+    action: "query",
+    format: "json",
+    list: "search",
+    srnamespace: "6",
+    srlimit: String(HOLDOUT3_POOL_PER_QUERY),
+    srprop: "",
+    srinfo: "totalhits",
+    srsearch: query,
+  });
+  const response = await fetch(`${COMMONS_API}?${params}`, {
+    headers: { "User-Agent": USER_AGENT },
+  });
+  if (!response.ok) throw new Error(`Commons answered HTTP ${response.status}`);
+  const body = (await response.json()) as {
+    query?: {
+      searchinfo?: { totalhits: number };
+      search?: { title: string }[];
+    };
+  };
+  return {
+    totalhits: body.query?.searchinfo?.totalhits ?? 0,
+    titles: (body.query?.search ?? []).map((s) => s.title),
+  };
+}
+
+const round4 = (x: number): number => Math.round(x * 1e4) / 1e4;
+
+/** The evaluator the live draw uses: Commons' facts, the bytes, the measurement. */
+function liveEvaluator(): {
+  evaluator: Holdout3Evaluator;
+  verdicts: Map<string, Holdout3Verdict>[];
+  facts: Map<string, CommonsFacts | string>;
+} {
+  const facts = new Map<string, CommonsFacts | string>();
+  const verdicts = HOLDOUT3_DRAW.map(() => new Map<string, Holdout3Verdict>());
+  const note = (
+    axis: number,
+    title: string,
+    v: Holdout3Verdict,
+  ): Holdout3Verdict => {
+    const m = verdicts[axis];
+    if (m === undefined) throw new Error(`no axis ${axis}`);
+    const merged = { ...m.get(title), ...v };
+    m.set(title, merged);
+    return merged;
+  };
+  const factsOf = (title: string): CommonsFacts => {
+    const f = facts.get(title);
+    if (f === undefined || typeof f === "string") {
+      throw new Error(`${title} was not admitted`);
+    }
+    return f;
+  };
+  const fileOf = (f: CommonsFacts): string =>
+    path.join(CANDIDATE_DIR, path.basename(new URL(f.url).pathname));
+  const evaluator: Holdout3Evaluator = {
+    async admission(axis, title, ahead) {
+      const known = verdicts[axis]?.get(title);
+      if (known?.author !== undefined || known?.refused !== undefined) {
+        return known;
+      }
+      if (!facts.has(title)) {
+        const ask = [...new Set([title, ...ahead])].filter(
+          (t) => !facts.has(t),
+        );
+        for (const [t, f] of await commonsFacts(ask)) facts.set(t, f);
+      }
+      const admitted = admit(facts.get(title));
+      if ("reason" in admitted) {
+        return note(axis, title, {
+          refused: admitted.reason.startsWith("licence")
+            ? "licence not admitted"
+            : admitted.reason,
+        });
+      }
+      const drawAxis = HOLDOUT3_DRAW[axis];
+      if (drawAxis === undefined) throw new Error(`no axis ${axis}`);
+      const why = holdout3Admission(drawAxis.part, admitted.facts, drawAxis);
+      if (why !== null) return note(axis, title, { refused: why });
+      return note(axis, title, { author: admitted.facts.author });
+    },
+    async bytes(axis, title) {
+      const known = verdicts[axis]?.get(title);
+      if (known?.sha256 !== undefined) return known;
+      const f = factsOf(title);
+      const file = fileOf(f);
+      let bytes: Buffer;
+      try {
+        bytes = await fs.readFile(file);
+      } catch {
+        try {
+          bytes = await download(f.url);
+        } catch (e) {
+          console.error(
+            `download failed for ${title}: ${e instanceof Error ? e.message : String(e)}`,
+          );
+          return note(axis, title, { refused: "download failed" });
+        }
+        await fs.writeFile(file, bytes);
+      }
+      if (sha1Mismatch(bytes, f.sha1) !== null) {
+        return note(axis, title, { refused: "SHA-1 differs from Commons'" });
+      }
+      return note(axis, title, {
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      });
+    },
+    async measure(axis, title) {
+      const known = verdicts[axis]?.get(title);
+      if (known?.covariates !== undefined) return known;
+      const bytes = await fs.readFile(fileOf(factsOf(title)));
+      let c: Covariates;
+      let pages: number;
+      try {
+        pages = (await sharp(bytes).metadata()).pages ?? 1;
+        c = await measureFile(bytes);
+      } catch {
+        return note(axis, title, { refused: "unreadable" });
+      }
+      if (pages > 1) return note(axis, title, { refused: "animated" });
+      return note(axis, title, { covariates: c });
+    },
+  };
+  return { evaluator, verdicts, facts };
+}
+
+async function runDrawHoldout3(outPath: string): Promise<void> {
+  const exclusions = holdout3Exclusions();
+  await fs.mkdir(CANDIDATE_DIR, { recursive: true });
+  const pools: Holdout3PoolEntry[][] = [];
+  const queries: Holdout3DrawRecord["axes"][number]["queries"][] = [];
+  for (const axis of HOLDOUT3_DRAW) {
+    const attributed = new Map<string, string>();
+    const mine: Holdout3DrawRecord["axes"][number]["queries"] = [];
+    for (const q of axis.queries) {
+      const { totalhits, titles } = await commonsSearch(q.query);
+      let n = 0;
+      for (const t of titles) {
+        if (!attributed.has(t)) {
+          attributed.set(t, q.name);
+          n++;
+        }
+      }
+      mine.push({ ...q, totalhits, returned: titles.length, attributed: n });
+      console.error(
+        `${axis.name} / ${q.name}: ${titles.length} of ${totalhits}`,
+      );
+    }
+    pools.push([...attributed].map(([title, query]) => ({ title, query })));
+    queries.push(mine);
+  }
+  const live = liveEvaluator();
+  const walk = await walkHoldout3({
+    pools,
+    poolSizes: pools.map((p) => p.length),
+    exclusions,
+    evaluator: live.evaluator,
+  });
+  for (const p of walk.picks) {
+    console.error(`picked ${p.label} (${p.drawnAs}: ${p.slot}) ← ${p.title}`);
+  }
+  const record: Holdout3DrawRecord = {
+    protocol: P,
+    skinRegion: SKIN_REGION,
+    amendments: HOLDOUT3_AMENDMENTS,
+    drawnAt: new Date().toISOString(),
+    poolPerQuery: HOLDOUT3_POOL_PER_QUERY,
+    exclusions,
+    axes: HOLDOUT3_DRAW.map((axis, i) => {
+      const w = walk.axes[i];
+      if (w === undefined) throw new Error(`no walk for ${axis.name}`);
+      return {
+        part: axis.part,
+        name: axis.name,
+        test: axis.test,
+        slots: axis.slots,
+        queries: queries[i] ?? [],
+        pool: pools[i]?.length ?? 0,
+        consumed: w.walked.length,
+        refusals: w.refusals,
+        picks: w.picks,
+        walked: w.walked.map((e) => ({
+          ...e,
+          ...live.verdicts[i]?.get(e.title),
+        })),
+      };
+    }),
+    sizes: walk.sizes,
+    strata: walk.strata,
+    shortfalls: walk.shortfalls,
+    picks: walk.picks.map((p) => {
+      const f = live.facts.get(p.title);
+      if (f === undefined || typeof f === "string") {
+        throw new Error(`no facts for the pick ${p.title}`);
+      }
+      return {
+        label: p.label,
+        title: p.title,
+        url: f.url,
+        descriptionUrl: f.descriptionUrl,
+        mime: f.mime,
+        licence: f.licence,
+        author: f.author,
+        sha256: p.sha256,
+      };
+    }),
+  };
+  await fs.writeFile(outPath, `${compactJson(record)}\n`);
+  console.error(
+    `${walk.picks.length} picked; sizes ${JSON.stringify(walk.sizes)}; strata ${JSON.stringify(walk.strata)}`,
+  );
+  const short = (["photo", "alpha", "graphic"] as const).filter(
+    (p) => walk.sizes[p] < P.sizes[p],
+  );
+  const thin = HOLDOUT3_STRATA.filter(
+    (st) => (walk.strata[st] ?? 0) < P.strataMin,
+  );
+  if (short.length > 0 || thin.length > 0) {
+    console.error(
+      `the draw does not meet the protocol: short parts ${short.join(", ") || "none"}; thin strata ${thin.join(", ") || "none"}`,
+    );
+    process.exit(1);
+  }
+}
+
+/** The line that opens a table's generated holdout3 pins. */
+export const HOLDOUT3_PINS_BEGIN =
+  "// holdout3 pins (#129): written by `corpus-covariates.js --pin-holdout3` from fixtures/holdout3-draw.json; never edit by hand.";
+/** The line that closes them. */
+export const HOLDOUT3_PINS_END = "// end of the holdout3 pins";
+
+/** One pin table entry, as TypeScript object-literal text. */
+export function holdout3PinText(
+  pick: Holdout3Pick,
+  facts: Holdout3PickFacts,
+): string {
+  const j = (v: unknown): string => JSON.stringify(v);
+  const c = pick.covariates;
+  const url = facts.url.split("?")[0] ?? facts.url;
+  const ext = facts.mime === "image/png" ? ".png" : ".jpg";
+  const r = pick.record;
+  const record = `holdout3: { drawnAs: ${j(r.drawnAs)}, camera: ${j(r.camera)}, phone: ${j(r.phone)}, meanL: ${r.meanL}, lowKey: ${r.lowKey}, skin: ${r.skin}, strata: ${j(r.strata)} },`;
+  const head = `label: ${j(pick.label)},`;
+  const size = `ext: ${j(ext)}, width: ${c.width}, height: ${c.height}, split: "holdout3",`;
+  const who = `sha256: ${j(pick.sha256)}, source: ${j(facts.descriptionUrl)}, author: ${j(facts.author)}, licence: ${j(facts.licence)},`;
+  if (pick.part === "photo") {
+    const notes = [
+      c.orientation,
+      ...(c.camera === null ? [] : [c.camera]),
+      `mean L* ${c.meanL.toFixed(1)}`,
+      `mean C* ${c.meanC.toFixed(1)}`,
+      `detail ${c.detail.toFixed(2)}`,
+    ].join(", ");
+    return `{ ${head} urls: [${j(url)}], ${size} ${who} axis: ${j(r.drawnAs)}, notes: ${j(notes)}, ${record} },`;
+  }
+  if (pick.part === "alpha") {
+    const a = c.alpha;
+    if (a === null) throw new Error(`${pick.label} has no alpha covariates`);
+    const notes = `Cell ${pick.slot}; silhouette ${(a.silhouette ?? 0).toFixed(2)}. Drawn from the ${pick.query} query.`;
+    return `{ ${head} url: ${j(url)}, ${size} nonOpaqueFraction: ${round4(a.nonOpaqueFraction)}, softAlphaFraction: ${round4(a.softAlphaFraction)}, ${who} notes: ${j(notes)}, ${record} },`;
+  }
+  const notes = `Content type ${pick.drawnAs}, drawn from the ${pick.query} query; mean L* ${c.meanL.toFixed(1)}, mean C* ${c.meanC.toFixed(1)}, detail ${c.detail.toFixed(2)}.`;
+  return `{ ${head} url: ${j(url)}, ${size} ${who} notes: ${j(notes)}, ${record} },`;
+}
+
+/** Replace the lines between a table's holdout3 markers. */
+export function spliceHoldout3Pins(text: string, entries: string[]): string {
+  const lines = text.split("\n");
+  const begin = lines.findIndex((l) => l.trim() === HOLDOUT3_PINS_BEGIN);
+  const end = lines.findIndex((l) => l.trim() === HOLDOUT3_PINS_END);
+  if (begin < 0 || end < begin) {
+    throw new Error("the table has no holdout3 pin markers");
+  }
+  return [...lines.slice(0, begin + 1), ...entries, ...lines.slice(end)].join(
+    "\n",
+  );
+}
+
+/**
+ * Write the three tables' holdout3 pins from a committed draw record: the
+ * record is replayed, and the pins are the replay's picks, so a pin is never
+ * typed or spliced by hand. The tables are then formatted by Biome.
+ */
+async function runPinHoldout3(recordPath: string): Promise<void> {
+  const record = JSON.parse(
+    readFileSync(recordPath, "utf8"),
+  ) as Holdout3DrawRecord;
+  const walk = await replayHoldout3(record);
+  const facts = new Map(record.picks.map((p) => [p.label, p]));
+  const src = path.resolve(import.meta.dirname, "../src");
+  const tables = [
+    ["photo", "natural-images.ts"],
+    ["alpha", "alpha-images.ts"],
+    ["graphic", "graphic-images.ts"],
+  ] as const;
+  for (const [part, file] of tables) {
+    const entries = walk.picks
+      .filter((p) => p.part === part)
+      .map((p) => {
+        const f = facts.get(p.label);
+        if (f === undefined || f.sha256 !== p.sha256 || f.title !== p.title) {
+          throw new Error(
+            `the record's picks do not hold the replayed pick ${p.label}`,
+          );
+        }
+        return holdout3PinText(p, f);
+      });
+    const at = path.join(src, file);
+    await fs.writeFile(
+      at,
+      spliceHoldout3Pins(await fs.readFile(at, "utf8"), entries),
+    );
+    console.error(`${file}: ${entries.length} holdout3 pin(s)`);
+  }
+  const biome = spawnSync(
+    path.resolve(import.meta.dirname, "../node_modules/.bin/biome"),
+    ["format", "--write", ...tables.map(([, f]) => path.join(src, f))],
+    { stdio: "inherit", shell: false, env: process.env },
+  );
+  if (biome.status !== 0) {
+    console.error("biome format failed; run `pnpm run format`");
+    process.exit(1);
+  }
+}
+
 // Run only as the entry point, so the self-test can import the measurement.
 if (
   process.argv[1] !== undefined &&
@@ -563,6 +2043,8 @@ if (
     options: {
       commons: { type: "string" },
       files: { type: "boolean", default: false },
+      "draw-holdout3": { type: "boolean", default: false },
+      "pin-holdout3": { type: "string" },
       out: { type: "string" },
     },
   });
@@ -570,9 +2052,13 @@ if (
     await runCommons(values.commons, values.out);
   } else if (values.files && positionals.length > 0) {
     await runFiles(positionals);
+  } else if (values["draw-holdout3"] && values.out !== undefined) {
+    await runDrawHoldout3(values.out);
+  } else if (values["pin-holdout3"] !== undefined) {
+    await runPinHoldout3(values["pin-holdout3"]);
   } else {
     console.error(
-      "Usage: corpus-covariates.js --commons <titles.txt> [--out <file.json>] | --files <image>...",
+      "Usage: corpus-covariates.js --commons <titles.txt> [--out <file.json>] | --files <image>... | --draw-holdout3 --out <file.json> | --pin-holdout3 <draw.json>",
     );
     process.exit(1);
   }
