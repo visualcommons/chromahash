@@ -64,6 +64,7 @@ import {
   parseCorpusSet,
   parseSplit,
   splitFor,
+  tierFor,
 } from "./corpus.ts";
 import { gamutToSrgbReference } from "./gamut.ts";
 import { DEFAULT_TIER } from "./rd/lineup.ts";
@@ -208,6 +209,15 @@ interface SweepConfig {
    * i.e. every fixture in the requested split.
    */
   corpus?: CorpusSet;
+  /**
+   * Score real content only: drop the generated capability fixtures
+   * (`corpus.ts` `tierFor`), which `corpus: "all"` otherwise includes on
+   * the tune split. A sweep over every real corpus at once — photographic,
+   * alpha and graphics — sets this, so its means are not partly a
+   * capability demonstration. The sealed splits hold no generated fixture,
+   * so there it changes nothing.
+   */
+  realOnly?: boolean;
   /**
    * Legacy alias for `corpus: "photo"`. Kept so every config written before
    * the other corpora existed keeps its exact meaning; prefer `corpus`.
@@ -864,6 +874,11 @@ async function main(): Promise<void> {
       inCorpus(path.parse(i.filePath).name, corpus),
     );
   }
+  if (config.realOnly) {
+    inputs = inputs.filter(
+      (i) => tierFor(path.parse(i.filePath).name) === "real",
+    );
+  }
   if (maxImages !== null) {
     inputs = inputs.slice(0, maxImages);
   }
@@ -957,6 +972,7 @@ async function main(): Promise<void> {
       artifactGridEdge: config.artifactGridEdge ?? null,
       forceOpaque: config.forceOpaque ?? false,
       expectBytes: config.expectBytes ?? null,
+      realOnly: config.realOnly ?? false,
       ...(holdout2 !== null ? { holdout2 } : {}),
       ...(holdout3 !== null ? { holdout3 } : {}),
       guardTolerances: {
