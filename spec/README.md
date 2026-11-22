@@ -945,7 +945,7 @@ function encode(W, H, rgba, gamut, tier) -> byte[]:   // tier in 0..=MAX_TIER (4
     // 5. Select coefficients (§6.2). Counts and bit widths come from the §3.2
     //    row for this tier — codes 0 and 1 have their own, codes 2–4 scale the code-2 row.
     aspect_byte = clamp(round((log2(W/H) + 4) / 8 * 255), 0, 255)
-    (L_K, L_B, C_K, C_B, A_K) = acShape(tier, hasAlpha)   // §3.2
+    (L_K, L_B, C_K, C_B, A_K, A_B) = acShape(tier, hasAlpha)   // §3.2
     (L_sel, _) = selectCoefficients(aspect_byte, tier, L_K)
     (C_sel, _) = selectCoefficients(aspect_byte, tier, C_K)
     if hasAlpha: (A_sel, _) = selectCoefficients(aspect_byte, tier, A_K)
@@ -997,13 +997,13 @@ function encode(W, H, rgba, gamut, tier) -> byte[]:   // tier in 0..=MAX_TIER (4
 
     if hasAlpha:
         writeBits(hash, bitpos, 5, round(31*clamp(A_dc,0,1))); bitpos += 5
-        (A_scl_q, A_norm) = fitScale(A_ac, A_scale, MAX_A_ALPHA_SCALE, 4, MU_ALPHA, 4)
+        (A_scl_q, A_norm) = fitScale(A_ac, A_scale, MAX_A_ALPHA_SCALE, 4, MU_ALPHA, A_B)
         writeBits(hash, bitpos, 4, A_scl_q); bitpos += 4
     for i in 0 .. L_K-1: writeBits(hash, bitpos, L_B, qAC(L_ac[i],L_norm,L_B,MU_L)); bitpos += L_B
     for i in 0 .. C_K-1: writeBits(hash, bitpos, C_B, qAC(a_ac[i],a_norm,C_B,MU_C)); bitpos += C_B
     for i in 0 .. C_K-1: writeBits(hash, bitpos, C_B, qAC(b_ac[i],b_norm,C_B,MU_C)); bitpos += C_B
     if hasAlpha:
-        for i in 0 .. A_K-1: writeBits(hash, bitpos, 4, qAC(A_ac[i],A_norm,4,MU_ALPHA)); bitpos += 4
+        for i in 0 .. A_K-1: writeBits(hash, bitpos, A_B, qAC(A_ac[i],A_norm,A_B,MU_ALPHA)); bitpos += A_B
 
     // Trailing bits to the byte boundary are padding (§2.6), implicit zero.
     assert ceil(bitpos / 8) == length
@@ -1103,9 +1103,9 @@ function decode(hash, output_gamut = sRGB) -> (w, h, rgba):
     b_scale = b_scl_q / 31.0 * MAX_B_SCALE
 
     // 3. Coefficient selection (mirrors the encoder exactly, §6.2). Counts and
-    //    bit widths come from the §3.2 row for this tier: code 1 reads its own
-    //    row, tier m ≥ 2 reads the code-2 row scaled by 4^(m−2).
-    (L_K, L_B, C_K, C_B, A_K) = acShape(tier, hasAlpha)   // §3.2
+    //    bit widths come from the §3.2 row for this tier: codes 0 and 1 read
+    //    their own rows, tier m ≥ 2 reads the code-2 row scaled by 4^(m−2).
+    (L_K, L_B, C_K, C_B, A_K, A_B) = acShape(tier, hasAlpha)   // §3.2
     (L_sel, _) = selectCoefficients(aspect, tier, L_K)
     (C_sel, _) = selectCoefficients(aspect, tier, C_K)
 
@@ -1122,7 +1122,7 @@ function decode(hash, output_gamut = sRGB) -> (w, h, rgba):
     a_ac = []; for i in 0 .. C_K-1: a_ac.append(muLawDequantize(readBits(hash,bitpos,C_B),C_B,MU_C)*a_scale); bitpos += C_B
     b_ac = []; for i in 0 .. C_K-1: b_ac.append(muLawDequantize(readBits(hash,bitpos,C_B),C_B,MU_C)*b_scale); bitpos += C_B
     if hasAlpha:
-        A_ac = []; for i in 0 .. A_K-1: A_ac.append(muLawDequantize(readBits(hash,bitpos,4),4,MU_ALPHA)*A_scale); bitpos += 4
+        A_ac = []; for i in 0 .. A_K-1: A_ac.append(muLawDequantize(readBits(hash,bitpos,A_B),A_B,MU_ALPHA)*A_scale); bitpos += A_B
 
     // 6. Frequency filter for the render raster (§6.4). At the natural size
     //    this removes nothing; for capped renders it removes frequencies the
