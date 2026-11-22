@@ -2596,6 +2596,56 @@ mod tests {
         79, 242, 80, 130, 116, 252, 94, 189, 223, 79, 82, 14,
     ];
 
+    /// The fixed alternative and the coded length keep every knob but the
+    /// layouts and the coder: a hash coded under a wider prefix field is the
+    /// length the shipped layout gives *that* prefix, and an adaptive hash
+    /// that keeps the fixed fields decodes them under the caller's own
+    /// quantizer, not the default one.
+    #[test]
+    fn the_shipped_fields_keep_every_other_knob() {
+        let wide = Tunables {
+            l_scale_bits: 9,
+            ..bound_x2(1)
+        };
+        let fixed_wide = Tunables {
+            l_scale_bits: 9,
+            ..Tunables::DEFAULT
+        };
+        for tier in 2..=MAX_TIER {
+            assert_eq!(
+                body_len_bytes(&wide, false, tier),
+                body_len_bytes(&fixed_wide, false, tier)
+            );
+            assert_ne!(
+                body_len_bytes(&wide, false, tier),
+                body_len_bytes(&Tunables::DEFAULT, false, tier),
+                "a 3-bit wider field moves the length at code {tier}"
+            );
+        }
+        // White noise at the shipped bound keeps the fixed fields (see the
+        // adaptive test above), here under a non-default luma µ.
+        let mut s = 0x2545_f491u32;
+        let noisy: Vec<u8> = (0..40 * 30 * 4)
+            .map(|i| {
+                s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                if i % 4 == 3 { 255 } else { (s >> 24) as u8 }
+            })
+            .collect();
+        let t = Tunables {
+            ac_coder: 2,
+            mu_l: 9.0,
+            ..Tunables::DEFAULT
+        };
+        let plain = Tunables { ac_coder: 0, ..t };
+        let hash = encode_with(40, 30, &noisy, Gamut::Srgb, &t, 2);
+        assert_eq!(adaptive_flag(&hash, &t, false), 0);
+        let fixed = encode_with(40, 30, &noisy, Gamut::Srgb, &plain, 2);
+        assert_eq!(
+            crate::decode::decode_with(&hash, &t),
+            crate::decode::decode_with(&fixed, &plain)
+        );
+    }
+
     #[test]
     #[should_panic(expected = "leaves no bit for the flag")]
     fn the_adaptive_mode_refuses_a_tier_with_no_spare_bit() {
