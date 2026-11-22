@@ -92,7 +92,11 @@ import { tableRegisterProblems } from "./experiments-register.ts";
 import { type SpreadData, mdeTableCells, readSpread } from "./mde-core.ts";
 // A result from another iqa-cli is a different instrument, not a reproduction.
 import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
-import { type EntryVerdict, deriveVerdict } from "./register-verdict-core.ts";
+import {
+  type EntryVerdict,
+  deriveVerdict,
+  holdout3StrataOf,
+} from "./register-verdict-core.ts";
 import {
   type PerImageKey,
   RESULTS_DIR,
@@ -1340,6 +1344,25 @@ const D1_TIER_BASELINES: Record<string, string> = Object.fromEntries(
   ),
 );
 
+/** §13.8's holdout3 rows: D1's two frozen comparisons, by doc label. */
+const D1_FROZEN_ROWS: Record<string, string> = {
+  "code 3: `t3 coded x3` vs `t3 shipped`": "t3 coded x3",
+  "code 4: `t4 coded x4` vs `t4 shipped`": "t4 coded x4",
+};
+const D1_FROZEN_BASELINES: Record<string, string> = {
+  "code 3: `t3 coded x3` vs `t3 shipped`": "t3 shipped",
+  "code 4: `t4 coded x4` vs `t4 shipped`": "t4 shipped",
+};
+/** §13.8's holdout3 stratum columns: header, and the stratum a pin records. */
+const D1_STRATUM_COLUMNS: readonly (readonly [string, string])[] = [
+  ["smartphone (17)", "smartphone"],
+  ["graphics (16)", "graphics"],
+  ["alpha (24)", "alpha"],
+  ["skin (17)", "skin"],
+  ["low-light (12)", "low-light"],
+  ["extreme aspect (16)", "extreme-aspect"],
+];
+
 /** §11.12's photographic rows, shared by its tune and holdout bindings. */
 const V07_PHOTO_ALIASES: Record<string, string> = {
   "`sel_hv` 0.15 → 0.30": "sel_hv=0.30",
@@ -2520,6 +2543,48 @@ const BINDINGS: Binding[] = [
     },
     rowBaselines: D1_TIER_BASELINES,
   },
+  // §13.8 — D1's one holdout3 read, at the freeze: the two frozen
+  // comparisons overall (the entry-family Holm and the named-baseline guards
+  // come from the `register` binding beside it), then per holdout3 stratum,
+  // read off each pin's recorded strata.
+  {
+    kind: "rows",
+    section: "13.8",
+    table: 3,
+    sweep: "entropy-coded-ac-frozen-holdout3",
+    columns: {
+      ΔE00: "diff:ciede2000",
+      "95% CI of Δ": "diffCi:ciede2000",
+      relative: "ciedeDeltaPct",
+    },
+    aliases: D1_FROZEN_ROWS,
+    rowBaselines: D1_FROZEN_BASELINES,
+  },
+  {
+    kind: "register",
+    section: "13.8",
+    table: 3,
+    entry: "D1",
+    columns: { "p Holm": "pHolm", "guards (CI)": "guards" },
+    rows: D1_FROZEN_ROWS,
+  },
+  {
+    kind: "rows",
+    section: "13.8",
+    table: 4,
+    sweep: "entropy-coded-ac-frozen-holdout3",
+    columns: Object.fromEntries(
+      D1_STRATUM_COLUMNS.map(([header]) => [header, "ciedeDeltaPct"]),
+    ),
+    subsets: Object.fromEntries(
+      D1_STRATUM_COLUMNS.map(([header, stratum]) => [
+        header,
+        (n: string) => holdout3StrataOf(n).includes(stratum),
+      ]),
+    ),
+    aliases: D1_FROZEN_ROWS,
+    rowBaselines: D1_FROZEN_BASELINES,
+  },
 
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
@@ -2782,6 +2847,11 @@ const EXPECTED_CELLS: Record<string, number> = {
   // relative differences per corpus (42).
   "13.8#0": 59,
   "13.8#1": 42,
+  // D1's holdout3 read: the two frozen comparisons' ΔE00, interval and
+  // relative (6) with their entry-family Holm and guards (4); then their
+  // relative differences in each of the six strata (12).
+  "13.8#3": 10,
+  "13.8#4": 12,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */

@@ -6252,6 +6252,13 @@ console.log(
       guards: ["ok", "ok", "inconclusive", "ok"],
       pHolm: [0.0008, 0.0008, 0.5927, 0.0008],
     },
+    // D1's holdout3 read (#132): code 3 passes R1 and the stratum rule,
+    // code 4 is under R1's 3%. Both p sit at the resampling floor, ×2.
+    D1: {
+      pass: [true, false],
+      guards: ["ok", "ok"],
+      pHolm: [0.0004, 0.0004],
+    },
   } as const;
   for (const [id, want] of Object.entries(recorded)) {
     let v: ReturnType<typeof deriveVerdict> | undefined;

@@ -888,6 +888,28 @@ const REGISTER: Claim[] = [
     transform: abs,
   },
 
+  // D1's verdict quotes its two holdout3 readings (§13.8 table 3).
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D1: the code-3 holdout3 gain",
+    pattern: /`t3 coded x3` is ([\d.]+)% better than the shipped code-3/,
+    section: "13.8",
+    table: 3,
+    row: "code 3: `t3 coded x3` vs `t3 shipped`",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D1: the code-4 holdout3 gain",
+    pattern: /`t4 coded x4`\s+is ([\d.]+)% better, under R1's 3%/,
+    section: "13.8",
+    table: 3,
+    row: "code 4: `t4 coded x4` vs `t4 shipped`",
+    column: "relative",
+    transform: abs,
+  },
+
   // ── Register D8's prior evidence (#131) ──────────────────────────────────
   // The code-0 retune entry quotes the tune plateau's top two (§11.10) and
   // C1's holdout2 reading of the candidate (§13.7) by hand.

@@ -79,6 +79,8 @@ export const FREEZE_REV = "2047f7df6f6e043b06f0676c7da9bc701fadaf46";
 export const FREEZE_REVS: Record<string, string> = {
   C1: FREEZE_REV,
   C2: FREEZE_REV,
+  // D1 froze its code-3 and code-4 comparisons at #132's freeze commit.
+  D1: "e3b2eb63eb08ff98a32cd980d9163cb1d0685490",
 };
 
 /** [result, arm, baseline]: one judged comparison, as the freeze names it. */
@@ -89,6 +91,8 @@ const ALPHA = "v07-holdout-alpha-holdout2";
 const ALPHA_T1 = "alpha-tier1-holdout2";
 const INCUMBENT = "SS10 constants (incumbent)";
 const COMPACT = "compact 21B L19@4 C6@3";
+/** D1's one holdout3 read: its frozen arms, each beside its tier's shipped arm. */
+const D1_READ = "entropy-coded-ac-frozen-holdout3";
 
 /** The comparisons each entry froze (spec/V0.8-DECISIONS.md, C1 and C2). */
 export const FROZEN: Record<string, readonly Comparison[]> = {
@@ -111,6 +115,10 @@ export const FROZEN: Record<string, readonly Comparison[]> = {
     ],
     [ALPHA, "+ alpha_ac_fit", "ADOPTED A28@3 L22@4 C3@3"],
     [ALPHA_T1, "A28@3 L22@4 C3@3 (t0 winner)", "SHIPPED A5@4 L20@5 C9@4"],
+  ],
+  D1: [
+    [D1_READ, "t3 coded x3", "t3 shipped"],
+    [D1_READ, "t4 coded x4", "t4 shipped"],
   ],
 };
 

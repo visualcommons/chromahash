@@ -5,7 +5,7 @@
  * other bootstrap seeds, and C1's ThumbHash admission. Re-scores nothing.
  *
  * Usage:
- *   node dist/register-verdict.js C1|C2 [--seeds N]
+ *   node dist/register-verdict.js C1|C2|D1 [--seeds N]
  */
 
 import { parseArgs } from "node:util";

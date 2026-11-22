@@ -776,6 +776,12 @@ mise run arms --seed-sensitivity c1-confirm-photo-holdout2 v07-holdout-alpha-hol
 mise run sweep entropy-coded-ac                                         # §13.8
 mise run arms entropy-coded-ac --baseline "t3 shipped"                  # §13.8
 mise run stratify entropy-coded-ac --strata                             # §13.8
+# Its one holdout3 read, at the freeze commit e3b2eb6; a second read for D1
+# refuses, so this line cannot run again as written. Then its verdict,
+# re-derived from the committed result (re-scores nothing)
+mise run sweep entropy-coded-ac-frozen --split holdout3 --decision D1   # §13.8
+mise run register-verdict D1                                            # §13.8
+mise run stratify entropy-coded-ac-frozen-holdout3 --strata             # §13.8
 
 # Check the tables in this file against the results above
 mise run verify:experiments
@@ -3730,7 +3736,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 880 | 655 | 602 | 541 | 170 | 169 | 86 | 84 |
+| all committed sweeps | 883 | 658 | 605 | 544 | 170 | 169 | 86 | 84 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3743,7 +3749,8 @@ against its incumbent:
 (The first row sums every committed result, so it grew from 504 arms to 839
 when the 2026-09 re-measure committed the §6 sweeps no table had bound, and
 to 864 when the register's confirmations committed their three holdout2
-sweeps (§13.7), and to 880 when D1 committed its tune sweep (§13.8). The
+sweeps (§13.7), and to 880 and then 883 when D1 committed its tune sweep and
+its holdout3 read (§13.8). The
 prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
 #102 then turned the one EXIF-rotated tune photograph upright and re-ran every
@@ -4255,4 +4262,56 @@ reopening it takes a new entry. Q8's power statement for the frozen pair on
 `holdout3`'s 88 images (48 photographic, 24 alpha, 16 graphics), at Holm
 family m = 2, from each comparison's tune spread (σ_rel 8.44% and 8.27%):
 an MDE of 2.77% at code 3 and 2.72% at code 4, so R1's 3% is resolved.
+
+**The holdout3 read.** D1 froze at `e3b2eb6`, and read `holdout3` once from a
+clean tree at that commit: `mise run sweep entropy-coded-ac-frozen --split
+holdout3 --decision D1`, over all 88 pins (48 photographic, 24 alpha, 16
+graphics), with exactly the four frozen rows. The result is committed as
+`entropy-coded-ac-frozen-holdout3.json`, and `mise run register-verdict D1`
+re-derives every row below from it.
+
+| comparison (arm vs its tier's shipped arm, equal bytes) | ΔE00 | 95% CI of Δ | relative | p Holm | guards (CI) |
+|---|---|---|---|---|---|
+| code 3: `t3 coded x3` vs `t3 shipped` | −0.429 | [−0.491, −0.369] | −6.04% | ≤ 0.0004 | ok |
+| code 4: `t4 coded x4` vs `t4 shipped` | −0.179 | [−0.231, −0.131] | −2.80% | ≤ 0.0004 | ok |
+
+Per stratum, the relative difference over each stratum's pins (a pin may sit
+in several):
+
+| comparison | smartphone (17) | graphics (16) | alpha (24) | skin (17) | low-light (12) | extreme aspect (16) |
+|---|---|---|---|---|---|---|
+| code 3: `t3 coded x3` vs `t3 shipped` | −6.16% | −5.28% | −6.92% | −5.80% | −5.34% | −6.55% |
+| code 4: `t4 coded x4` vs `t4 shipped` | −2.06% | −2.65% | −3.43% | −3.56% | −1.34% | −2.28% |
+
+The shipped incumbents score 7.090 at code 3 and 6.397 at code 4. Under R1
+and the stratum rule (`mise run register-verdict D1`):
+
+1. **Code 3 passes.** `t3 coded x3` is 6.04% better than the shipped code-3
+   layout, at a Holm p at the resampling floor, with every guard `ok` on its
+   paired interval. Its interval, −0.491 to −0.369, lies wholly beyond the
+   3% line at −0.213, so the data exclude a gain under 3%. No stratum fails
+   the stratum rule: every one improves, and the one whose guards are
+   `inconclusive` (low-light, 12 pins) has a ΔE00 interval wholly on the
+   improving side. Under 20 other bootstrap seeds no outcome turns. The tune
+   estimate was −7.58%, so it shrank by about a fifth out of sample, and the
+   median moves with the mean (6.257 against 6.706).
+2. **Code 4 fails R1's first condition.** `t4 coded x4` is 2.80% better,
+   significant after Holm with every guard `ok`, but below the 3% bar; its
+   interval, −0.231 to −0.131, spans about −3.6% to −2.0% of the incumbent,
+   so the data do not exclude a 3% gain either. The tune estimate was
+   −5.95%, and it halved. The medians are level (6.088 against 6.092), so
+   the mean's gain is not a shift of the typical image. §13.8's tune finding 2 is the
+   likely part of the reason, and nothing here separates it from shrinkage:
+   this harness scores code 4 through a ≤ 100 px input, where a ×4 bound
+   spends bits on coefficients it cannot show.
+3. **Code 2 was decided without a read** (the two-arm cap, above), and this
+   read shows no code-2 result.
+
+Two readings go beyond the verdict. The coder's gain does not depend on the
+content in the way an adaptive or conditional rule would need to exploit: at
+code 3 every stratum improves by 5.3–6.9%, graphics and alpha included, and
+the adaptive arms on tune never preferred the fixed fields there. And the
+code-4 result is a statement about this harness as much as the format: a
+D-entry that measures code 4 at its own raster would have to change the
+encoder input the harness has always used, which no register entry has done.
 
