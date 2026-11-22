@@ -525,7 +525,7 @@ proptest! {
     }
 
     /// Register D1's validity design with the entropy coder on
-    /// (`Tunables::ac_coder`): the code is total, so a byte string that
+    /// (`Tunables::ac_coder`, plain and adaptive): the code is total, so a byte string that
     /// validates decodes, and validation is exactly the shipped validator's.
     ///
     /// The strings are random, not perturbed encodes: a valid header and the
@@ -540,8 +540,9 @@ proptest! {
         payload_seed in any::<u64>(),
         header in prop_oneof![Just(None), any::<u8>().prop_map(Some)],
         len_delta in prop_oneof![Just(0isize), -3isize..=3],
+        mode in 1u32..=2,
     ) {
-        let t = coded_tunables();
+        let t = coded_tunables(mode);
         let len = if alpha { ALPHA_LEN } else { OPAQUE_LEN }[tier as usize];
         let len = (len as isize + len_delta).max(0) as usize;
         let mut state = payload_seed | 1;
@@ -582,8 +583,9 @@ proptest! {
         opaque in any::<bool>(),
         tier in 2u8..=MAX_TIER,
         seed in any::<u64>(),
+        mode in 1u32..=2,
     ) {
-        let t = coded_tunables();
+        let t = coded_tunables(mode);
         let (w, h, rgba) = deterministic_image(seed, opaque);
         let coded = ChromaHash::encode_tuned_quality(w, h, &rgba, Gamut::Srgb, &t, tier);
         let shipped = ChromaHash::encode_with_quality(w, h, &rgba, Gamut::Srgb, tier);
@@ -597,12 +599,13 @@ proptest! {
     }
 }
 
-/// The coder on, with a bound of twice the shipped upper-tier counts in both
-/// alpha modes, so random content overflows the stream and the fit search
-/// runs.
-fn coded_tunables() -> Tunables {
+/// The coder on (`mode` 1, or 2 for the adaptive form that signals a
+/// per-image choice of the coded stream or the fixed fields), with a bound of
+/// twice the shipped upper-tier counts in both alpha modes, so random content
+/// overflows the stream and the fit search runs.
+fn coded_tunables(mode: u32) -> Tunables {
     let mut t = Tunables {
-        ac_coder: 1,
+        ac_coder: mode,
         ..Tunables::DEFAULT
     };
     t.layout_upper.l_tiers = [(52, 5), (0, 5)];

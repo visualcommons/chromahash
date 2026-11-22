@@ -3,7 +3,7 @@ use crate::bitpack::{AcHistory, AcModels, ArithEncoder, write_bits, write_bits_w
 use crate::color::{linear_rgb_to_oklab, oklab_to_linear_srgb};
 use crate::constants::{
     ALPHA_FLAG_BIT, DEFAULT_TIER, FORMAT_VERSION, Gamut, MAX_TIER, Tunables, VERSION_BITS,
-    ac_payload_bits, ac_shape, body_len_bytes, is_valid_tier, prefix_bits,
+    ac_payload_bits, ac_shape, body_len_bytes, is_valid_tier, prefix_bits, shipped_fields,
 };
 use crate::dct::{
     Selection, SelectionOrder, dct_decode_pixel_separable, dct_encode_selected, interleaved_order,
@@ -1317,10 +1317,11 @@ impl CodedAc<'_> {
     ///
     /// If even the all-zero stream exceeds `budget`: the layout bounds more
     /// codes than the hash can carry, which is a sweep-configuration error.
-    pub(crate) fn fit(&self, budget: usize) -> (Vec<u8>, usize) {
+    /// Returns the bytes, the bit count and the step.
+    pub(crate) fn fit(&self, budget: usize) -> (Vec<u8>, usize, usize) {
         let full = self.code(FIT_STEPS);
         if full.1 <= budget {
-            return full;
+            return (full.0, full.1, FIT_STEPS);
         }
         let mut best = self.code(0);
         assert!(
@@ -1339,7 +1340,7 @@ impl CodedAc<'_> {
                 hi = mid;
             }
         }
-        best
+        (best.0, best.1, lo)
     }
 }
 
@@ -1347,6 +1348,113 @@ impl CodedAc<'_> {
 /// `tier`. Per spec §10 (v1). Returns the variable-length encoded bytes
 /// (the default tier = 32 bytes; each higher code roughly quadruples the length).
 pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) -> Box<[u8]> {
+    if t.ac_coder == 2 {
+        return encode_adaptive(w, h, rgba, gamut, t, tier);
+    }
+    encode_parts(w, h, rgba, gamut, t, tier, 0, false).0
+}
+
+/// What one encode's AC codes reconstruct, per channel (L, a, b, alpha), in
+/// selection order: the unquantized coefficients and their dequantized
+/// values as the decoder will read them (after any coded-stream cut).
+struct AcRecon {
+    truth: [Vec<f64>; 4],
+    recon: [Vec<f64>; 4],
+}
+
+/// Register D1's adaptive mode (`ac_coder = 2`): encode the coded stream (in
+/// all but the first payload bit) and the shipped fixed-width fields, and
+/// keep the one whose AC codes reconstruct the coefficients with the smaller
+/// pixel-domain squared error. The first payload bit says which (1 = coded).
+///
+/// The error is Parseval's: a coefficient error `δ` at `(cx, cy)` costs
+/// `δ² · (cx > 0 ? 2 : 1) · (cy > 0 ? 2 : 1)` per pixel under the decoder's
+/// basis, summed over every coefficient either encode selects (a coefficient
+/// one leaves out costs its whole value), over L, a, b and alpha alike. DC
+/// and every coefficient neither selects cost both the same, so they drop out.
+/// The decision is the encoder's own, from the source alone.
+///
+/// # Panics
+///
+/// With CfL or a shared b scale on, which change what the chroma codes
+/// reconstruct, or where the shipped layout leaves no padding bit for the
+/// flag (codes 0 and 1).
+fn encode_adaptive(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) -> Box<[u8]> {
+    assert!(
+        t.cfl_bits == 0 && !t.b_scale_from_a,
+        "ac_coder 2 decides on the AC reconstruction, which CfL and a shared b scale change"
+    );
+    let coded = Tunables { ac_coder: 1, ..*t };
+    let fixed = shipped_fields(t);
+    let (hc, rc) = encode_parts(w, h, rgba, gamut, &coded, tier, 1, true);
+    let (hf, rf) = encode_parts(w, h, rgba, gamut, &fixed, tier, 0, true);
+    let (rc, rf) = (rc.expect("asked for"), rf.expect("asked for"));
+    let has_alpha = hf[0] >> ALPHA_FLAG_BIT & 1 == 1;
+    let start = prefix_bits(t) as usize
+        + if has_alpha {
+            (t.alpha_dc_bits + t.alpha_scale_bits) as usize
+        } else {
+            0
+        };
+    let fixed_end = start + ac_payload_bits(&ac_shape(&fixed, has_alpha, tier));
+    assert!(
+        fixed_end < hf.len() * 8,
+        "ac_coder 2: the shipped layout at code {tier} leaves no bit for the flag"
+    );
+
+    let (_, aspect) = quantize_aspect(encode_aspect(w, h), t.aspect_bits);
+    let order = SelectionOrder::new(aspect, tier, t.aniso_oblique, t.sel_hv);
+    let error = |r: &AcRecon| -> f64 {
+        let mut sse = 0.0;
+        for ch in 0..4 {
+            let truth = if rc.truth[ch].len() >= rf.truth[ch].len() {
+                &rc.truth[ch]
+            } else {
+                &rf.truth[ch]
+            };
+            let coeffs = order.take(truth.len()).coeffs;
+            for (i, (&c, &(cx, cy))) in truth.iter().zip(&coeffs).enumerate() {
+                let weight = if cx > 0 { 2.0 } else { 1.0 } * if cy > 0 { 2.0 } else { 1.0 };
+                let d = c - r.recon[ch].get(i).copied().unwrap_or(0.0);
+                sse += weight * d * d;
+            }
+        }
+        sse
+    };
+    let use_coded = error(&rc) < error(&rf);
+    let src = if use_coded { &hc } else { &hf };
+
+    // The chosen hash's prefix, the flag, then its payload one bit later.
+    let mut out = vec![0u8; src.len()];
+    for bit in 0..start {
+        write_bits(&mut out, bit, 1, read_bit(src, bit));
+    }
+    write_bits(&mut out, start, 1, use_coded as u32);
+    for bit in start..src.len() * 8 - 1 {
+        write_bits(&mut out, bit + 1, 1, read_bit(src, bit));
+    }
+    debug_assert!(use_coded || (fixed_end..src.len() * 8).all(|b| read_bit(src, b) == 0));
+    out.into_boxed_slice()
+}
+
+fn read_bit(bytes: &[u8], bit: usize) -> u32 {
+    (bytes[bit / 8] >> (bit % 8)) as u32 & 1
+}
+
+/// [`encode_with`] for one fixed or coded mode, reserving `reserve` bits at
+/// the head of a coded stream's budget (the adaptive mode's flag), and
+/// returning the AC reconstruction when `want_recon` asks for it.
+#[allow(clippy::too_many_arguments)]
+fn encode_parts(
+    w: u32,
+    h: u32,
+    rgba: &[u8],
+    gamut: Gamut,
+    t: &Tunables,
+    tier: u8,
+    reserve: usize,
+    want_recon: bool,
+) -> (Box<[u8]>, Option<AcRecon>) {
     let Analysis {
         has_alpha,
         aspect: _aspect,
@@ -1683,6 +1791,49 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     }
 
     let c_bits = shape.c_bits;
+    // The AC reconstruction at fit step `k` (every code kept at FIT_STEPS):
+    // each channel's codes past `ceil(padded count · k / FIT_STEPS)` read as
+    // the zero centre, as the coded stream carries them.
+    let recon_at = |k: usize| -> AcRecon {
+        let cut = |codes: &[u32], padded: usize, width: &dyn Fn(usize) -> u32| -> Vec<u32> {
+            let kept = (padded * k).div_ceil(FIT_STEPS);
+            (0..codes.len())
+                .map(|i| {
+                    if i < kept {
+                        codes[i]
+                    } else {
+                        center_code(width(i))
+                    }
+                })
+                .collect()
+        };
+        let l = cut(&l_codes, shape.l_count(), &|i| l_job.bits_at(i));
+        let a = cut(&a_codes, shape.c_count, &|_| c_bits);
+        let b = cut(&b_codes, shape.c_count, &|_| c_bits);
+        let alpha_n = if has_alpha { shape.alpha_ac_count } else { 0 };
+        let al = cut(&alpha_codes, alpha_n, &|_| shape.alpha_ac_bits);
+        let alpha_scale =
+            alpha_scl_q as f64 / ((1u32 << t.alpha_scale_bits) - 1) as f64 * t.max_alpha_scale;
+        AcRecon {
+            truth: [l_ac.clone(), a_ac.clone(), b_ac.clone(), alpha_ac.clone()],
+            recon: [
+                decoded_luma_ac(&l_job, l_scl_q, &l),
+                decoded_luma_ac(&a_job, a_scl_q, &a),
+                decoded_luma_ac(&b_job, b_scl_q, &b),
+                al.iter()
+                    .map(|&q| {
+                        compand_dequantize(
+                            q,
+                            shape.alpha_ac_bits,
+                            t.compand_alpha,
+                            t.mu_alpha,
+                            &t.table_alpha,
+                        ) * alpha_scale
+                    })
+                    .collect(),
+            ],
+        }
+    };
     if t.ac_coder != 0 {
         // Register D1: one arithmetic-coded stream in place of the fixed
         // fields, filling the rest of the shipped-size hash.
@@ -1708,13 +1859,13 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
             alpha: &alpha_all,
             alpha_bits: shape.alpha_ac_bits,
         };
-        let (bytes, nbits) = streams.fit(body_len * 8 - bitpos);
+        let (bytes, nbits, step) = streams.fit(body_len * 8 - bitpos - reserve);
         for (k, &byte) in bytes.iter().enumerate() {
             let n = (nbits - 8 * k).min(8) as u32;
             put(&mut hash, bitpos + 8 * k, n, byte as u32);
         }
         stage!("pack");
-        return hash.into_boxed_slice();
+        return (hash.into_boxed_slice(), want_recon.then(|| recon_at(step)));
     }
     if t.interleave && !has_alpha {
         // Embedded order: all three channels merged by frequency priority, so a
@@ -1771,7 +1922,10 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     // The body allocation and every bit written into it — §12.1 item 7.
     stage!("pack");
 
-    hash.into_boxed_slice()
+    (
+        hash.into_boxed_slice(),
+        want_recon.then(|| recon_at(FIT_STEPS)),
+    )
 }
 
 /// Scale-normalized AC coefficients per channel group, for quantizer training
@@ -2297,6 +2451,102 @@ mod tests {
         );
     }
 
+    /// The adaptive mode's flag bit, which follows the prefix.
+    fn adaptive_flag(hash: &[u8], t: &Tunables, alpha: bool) -> u32 {
+        let start = prefix_bits(t) as usize + if alpha { 9 } else { 0 };
+        read_bits(hash, start, 1)
+    }
+
+    /// `ac_coder = 2` keeps the fixed fields where the coded stream would
+    /// have to cut codes the fixed fields carry whole, and then decodes to
+    /// exactly the shipped pixels; it keeps the coded stream where that
+    /// carries more, and the flag says which.
+    #[test]
+    fn the_adaptive_mode_signals_the_encode_it_keeps() {
+        let (w, h) = (40, 30);
+        let mut cut = 0;
+        for alpha in [false, true] {
+            for tier in 2..=MAX_TIER {
+                // White noise at the shipped bound: the coded stream overflows
+                // and cuts, so the fixed fields reconstruct better.
+                let mut s = 0x2545_f491u32;
+                let noisy: Vec<u8> = (0..w * h * 4)
+                    .map(|i| {
+                        s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                        if i % 4 == 3 && !alpha {
+                            255
+                        } else {
+                            (s >> 24) as u8
+                        }
+                    })
+                    .collect();
+                let t = Tunables {
+                    ac_coder: 2,
+                    ..Tunables::DEFAULT
+                };
+                let coded = encode_with(w, h, &noisy, Gamut::Srgb, &coded(Tunables::DEFAULT), tier);
+                let fixed = encode_with(w, h, &noisy, Gamut::Srgb, &Tunables::DEFAULT, tier);
+                let hash = encode_with(w, h, &noisy, Gamut::Srgb, &t, tier);
+                assert_eq!(hash.len(), fixed.len());
+                if crate::decode::decode_with(&coded, &coded_t())
+                    != crate::decode::decode_with(&fixed, &Tunables::DEFAULT)
+                {
+                    cut += 1;
+                    assert_eq!(
+                        adaptive_flag(&hash, &t, alpha),
+                        0,
+                        "tier {tier} alpha {alpha}"
+                    );
+                    assert_eq!(
+                        crate::decode::decode_with(&hash, &t),
+                        crate::decode::decode_with(&fixed, &Tunables::DEFAULT)
+                    );
+                }
+
+                // A gradient under twice the bound: every code fits, and the
+                // extra coefficients only reduce the error.
+                let mut smooth = lever_image(w, h, alpha, 21);
+                for px in smooth.chunks_exact_mut(4) {
+                    px[0] = px[1] / 2;
+                    px[2] = px[1] / 3;
+                }
+                let mut big = t;
+                big.layout_upper.l_tiers = [(52, 5), (0, 5)];
+                big.layout_upper.c_count = 18;
+                big.layout_upper.la_tiers = [(44, 4), (0, 4)];
+                big.layout_upper.a_count = 56;
+                let hash = encode_with(w, h, &smooth, Gamut::Srgb, &big, tier);
+                assert_eq!(
+                    adaptive_flag(&hash, &big, alpha),
+                    1,
+                    "tier {tier} alpha {alpha}"
+                );
+                let fixed = encode_with(w, h, &smooth, Gamut::Srgb, &Tunables::DEFAULT, tier);
+                assert_ne!(
+                    crate::decode::decode_with(&hash, &big),
+                    crate::decode::decode_with(&fixed, &Tunables::DEFAULT)
+                );
+            }
+        }
+        // The fixed branch must have been reached, or half the test is idle.
+        assert!(cut > 0);
+    }
+
+    fn coded_t() -> Tunables {
+        coded(Tunables::DEFAULT)
+    }
+
+    #[test]
+    #[should_panic(expected = "leaves no bit for the flag")]
+    fn the_adaptive_mode_refuses_a_tier_with_no_spare_bit() {
+        let rgba = lever_image(8, 8, false, 1);
+        let t = Tunables {
+            ac_coder: 2,
+            ..Tunables::DEFAULT
+        };
+        encode_with(8, 8, &rgba, Gamut::Srgb, &t, DEFAULT_TIER);
+    }
+
     #[test]
     fn the_fit_search_keeps_the_largest_step_that_fits() {
         let codes: Vec<u32> = (0..200u32).map(|i| (i * 7919) % 31).collect();
@@ -2313,15 +2563,15 @@ mod tests {
         let zero = s.code(0).1;
         assert!(zero < full / 10, "{zero} vs {full}");
         // Whole budget: everything kept.
-        assert_eq!(s.fit(full), s.code(FIT_STEPS));
-        // A budget between: the result fits, and the next step does not.
+        let (bytes, n, k) = s.fit(full);
+        assert_eq!((bytes, n, k), (s.code(FIT_STEPS).0, full, FIT_STEPS));
+        // A budget between: the returned step's stream, which fits, and the
+        // next step does not.
         let budget = full / 2;
-        let (bytes, n) = s.fit(budget);
+        let (bytes, n, k) = s.fit(budget);
         assert!(n <= budget);
-        let k = (0..=FIT_STEPS)
-            .rev()
-            .find(|&k| s.code(k) == (bytes.clone(), n));
-        let k = k.expect("fit returns a coded step");
+        assert_eq!(s.code(k), (bytes, n));
+        assert!(k > 0 && k < FIT_STEPS);
         assert!(s.code(k + 1).1 > budget, "step {k} is not the largest");
     }
 

@@ -329,6 +329,19 @@ pub(crate) fn prefix_bits(t: &Tunables) -> u32 {
     8 + t.aspect_bits + t.l_dc_bits + t.a_dc_bits + t.b_dc_bits + scale_bits + 2 * t.cfl_bits
 }
 
+/// `t` with the shipped fixed-width AC fields: the shipped layouts and the
+/// coder off, every other knob as `t` has it. It fixes a coded hash's length,
+/// and it is the fixed alternative of the adaptive mode (`ac_coder = 2`).
+pub(crate) fn shipped_fields(t: &Tunables) -> Tunables {
+    Tunables {
+        layout: Tunables::DEFAULT.layout,
+        layout_upper: Tunables::DEFAULT.layout_upper,
+        layout_compact: Tunables::DEFAULT.layout_compact,
+        ac_coder: 0,
+        ..*t
+    }
+}
+
 /// Total encoded length in bytes for a (tunables, alpha mode, tier): the
 /// header prefix (+ alpha DC/scale in alpha mode) plus the AC payload, rounded
 /// up to a whole number of bytes. This is the deterministic length formula a
@@ -340,14 +353,7 @@ pub(crate) fn prefix_bits(t: &Tunables) -> u32 {
 /// coded stream carries.
 pub(crate) fn body_len_bytes(t: &Tunables, has_alpha: bool, tier: u8) -> usize {
     if t.ac_coder != 0 {
-        let fixed = Tunables {
-            layout: Tunables::DEFAULT.layout,
-            layout_upper: Tunables::DEFAULT.layout_upper,
-            layout_compact: Tunables::DEFAULT.layout_compact,
-            ac_coder: 0,
-            ..*t
-        };
-        return body_len_bytes(&fixed, has_alpha, tier);
+        return body_len_bytes(&shipped_fields(t), has_alpha, tier);
     }
     let shape = ac_shape(t, has_alpha, tier);
     let mut bits = prefix_bits(t) as usize + ac_payload_bits(&shape);
@@ -644,7 +650,16 @@ pub struct Tunables {
     /// bound what the stream may carry rather than fix its size, and the
     /// encoder zeroes the highest-index codes until the stream fits. Every
     /// bit string of that length decodes (the code is total), so the length
-    /// check stays the whole validity check. Wire-level; sweep-only.
+    /// check stays the whole validity check.
+    ///
+    /// `2` is the adaptive form (U13's per-image signalled selection): the
+    /// first payload bit chooses, per image, between the coded stream (`1`,
+    /// in the bits after it) and the shipped fixed-width fields (`0`, one bit
+    /// later than they would sit; every shipped layout at codes 2–4 leaves a
+    /// padding bit for it). The encoder writes both and keeps the one with the
+    /// smaller AC reconstruction error ([`crate::encode`]'s
+    /// `encode_adaptive`), an encoder-side decision paid for inside the same
+    /// bytes. Any other value reads as `1`. Wire-level; sweep-only.
     pub ac_coder: u32,
 }
 

@@ -2,7 +2,7 @@ use crate::aspect::decode_output_size;
 use crate::bitpack::{AcHistory, AcModels, ArithDecoder, read_bits};
 use crate::color::{oklab_to_linear_output, oklab_to_linear_srgb};
 use crate::constants::{
-    ALPHA_FLAG_BIT, Gamut, TIER_BITS, Tunables, VERSION_BITS, ac_shape, prefix_bits,
+    ALPHA_FLAG_BIT, Gamut, TIER_BITS, Tunables, VERSION_BITS, ac_shape, prefix_bits, shipped_fields,
 };
 use crate::dct::{
     SelectionOrder, dct_decode_pixel_flat, dct_decode_pixel_separable, precompute_cos_table,
@@ -168,6 +168,33 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     // 1. Header fields: byte-0 descriptor + byte-1 aspect, then DC/scale prefix
     //    (bits 16..54). Per spec §3.1 (v1).
     let (tier, has_alpha, aspect) = read_header_fields(hash, t);
+
+    // Register D1's adaptive mode: the first payload bit picks the coded
+    // stream (1) or the shipped fixed fields (0) in the bits after it. Drop
+    // the bit and decode the rest in the mode it names; the last bit reads 0.
+    if t.ac_coder == 2 {
+        let start = prefix_bits(t) as usize
+            + if has_alpha {
+                (t.alpha_dc_bits + t.alpha_scale_bits) as usize
+            } else {
+                0
+            };
+        let total = hash.len() * 8;
+        if start < total {
+            let bit = |i: usize| (hash[i / 8] >> (i % 8)) & 1;
+            let mut inner = vec![0u8; hash.len()];
+            for i in (0..start).chain(start + 1..total) {
+                let to = if i < start { i } else { i - 1 };
+                inner[to / 8] |= bit(i) << (to % 8);
+            }
+            let mode = if bit(start) == 1 {
+                Tunables { ac_coder: 1, ..*t }
+            } else {
+                shipped_fields(t)
+            };
+            return render_at_size(&inner, w, h, &mode, output);
+        }
+    }
 
     let mut bitpos = 8usize + t.aspect_bits as usize;
     let l_dc_q = read_bits(hash, bitpos, t.l_dc_bits);
