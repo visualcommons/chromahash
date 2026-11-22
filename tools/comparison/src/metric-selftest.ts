@@ -59,6 +59,12 @@
  * The photographic splits block covers the same for the photographic holdout
  * #76 retired into tune2, and for the gate that keeps holdout2 sealed until
  * `spec/V0.8-DECISIONS.md` records a decision as frozen (`holdout-images.ts`).
+ *
+ * The mde block covers `mde-core.ts`, which EXPERIMENTS.md §13.6 is computed
+ * by: `verify:experiments` compares §13.6 with that same code, so only
+ * hand-worked values can say the code is right. S3b, beside the other
+ * bootstrap checks, holds §13.6's claim that the percentile bootstrap is
+ * narrower than the normal and t intervals.
  */
 
 import { spawnSync } from "node:child_process";
@@ -125,6 +131,14 @@ import { aspectFidelity, log2ToPct } from "./aspect.ts";
 import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
 import { compareArms, guardVerdictOnIntervals } from "./arms-core.ts";
 import {
+  PHOTO_HOLDOUT2_CANDIDATES,
+  mdeCell,
+  readSpread,
+  tFactor,
+  zFactor,
+} from "./mde-core.ts";
+import {
+  bootstrapCI,
   bootstrapP,
   correlationInference,
   holm,
@@ -1187,6 +1201,36 @@ console.log(
     "bootstrap p is 1 for identical arms and 2/(B+1) for a one-signed delta",
     same === 1 && Math.abs(always - 2 / 10_001) < 1e-12,
     `identical=${same} one-signed=${always}`,
+  );
+}
+
+// S3b. The percentile bootstrap against the normal and t intervals, the claim
+//      EXPERIMENTS.md §13.6's Assumptions paragraph makes. On 1..14 (n = 14,
+//      SD = √17.5 = 4.18330), the normal 95% interval of the mean is
+//      2 · 1.959964 · SD/√14 = 4.38262 wide and the t one, on 13 df,
+//      2 · 2.160369 · SD/√14 = 4.83074. The bootstrap resamples the empirical
+//      distribution, whose SD is the plug-in SD·√(13/14), so its interval
+//      should be about 4.38262 · √(13/14) = 4.22318 wide: narrower than both,
+//      by √(13/14) against the normal one. The 3% tolerance is the Monte Carlo
+//      error of two percentiles at B = 10,000 plus the lattice the means of 14
+//      integers fall on.
+{
+  const sample = Array.from({ length: 14 }, (_, i) => i + 1);
+  const [lo, hi] = bootstrapCI(sample);
+  const width = hi - lo;
+  const se = Math.sqrt(17.5) / Math.sqrt(14);
+  const normal = 2 * normalQuantile(0.975) * se;
+  const t = 2 * studentTQuantile(0.975, 13) * se;
+  const plugIn = normal * Math.sqrt(13 / 14);
+  check(
+    "the percentile bootstrap is about the plug-in width, narrower than the normal and t intervals",
+    Math.abs(normal - 4.38262) < 1e-4 &&
+      Math.abs(t - 4.83074) < 1e-4 &&
+      Math.abs(width / plugIn - 1) < 0.03 &&
+      width < normal &&
+      normal < t &&
+      Math.abs((lo + hi) / 2 - 7.5) < 0.05,
+    `bootstrap ${width.toFixed(4)} [${lo.toFixed(3)}, ${hi.toFixed(3)}], plug-in ${plugIn.toFixed(4)}, normal ${normal.toFixed(4)}, t ${t.toFixed(4)}`,
   );
 }
 
@@ -3424,6 +3468,166 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
     shipped === "",
     shipped || `${holdout2Specs().length} holdout2 pin(s)`,
   );
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// The MDE block: `mde-core.ts`, which EXPERIMENTS.md §13.6 is computed by.
+// `verify:experiments` checks §13.6 against that same code, so it cannot catch
+// the code being wrong; these values are worked by hand instead. The fixture
+// results directory holds one photographic tune sweep of four images, one alpha
+// tune sweep of three, and one photographic holdout sweep of three that must be
+// ignored (it would otherwise give the photo tune split two sizes and throw).
+console.log(
+  "\nmde — the multipliers, the per-comparison MDE, and the filters\n",
+);
+{
+  check(
+    "zFactor is z(1 − α/(2m)) + z(power): 2.801585 at m = 1, 3.083024 at m = 2",
+    Math.abs(zFactor(0.05, 0.8, 1) - 2.801585) < 1e-6 &&
+      Math.abs(zFactor(0.05, 0.8, 2) - 3.083024) < 1e-6,
+    `m1=${zFactor(0.05, 0.8, 1).toFixed(6)} m2=${zFactor(0.05, 0.8, 2).toFixed(6)}`,
+  );
+  // t(0.975, 3) = 3.18245 and t(0.8, 3) = 0.97847 in every table.
+  check(
+    "tFactor uses Student-t quantiles on n − 1 df: 4.16092 at m = 1, n = 4",
+    Math.abs(tFactor(0.05, 0.8, 1, 4) - 4.16092) < 1e-4,
+    `t=${tFactor(0.05, 0.8, 1, 4).toFixed(5)}`,
+  );
+
+  const dir = mkdtempSync(path.join(tmpdir(), "mde-selftest-"));
+  const row = (label: string, ciede: number[], bytes: number[]) => ({
+    label,
+    tune: null,
+    tier: null,
+    version: null,
+    perImage: { ciede2000: ciede, bytes },
+  });
+  const sweep = (
+    name: string,
+    split: string,
+    corpus: string,
+    rows: ReturnType<typeof row>[],
+  ): void => {
+    const images = (rows[0]?.perImage.ciede2000 ?? []).map((_, i) => `i${i}`);
+    const file: ResultFile = {
+      schema: RESULT_SCHEMA,
+      tool: "sweep",
+      name,
+      split,
+      settings: { corpus },
+      provenance: {
+        rev: "0".repeat(40),
+        dirty: false,
+        dirtyPaths: [],
+        iqaCli: "iqa-cli fixture",
+        config: `${name}.json`,
+        configSha256: "0".repeat(64),
+        binaries: {},
+        node: process.version,
+        corpus: images.map((n) => ({ name: n, sha256: "1".repeat(64) })),
+      },
+      imageNames: images,
+      rows,
+    };
+    writeFileSync(path.join(dir, `${name}.json`), JSON.stringify(file));
+  };
+  const b4 = [32, 32, 32, 32];
+  // Incumbent mean 10. `near`: d = (0.1, 0.3, −0.1, 0.1), mean 0.1, SD
+  // √(0.08/3) = 0.163299, so σ_rel = 0.0163299 and the effect is +1%. `far`:
+  // d = (1, 2, 1, 2), SD √(1/3) = 0.577350, σ_rel = 0.0577350, effect +15%,
+  // outside NEAR. `other` spends one byte more on one image; `same` is the
+  // incumbent again.
+  sweep("photo-fixture", "tune", "photo", [
+    row("inc", [10, 10, 10, 10], b4),
+    row("near", [10.1, 10.3, 9.9, 10.1], b4),
+    row("far", [11, 12, 11, 12], b4),
+    row("other", [10.5, 10.6, 10.5, 10.6], [32, 32, 33, 32]),
+    row("same", [10, 10, 10, 10], b4),
+  ]);
+  // Incumbent mean 20, d = (0.2, 0.4, 0.6): SD 0.2, σ_rel 0.01, effect +2%.
+  sweep("alpha-fixture", "tune", "alpha", [
+    row("inc", [20, 20, 20], [40, 40, 40]),
+    row("arm", [20.2, 20.4, 20.6], [40, 40, 40]),
+  ]);
+  sweep("photo-holdout-fixture", "holdout", "photo", [
+    row("inc", [10, 10, 10], [32, 32, 32]),
+    row("arm", [50, 60, 70], [32, 32, 32]),
+  ]);
+
+  const data = readSpread(dir, false, { photo: 0, alpha: 5 });
+  const photo = data.comparisons.photo;
+  const near = photo.find((c) => c.label === "near");
+  const far = photo.find((c) => c.label === "far");
+  check(
+    "readSpread keeps same-budget arms, skips other budgets and SD-0 arms, and ignores non-tune splits",
+    photo.length === 2 &&
+      near !== undefined &&
+      far !== undefined &&
+      Math.abs(near.sigmaRel - 0.0163299) < 1e-6 &&
+      Math.abs(near.effectRel - 0.01) < 1e-12 &&
+      Math.abs(far.sigmaRel - 0.057735) < 1e-6 &&
+      Math.abs(far.effectRel - 0.15) < 1e-12 &&
+      data.otherBudget === 1 &&
+      data.identical === 1 &&
+      data.comparisons.alpha.length === 1 &&
+      Math.abs((data.comparisons.alpha[0]?.sigmaRel ?? 0) - 0.01) < 1e-12,
+    `photo=${photo.map((c) => `${c.label}:${c.sigmaRel.toFixed(6)}`).join(",")} otherBudget=${data.otherBudget} identical=${data.identical}`,
+  );
+  const allBudgets = readSpread(dir, true, { photo: 0, alpha: 5 });
+  check(
+    "--all-budgets keeps the other-budget arm",
+    allBudgets.comparisons.photo.length === 3 &&
+      allBudgets.otherBudget === 0 &&
+      allBudgets.identical === 1,
+    `photo=${allBudgets.comparisons.photo.length} otherBudget=${allBudgets.otherBudget}`,
+  );
+
+  const split = (name: string) => data.splits.find((s) => s.name === name);
+  const pinnedPhoto = readSpread(dir, false, {
+    photo: 7,
+    alpha: 5,
+  }).splits.find((s) => s.name === "photo holdout2");
+  check(
+    "split sizes: tune from the results, holdout2 from the pins, photo falls back to #103's 32 while unpinned",
+    split("photo tune")?.n === 4 &&
+      split("alpha tune")?.n === 3 &&
+      split("alpha holdout2")?.n === 5 &&
+      split("photo holdout2")?.n === PHOTO_HOLDOUT2_CANDIDATES &&
+      PHOTO_HOLDOUT2_CANDIDATES === 32 &&
+      pinnedPhoto?.n === 7,
+    data.splits.map((s) => `${s.name}=${s.n}`).join(", "),
+  );
+
+  // MDE = z · σ_rel / √n. Photo tune, n = 4, m = 1: near 2.801585 · 0.0163299
+  // / 2 = 0.0228747, far 2.801585 · 0.0577350 / 2 = 0.0808747; their median
+  // is 0.0518747 and one of two is at most 3%. Within NEAR only `near` is
+  // left, and at m = 2 it is 3.083024 · 0.0163299 / 2 = 0.0251726. Alpha
+  // holdout2, n = 5: 2.801585 · 0.01 / √5 = 0.0125291.
+  const tune = split("photo tune");
+  const alphaH2 = split("alpha holdout2");
+  if (tune && alphaH2) {
+    const all1 = mdeCell(data, tune, false, 1);
+    const near2 = mdeCell(data, tune, true, 2);
+    const alpha1 = mdeCell(data, alphaH2, false, 1);
+    check(
+      "mdeCell gives z·σ_rel/√n per comparison, its median, the t median and the share under a cut",
+      Math.abs((all1.mdes[0] ?? 0) - 0.0228747) < 1e-6 &&
+        Math.abs((all1.mdes[1] ?? 0) - 0.0808747) < 1e-6 &&
+        Math.abs(all1.quartiles[1] - 0.0518747) < 1e-6 &&
+        Math.abs(all1.tMedian - (0.0518747 * 4.16092) / 2.801585) < 1e-5 &&
+        all1.share(0.03) === 0.5 &&
+        near2.mdes.length === 1 &&
+        Math.abs((near2.mdes[0] ?? 0) - 0.0251726) < 1e-6 &&
+        Math.abs((alpha1.mdes[0] ?? 0) - 0.0125291) < 1e-6,
+      `all=${all1.mdes.map((x) => x.toFixed(7)).join(",")} median=${all1.quartiles[1].toFixed(7)} t=${all1.tMedian.toFixed(7)} near2=${near2.mdes[0]?.toFixed(7)} alpha=${alpha1.mdes[0]?.toFixed(7)}`,
+    );
+  } else {
+    check(
+      "mdeCell fixture splits exist",
+      false,
+      "photo tune or alpha holdout2 missing",
+    );
+  }
   rmSync(dir, { recursive: true, force: true });
 }
 
