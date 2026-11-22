@@ -3623,11 +3623,13 @@ for (const order of ["full first", "bounded first"] as const) {
     maxLoad: 2,
     timeoutMs: 0,
     read: () => [0.3, 0.3, 0.3],
+    now: () => 0,
   });
   const unreadable = await waitForLoad({
     maxLoad: 2,
     timeoutMs: 0,
     read: () => null,
+    now: () => 0,
   });
   check(
     "--wait-for-load waits a loaded host out, gives up at the timeout, and does not wait on a quiet or unreadable one",
@@ -3642,7 +3644,7 @@ for (const order of ["full first", "bounded first"] as const) {
       quiet.waitedMs === 0 &&
       unreadable.ok &&
       unreadable.load === null,
-    `settled=${JSON.stringify(settled)} gaveUp=${JSON.stringify(gaveUp)} quiet=${quiet.ok} unreadable=${unreadable.ok}`,
+    `settled=${JSON.stringify(settled)} gaveUp=${JSON.stringify(gaveUp)} quiet=${quiet.ok}/${quiet.waitedMs} unreadable=${unreadable.ok}`,
   );
 }
 
