@@ -176,6 +176,7 @@ const TUNE_KEYS = [
   "synth_gain",
   "interleave",
   "trunc_bytes",
+  "ac_coder",
   "alpha_dc_bits",
   "alpha_scale_bits",
   "alpha_ac_count",

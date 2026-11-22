@@ -1,5 +1,5 @@
 use crate::aspect::decode_output_size;
-use crate::bitpack::read_bits;
+use crate::bitpack::{AcHistory, AcModels, ArithDecoder, read_bits};
 use crate::color::{oklab_to_linear_output, oklab_to_linear_srgb};
 use crate::constants::{
     ALPHA_FLAG_BIT, Gamut, TIER_BITS, Tunables, VERSION_BITS, ac_shape, prefix_bits,
@@ -277,7 +277,31 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
             }
         }
     }
-    if t.interleave && !has_alpha {
+    // Register D1: with the coder on, every AC code (alpha's included) comes
+    // from one arithmetic-coded stream over the rest of the hash. The decoder
+    // is total, so any bytes of the validated length decode.
+    let mut alpha_raw: Option<Vec<u32>> = None;
+    if t.ac_coder != 0 {
+        let mut dec = ArithDecoder::new(hash, bitpos, hash.len() * 8);
+        let mut models = AcModels::new();
+        let mut hist = AcHistory::default();
+        for (i, slot) in l_raw.iter_mut().enumerate() {
+            *slot = models.decode(&mut dec, &mut hist, 0, i, l_bits_at[i]);
+        }
+        for raw in [&mut a_raw, &mut b_raw] {
+            let mut hist = AcHistory::default();
+            for (i, slot) in raw.iter_mut().enumerate() {
+                *slot = models.decode(&mut dec, &mut hist, 1, i, c_bits);
+            }
+        }
+        let mut hist = AcHistory::default();
+        let count = if has_alpha { shape.alpha_ac_count } else { 0 };
+        alpha_raw = Some(
+            (0..count)
+                .map(|i| models.decode(&mut dec, &mut hist, 2, i, shape.alpha_ac_bits))
+                .collect(),
+        );
+    } else if t.interleave && !has_alpha {
         for (ch, i) in crate::dct::interleaved_order(&l_sel, &c_sel, l_count, c_count) {
             let bits = if ch == 0 { l_bits_at[i] } else { c_bits };
             let q = read_code(bitpos, bits);
@@ -333,8 +357,11 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     let (alpha_ac, alpha_sel) = if has_alpha {
         let sel = order.take(shape.alpha_ac_count);
         let mut aac = Vec::with_capacity(shape.alpha_ac_count);
-        for _ in 0..shape.alpha_ac_count {
-            let q = read_bits(hash, bitpos, shape.alpha_ac_bits);
+        for k in 0..shape.alpha_ac_count {
+            let q = match &alpha_raw {
+                Some(raw) => raw[k],
+                None => read_bits(hash, bitpos, shape.alpha_ac_bits),
+            };
             bitpos += shape.alpha_ac_bits as usize;
             aac.push(
                 compand_dequantize(

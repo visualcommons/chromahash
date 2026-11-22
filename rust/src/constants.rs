@@ -333,7 +333,22 @@ pub(crate) fn prefix_bits(t: &Tunables) -> u32 {
 /// header prefix (+ alpha DC/scale in alpha mode) plus the AC payload, rounded
 /// up to a whole number of bytes. This is the deterministic length formula a
 /// decoder recomputes to validate a hash.
+///
+/// With [`Tunables::ac_coder`] on, the length is the one the shipped layouts
+/// give (the same prefix widths, the fixed-width fields): an entropy-coded
+/// hash is the shipped hash's size, and its own layout only bounds what the
+/// coded stream carries.
 pub(crate) fn body_len_bytes(t: &Tunables, has_alpha: bool, tier: u8) -> usize {
+    if t.ac_coder != 0 {
+        let fixed = Tunables {
+            layout: Tunables::DEFAULT.layout,
+            layout_upper: Tunables::DEFAULT.layout_upper,
+            layout_compact: Tunables::DEFAULT.layout_compact,
+            ac_coder: 0,
+            ..*t
+        };
+        return body_len_bytes(&fixed, has_alpha, tier);
+    }
     let shape = ac_shape(t, has_alpha, tier);
     let mut bits = prefix_bits(t) as usize + ac_payload_bits(&shape);
     if has_alpha {
@@ -620,6 +635,17 @@ pub struct Tunables {
     /// falls past them as the exact-zero centre code (0 = decode it all).
     /// Measurement-only: it is how a progressive decoder would behave.
     pub trunc_bytes: usize,
+    /// AC payload coding (register entry D1, `spec/V0.8-DECISIONS.md`).
+    /// `0` is the shipped fixed-width fields. `1` codes every AC code, in the
+    /// channel-sequential order, as one adaptive binary arithmetic-coded
+    /// stream (`bitpack::AcModels`) that fills the rest of the hash, whose
+    /// length stays the one the *shipped* layout gives the same tier and
+    /// alpha mode ([`body_len_bytes`]): the layout's counts and widths then
+    /// bound what the stream may carry rather than fix its size, and the
+    /// encoder zeroes the highest-index codes until the stream fits. Every
+    /// bit string of that length decodes (the code is total), so the length
+    /// check stays the whole validity check. Wire-level; sweep-only.
+    pub ac_coder: u32,
 }
 
 impl Tunables {
@@ -728,6 +754,7 @@ impl Tunables {
         synth_gain: 0.0,
         interleave: false,
         trunc_bytes: 0,
+        ac_coder: 0,
     };
 }
 

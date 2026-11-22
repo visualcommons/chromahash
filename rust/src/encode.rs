@@ -1,5 +1,5 @@
 use crate::aspect::encode_aspect;
-use crate::bitpack::{write_bits, write_bits_word};
+use crate::bitpack::{AcHistory, AcModels, ArithEncoder, write_bits, write_bits_word};
 use crate::color::{linear_rgb_to_oklab, oklab_to_linear_srgb};
 use crate::constants::{
     ALPHA_FLAG_BIT, DEFAULT_TIER, FORMAT_VERSION, Gamut, MAX_TIER, Tunables, VERSION_BITS,
@@ -1259,6 +1259,90 @@ fn refine_codes(
     }
 }
 
+/// Steps of the coded stream's fit search: at step `k`, each channel keeps
+/// its first `ceil(count · k / FIT_STEPS)` codes and codes the rest as zero.
+const FIT_STEPS: usize = 256;
+
+/// The exact-zero centre code of a `bits`-wide odd-level field.
+fn center_code(bits: u32) -> u32 {
+    (1u32 << (bits - 1)) - 1
+}
+
+/// Every AC code of one hash, in the order the coded stream carries them
+/// (register D1, [`Tunables::ac_coder`]): luma with its per-index widths,
+/// then chroma a and b, then alpha.
+pub(crate) struct CodedAc<'a> {
+    pub l: (&'a [u32], &'a [u32]),
+    pub a: &'a [u32],
+    pub b: &'a [u32],
+    pub c_bits: u32,
+    pub alpha: &'a [u32],
+    pub alpha_bits: u32,
+}
+
+impl CodedAc<'_> {
+    /// Code the stream at fit step `k` (`0..=FIT_STEPS`).
+    fn code(&self, k: usize) -> (Vec<u8>, usize) {
+        let mut enc = ArithEncoder::new();
+        let mut models = AcModels::new();
+        let keep = |n: usize| (n * k).div_ceil(FIT_STEPS);
+        let (l, widths) = self.l;
+        let mut hist = AcHistory::default();
+        let kept = keep(l.len());
+        for (i, (&q, &w)) in l.iter().zip(widths).enumerate() {
+            let q = if i < kept { q } else { center_code(w) };
+            models.encode(&mut enc, &mut hist, 0, i, w, q);
+        }
+        for (group, codes, w) in [
+            (1, self.a, self.c_bits),
+            (1, self.b, self.c_bits),
+            (2, self.alpha, self.alpha_bits),
+        ] {
+            let mut hist = AcHistory::default();
+            let kept = keep(codes.len());
+            for (i, &q) in codes.iter().enumerate() {
+                let q = if i < kept { q } else { center_code(w) };
+                models.encode(&mut enc, &mut hist, group, i, w, q);
+            }
+        }
+        enc.finish()
+    }
+
+    /// The stream at the largest fit step whose coded length is at most
+    /// `budget` bits, found by bisection between step 0 (every code zero)
+    /// and [`FIT_STEPS`] (every code kept). Only a step that was coded and
+    /// measured to fit is ever returned.
+    ///
+    /// # Panics
+    ///
+    /// If even the all-zero stream exceeds `budget`: the layout bounds more
+    /// codes than the hash can carry, which is a sweep-configuration error.
+    pub(crate) fn fit(&self, budget: usize) -> (Vec<u8>, usize) {
+        let full = self.code(FIT_STEPS);
+        if full.1 <= budget {
+            return full;
+        }
+        let mut best = self.code(0);
+        assert!(
+            best.1 <= budget,
+            "ac_coder: the all-zero stream takes {} bits of a {budget}-bit budget; the layout bounds too many codes",
+            best.1
+        );
+        let (mut lo, mut hi) = (0usize, FIT_STEPS);
+        while hi - lo > 1 {
+            let mid = (lo + hi) / 2;
+            let trial = self.code(mid);
+            if trial.1 <= budget {
+                lo = mid;
+                best = trial;
+            } else {
+                hi = mid;
+            }
+        }
+        best
+    }
+}
+
 /// Encode an image into a ChromaHash body with explicit tunables and quality
 /// `tier`. Per spec §10 (v1). Returns the variable-length encoded bytes
 /// (the default tier = 32 bytes; each higher code roughly quadruples the length).
@@ -1599,6 +1683,26 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     }
 
     let c_bits = shape.c_bits;
+    if t.ac_coder != 0 {
+        // Register D1: one arithmetic-coded stream in place of the fixed
+        // fields, filling the rest of the shipped-size hash.
+        let l_widths: Vec<u32> = (0..l_codes.len()).map(|i| l_job.bits_at(i)).collect();
+        let streams = CodedAc {
+            l: (&l_codes, &l_widths),
+            a: &a_codes,
+            b: &b_codes,
+            c_bits,
+            alpha: &alpha_codes,
+            alpha_bits: shape.alpha_ac_bits,
+        };
+        let (bytes, nbits) = streams.fit(body_len * 8 - bitpos);
+        for (k, &byte) in bytes.iter().enumerate() {
+            let n = (nbits - 8 * k).min(8) as u32;
+            put(&mut hash, bitpos + 8 * k, n, byte as u32);
+        }
+        stage!("pack");
+        return hash.into_boxed_slice();
+    }
     if t.interleave && !has_alpha {
         // Embedded order: all three channels merged by frequency priority, so a
         // truncated payload still carries every channel's lowest frequencies.
@@ -1710,6 +1814,7 @@ pub fn encode_quality(w: u32, h: u32, rgba: &[u8], gamut: Gamut, tier: u8) -> Bo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bitpack::read_bits;
 
     // Self-contained golden vectors copied from `spec/test-vectors/`. The
     // crate's full golden cross-check lives in `tests/spec_vectors.rs`, but that
@@ -2074,6 +2179,117 @@ mod tests {
             }
         }
         rgba
+    }
+
+    // ── Register D1: the entropy-coded AC payload (`ac_coder`) ───────────
+
+    fn coded(t: Tunables) -> Tunables {
+        Tunables { ac_coder: 1, ..t }
+    }
+
+    /// A smooth image whose shipped-layout codes fit the coded stream whole:
+    /// the coded hash then carries exactly the fixed-width hash's codes, so
+    /// it decodes to exactly the same pixels, at the shipped length.
+    #[test]
+    fn coded_ac_carries_the_shipped_codes_when_they_fit() {
+        let (w, h) = (24, 16);
+        for alpha in [false, true] {
+            let mut rgba = lever_image(w, h, alpha, 3);
+            for px in rgba.chunks_exact_mut(4) {
+                // Strip the noise: a gradient's spectrum is sparse.
+                px[2] = px[0] / 2 + px[1] / 2;
+            }
+            for tier in 0..=MAX_TIER {
+                let d = Tunables::DEFAULT;
+                let fixed = encode_with(w, h, &rgba, Gamut::Srgb, &d, tier);
+                let hash = encode_with(w, h, &rgba, Gamut::Srgb, &coded(d), tier);
+                assert_eq!(hash.len(), fixed.len(), "tier {tier} alpha {alpha}");
+                assert_eq!(hash.len(), body_len_bytes(&coded(d), alpha, tier));
+                // The prefix (descriptor, aspect, DC, scales, alpha DC/scale)
+                // is the fixed hash's, bit for bit.
+                let p = prefix_bits(&d) as usize + if alpha { 9 } else { 0 };
+                for bit in 0..p {
+                    assert_eq!(read_bits(&hash, bit, 1), read_bits(&fixed, bit, 1));
+                }
+                assert_eq!(
+                    crate::decode::decode_with(&hash, &coded(d)),
+                    crate::decode::decode_with(&fixed, &d),
+                    "tier {tier} alpha {alpha}"
+                );
+            }
+        }
+    }
+
+    /// A layout bounding far more codes than the bytes hold: the encoder
+    /// zeroes the tail until the stream fits, and the length never moves.
+    #[test]
+    fn coded_ac_fits_an_oversized_layout_into_the_shipped_length() {
+        let (w, h) = (40, 30);
+        for alpha in [false, true] {
+            let rgba = lever_image(w, h, alpha, 9);
+            let mut t = coded(Tunables::DEFAULT);
+            t.layout_upper.l_tiers = [(60, 6), (0, 6)];
+            t.layout_upper.c_count = 24;
+            t.layout_upper.c_bits = 5;
+            t.layout_upper.la_tiers = [(50, 5), (0, 5)];
+            t.layout_upper.a_count = 60;
+            t.layout_upper.a_bits = 4;
+            for tier in 2..=MAX_TIER {
+                let hash = encode_with(w, h, &rgba, Gamut::Srgb, &t, tier);
+                let shipped = body_len_bytes(&Tunables::DEFAULT, alpha, tier);
+                assert_eq!(hash.len(), shipped, "tier {tier} alpha {alpha}");
+                let (dw, dh, px) = crate::decode::decode_with(&hash, &t);
+                assert_eq!(px.len(), (dw * dh * 4) as usize);
+                assert_eq!(
+                    (dw, dh),
+                    crate::aspect::decode_output_size(encode_aspect(w, h), tier)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_fit_search_keeps_the_largest_step_that_fits() {
+        let codes: Vec<u32> = (0..200u32).map(|i| (i * 7919) % 31).collect();
+        let widths = vec![5u32; codes.len()];
+        let s = CodedAc {
+            l: (&codes, &widths),
+            a: &[],
+            b: &[],
+            c_bits: 3,
+            alpha: &[],
+            alpha_bits: 3,
+        };
+        let full = s.code(FIT_STEPS).1;
+        let zero = s.code(0).1;
+        assert!(zero < full / 10, "{zero} vs {full}");
+        // Whole budget: everything kept.
+        assert_eq!(s.fit(full), s.code(FIT_STEPS));
+        // A budget between: the result fits, and the next step does not.
+        let budget = full / 2;
+        let (bytes, n) = s.fit(budget);
+        assert!(n <= budget);
+        let k = (0..=FIT_STEPS)
+            .rev()
+            .find(|&k| s.code(k) == (bytes.clone(), n));
+        let k = k.expect("fit returns a coded step");
+        assert!(s.code(k + 1).1 > budget, "step {k} is not the largest");
+    }
+
+    #[test]
+    #[should_panic(expected = "the layout bounds too many codes")]
+    fn the_fit_search_refuses_a_layout_whose_zero_stream_overflows() {
+        let codes = vec![15u32; 5000];
+        let widths = vec![5u32; codes.len()];
+        let s = CodedAc {
+            l: (&codes, &widths),
+            a: &[],
+            b: &[],
+            c_bits: 3,
+            alpha: &[],
+            alpha_bits: 3,
+        };
+        s.fit(8);
     }
 
     /// Every encoder lever alone and all together must give `base`'s bytes.
