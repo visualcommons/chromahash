@@ -28,8 +28,9 @@
  * it with the rest. A holdout2 result records no strata, so C1 and C2 are
  * unchanged by it.
  *
- * Every result must carry the freeze's provenance — rev {@link FREEZE_REV} and
- * a clean tree — or this refuses to derive a verdict from it.
+ * Every result must carry its entry's freeze provenance — the rev
+ * {@link FREEZE_REVS} names for the entry and a clean tree — or this refuses
+ * to derive a verdict from it.
  *
  * It calls the same `compareArms`, `holm` and bootstrap the sweeps use and
  * changes no statistic. It is a module of its own so that two gates can reach
@@ -69,6 +70,16 @@ import {
 
 /** The commit C1 and C2 froze at, and every holdout2 read was scored at. */
 export const FREEZE_REV = "2047f7df6f6e043b06f0676c7da9bc701fadaf46";
+
+/**
+ * The commit each entry froze at, whose `tools/comparison` scored its holdout
+ * read. Every result an entry's verdict rests on must record this rev and a
+ * clean tree.
+ */
+export const FREEZE_REVS: Record<string, string> = {
+  C1: FREEZE_REV,
+  C2: FREEZE_REV,
+};
 
 /** [result, arm, baseline]: one judged comparison, as the freeze names it. */
 export type Comparison = readonly [string, string, string];
@@ -183,10 +194,10 @@ export interface EntryVerdict {
   admission?: { metrics: AdmissionMetric[]; holds: boolean };
 }
 
-function load(dir: string, name: string): ResultFile {
+function load(dir: string, name: string, rev: string): ResultFile {
   const file = readResult(dir, name);
   if (!file) throw new Error(`no committed result ${name}`);
-  if (file.provenance.rev !== FREEZE_REV || file.provenance.dirty !== false) {
+  if (file.provenance.rev !== rev || file.provenance.dirty !== false) {
     throw new Error(
       `${name} was not scored at the freeze from a clean tree (rev ${file.provenance.rev}, dirty ${file.provenance.dirty}); refusing to derive a verdict from it`,
     );
@@ -368,11 +379,12 @@ export function deriveVerdict(
   dir: string = RESULTS_DIR,
 ): EntryVerdict {
   const frozen = FROZEN[id];
-  if (!frozen) throw new Error(`no frozen register entry ${id}`);
+  const rev = FREEZE_REVS[id];
+  if (!frozen || !rev) throw new Error(`no frozen register entry ${id}`);
 
   const floor = Math.min(1, 2 / (BOOTSTRAP_RESAMPLES + 1));
   const partial = frozen.map(([name, arm, base]) => {
-    const file = load(dir, name);
+    const file = load(dir, name, rev);
     const bi = rowIndex(file, base);
     const ai = rowIndex(file, arm);
     const cmp = compareArms(file.rows, bi).find((c) => same(c.label, arm));
@@ -458,7 +470,7 @@ export function deriveVerdict(
 
   const verdict: EntryVerdict = { id, comparisons, seeds, turned };
   if (id === "C1") {
-    const file = load(dir, ADMISSION.result);
+    const file = load(dir, ADMISSION.result, rev);
     const ours = file.rows[rowIndex(file, ADMISSION.ours)];
     const theirs = file.rows[rowIndex(file, ADMISSION.theirs)];
     if (!ours || !theirs) throw new Error("admission rows missing");

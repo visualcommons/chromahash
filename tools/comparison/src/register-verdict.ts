@@ -9,7 +9,7 @@
  */
 
 import { parseArgs } from "node:util";
-import { FREEZE_REV, FROZEN, deriveVerdict } from "./register-verdict-core.ts";
+import { FREEZE_REVS, FROZEN, deriveVerdict } from "./register-verdict-core.ts";
 import { BOOTSTRAP_SEED } from "./stats.ts";
 
 const signed = (x: number, digits: number): string =>
@@ -31,7 +31,7 @@ function main(): void {
 
   const v = deriveVerdict(id, seedCount);
   console.log(
-    `${id}: ${v.comparisons.length} judged comparisons, Holm across all of them (results at ${FREEZE_REV.slice(0, 7)}, clean)`,
+    `${id}: ${v.comparisons.length} judged comparisons, Holm across all of them (results at ${(FREEZE_REVS[id] ?? "").slice(0, 7)}, clean)`,
   );
   for (const l of v.comparisons) {
     const ci = l.stat.ci.map((x) => signed(x, 3)).join(", ");
