@@ -487,4 +487,64 @@ mod tests {
         assert_eq!(compand_dequantize(15, bits, f, MU, &table), 0.875);
         assert_eq!(compand_dequantize(0, bits, f, MU, &table), -0.875);
     }
+
+    #[test]
+    fn a_law_knee_belongs_to_the_log_segment() {
+        // G.711 A-law is linear for |x| < 1/A and logarithmic from 1/A up. The
+        // two segments meet at the knee, but not to the last bit: at A = 1.27
+        // the linear form is 2 ulp above the log form at x = 1/A exactly, so
+        // which segment owns the knee is observable, and it is the log one.
+        let a = 1.27;
+        let x = 1.0 / a;
+        let denom = 1.0 + portable_ln(a);
+        let log_seg = (1.0 + portable_ln(a * x)) / denom;
+        let lin_seg = a * x / denom;
+        assert_ne!(log_seg, lin_seg, "premise: the segments differ at the knee");
+        assert_eq!(a_law_compress(x, a), log_seg);
+        assert_eq!(a_law_compress(-x, a), -log_seg);
+        // Below the knee is the linear segment.
+        let below = x * 0.5;
+        assert_eq!(a_law_compress(below, a), a * below / denom);
+    }
+
+    #[test]
+    fn a_law_expand_segments_agree_at_the_knee() {
+        // The premise of rust/.cargo/mutants.toml's `a_law_expand` exclusion.
+        // Expansion's knee is y = 1/(1 + ln A). There t = y·(1 + ln A) is
+        // within an ulp of 1, and the log segment exp(t − 1)/A rounds to the
+        // linear one, t/A, so which segment owns the knee is unobservable.
+        for k in 1..20_000 {
+            let a = 1.0 + k as f64 * 0.01;
+            let denom = 1.0 + portable_ln(a);
+            let y = 1.0 / denom;
+            let lin_seg = y * denom / a;
+            let log_seg = portable_exp(y * denom - 1.0) / a;
+            assert_eq!(lin_seg, log_seg, "A = {a}");
+            assert_eq!(a_law_expand(y, a), lin_seg, "A = {a}");
+        }
+    }
+
+    #[test]
+    fn table_quantize_puts_zero_on_the_non_negative_side() {
+        // A zero input takes the non-negative branch. With a codebook whose
+        // first level is 0.0, the `<=` tie keeps that level over the centre, so
+        // zero lands one code *above* the centre, never below it. Both +0.0
+        // and -0.0 compare as not less than zero.
+        let mut table = QuantTable::EMPTY;
+        table.levels[0] = 0.0;
+        table.levels[1] = 0.5;
+        table.len = 2;
+        let (bits, center) = (4u32, 7u32);
+        for zero in [0.0, -0.0] {
+            assert_eq!(
+                compand_quantize(zero, bits, Companding::Table, MU, &table, 0.0),
+                center + 1,
+                "{zero:?}"
+            );
+        }
+        assert_eq!(
+            compand_quantize(-0.4, bits, Companding::Table, MU, &table, 0.0),
+            center - 2
+        );
+    }
 }

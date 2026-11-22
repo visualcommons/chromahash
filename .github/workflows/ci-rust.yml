@@ -122,9 +122,12 @@ jobs:
             target: aarch64-unknown-linux-gnu
           # x86_64 forced to an SSE2-but-no-AVX2 CPU via QEMU, exercising the SSE2
           # backend and the no-AVX2 dispatch fallback the native runner never hits.
+          # Pinned to 24.04: the ubuntu-26.04 image ships amd64v3 (AVX2) system
+          # libraries, so the dynamically linked test binary dies with SIGILL in a
+          # system library under `-cpu Nehalem` before any test runs.
           - label: x86_64 sse2-only (qemu)
             kind: sse2-qemu
-            runs-on: ubuntu-latest
+            runs-on: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
           # wasm32 simd128 under wasmtime.
           - label: wasm32 simd128 (wasmtime)
