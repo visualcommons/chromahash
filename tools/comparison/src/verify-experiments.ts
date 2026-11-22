@@ -314,6 +314,13 @@ export type Metric =
   | "bytes"
   | "guardsOk"
   | "guardsCi"
+  /**
+   * `guardsCi` against the binding's baseline for the row (`baseline`,
+   * `baselines` or `rowBaselines`) rather than against sweep row 0. A config
+   * that spans tiers judges each arm against its own tier's incumbent (§13.8),
+   * and row 0 is another tier's.
+   */
+  | "guardsCiVsBaseline"
   | "ci"
   | "winN"
   /**
@@ -754,6 +761,14 @@ function measure(
     if (paired[1] === "diff") return stat.meanDelta;
     if (paired[1] === "pHolm") return stat.pHolm;
     return `[${signed(stat.ci[0])}, ${signed(stat.ci[1])}]`;
+  }
+  if (metric === "guardsCiVsBaseline") {
+    if (!baseline || baseline === row || !sweep.guardTolerances) return null;
+    return guardVerdictOnIntervals(
+      comparisonsFor(sweep, baseline).get(row),
+      sweep.guardTolerances,
+      sweep.artifactGuardRise ?? undefined,
+    );
   }
   return measureOne(metric, row, baseline);
 }
