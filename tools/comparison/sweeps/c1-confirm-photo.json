@@ -1,0 +1,47 @@
+{
+  "name": "c1-confirm-photo",
+  "corpus": "photo",
+  "description": "spec/V0.8-DECISIONS.md C1: confirm the shipped photographic constants on the sealed holdout2, read once. The arms are every arm of v07-holdout-photo.json as committed (copied verbatim, so that config and the results it binds are untouched), plus the one arm the register adds: sel_hv=0 at the shipped aniso=1.2, the direction that clears zero on tune (EXPERIMENTS SS11.5, SS11.12). R1 against the incumbent, Holm across this config's arms.",
+  "variants": [
+    {
+      "label": "SS10 constants (incumbent)",
+      "tune": "sel_hv=0.15"
+    },
+    {
+      "label": "sel_hv=0.30",
+      "tune": "sel_hv=0.30"
+    },
+    {
+      "label": "isotropic (aniso=0 hv=0)",
+      "tune": "aniso=0 sel_hv=0"
+    },
+    {
+      "label": "pre-adoption v0.6-derived",
+      "tune": "l1=26:5 c=9:4 aniso=0 sel_hv=0 scale_fit=0 ac_nearest=0"
+    },
+    {
+      "label": "compact 21B L19@4 C6@3",
+      "tune": "l1=19:4 c=6:3"
+    },
+    {
+      "label": "compact 21B L18@4 C7@3",
+      "tune": "l1=18:4 c=7:3"
+    },
+    {
+      "label": "compact 21B L20@4 C5@3",
+      "tune": "l1=20:4 c=5:3"
+    },
+    {
+      "label": "compact 21B L26@3 C6@3",
+      "tune": "l1=26:3 c=6:3"
+    },
+    {
+      "label": "compact 21B shipped shape",
+      "tune": "l1=13:5 c=6:4"
+    },
+    {
+      "label": "sel_hv=0 aniso=1.2",
+      "tune": "aniso=1.2 sel_hv=0"
+    }
+  ]
+}

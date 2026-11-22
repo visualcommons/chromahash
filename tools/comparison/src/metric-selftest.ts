@@ -65,6 +65,11 @@
  * hand-worked values can say the code is right. S3b, beside the other
  * bootstrap checks, holds §13.6's claim that the percentile bootstrap is
  * narrower than the normal and t intervals.
+ *
+ * The register-verdict block covers `register-verdict-core.ts`, which
+ * re-derives C1 and C2's frozen verdicts from the committed holdout2 reads. It
+ * asserts the R1 outcomes, condition 4 and C1's ThumbHash admission the
+ * register records, which no EXPERIMENTS.md table carries.
  */
 
 import { spawnSync } from "node:child_process";
@@ -81,6 +86,19 @@ import {
   alphaHoldout2Specs,
   alphaImagesToFetch,
 } from "./alpha-images.ts";
+import { compareArms, guardVerdictOnIntervals } from "./arms-core.ts";
+import { aspectFidelity, log2ToPct } from "./aspect.ts";
+import {
+  type CommonsFacts,
+  admit,
+  alphaFractions,
+  covariatesOf,
+  isFreeLicence,
+  measureFile,
+  sha1Mismatch,
+  silhouetteOf,
+  srgbToLab,
+} from "./corpus-covariates.ts";
 import {
   ALPHA_HOLDOUT2_PREFIX,
   HOLDOUT2_ALL_REFUSED,
@@ -95,6 +113,11 @@ import {
   splitFor,
   tierFor,
 } from "./corpus.ts";
+import { rewriteCell } from "./doc-tables.ts";
+import {
+  type TableRegisterInput,
+  tableRegisterProblems,
+} from "./experiments-register.ts";
 import {
   assertHoldout2Unread,
   ensureHoldout2Images,
@@ -103,33 +126,11 @@ import {
   registerStatus,
 } from "./holdout-images.ts";
 import {
-  CURATED_IMAGES,
-  type NaturalImageSpec,
-  naturalImagesToFetch,
-} from "./natural-images.ts";
-import {
-  type CommonsFacts,
-  admit,
-  alphaFractions,
-  covariatesOf,
-  isFreeLicence,
-  measureFile,
-  sha1Mismatch,
-  silhouetteOf,
-  srgbToLab,
-} from "./corpus-covariates.ts";
-import { rewriteCell } from "./doc-tables.ts";
-import {
   dataUriToBuffer,
   fileBufferToDisplayDataUri,
   loadImage,
   orientedSize,
 } from "./image-loader.ts";
-import { computeRinging } from "./metrics/local.ts";
-import { computeSpurious } from "./metrics/spurious.ts";
-import { aspectFidelity, log2ToPct } from "./aspect.ts";
-import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
-import { compareArms, guardVerdictOnIntervals } from "./arms-core.ts";
 import {
   PHOTO_HOLDOUT2_CANDIDATES,
   mdeCell,
@@ -137,14 +138,13 @@ import {
   tFactor,
   zFactor,
 } from "./mde-core.ts";
+import { computeRinging } from "./metrics/local.ts";
+import { computeSpurious } from "./metrics/spurious.ts";
 import {
-  bootstrapCI,
-  bootstrapP,
-  correlationInference,
-  holm,
-  normalQuantile,
-  studentTQuantile,
-} from "./stats.ts";
+  CURATED_IMAGES,
+  type NaturalImageSpec,
+  naturalImagesToFetch,
+} from "./natural-images.ts";
 import { classifyProbe, repoRelative } from "./perf/availability.ts";
 import {
   type Preflight,
@@ -164,8 +164,8 @@ import { planMatrix, planRun, roundOrder } from "./perf/plan.ts";
 import { cellStats, pairStats } from "./perf/probe.ts";
 import {
   type GitView,
-  MEASUREMENT_OUTPUTS,
   MEASURED_PATHS,
+  MEASUREMENT_OUTPUTS,
   digestOfListing,
   isDocumentation,
   judgeLanding,
@@ -174,10 +174,7 @@ import {
   sourceDigest,
 } from "./perf/provenance.ts";
 import { allTargets } from "./perf/targets.ts";
-import {
-  type TableRegisterInput,
-  tableRegisterProblems,
-} from "./experiments-register.ts";
+import { deriveVerdict, guardsAtSeed } from "./register-verdict-core.ts";
 import {
   ARTIFACT_ZERO_BASE_ALLOWANCE,
   RESULT_SCHEMA,
@@ -185,40 +182,50 @@ import {
   shapeProblems,
 } from "./results.ts";
 import {
+  BOOTSTRAP_SEED,
+  bootstrapCI,
+  bootstrapP,
+  correlationInference,
+  holm,
+  normalQuantile,
+  studentTQuantile,
+} from "./stats.ts";
+import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
+import {
   type Binding,
-  type ClaimContext,
   CROSS_RUN_TOLERANCE,
+  type ClaimContext,
   type Counters,
   type DecodeStageCell,
   type DocNumber,
+  type Edit,
+  type Failure,
   MissingCell,
+  type ProseClaim,
+  type RunDoc,
+  Runs,
+  type StageCell,
   type SweepClaim,
   TOLERANCE,
   type Verdict,
   agreement,
   applyEdits,
-  checkSweepClaims,
-  runFailures,
-  stabilityFailures,
-  fixRefusal,
-  type Edit,
-  type Failure,
-  type ProseClaim,
-  type RunDoc,
-  Runs,
-  type StageCell,
   checkDecodeStagesProvenance,
   checkProseClaims,
   checkStability,
   checkStabilityClaim,
   checkStageRowCoverage,
   checkStagesProvenance,
+  checkSweepClaims,
   checkTable,
   clean,
+  fixRefusal,
   parseDecodeStages,
   parseStages,
   parseTables,
   parseUnavailableMarker,
+  runFailures,
+  stabilityFailures,
   withheldReason,
 } from "./verify-benchmark-core.ts";
 
@@ -5194,6 +5201,138 @@ console.log(
     );
   }
   rmSync(dir, { recursive: true, force: true });
+}
+
+// The register-verdict block: C1 and C2's frozen verdicts, re-derived from the
+// committed holdout2 results by `register-verdict-core.ts`. `verify:experiments`
+// binds §13.7's `p Holm` and `guards (CI)` cells to the same derivation; the
+// R1 outcomes, condition 4 and C1's ThumbHash admission are in no table, so
+// they are asserted here, as `spec/V0.8-DECISIONS.md` records them. A change
+// to `arms-core.ts` or `stats.ts` that moves any of them fails this block.
+console.log(
+  "\nregister-verdict — C1 and C2 as recorded, from the committed reads\n",
+);
+{
+  // Per comparison, in the freeze's order: R1 pass, guards against the named
+  // baseline, and the entry-family Holm p (raw p at the floor for C2's three
+  // replacements, so 4 × 2/(B+1)).
+  const recorded = {
+    C1: {
+      pass: [false, false, false, false, false, false, false, false],
+      guards: [
+        "inconclusive",
+        "inconclusive",
+        "FAIL",
+        "inconclusive",
+        "FAIL",
+        "ok",
+        "ok",
+        "FAIL",
+      ],
+      pHolm: [1, 0.8271, 0.0016, 1, 1, 0.019, 0.0016, 0.0016],
+    },
+    C2: {
+      pass: [true, true, false, true],
+      guards: ["ok", "ok", "inconclusive", "ok"],
+      pHolm: [0.0008, 0.0008, 0.5927, 0.0008],
+    },
+  } as const;
+  for (const [id, want] of Object.entries(recorded)) {
+    let v: ReturnType<typeof deriveVerdict> | undefined;
+    try {
+      v = deriveVerdict(id, 20);
+    } catch (e) {
+      check(`${id}'s committed reads derive a verdict`, false, String(e));
+      continue;
+    }
+    const got = v.comparisons;
+    check(
+      `${id}: the R1 outcome of every judged comparison is the recorded one`,
+      got.length === want.pass.length &&
+        got.every((c, i) => c.r1.pass === want.pass[i]),
+      got.map((c) => `${c.arm}=${c.r1.pass}`).join(", "),
+    );
+    check(
+      `${id}: guards against each named baseline are the recorded ones`,
+      got.every((c, i) => c.guards === want.guards[i]),
+      got.map((c) => c.guards).join(", "),
+    );
+    check(
+      `${id}: the entry-family Holm p of every comparison is the recorded one`,
+      got.every((c, i) => Math.abs(c.pHolm - (want.pHolm[i] ?? -1)) < 5e-5),
+      got.map((c) => c.pHolm.toFixed(4)).join(", "),
+    );
+    check(
+      `${id}: condition 4 — no R1 outcome turns under 20 other seeds`,
+      v.seeds.length === 20 && v.turned.length === 0,
+      `${v.seeds.length} seeds, ${v.turned.length} turned`,
+    );
+    check(
+      `${id}: condition 4's guard rule at the default seed is condition 3's`,
+      got.every(
+        (c) =>
+          guardsAtSeed(c.armRow, c.baseRow, c.tol, c.rise, BOOTSTRAP_SEED) ===
+          c.guards,
+      ),
+      got
+        .map((c) =>
+          guardsAtSeed(c.armRow, c.baseRow, c.tol, c.rise, BOOTSTRAP_SEED),
+        )
+        .join(", "),
+    );
+    if (id === "C1") {
+      check(
+        "C1: the compact row's ThumbHash admission holds on all four means",
+        v.admission?.holds === true && v.admission.metrics.length === 4,
+        (v.admission?.metrics ?? [])
+          .map((m) => `${m.key}=${m.wins}`)
+          .join(", "),
+      );
+    }
+  }
+
+  // Condition 4 reads the artifact guards and the zero-baseline allowance, as
+  // condition 3 does: a ringing rise with every other guard flat, and a
+  // spurious rise from an all-zero baseline, each FAIL under another seed.
+  type GuardRow = Parameters<typeof guardsAtSeed>[0];
+  const flat = Array.from({ length: 16 }, (_, i) => 1 + i / 16);
+  const row = (ringing: number[], spurious: number[]): GuardRow =>
+    ({
+      label: "synthetic",
+      perImage: {
+        ciede2000: flat,
+        ssimulacra2: flat,
+        butteraugli: flat,
+        dssim: flat,
+        ringing,
+        spurious,
+      },
+    }) as unknown as GuardRow;
+  const tol = { ssimulacra2Drop: 0.5, relativeRise: 0.05 };
+  const zeros = flat.map(() => 0);
+  const base = row(flat, zeros);
+  const ringing = row(
+    flat.map((v) => v * 1.5),
+    zeros,
+  );
+  const declared = guardsAtSeed(ringing, base, tol, 0.1, 7);
+  check(
+    "condition 4 fails a ringing rise beyond artifactGuardRise",
+    declared === "FAIL",
+    declared,
+  );
+  const undeclared = guardsAtSeed(ringing, base, tol, undefined, 7);
+  check(
+    "condition 4 ignores ringing where the run declared no artifactGuardRise",
+    undeclared === "ok",
+    undeclared,
+  );
+  const fromZero = guardsAtSeed(row(flat, flat), base, tol, 0.1, 7);
+  check(
+    "condition 4 fails a spurious rise from a zero baseline beyond the allowance",
+    fromZero === "FAIL",
+    fromZero,
+  );
 }
 
 console.log(
