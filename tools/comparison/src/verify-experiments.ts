@@ -79,6 +79,7 @@ import {
   statFor,
   summarizeInference,
 } from "./arms-core.ts";
+import { inCorpus } from "./corpus.ts";
 import {
   type DocTable,
   cells,
@@ -1319,6 +1320,26 @@ const ALPHA_SUBSETS: Record<string, ImageSubset> = {
   "more-transparent half (8)": transparencyHalf(true),
 };
 
+/**
+ * §13.8's per-row baselines: every D1 arm against its own tier's shipped arm,
+ * the first arm of that tier in `entropy-coded-ac`.
+ */
+const D1_TIER_BASELINES: Record<string, string> = Object.fromEntries(
+  [
+    [
+      "t2",
+      ["coded x1.25", "coded x1.5", "coded x2", "adaptive x1.5", "adaptive x2"],
+    ],
+    [
+      "t3",
+      ["coded x1.5", "coded x2", "coded x2.5", "coded x3", "adaptive x2.5"],
+    ],
+    ["t4", ["coded x2", "coded x3", "coded x4", "adaptive x3"]],
+  ].flatMap(([tier, arms]) =>
+    (arms as string[]).map((arm) => [`${tier} ${arm}`, `${tier} shipped`]),
+  ),
+);
+
 /** §11.12's photographic rows, shared by its tune and holdout bindings. */
 const V07_PHOTO_ALIASES: Record<string, string> = {
   "`sel_hv` 0.15 → 0.30": "sel_hv=0.30",
@@ -2467,6 +2488,39 @@ const BINDINGS: Binding[] = [
     },
   },
 
+  // §13.8 — register D1 on tune. One config spans codes 2-4, so every arm is
+  // read against its own tier's shipped arm, never row 0 (another tier's).
+  {
+    kind: "rows",
+    section: "13.8",
+    table: 0,
+    sweep: "entropy-coded-ac",
+    columns: {
+      ΔE00: "meanCiede",
+      relative: "ciedeDeltaPct",
+      "95% CI of Δ": "diffCi:ciede2000",
+      "guards (CI)": "guardsCiVsBaseline",
+    },
+    rowBaselines: D1_TIER_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "13.8",
+    table: 1,
+    sweep: "entropy-coded-ac",
+    columns: {
+      "photographic (31)": "ciedeDeltaPct",
+      "alpha (16)": "ciedeDeltaPct",
+      "graphics (16)": "ciedeDeltaPct",
+    },
+    subsets: {
+      "photographic (31)": (n) => inCorpus(n, "photo"),
+      "alpha (16)": (n) => inCorpus(n, "alpha"),
+      "graphics (16)": (n) => inCorpus(n, "graphic"),
+    },
+    rowBaselines: D1_TIER_BASELINES,
+  },
+
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
   {
@@ -2723,6 +2777,11 @@ const EXPECTED_CELLS: Record<string, number> = {
   "13.7#1": 10,
   "13.7#2": 15,
   "13.7#3": 5,
+  // §13.8, register D1 on tune: every arm's ΔE00 (17), and the 14 coded or
+  // adaptive arms' relative, interval and guards (42); then those 14 arms'
+  // relative differences per corpus (42).
+  "13.8#0": 59,
+  "13.8#1": 42,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
@@ -2830,6 +2889,8 @@ const UNBOUND_NOTES: Record<string, string> = {
   "11.0#0": "a two-row scoring demonstration on one synthetic fixture",
   "13.3#0":
     "stratify output, not a sweep: bin means over per-image scores joined to natural-images.ts's covariates. Reproduce with `mise run stratify artifact-ladder-common-grid --metric spurious --by detail`",
+  "13.8#2":
+    "stratify output, not a sweep: a tune image's holdout3 strata are derived from covariates measured on its cached fixture (corpus-covariates.ts measureFile), which a run with no corpus download cannot do. Reproduce with `mise run stratify entropy-coded-ac --strata`",
 };
 
 if (values["list-unbound"]) {
