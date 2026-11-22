@@ -70,17 +70,6 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { ALPHA_IMAGES } from "./alpha-images.ts";
 import {
-  type DocTable,
-  cells,
-  decimals,
-  parseCell,
-  parseTables,
-  rewriteCell as rewriteDocCell,
-} from "./doc-tables.ts";
-import { tableRegisterProblems } from "./experiments-register.ts";
-// A result from another iqa-cli is a different instrument, not a reproduction.
-import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
-import {
   type ArmComparison,
   type GuardVerdict,
   type InferenceSummary,
@@ -91,6 +80,19 @@ import {
   summarizeInference,
 } from "./arms-core.ts";
 import {
+  type DocTable,
+  cells,
+  decimals,
+  parseCell,
+  parseTables,
+  rewriteCell as rewriteDocCell,
+} from "./doc-tables.ts";
+import { tableRegisterProblems } from "./experiments-register.ts";
+import { type SpreadData, mdeTableCells, readSpread } from "./mde-core.ts";
+// A result from another iqa-cli is a different instrument, not a reproduction.
+import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
+import { type EntryVerdict, deriveVerdict } from "./register-verdict-core.ts";
+import {
   type PerImageKey,
   RESULTS_DIR,
   type ResultFile,
@@ -100,7 +102,6 @@ import {
   readResult,
   summarize,
 } from "./results.ts";
-import { type SpreadData, mdeTableCells, readSpread } from "./mde-core.ts";
 import { bootstrapCI } from "./stats.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
@@ -492,12 +493,28 @@ interface MdeBinding extends CommonBinding {
   columns: Partial<Record<string, string>>;
 }
 
+/**
+ * A frozen register entry's judged comparisons (§13.7), whose `p Holm` and
+ * `guards (CI)` are not the sweep's: Holm runs across the comparisons the
+ * freeze names, and each row's guards are read against its own named baseline.
+ * Both come from `deriveVerdict` (`register-verdict-core.ts`), the derivation
+ * `mise run register-verdict` prints. `rows` maps each doc row label to the
+ * judged arm's label.
+ */
+interface RegisterBinding extends CommonBinding {
+  kind: "register";
+  entry: string;
+  rows: Record<string, string>;
+  columns: Partial<Record<string, "pHolm" | "guards">>;
+}
+
 type Binding =
   | RowBinding
   | ColumnBinding
   | RatioBinding
   | SummaryBinding
-  | MdeBinding;
+  | MdeBinding
+  | RegisterBinding;
 
 /** The label of a summary table's row that sums every committed sweep. */
 const ALL_SWEEPS = "all committed sweeps";
@@ -587,6 +604,62 @@ function checkMdeTable(
       if (!cell) continue;
       const measured = cells[cell];
       if (measured === undefined) return `no MDE cell "${cell}" in "${key}"`;
+      compare(
+        {
+          section: b.section,
+          table: table.index,
+          row: label,
+          column: header,
+          fix: { line: table.line, rowIndex, colIndex: i },
+        },
+        row[i] ?? "",
+        measured,
+        failures,
+        stats,
+      );
+    }
+  }
+  return null;
+}
+
+const verdictCache = new Map<string, EntryVerdict>();
+
+function checkRegisterTable(
+  b: RegisterBinding,
+  table: DocTable,
+  failures: Failure[],
+  stats: Stats,
+): string | null {
+  let verdict = verdictCache.get(b.entry);
+  if (!verdict) {
+    try {
+      verdict = deriveVerdict(b.entry, 0, resultsDir);
+    } catch (e) {
+      return (e as Error).message;
+    }
+    verdictCache.set(b.entry, verdict);
+  }
+  for (const [rowIndex, row] of table.rows.entries()) {
+    const label = (row[0] ?? "").trim();
+    const arm = Object.entries(b.rows).find(
+      ([doc]) => normalize(doc) === normalize(label),
+    )?.[1];
+    if (arm === undefined) return `row "${label}" is not in the binding`;
+    const judged = verdict.comparisons.find(
+      (c) => normalize(c.arm) === normalize(arm),
+    );
+    if (!judged) return `${b.entry} judges no arm "${arm}"`;
+    for (const [i, header] of table.header.entries()) {
+      const cell = b.columns[header];
+      if (!cell) continue;
+      // A raw p at the bootstrap's floor, 2/(B+1), is an upper bound, and the
+      // document writes its adjusted value as one.
+      const measured =
+        cell === "guards"
+          ? judged.guards
+          : judged.atFloor
+            ? `≤ ${judged.pHolm.toFixed(4)}`
+            : judged.pHolm;
       compare(
         {
           section: b.section,
@@ -2244,7 +2317,8 @@ const BINDINGS: Binding[] = [
 
   // §13.7 — the register's confirmations on the sealed holdout2 splits, read
   // once at the freeze. Each row names its own baseline at equal bytes; the
-  // entry-family Holm and baseline-relative guards are register-verdict's.
+  // entry-family Holm and baseline-relative guards are bound by the
+  // `register` bindings below.
   {
     kind: "rows",
     section: "13.7",
@@ -2327,6 +2401,52 @@ const BINDINGS: Binding[] = [
       relative: "ciedeDeltaPct",
     },
     aliases: {
+      "code 2: the shipped base row vs `A5@4 L20@5 C9@4`":
+        "A28@3 L22@4 C3@3 (t0 winner)",
+    },
+  },
+  // The same three tables' `p Holm` and `guards (CI)`: Holm across the entry's
+  // judged comparisons and guards against each row's named baseline, which the
+  // rows bindings above cannot express.
+  {
+    kind: "register",
+    section: "13.7",
+    table: 0,
+    entry: "C1",
+    columns: { "p Holm": "pHolm", "guards (CI)": "guards" },
+    rows: {
+      "code 1: `sel_hv=0.30` vs shipped": "sel_hv=0.30",
+      "code 1: isotropic vs shipped": "isotropic (aniso=0 hv=0)",
+      "code 1: pre-adoption v0.6-derived vs shipped":
+        "pre-adoption v0.6-derived",
+      "code 1: `sel_hv=0 aniso=1.2` vs shipped": "sel_hv=0 aniso=1.2",
+      "code 0: `L18@4 C7@3` vs shipped `L19@4 C6@3`": "compact 21B L18@4 C7@3",
+      "code 0: `L20@4 C5@3` vs shipped": "compact 21B L20@4 C5@3",
+      "code 0: `L26@3 C6@3` vs shipped": "compact 21B L26@3 C6@3",
+      "code 0: the old shipped shape vs shipped": "compact 21B shipped shape",
+    },
+  },
+  {
+    kind: "register",
+    section: "13.7",
+    table: 2,
+    entry: "C2",
+    columns: { "p Holm": "pHolm", "guards (CI)": "guards" },
+    rows: {
+      "code 1: `A28@3 L22@4 C3@3` vs `A5@4 L20@5 C9@4`":
+        "ADOPTED A28@3 L22@4 C3@3",
+      "code 0: `A16@3 L12@4 C1@3` vs the old compact shape":
+        "compact 21B ADOPTED A16@3 L12@4 C1@3",
+      "`alpha_ac_fit` on vs off, code 1": "+ alpha_ac_fit",
+    },
+  },
+  {
+    kind: "register",
+    section: "13.7",
+    table: 3,
+    entry: "C2",
+    columns: { "p Holm": "pHolm", "guards (CI)": "guards" },
+    rows: {
       "code 2: the shipped base row vs `A5@4 L20@5 C9@4`":
         "A28@3 L22@4 C3@3 (t0 winner)",
     },
@@ -2419,7 +2539,12 @@ interface Coverage {
 function coverageOf(b: Binding, table: DocTable): Coverage {
   const base = { section: b.section, table: b.table ?? 0 };
 
-  if (b.kind === "rows" || b.kind === "summary" || b.kind === "mde") {
+  if (
+    b.kind === "rows" ||
+    b.kind === "summary" ||
+    b.kind === "mde" ||
+    b.kind === "register"
+  ) {
     const labelCol = b.kind === "rows" ? (b.labelColumn ?? 0) : 0;
     const covered: string[] = [];
     const uncovered: string[] = [];
@@ -2495,12 +2620,6 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
     "`verdict` is the section's conclusion in words, not a measurement",
   "11.12#1":
     "`verdict` is the section's conclusion in words, not a measurement. `holdout` is UNREPRODUCIBLE: one of the alpha holdout images, cutout-wordmark-aflac, was deleted from Wikimedia Commons on 2026-08-25 as a copyright violation and has no archived copy, so the alpha holdout split is retired, v07-holdout-alpha --split holdout refuses to run, and the column has no committed result. It stays unbound until a new sealed alpha split replaces it (#83)",
-  "13.7#0":
-    "`p Holm` is Holm across the register entry's judged comparisons (the family the freeze names), and `guards (CI)` is read against each row's named baseline; the rows binding computes Holm across the sweep's arms and guards against row 0 only, so both columns are re-derived by `mise run register-verdict C1|C2` instead",
-  "13.7#2":
-    "`p Holm` is Holm across the register entry's judged comparisons (the family the freeze names), and `guards (CI)` is read against each row's named baseline; the rows binding computes Holm across the sweep's arms and guards against row 0 only, so both columns are re-derived by `mise run register-verdict C1|C2` instead",
-  "13.7#3":
-    "`p Holm` is Holm across the register entry's judged comparisons (the family the freeze names), and `guards (CI)` is read against each row's named baseline; the rows binding computes Holm across the sweep's arms and guards against row 0 only, so both columns are re-derived by `mise run register-verdict C1|C2` instead",
   "13.1#1":
     "`Spur / Deficit` is the ratio of two columns in the same row, both of which are bound; it is the reading, not a measurement",
 };
@@ -2585,10 +2704,10 @@ const EXPECTED_CELLS: Record<string, number> = {
   "13.5#0": 72,
   "13.6#0": 64,
   "13.6#1": 8,
-  "13.7#0": 24,
+  "13.7#0": 40,
   "13.7#1": 10,
-  "13.7#2": 9,
-  "13.7#3": 3,
+  "13.7#2": 15,
+  "13.7#3": 5,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
@@ -2772,7 +2891,9 @@ for (const binding of BINDINGS) {
           ? checkSummaryTable(binding, table, failures, stats)
           : binding.kind === "mde"
             ? checkMdeTable(binding, table, failures, stats)
-            : checkColumnTable(binding, table, failures, stats);
+            : binding.kind === "register"
+              ? checkRegisterTable(binding, table, failures, stats)
+              : checkColumnTable(binding, table, failures, stats);
   if (problem) {
     skipped.push(`§${binding.section} table ${binding.table ?? 0}: ${problem}`);
     skippedTables.add(key);
