@@ -244,6 +244,10 @@ export const CROSS_RUN_TOLERANCE = 0.1;
  * How far a documented figure may sit from the committed run and still pass,
  * when it is not inside the cell's own range.
  *
+ * PROVISIONAL. No committed pair of sessions has measured the drift this is
+ * meant to absorb; the first committed stability pair may revise it, and no
+ * decision may cite it as a settled criterion (PERFORMANCE.md §0).
+ *
  * Half of §0's 10% host bar — a resolution chosen, not a noise level measured.
  * Holding the document to the run *exactly* made every re-measurement rewrite
  * nearly every value, so the diff of a re-run was noise and a real change could
@@ -258,6 +262,9 @@ export const CROSS_RUN_TOLERANCE = 0.1;
 export const TOLERANCE = 0.05;
 
 /**
+ * PROVISIONAL, as TOLERANCE is: set from one back-to-back pair of recordings,
+ * not from a committed session pair, and open to revision by the first one.
+ *
  * A stage share (§1, §1.1) passes within half a point, whatever its size. A
  * share is a ratio inside one process; §1 records that two recordings back to
  * back agreed within 0.4 points on every share, so half a point is what a

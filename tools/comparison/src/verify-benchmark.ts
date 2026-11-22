@@ -1564,7 +1564,7 @@ if (values.fix) {
 
 console.log(
   `Checked ${counters.checked} documented value(s) against the committed runs` +
-    ` (${counters.tolerated} within the range or the ±${(TOLERANCE * 100).toFixed(0)}% band rather than exact)` +
+    ` (${counters.tolerated} within the range or the ±${(TOLERANCE * 100).toFixed(0)}% band, a provisional tolerance, rather than exact)` +
     `; ${counters.unbound} deliberately unbound` +
     `${counters.unavailable > 0 ? `, ${counters.unavailable} on targets this run could not reach` : ""}` +
     `${counters.placeholders > 0 ? `, ${counters.placeholders} placeholder(s) a committed run can fill` : ""}` +

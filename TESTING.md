@@ -224,7 +224,9 @@ run to:
   four, not a 95% interval). A cell whose processes spread past 5% is checked
   on the band alone. Past 10% it is *withheld*: every value resting on it
   fails by name and `--fix` writes it as `TBD`, but the rest of the fix goes
-  ahead. This is separate from the stability pair, and `threads=auto` batch
+  ahead. A cell that completed fewer processes than its run planned, or a
+  pair with fewer A B / B A blocks than half that, is withheld the same way.
+  This is separate from the stability pair, and `threads=auto` batch
   cells on a shared SMT host may stay withheld. A lever, the `simd` build, a capped
   decode and a batch thread count are each a *paired* ratio against their
   base: the geometric mean over A B / B A blocks, so an order effect cancels.
@@ -239,8 +241,9 @@ run to:
   needs its own passing pair to be read at all.
 - **Tolerance.** A documented value passes inside its cell's range or within
   ±5% of the committed run (a timing percentage within 5% of its ratio, a
-  stage share within half a point). A stated speedup or slowdown must also
-  keep its sign. `--fix` rewrites only what is outside. It refuses to write
+  stage share within half a point). Both tolerances are provisional until the
+  first committed stability pair measures the drift they absorb. A stated
+  speedup or slowdown must also keep its sign. `--fix` rewrites only what is outside. It refuses to write
   only while a run-level check fails (provenance, dirty, load, sampling,
   rejected runs, cross-run spread, stability), never for a withheld cell.
 - **Provenance.** Every recorder writes its commit and a digest of the measured

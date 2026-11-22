@@ -54,7 +54,7 @@ cell cannot be published here.
 >
 > | Claim | Reproducible from the tree? |
 > |---|---|
-> | Every table below agrees with a cell in `baselines/hosts/<host>/perf-report*.json`, `baselines/perf-stages.json` and `baselines/perf-decode-stages.json`, within the cell's range or ±5% | **Yes** — `mise run verify:benchmark`, cell by cell |
+> | Every table below agrees with a cell in `baselines/hosts/<host>/perf-report*.json`, `baselines/perf-stages.json` and `baselines/perf-decode-stages.json`, within the cell's range or ±5% (a provisional tolerance; see "How a figure is checked") | **Yes** — `mise run verify:benchmark`, cell by cell |
 > | The M3 Pro's 34% / ~25% / 22-of-99 figures | **No.** That host's runs were never committed, and the machine was rejected rather than published |
 > | This host's cross-run agreement | **No.** Only one of the two bounded sweeps is committed, so `verify:benchmark`'s host-stability check has nothing to compare and reports itself `SKIP` |
 >
@@ -199,7 +199,11 @@ that far) by name, with the spread. `--fix` writes `TBD` in its place, and
 leaves a `TBD` that is already there. This is a property of the cell, not of
 the run, so `--fix` still writes every other value. The summary counts these
 apart from other placeholders ("withheld for process spread"), and they stay
-failing until a quieter session measures them.
+failing until a quieter session measures them. A cell that completed fewer
+processes than its run planned (the driver keeps a cell with one), or a pair
+with fewer complete A B / B A blocks than half that count, is withheld the
+same way: with one process there is no spread to judge, and the spread rules
+would otherwise pass it on the band alone.
 
 The stability pair and the per-cell spread are **separate checks**. The pair
 asks whether two runs of the host agree cell for cell, and its 10% is between
@@ -267,16 +271,20 @@ seconds it waited.
 
 **How a figure is checked.** A documented value passes when it is the
 measured value rounded as written, when it lies inside the cell's range, or
-when it is within **±5%** of the committed run. The 5% is half of the 10% host
+when it is within **±5%** of the committed run. **Both tolerances in this
+paragraph — the ±5% band and the half-point share floor — are provisional**:
+no committed pair of sessions has yet measured the drift they are meant to
+absorb, so the first committed stability pair may revise either, and neither
+is a criterion any decision may cite as settled. The 5% is half of the 10% host
 bar, and it is a resolution chosen rather than a noise level measured: a
 figure is rewritten only when it moved more than half of what the bar lets
 two runs of the host differ by, and a change the size of the bar always is.
 How many figures a re-run on this host moves past it is not known yet — the
 one pair of sweeps this host has compared was never committed, so that
 agreement is unverified — and the first committed pair will say. A stage share
-passes within half a point, whatever its size: §1 records two
-recordings back to back agreeing within 0.4 points. A percentage that is a
-difference of two timings (§4's "vs shipped", §5's "2%") is held to the same 5%
+passes within half a point (provisional, as above), whatever its size: §1
+records two recordings back to back agreeing within 0.4 points. A percentage
+that is a difference of two timings (§4's "vs shipped", §5's "2%") is held to the same 5%
 on the ratio it stands for — §4's −36.3% is 0.637×, so ±3.2 points. A ratio or
 timing percentage that states a direction must also keep it: a figure written
 as a speedup fails against a measured slowdown however small the difference,
