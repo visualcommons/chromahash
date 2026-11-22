@@ -132,6 +132,8 @@ export interface JudgedComparison {
   armRow: Row;
   baseRow: Row;
   tol: GuardTolerances;
+  /** The run's `artifactGuardRise`, or undefined where it declared none. */
+  rise: number | undefined;
 }
 
 export interface AdmissionMetric {
@@ -188,34 +190,21 @@ function median(values: readonly number[]): number {
 }
 
 /**
- * Condition 3 under `seed`: `guardVerdictOnIntervals`' rule, with each guard
- * interval re-drawn at `seed` against the named baseline.
+ * Condition 3 under `seed`: {@link guardVerdictOnIntervals} itself -- the
+ * ringing and spurious guards where the run declared `artifactGuardRise`, and
+ * the zero-baseline allowance included -- read off `compareArms`' intervals
+ * re-drawn at `seed` against the named baseline. At {@link BOOTSTRAP_SEED} it
+ * is condition 3 exactly, which `selftest:metrics` asserts.
  */
-function guardsAtSeed(
+export function guardsAtSeed(
   arm: Row,
   base: Row,
   tol: GuardTolerances,
+  artifactRise: number | undefined,
   seed: number,
 ): GuardVerdict {
-  const verdicts: string[] = [];
-  const ssim = pairedDeltas(
-    arm.perImage.ssimulacra2 ?? [],
-    base.perImage.ssimulacra2 ?? [],
-  );
-  if (ssim.deltas.length > 0) {
-    const [lo, hi] = bootstrapCI(ssim.deltas, BOOTSTRAP_RESAMPLES, 0.05, seed);
-    const floor = -tol.ssimulacra2Drop;
-    verdicts.push(lo >= floor ? "ok" : hi < floor ? "FAIL" : "inconclusive");
-  }
-  for (const key of ["butteraugli", "dssim"] as const) {
-    const d = pairedDeltas(arm.perImage[key] ?? [], base.perImage[key] ?? []);
-    if (d.deltas.length === 0) continue;
-    const [lo, hi] = bootstrapCI(d.deltas, BOOTSTRAP_RESAMPLES, 0.05, seed);
-    const margin = tol.relativeRise * mean(d.baseValues);
-    verdicts.push(hi <= margin ? "ok" : lo > margin ? "FAIL" : "inconclusive");
-  }
-  if (verdicts.includes("FAIL")) return "FAIL";
-  return verdicts.includes("inconclusive") ? "inconclusive" : "ok";
+  const [cmp] = compareArms([base, arm], 0, BOOTSTRAP_RESAMPLES, seed);
+  return guardVerdictOnIntervals(cmp, tol, artifactRise);
 }
 
 const passes = (
@@ -266,6 +255,7 @@ export function deriveVerdict(
       armRow,
       baseRow,
       tol,
+      rise,
     };
   });
 
@@ -302,7 +292,7 @@ export function deriveVerdict(
     });
     const adj = holm(ps);
     for (const [k, l] of comparisons.entries()) {
-      const g = guardsAtSeed(l.armRow, l.baseRow, l.tol, seed);
+      const g = guardsAtSeed(l.armRow, l.baseRow, l.tol, l.rise, seed);
       if (passes(l.rel, l.stat.meanDelta, adj[k] ?? 1, g) !== l.r1.pass) {
         turned.push({ seed, arm: l.arm, base: l.base });
       }

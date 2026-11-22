@@ -146,7 +146,7 @@ import {
   naturalImagesToFetch,
 } from "./natural-images.ts";
 import { classifyProbe, repoRelative } from "./perf/availability.ts";
-import { deriveVerdict } from "./register-verdict-core.ts";
+import { deriveVerdict, guardsAtSeed } from "./register-verdict-core.ts";
 import {
   ARTIFACT_ZERO_BASE_ALLOWANCE,
   RESULT_SCHEMA,
@@ -154,6 +154,7 @@ import {
   shapeProblems,
 } from "./results.ts";
 import {
+  BOOTSTRAP_SEED,
   bootstrapCI,
   bootstrapP,
   correlationInference,
@@ -3701,6 +3702,19 @@ console.log(
       v.seeds.length === 20 && v.turned.length === 0,
       `${v.seeds.length} seeds, ${v.turned.length} turned`,
     );
+    check(
+      `${id}: condition 4's guard rule at the default seed is condition 3's`,
+      got.every(
+        (c) =>
+          guardsAtSeed(c.armRow, c.baseRow, c.tol, c.rise, BOOTSTRAP_SEED) ===
+          c.guards,
+      ),
+      got
+        .map((c) =>
+          guardsAtSeed(c.armRow, c.baseRow, c.tol, c.rise, BOOTSTRAP_SEED),
+        )
+        .join(", "),
+    );
     if (id === "C1") {
       check(
         "C1: the compact row's ThumbHash admission holds on all four means",
@@ -3711,6 +3725,49 @@ console.log(
       );
     }
   }
+
+  // Condition 4 reads the artifact guards and the zero-baseline allowance, as
+  // condition 3 does: a ringing rise with every other guard flat, and a
+  // spurious rise from an all-zero baseline, each FAIL under another seed.
+  type GuardRow = Parameters<typeof guardsAtSeed>[0];
+  const flat = Array.from({ length: 16 }, (_, i) => 1 + i / 16);
+  const row = (ringing: number[], spurious: number[]): GuardRow =>
+    ({
+      label: "synthetic",
+      perImage: {
+        ciede2000: flat,
+        ssimulacra2: flat,
+        butteraugli: flat,
+        dssim: flat,
+        ringing,
+        spurious,
+      },
+    }) as unknown as GuardRow;
+  const tol = { ssimulacra2Drop: 0.5, relativeRise: 0.05 };
+  const zeros = flat.map(() => 0);
+  const base = row(flat, zeros);
+  const ringing = row(
+    flat.map((v) => v * 1.5),
+    zeros,
+  );
+  const declared = guardsAtSeed(ringing, base, tol, 0.1, 7);
+  check(
+    "condition 4 fails a ringing rise beyond artifactGuardRise",
+    declared === "FAIL",
+    declared,
+  );
+  const undeclared = guardsAtSeed(ringing, base, tol, undefined, 7);
+  check(
+    "condition 4 ignores ringing where the run declared no artifactGuardRise",
+    undeclared === "ok",
+    undeclared,
+  );
+  const fromZero = guardsAtSeed(row(flat, flat), base, tol, 0.1, 7);
+  check(
+    "condition 4 fails a spurious rise from a zero baseline beyond the allowance",
+    fromZero === "FAIL",
+    fromZero,
+  );
 }
 
 console.log(

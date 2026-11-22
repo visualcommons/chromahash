@@ -24,7 +24,13 @@ import {
   guardsHold,
   summarize,
 } from "./results.ts";
-import { BOOTSTRAP_RESAMPLES, bootstrapCI, bootstrapP, holm } from "./stats.ts";
+import {
+  BOOTSTRAP_RESAMPLES,
+  BOOTSTRAP_SEED,
+  bootstrapCI,
+  bootstrapP,
+  holm,
+} from "./stats.ts";
 
 /** A metric that can be compared per image, and which direction is better. */
 export interface PairedMetricSpec {
@@ -122,11 +128,16 @@ export function pairedDeltas(
  * `intervalResamples` exists for `arms --resample-change` alone, which re-draws
  * the intervals at the count they used before {@link BOOTSTRAP_RESAMPLES}. The
  * p-values are always drawn at {@link BOOTSTRAP_RESAMPLES}.
+ *
+ * `seed` draws every interval and p-value under another bootstrap seed; it
+ * exists for `register-verdict`'s condition 4, which re-reads the guards with
+ * {@link guardVerdictOnIntervals} under seeds other than {@link BOOTSTRAP_SEED}.
  */
 export function compareArms(
   rows: readonly PairableRow[],
   baseIndex = 0,
   intervalResamples = BOOTSTRAP_RESAMPLES,
+  seed = BOOTSTRAP_SEED,
 ): ArmComparison[] {
   const base = rows[baseIndex];
   if (!base) return [];
@@ -149,8 +160,8 @@ export function compareArms(
         pairs: deltas.length,
         baseMean: baseValues.reduce((s, v) => s + v, 0) / baseValues.length,
         meanDelta: deltas.reduce((s, v) => s + v, 0) / deltas.length,
-        ci: bootstrapCI(deltas, intervalResamples),
-        p: bootstrapP(deltas),
+        ci: bootstrapCI(deltas, intervalResamples, 0.05, seed),
+        p: bootstrapP(deltas, BOOTSTRAP_RESAMPLES, seed),
         pHolm: Number.NaN,
       };
       out[j]?.stats.push(stat);
