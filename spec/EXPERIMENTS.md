@@ -3750,7 +3750,12 @@ against its incumbent:
 when the 2026-09 re-measure committed the §6 sweeps no table had bound, and
 to 864 when the register's confirmations committed their three holdout2
 sweeps (§13.7), and to 880 and then 883 when D1 committed its tune sweep and
-its holdout3 read (§13.8). The
+its holdout3 read (§13.8). The row compares every arm with its sweep's
+first row whatever the arm's tier, so it includes cross-tier comparisons at
+different byte counts that no decision judged: 133 of the 883 arms, 13 of them
+D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
+row, and the 2 code-4 rows of its holdout3 read against its code-3 row), the
+rest from the tier ladders and mixed-tier tables of earlier sweeps. The
 prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
 #102 then turned the one EXIF-rotated tune photograph upright and re-ran every
