@@ -152,7 +152,12 @@ import {
   hostKey,
   judgePreflight,
   mayStart,
+  overLoad,
   readLoadavg,
+  readPreflight,
+  SUSTAINED_LOAD_FACTOR,
+  sustainedLoadBar,
+  WAIT_RULE,
   waitForLoad,
 } from "./perf/host.ts";
 import { planMatrix, planRun, roundOrder } from "./perf/plan.ts";
@@ -2787,6 +2792,65 @@ for (const order of ["full first", "bounded first"] as const) {
   );
 }
 
+// V5b2. Sustained quiet: a run that records `waitRule` must also hold every
+//       reading's 5-minute load under 1.5x the bar (3.0 on 16 threads), strictly;
+//       a run without it was admitted on the 1-minute rule alone and is held to
+//       that, as the runs committed before the rule are; and a `waitRule` the
+//       gate does not know fails rather than passing on the 1-minute half.
+{
+  const on16 = (preflight: NonNullable<RunDoc["environment"]["preflight"]>) =>
+    run3(
+      "perf-report.json",
+      { a: { us: 1 } },
+      {
+        environment: { cpuModel: "fixture", arch: "x64", cores: 16, preflight },
+      },
+    );
+  const loadFails = (pf: NonNullable<RunDoc["environment"]["preflight"]>) =>
+    runFailures(new Runs([on16(pf)])).filter(
+      (f) => f.column === "preflight.load",
+    );
+  // The 2026-10-10 shape: 1-minute just under the bar, 5-minute well over.
+  const dipRounds: (number[] | null)[] = [
+    [0.5, 0.5, 0.5],
+    [1.86, 4.1, 3],
+    [0.5, 0.5, 0.5],
+    [0.5, 0.5, 0.5],
+  ];
+  const ruled = { ...quietPreflight(), waitRule: WAIT_RULE };
+  const quietRuled = loadFails(ruled);
+  const dipRuled = loadFails({ ...ruled, loadavgRounds: dipRounds });
+  const dipLegacy = loadFails({
+    ...quietPreflight(),
+    loadavgRounds: dipRounds,
+  });
+  const startAt3 = loadFails({ ...ruled, loadavgStart: [1, 3, 2] });
+  const startUnder3 = loadFails({ ...ruled, loadavgStart: [1, 2.99, 2] });
+  const no5 = loadFails({ ...ruled, loadavgStart: [1] });
+  const unknownRule = loadFails({
+    ...quietPreflight(),
+    waitRule: "load1<=bar",
+  });
+  check(
+    "a run recording waitRule fails on a high 5-minute round, a run without it is held to the 1-minute rule only, and an unknown waitRule fails",
+    SUSTAINED_LOAD_FACTOR === 1.5 &&
+      WAIT_RULE.includes("1.5") &&
+      quietRuled.length === 0 &&
+      dipRuled.length === 1 &&
+      (dipRuled[0]?.detail ?? "").includes("5-minute load 4.10 at round 2") &&
+      (dipRuled[0]?.detail ?? "").includes("3.00") &&
+      dipLegacy.length === 0 &&
+      startAt3.length === 1 &&
+      (startAt3[0]?.detail ?? "").includes("at the start") &&
+      startUnder3.length === 0 &&
+      no5.length === 1 &&
+      (no5[0]?.detail ?? "").includes("no 5-minute load") &&
+      unknownRule.length === 1 &&
+      (unknownRule[0]?.detail ?? "").includes("load1<=bar"),
+    `quiet=${details(quietRuled)} dip=${details(dipRuled)} legacy=${details(dipLegacy)} at3=${details(startAt3)} under3=${details(startUnder3)} no5=${details(no5)} unknown=${details(unknownRule)}`,
+  );
+}
+
 // V5c. --fix refuses while the committed runs themselves fail: rewriting the
 //      document to agree with a run the gate rejects would launder it.
 {
@@ -3491,7 +3555,7 @@ for (const order of ["full first", "bounded first"] as const) {
           load -= 1;
         },
         now: () => t,
-        onWait: (l: number) => notes.push(l),
+        onWait: (_why: string, l: [number, number, number]) => notes.push(l[0]),
       },
     };
   };
@@ -3533,6 +3597,67 @@ for (const order of ["full first", "bounded first"] as const) {
       unreadable.ok &&
       unreadable.load === null,
     `settled=${JSON.stringify(settled)} gaveUp=${JSON.stringify(gaveUp)} quiet=${quiet.ok} unreadable=${unreadable.ok}`,
+  );
+}
+
+// V12c. Sustained quiet at the driver: a 1-minute dip under the bar while the
+//       5-minute load is still at or over 1.5x it is waited out, not admitted,
+//       and the start is refused the same way. Here the 1-minute load sits at
+//       1.9 against a bar of 2 from the first poll, and the 5-minute load
+//       decays from 4.5 by 0.5 per poll, so admission waits for it to fall
+//       under 3.0 — strictly, so 3.0 itself is waited past — four polls, not
+//       zero.
+{
+  let t = 0;
+  let load5 = 4.5;
+  const whys: string[] = [];
+  const dip = await waitForLoad({
+    maxLoad: 2,
+    timeoutMs: 600_000,
+    pollMs: 10_000,
+    read: () => [1.9, load5, 2],
+    sleep: async (ms: number) => {
+      t += ms;
+      load5 -= 0.5;
+    },
+    now: () => t,
+    onWait: (why) => whys.push(why),
+  });
+  const base: Preflight = {
+    loadavgStart: [1.9, 4.1, 3],
+    loadavgRounds: [],
+    loadavgEnd: null,
+    waitedSeconds: [],
+    maxLoad: 2,
+    loaded: false,
+    governor: null,
+    boost: null,
+    boostSource: null,
+    smt: null,
+    scalingDriver: null,
+    energyPerformancePreference: null,
+    warnings: [],
+  };
+  const refused = judgePreflight(base, false);
+  const forced = judgePreflight(base, true);
+  check(
+    "a 1-minute dip with a high 5-minute load is waited out, refused at the start unless forced, and the rule is recorded",
+    sustainedLoadBar(2) === 3 &&
+      dip.ok &&
+      dip.waitedMs === 40_000 &&
+      dip.load?.[1] === 2.5 &&
+      whys.length === 4 &&
+      whys.every((w) => w.startsWith("5-minute load average")) &&
+      overLoad([2, 2.99, 1], 2) === null &&
+      (overLoad([2, 3, 1], 2) ?? "").startsWith("5-minute") &&
+      (overLoad([2.1, 1, 1], 2) ?? "").startsWith("1-minute") &&
+      overLoad(null, 2) === null &&
+      !mayStart(refused, false) &&
+      refused.warnings[0]?.startsWith("5-minute load average 4.10") === true &&
+      mayStart(forced, true) &&
+      forced.loaded &&
+      readPreflight(2, false).waitRule === WAIT_RULE,
+    `dip=${JSON.stringify(dip)} whys=${JSON.stringify(whys)} refused=${JSON.stringify(refused.warnings)} forced=${forced.loaded}`,
   );
 }
 
