@@ -179,24 +179,22 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
             } else {
                 0
             };
-        // A string too short to hold the flag (never a validated one) is left
-        // to the plain decode below.
-        if let Some(flag_byte) = hash.get(start / 8) {
-            let bit = |i: usize| (hash[i / 8] >> (i % 8)) & 1;
-            let mut inner = vec![0u8; hash.len()];
-            for i in 0..start {
-                inner[i / 8] |= bit(i) << (i % 8);
-            }
-            for i in start + 1..hash.len() * 8 {
-                inner[(i - 1) / 8] |= bit(i) << ((i - 1) % 8);
-            }
-            let mode = if (flag_byte >> (start % 8)) & 1 == 1 {
-                Tunables { ac_coder: 1, ..*t }
-            } else {
-                shipped_fields(t)
-            };
-            return render_at_size(&inner, w, h, &mode, output);
+        // A validated hash always holds the flag (every hash is longer than
+        // its prefix); like every other field read here, it is not checked.
+        let bit = |i: usize| (hash[i / 8] >> (i % 8)) & 1;
+        let mut inner = vec![0u8; hash.len()];
+        for i in 0..start {
+            inner[i / 8] |= bit(i) << (i % 8);
         }
+        for i in start + 1..hash.len() * 8 {
+            inner[(i - 1) / 8] |= bit(i) << ((i - 1) % 8);
+        }
+        let mode = if bit(start) == 1 {
+            Tunables { ac_coder: 1, ..*t }
+        } else {
+            shipped_fields(t)
+        };
+        return render_at_size(&inner, w, h, &mode, output);
     }
 
     let mut bitpos = 8usize + t.aspect_bits as usize;
