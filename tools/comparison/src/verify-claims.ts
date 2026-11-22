@@ -854,6 +854,38 @@ const REGISTER: Claim[] = [
     column: "vs native tier 0 (11.481)",
   },
 
+  // ── Register D8's prior evidence (#131) ──────────────────────────────────
+  // The code-0 retune entry quotes the tune plateau's top two (§11.10) and
+  // C1's holdout2 reading of the candidate (§13.7) by hand.
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D8: the shipped compact layout's tune ΔE00",
+    pattern: /`L19@4 C6@3` ahead\s+\(([\d.]+) ΔE00\)/,
+    section: "11.10",
+    table: 0,
+    row: "**L19@4 C6@3**",
+    column: "ΔE00",
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D8: the candidate compact layout's tune ΔE00",
+    pattern: /`L26@3 C6@3` second \(([\d.]+)\)/,
+    section: "11.10",
+    table: 0,
+    row: "L26@3 C6@3",
+    column: "ΔE00",
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D8: the candidate compact layout on holdout2",
+    pattern: /`L26@3 C6@3` ([\d.]+)% better than the shipped layout/,
+    section: "13.7",
+    table: 0,
+    row: "code 0: `L26@3 C6@3` vs shipped",
+    column: "relative",
+    transform: abs,
+  },
+
   // ── The holdout2 confirmations (register C1, C2) ─────────────────────────
   // #120 read the sealed splits once and recorded the outcome in §13.7: the
   // old holdout's −3.72% replicates in direction at about three-fifths of its
