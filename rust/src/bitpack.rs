@@ -73,28 +73,41 @@ pub fn read_bits(hash: &[u8], bitpos: usize, count: u32) -> u32 {
 
 /// Probability precision: a model holds P(bit = 0) in units of 2^-12.
 const PROB_BITS: u32 = 12;
-/// Adaptation rate: each coded bit moves its model 1/16 of the way to it.
+/// Slowest adaptation rate: once a model has coded three bits, each further
+/// bit moves it 1/16 of the way toward that bit.
 const ADAPT_SHIFT: u32 = 4;
 const HALF: u64 = 1 << 31;
 const QUARTER: u64 = 1 << 30;
 const THREE_QUARTERS: u64 = 3 << 30;
 const TOP: u64 = (1 << 32) - 1;
 
-/// One adaptive binary model: P(bit = 0) in 1/4096, kept inside
-/// `[1, 4095]` by the shift update, so neither sub-interval is ever empty.
+/// One adaptive binary model: P(bit = 0) in 1/4096, and how many bits it has
+/// coded (saturating at `ADAPT_SHIFT - 1`).
+///
+/// The `n`-th update moves the estimate by `2^-min(n + 1, 4)` of the
+/// distance to the bit, so a fresh model learns fast (half the way on its
+/// first bit) and settles at 1/16. A short stream — a code-2 hash codes a
+/// few hundred decisions over dozens of models — never pays for starting
+/// slow. Neither update leaves `[1, 4095]` (each moves by a floor of a
+/// fraction of the distance to 0 or 4096), so neither sub-interval is ever
+/// empty.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BitModel(u16);
+pub(crate) struct BitModel(u16, u8);
 
 impl BitModel {
-    /// Even odds.
-    pub(crate) const NEW: BitModel = BitModel(1 << (PROB_BITS - 1));
+    /// Even odds, nothing coded.
+    pub(crate) const NEW: BitModel = BitModel(1 << (PROB_BITS - 1), 0);
 
     /// Move the estimate toward the bit just coded.
     fn update(&mut self, bit: bool) {
+        let shift = 1 + self.1 as u32;
+        if shift < ADAPT_SHIFT {
+            self.1 += 1;
+        }
         if bit {
-            self.0 -= self.0 >> ADAPT_SHIFT;
+            self.0 -= self.0 >> shift;
         } else {
-            self.0 += ((1u16 << PROB_BITS) - self.0) >> ADAPT_SHIFT;
+            self.0 += ((1u16 << PROB_BITS) - self.0) >> shift;
         }
     }
 }
@@ -550,13 +563,27 @@ mod tests {
             m.update(true);
         }
         assert_eq!(m.0, 15);
-        // One step each way, from even odds.
+        // The rate starts at one half and settles at 1/16 by the fourth bit.
         let mut up = BitModel::NEW;
-        up.update(false);
-        assert_eq!(up.0, 2048 + 128);
+        let mut steps = Vec::new();
+        for _ in 0..5 {
+            let before = up.0;
+            up.update(false);
+            steps.push(up.0 - before);
+        }
+        // 2048 → 3072 (½ of 2048), 3328 (¼ of 1024), 3424 (⅛ of 768), then
+        // 1/16 of the remaining distance: 672 >> 4 = 42, 630 >> 4 = 39.
+        assert_eq!(steps, [1024, 256, 96, 42, 39]);
         let mut down = BitModel::NEW;
         down.update(true);
-        assert_eq!(down.0, 2048 - 128);
+        assert_eq!(down.0, 1024);
+        // An even split after mixed bits: the counter saturates, it never
+        // wraps back to the fast rate.
+        let mut m = BitModel::NEW;
+        for i in 0..1000 {
+            m.update(i % 2 == 0);
+        }
+        assert_eq!(m.1, 3);
     }
 
     #[test]
