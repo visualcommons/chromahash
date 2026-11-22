@@ -24,11 +24,17 @@
  *   node dist/corpus-covariates.js --commons <titles.txt> [--out <file.json>]
  *   node dist/corpus-covariates.js --files <image> [<image> ...]
  *   node dist/corpus-covariates.js --draw-holdout3 --out <file.json>
+ *   node dist/corpus-covariates.js --pin-holdout3 fixtures/holdout3-draw.json
  *
  * `--draw-holdout3` runs the holdout3 draw exactly as {@link HOLDOUT3_DRAW}
  * and `corpus.ts`' `HOLDOUT3_PROTOCOL` fix it, and writes the record: every
- * query's hits, every axis's refusals by reason, and the picks with what a
- * pin needs. It pins nothing.
+ * query's hits, every candidate the walk reached with what its facts and
+ * bytes answered ({@link Holdout3Verdict}), every axis's refusals by reason,
+ * and the picks with what a pin needs. It pins nothing. The record is
+ * committed as `fixtures/holdout3-draw.json`; `--pin-holdout3` replays it
+ * offline ({@link replayHoldout3}) and writes the three tables' holdout3
+ * pins from the replay, and the self-test replays it again and checks the
+ * shipped pins against it.
  *
  * `--commons` reads one Commons file title per line (`File:…`; blank lines
  * and `#` comments skipped), asks Commons for each file's licence, author,
@@ -39,6 +45,7 @@
  * output is a candidate list for a human to approve.
  */
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
@@ -157,6 +164,15 @@ export const LOW_KEY_L = 10;
  * The hue band brackets the yellow-red angles human skin occupies across
  * tone, the chroma band excludes near-neutrals and saturated paint, and the
  * lightness band excludes clipped highlights and near-black.
+ *
+ * The bounds come from the Lab of a common five-swatch skin palette (sRGB
+ * 255,219,172 · 241,194,125 · 224,172,105 · 198,134,66 · 141,85,36) and two
+ * darker and redder browns (92,51,23 and 180,120,100): their hues run 44.3°
+ * to 78.4°, sand (194,178,128) sits at 93.6° and green at 137.8°. The hue
+ * band ends at 80°, the first round bound holding every swatch, 13.6° short
+ * of sand (amendment 2: the first draw ran with 70°, which refused the
+ * palette's two light swatches at 74.8° and 78.4°). The lightest swatch
+ * (L* 89.3) is refused by the lightness band, as a clipped highlight is.
  */
 export const SKIN_REGION = {
   minL: 20,
@@ -164,7 +180,7 @@ export const SKIN_REGION = {
   minC: 10,
   maxC: 50,
   minHue: 25,
-  maxHue: 70,
+  maxHue: 80,
 } as const;
 
 /** Is a CIELAB colour inside {@link SKIN_REGION}? */
@@ -1125,6 +1141,7 @@ export const HOLDOUT3_DRAW: readonly DrawAxis[] = [
  */
 export const HOLDOUT3_AMENDMENTS: readonly string[] = [
   "1 (shortfall): the first draw ended with 23 of 24 cut-outs. Every alpha candidate had been consumed, 165 of them refused only because their cell was already full, and the shortfall walk resumed from the end of the pool, so it found nothing. With slot quotas lifted, a short axis now reconsiders the candidates it passed over only for a full slot, in seeded order, before moving its cursor. The 87 picks of the first draw are unchanged by this; only the shortfall pass differs.",
+  "2 (skin hue): SKIN_REGION's hue band ended at 70°, contradicting its recorded basis: the skin swatches it was set from sit at 44.3°–78.4°, and 70° refused the palette's two light swatches (74.8° and 78.4°), so the skin axis's light band under-sampled light skin. The band now ends at 80°, holding every swatch and 13.6° short of sand. The region changes every candidate's skin figure, so the split is drawn again from the same queries, seed and quotas; nothing else in the protocol changes. The re-draw excludes only the pins of the other splits, not holdout3's own earlier pins, and its record now lists every candidate the walk reached with what its facts and bytes answered, so the picks can be re-derived offline (`replayHoldout3`).",
 ];
 
 /** Hits taken from each query, in Commons' relevance order. */
@@ -1222,15 +1239,469 @@ export function holdout3Label(
   return label;
 }
 
-/** One pick, with everything a pin needs. */
-export interface Holdout3Pick extends Candidate {
+/** One pick of the walk, with what its pin records about it. */
+export interface Holdout3Pick {
   part: DrawPart;
   label: string;
+  title: string;
+  /** The axis that took it. */
   drawnAs: string;
   slot: string;
   query: string;
   orderKey: string;
+  sha256: string;
+  covariates: Covariates;
   record: Holdout3Record;
+}
+
+/**
+ * What the draw learnt about one candidate for one axis, as far as the walk
+ * asked: each stage is answered by the candidate's own facts or bytes, never
+ * by what the walk had already taken. A refusal with no `author` came from
+ * Commons' facts (licence, admission); one with an `author` but no `sha256`
+ * from the download; one with a `sha256` from reading the bytes. A verdict
+ * with `covariates` was measured, and the axis test is applied to them.
+ */
+export interface Holdout3Verdict {
+  refused?: string;
+  author?: string;
+  sha256?: string;
+  covariates?: Covariates;
+}
+
+/** Answers the walk's three questions about a candidate, for one axis. */
+export interface Holdout3Evaluator {
+  /** Commons' facts: an `author`, or a refusal. `ahead` may be prefetched. */
+  admission(
+    axis: number,
+    title: string,
+    ahead: readonly string[],
+  ): Promise<Holdout3Verdict>;
+  /** The bytes: a `sha256`, or a refusal. */
+  bytes(axis: number, title: string): Promise<Holdout3Verdict>;
+  /** The measurement: `covariates`, or a refusal (unreadable, animated). */
+  measure(axis: number, title: string): Promise<Holdout3Verdict>;
+}
+
+/** The images the draw may not take: every pin outside holdout3, and Kodak24. */
+export interface Holdout3Exclusions {
+  /** Commons titles ({@link pinnedCommonsTitle}). */
+  titles: string[];
+  sha256: string[];
+  /** Authors, trimmed and lower-cased. */
+  authors: string[];
+}
+
+const authorKey = (a: string): string => a.trim().toLowerCase();
+
+/** The exclusions as the pin tables give them now, sorted. */
+export function holdout3Exclusions(): Holdout3Exclusions {
+  const pins = [...CURATED_IMAGES, ...ALPHA_IMAGES, ...GRAPHIC_IMAGES].filter(
+    (p) => p.split !== "holdout3",
+  );
+  const sorted = (xs: Iterable<string>): string[] => [...new Set(xs)].sort();
+  return {
+    titles: sorted(
+      pins.map((p) => pinnedCommonsTitle(p.source)).filter((t) => t !== null),
+    ),
+    sha256: sorted([...pins.map((p) => p.sha256), ...KODAK_SHA256]),
+    authors: sorted(pins.map((p) => authorKey(p.author))),
+  };
+}
+
+/** One pool entry: a Commons title and the query it is attributed to. */
+export interface Holdout3PoolEntry {
+  title: string;
+  query: string;
+}
+
+/** What one axis's walk did. */
+export interface Holdout3AxisWalk {
+  /** The pool prefix the walk reached, in seeded order. */
+  walked: Holdout3PoolEntry[];
+  refusals: Record<string, number>;
+  picks: string[];
+}
+
+/** What the whole walk did. */
+export interface Holdout3Walk {
+  axes: Holdout3AxisWalk[];
+  picks: Holdout3Pick[];
+  shortfalls: string[];
+  sizes: Record<DrawPart, number>;
+  strata: Record<string, number>;
+}
+
+/**
+ * The draw's walk, given each axis's pool, the exclusions and an evaluator.
+ * Everything that depends on what the walk has already taken — titles,
+ * authors, bytes and cameras taken, query caps and slot quotas — is decided
+ * here; everything a candidate is on its own comes from the evaluator. The
+ * live draw passes Commons; {@link replayHoldout3} passes a committed record,
+ * so the picks are re-derived from it rather than trusted. A pool may be a
+ * prefix of `poolSizes[i]` entries: reaching past it throws.
+ */
+export async function walkHoldout3(input: {
+  pools: readonly (readonly Holdout3PoolEntry[])[];
+  poolSizes: readonly number[];
+  exclusions: Holdout3Exclusions;
+  evaluator: Holdout3Evaluator;
+  axes?: readonly DrawAxis[];
+}): Promise<Holdout3Walk> {
+  const axes = input.axes ?? HOLDOUT3_DRAW;
+  const ev = input.evaluator;
+  const takenTitles = new Set(input.exclusions.titles);
+  const takenSha = new Set(input.exclusions.sha256);
+  const takenAuthors = new Set(input.exclusions.authors);
+  const labels = new Set<string>();
+  const picks: Holdout3Pick[] = [];
+
+  interface AxisState {
+    index: number;
+    axis: DrawAxis;
+    pool: (Holdout3PoolEntry & { key: string })[];
+    size: number;
+    cursor: number;
+    /** Candidates refused only because their slot was full, in seeded order. */
+    passedOver: (Holdout3PoolEntry & { key: string })[];
+    filled: Map<string, number>;
+    perQuery: Map<string, number>;
+    cameras: Set<string>;
+    refusals: Map<string, number>;
+    asked: Set<string>;
+  }
+  const states: AxisState[] = axes.map((axis, index) => ({
+    index,
+    axis,
+    pool: (input.pools[index] ?? [])
+      .map((e) => ({ ...e, key: holdout3OrderKey(e.title) }))
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
+    size: input.poolSizes[index] ?? 0,
+    cursor: 0,
+    passedOver: [],
+    filled: new Map(),
+    perQuery: new Map(),
+    cameras: new Set(),
+    refusals: new Map(),
+    asked: new Set(),
+  }));
+
+  const refuse = (s: AxisState, reason: string): void => {
+    s.refusals.set(reason, (s.refusals.get(reason) ?? 0) + 1);
+  };
+  const quota = (a: DrawAxis): number =>
+    Object.values(a.slots).reduce((x, y) => x + y, 0);
+  const next = (s: AxisState): AxisState["pool"][number] | undefined => {
+    if (s.cursor >= s.size) return undefined;
+    const e = s.pool[s.cursor];
+    if (e === undefined) {
+      throw new Error(
+        `${s.axis.name}: the walk reaches pool entry ${s.cursor + 1} of ${s.size}, past the ${s.pool.length} recorded`,
+      );
+    }
+    s.cursor++;
+    return e;
+  };
+
+  /**
+   * Walk one axis until it takes one pick, or its pool ends. With slot quotas
+   * lifted, the candidates passed over only because their slot was full are
+   * reconsidered first, in seeded order, before the cursor moves on
+   * (amendment 1, #129).
+   */
+  async function takeOne(s: AxisState, liftSlots: boolean): Promise<boolean> {
+    const { axis } = s;
+    for (;;) {
+      const entry =
+        liftSlots && s.passedOver.length > 0 ? s.passedOver.shift() : next(s);
+      if (entry === undefined) break;
+      const { title, query, key } = entry;
+      if (takenTitles.has(title)) {
+        refuse(s, "already pinned or picked");
+        continue;
+      }
+      if ((s.perQuery.get(query) ?? 0) >= axis.perQuery) {
+        refuse(s, "its query's cap is reached");
+        continue;
+      }
+      const ahead = s.asked.has(title)
+        ? []
+        : s.pool
+            .slice(s.cursor - 1, s.cursor + 19)
+            .map((e) => e.title)
+            .filter((t) => !s.asked.has(t));
+      for (const t of ahead) s.asked.add(t);
+      const admitted = await ev.admission(s.index, title, ahead);
+      if (admitted.author === undefined) {
+        refuse(s, admitted.refused ?? "no verdict");
+        continue;
+      }
+      if (takenAuthors.has(authorKey(admitted.author))) {
+        refuse(s, "author already pinned or picked");
+        continue;
+      }
+      const read = await ev.bytes(s.index, title);
+      if (read.sha256 === undefined) {
+        refuse(s, read.refused ?? "no verdict");
+        continue;
+      }
+      const sha256 = read.sha256;
+      if (takenSha.has(sha256)) {
+        refuse(s, "bytes already pinned or picked");
+        continue;
+      }
+      const measured = await ev.measure(s.index, title);
+      const c = measured.covariates;
+      if (c === undefined) {
+        refuse(s, measured.refused ?? "no verdict");
+        continue;
+      }
+      const aspect = Math.max(c.width, c.height) / Math.min(c.width, c.height);
+      const slot = axis.slot(c, aspect);
+      if (slot === null) {
+        refuse(s, "fails the axis test");
+        continue;
+      }
+      if (!liftSlots && (s.filled.get(slot) ?? 0) >= (axis.slots[slot] ?? 0)) {
+        refuse(s, `slot ${slot} full`);
+        s.passedOver.push(entry);
+        continue;
+      }
+      if (axis.onePerCamera && c.camera !== null && s.cameras.has(c.camera)) {
+        refuse(s, "camera already picked");
+        continue;
+      }
+      const record = {
+        drawnAs:
+          axis.name === "skin" || axis.part === "alpha"
+            ? `${axis.name}: ${slot}`
+            : axis.name,
+        camera: c.camera,
+        phone: c.phone,
+        meanL: round4(c.meanL),
+        lowKey: round4(c.lowKey),
+        skin: round4(c.skin),
+      };
+      const label = holdout3Label(axis.part, axis.stem, title, labels);
+      labels.add(label);
+      takenTitles.add(title);
+      takenSha.add(sha256);
+      takenAuthors.add(authorKey(admitted.author));
+      s.filled.set(slot, (s.filled.get(slot) ?? 0) + 1);
+      s.perQuery.set(query, (s.perQuery.get(query) ?? 0) + 1);
+      if (c.camera !== null) s.cameras.add(c.camera);
+      picks.push({
+        part: axis.part,
+        label,
+        title,
+        drawnAs: axis.name,
+        slot,
+        query,
+        orderKey: key,
+        sha256,
+        covariates: c,
+        record: {
+          ...record,
+          strata: holdout3Strata({
+            corpus: axis.part,
+            width: c.width,
+            height: c.height,
+            nonOpaqueFraction: round4(c.alpha?.nonOpaqueFraction ?? 0),
+            phone: record.phone,
+            meanL: record.meanL,
+            lowKey: record.lowKey,
+            skin: record.skin,
+          }),
+        },
+      });
+      return true;
+    }
+    return false;
+  }
+
+  for (const s of states) {
+    const q = quota(s.axis);
+    let n = 0;
+    while (n < q && (await takeOne(s, false))) n++;
+  }
+  // A part that ends short walks its axes again, in list order, one pick per
+  // axis per round, slot quotas lifted, until it is full or every pool ends.
+  const shortfalls: string[] = [];
+  for (const part of ["photo", "alpha", "graphic"] as const) {
+    const size = P.sizes[part];
+    const mine = states.filter((s) => s.axis.part === part);
+    let progress = true;
+    while (picks.filter((p) => p.part === part).length < size && progress) {
+      progress = false;
+      for (const s of mine) {
+        if (picks.filter((p) => p.part === part).length >= size) break;
+        if (await takeOne(s, true)) {
+          progress = true;
+          shortfalls.push(
+            `${part} was short: ${picks.at(-1)?.label} taken by ${s.axis.name} with its slot quotas lifted`,
+          );
+        }
+      }
+    }
+  }
+  return {
+    axes: states.map((s) => ({
+      walked: s.pool
+        .slice(0, s.cursor)
+        .map(({ title, query }) => ({ title, query })),
+      refusals: Object.fromEntries(s.refusals),
+      picks: picks.filter((p) => p.drawnAs === s.axis.name).map((p) => p.label),
+    })),
+    picks,
+    shortfalls,
+    sizes: {
+      photo: picks.filter((p) => p.part === "photo").length,
+      alpha: picks.filter((p) => p.part === "alpha").length,
+      graphic: picks.filter((p) => p.part === "graphic").length,
+    },
+    strata: Object.fromEntries(
+      HOLDOUT3_STRATA.map((st) => [
+        st,
+        picks.filter((p) => p.record.strata.includes(st)).length,
+      ]),
+    ),
+  };
+}
+
+/** What a pin needs from Commons about a pick. */
+export interface Holdout3PickFacts {
+  label: string;
+  title: string;
+  url: string;
+  descriptionUrl: string;
+  mime: string;
+  licence: string;
+  author: string;
+  sha256: string;
+}
+
+/**
+ * The committed record of a draw (`fixtures/holdout3-draw.json`): the
+ * protocol and skin region it ran under, the exclusions, every query's hits,
+ * every axis's walked prefix with each candidate's {@link Holdout3Verdict},
+ * the refusals by reason, and the picks with what their pins need.
+ */
+export interface Holdout3DrawRecord {
+  protocol: typeof HOLDOUT3_PROTOCOL;
+  skinRegion: typeof SKIN_REGION;
+  amendments: readonly string[];
+  drawnAt: string;
+  poolPerQuery: number;
+  exclusions: Holdout3Exclusions;
+  axes: {
+    part: DrawPart;
+    name: string;
+    test: string;
+    slots: Readonly<Record<string, number>>;
+    queries: {
+      name: string;
+      query: string;
+      totalhits: number;
+      returned: number;
+      attributed: number;
+    }[];
+    pool: number;
+    consumed: number;
+    refusals: Record<string, number>;
+    picks: string[];
+    walked: (Holdout3PoolEntry & Holdout3Verdict)[];
+  }[];
+  sizes: Record<DrawPart, number>;
+  strata: Record<string, number>;
+  shortfalls: string[];
+  picks: Holdout3PickFacts[];
+}
+
+/** The committed draw record, relative to this package. */
+export const HOLDOUT3_DRAW_RECORD = path.resolve(
+  import.meta.dirname,
+  "../fixtures/holdout3-draw.json",
+);
+
+/**
+ * Re-run the walk from a committed record, offline: the pools are the walked
+ * prefixes, and every candidate's facts and bytes are what the record says
+ * they answered. Throws where the walk asks something the record does not
+ * hold. The result is what the draw picks from that evidence under the
+ * committed {@link HOLDOUT3_DRAW}, whatever the record's own `picks` claim.
+ */
+export async function replayHoldout3(
+  record: Holdout3DrawRecord,
+): Promise<Holdout3Walk> {
+  if (record.axes.length !== HOLDOUT3_DRAW.length) {
+    throw new Error(
+      `the record has ${record.axes.length} axes; the draw has ${HOLDOUT3_DRAW.length}`,
+    );
+  }
+  const verdicts = record.axes.map((a, i) => {
+    if (a.name !== HOLDOUT3_DRAW[i]?.name) {
+      throw new Error(
+        `record axis ${i} is ${a.name}; the draw's is ${HOLDOUT3_DRAW[i]?.name}`,
+      );
+    }
+    return new Map(a.walked.map((w) => [w.title, w]));
+  });
+  const get = (axis: number, title: string): Holdout3Verdict => {
+    const v = verdicts[axis]?.get(title);
+    if (v === undefined) {
+      throw new Error(`the record holds no verdict on ${title}`);
+    }
+    return v;
+  };
+  const lacks = (title: string, what: string): Error =>
+    new Error(`the record does not say what ${title}'s ${what} answered`);
+  const evaluator: Holdout3Evaluator = {
+    admission: async (axis, title) => {
+      const v = get(axis, title);
+      if (v.author !== undefined) return { author: v.author };
+      if (v.refused !== undefined) return { refused: v.refused };
+      throw lacks(title, "facts");
+    },
+    bytes: async (axis, title) => {
+      const v = get(axis, title);
+      if (v.sha256 !== undefined) return { sha256: v.sha256 };
+      if (v.refused !== undefined) return { refused: v.refused };
+      throw lacks(title, "download");
+    },
+    measure: async (axis, title) => {
+      const v = get(axis, title);
+      if (v.covariates !== undefined) return { covariates: v.covariates };
+      if (v.refused !== undefined) return { refused: v.refused };
+      throw lacks(title, "measurement");
+    },
+  };
+  return walkHoldout3({
+    pools: record.axes.map((a) =>
+      a.walked.map(({ title, query }) => ({ title, query })),
+    ),
+    poolSizes: record.axes.map((a) => a.pool),
+    exclusions: record.exclusions,
+    evaluator,
+  });
+}
+
+/**
+ * JSON with the top four levels expanded and everything deeper on one line,
+ * so the record diffs a candidate per line.
+ */
+function compactJson(value: unknown, depth = 0): string {
+  const pad = "  ".repeat(depth);
+  if (depth >= 4 || value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  const inner = "  ".repeat(depth + 1);
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    return `[\n${value.map((v) => inner + compactJson(v, depth + 1)).join(",\n")}\n${pad}]`;
+  }
+  const entries = Object.entries(value).filter(([, v]) => v !== undefined);
+  if (entries.length === 0) return "{}";
+  return `{\n${entries.map(([k, v]) => `${inner}${JSON.stringify(k)}: ${compactJson(v, depth + 1)}`).join(",\n")}\n${pad}}`;
 }
 
 async function commonsSearch(
@@ -1264,158 +1735,65 @@ async function commonsSearch(
 
 const round4 = (x: number): number => Math.round(x * 1e4) / 1e4;
 
-async function runDrawHoldout3(outPath: string): Promise<void> {
-  const pins = [
-    ...CURATED_IMAGES.map((s) => ({
-      source: s.source,
-      sha256: s.sha256,
-      author: s.author,
-    })),
-    ...ALPHA_IMAGES.map((s) => ({
-      source: s.source,
-      sha256: s.sha256,
-      author: s.author,
-    })),
-    ...GRAPHIC_IMAGES.map((s) => ({
-      source: s.source,
-      sha256: s.sha256,
-      author: s.author,
-    })),
-  ];
-  const takenTitles = new Set(
-    pins.map((p) => pinnedCommonsTitle(p.source)).filter((t) => t !== null),
-  );
-  const takenSha = new Set([...pins.map((p) => p.sha256), ...KODAK_SHA256]);
-  const authorKey = (a: string): string => a.trim().toLowerCase();
-  const takenAuthors = new Set(pins.map((p) => authorKey(p.author)));
-  const labels = new Set<string>();
-  const picks: Holdout3Pick[] = [];
-  await fs.mkdir(CANDIDATE_DIR, { recursive: true });
-
-  interface AxisState {
-    axis: DrawAxis;
-    pool: { title: string; query: string; key: string }[];
-    cursor: number;
-    /** Candidates refused only because their slot was full, in seeded order. */
-    passedOver: { title: string; query: string; key: string }[];
-    filled: Map<string, number>;
-    perQuery: Map<string, number>;
-    cameras: Set<string>;
-    refusals: Map<string, number>;
-    queries: {
-      name: string;
-      query: string;
-      totalhits: number;
-      returned: number;
-      attributed: number;
-    }[];
-    facts: Map<string, CommonsFacts | string>;
-  }
-  const states: AxisState[] = [];
-  for (const axis of HOLDOUT3_DRAW) {
-    const attributed = new Map<string, string>();
-    const queries: AxisState["queries"] = [];
-    for (const q of axis.queries) {
-      const { totalhits, titles } = await commonsSearch(q.query);
-      let mine = 0;
-      for (const t of titles) {
-        if (!attributed.has(t)) {
-          attributed.set(t, q.name);
-          mine++;
-        }
-      }
-      queries.push({
-        ...q,
-        totalhits,
-        returned: titles.length,
-        attributed: mine,
-      });
-      console.error(
-        `${axis.name} / ${q.name}: ${titles.length} of ${totalhits}`,
-      );
-    }
-    states.push({
-      axis,
-      pool: [...attributed]
-        .map(([title, query]) => ({
-          title,
-          query,
-          key: holdout3OrderKey(title),
-        }))
-        .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
-      cursor: 0,
-      passedOver: [],
-      filled: new Map(),
-      perQuery: new Map(),
-      cameras: new Set(),
-      refusals: new Map(),
-      queries,
-      facts: new Map(),
-    });
-  }
-
-  const refuse = (s: AxisState, reason: string): void => {
-    s.refusals.set(reason, (s.refusals.get(reason) ?? 0) + 1);
+/** The evaluator the live draw uses: Commons' facts, the bytes, the measurement. */
+function liveEvaluator(): {
+  evaluator: Holdout3Evaluator;
+  verdicts: Map<string, Holdout3Verdict>[];
+  facts: Map<string, CommonsFacts | string>;
+} {
+  const facts = new Map<string, CommonsFacts | string>();
+  const verdicts = HOLDOUT3_DRAW.map(() => new Map<string, Holdout3Verdict>());
+  const note = (
+    axis: number,
+    title: string,
+    v: Holdout3Verdict,
+  ): Holdout3Verdict => {
+    const m = verdicts[axis];
+    if (m === undefined) throw new Error(`no axis ${axis}`);
+    const merged = { ...m.get(title), ...v };
+    m.set(title, merged);
+    return merged;
   };
-  const quota = (a: DrawAxis): number =>
-    Object.values(a.slots).reduce((x, y) => x + y, 0);
-
-  /**
-   * Walk one axis until it takes one pick, or its pool ends. With slot quotas
-   * lifted, the candidates passed over only because their slot was full are
-   * reconsidered first, in seeded order, before the cursor moves on
-   * (amendment 1, #129).
-   */
-  async function takeOne(s: AxisState, liftSlots: boolean): Promise<boolean> {
-    const { axis } = s;
-    for (;;) {
-      const entry =
-        liftSlots && s.passedOver.length > 0
-          ? s.passedOver.shift()
-          : s.cursor < s.pool.length
-            ? s.pool[s.cursor++]
-            : undefined;
-      if (entry === undefined) break;
-      const { title, query, key } = entry;
-      if (takenTitles.has(title)) {
-        refuse(s, "already pinned or picked");
-        continue;
+  const factsOf = (title: string): CommonsFacts => {
+    const f = facts.get(title);
+    if (f === undefined || typeof f === "string") {
+      throw new Error(`${title} was not admitted`);
+    }
+    return f;
+  };
+  const fileOf = (f: CommonsFacts): string =>
+    path.join(CANDIDATE_DIR, path.basename(new URL(f.url).pathname));
+  const evaluator: Holdout3Evaluator = {
+    async admission(axis, title, ahead) {
+      const known = verdicts[axis]?.get(title);
+      if (known?.author !== undefined || known?.refused !== undefined) {
+        return known;
       }
-      if ((s.perQuery.get(query) ?? 0) >= axis.perQuery) {
-        refuse(s, "its query's cap is reached");
-        continue;
+      if (!facts.has(title)) {
+        const ask = [...new Set([title, ...ahead])].filter(
+          (t) => !facts.has(t),
+        );
+        for (const [t, f] of await commonsFacts(ask)) facts.set(t, f);
       }
-      if (!s.facts.has(title)) {
-        const ahead = s.pool
-          .slice(s.cursor - 1, s.cursor + 19)
-          .map((e) => e.title)
-          .filter((t) => !s.facts.has(t));
-        for (const [t, f] of await commonsFacts(ahead)) s.facts.set(t, f);
-      }
-      const admitted = admit(s.facts.get(title));
+      const admitted = admit(facts.get(title));
       if ("reason" in admitted) {
-        refuse(
-          s,
-          admitted.reason.startsWith("licence")
+        return note(axis, title, {
+          refused: admitted.reason.startsWith("licence")
             ? "licence not admitted"
             : admitted.reason,
-        );
-        continue;
+        });
       }
-      const f = admitted.facts;
-      const why = holdout3Admission(axis.part, f, axis);
-      if (why !== null) {
-        refuse(s, why);
-        continue;
-      }
-      if (takenAuthors.has(authorKey(f.author))) {
-        refuse(s, "author already pinned or picked");
-        continue;
-      }
-      const file = path.join(
-        CANDIDATE_DIR,
-        path.basename(new URL(f.url).pathname),
-      );
+      const drawAxis = HOLDOUT3_DRAW[axis];
+      if (drawAxis === undefined) throw new Error(`no axis ${axis}`);
+      const why = holdout3Admission(drawAxis.part, admitted.facts, drawAxis);
+      if (why !== null) return note(axis, title, { refused: why });
+      return note(axis, title, { author: admitted.facts.author });
+    },
+    async bytes(axis, title) {
+      const known = verdicts[axis]?.get(title);
+      if (known?.sha256 !== undefined) return known;
+      const f = factsOf(title);
+      const file = fileOf(f);
       let bytes: Buffer;
       try {
         bytes = await fs.readFile(file);
@@ -1423,170 +1801,234 @@ async function runDrawHoldout3(outPath: string): Promise<void> {
         try {
           bytes = await download(f.url);
         } catch (e) {
-          refuse(s, "download failed");
           console.error(
             `download failed for ${title}: ${e instanceof Error ? e.message : String(e)}`,
           );
-          continue;
+          return note(axis, title, { refused: "download failed" });
         }
         await fs.writeFile(file, bytes);
       }
       if (sha1Mismatch(bytes, f.sha1) !== null) {
-        refuse(s, "SHA-1 differs from Commons'");
-        continue;
+        return note(axis, title, { refused: "SHA-1 differs from Commons'" });
       }
-      const sha256 = createHash("sha256").update(bytes).digest("hex");
-      if (takenSha.has(sha256)) {
-        refuse(s, "bytes already pinned or picked");
-        continue;
-      }
+      return note(axis, title, {
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      });
+    },
+    async measure(axis, title) {
+      const known = verdicts[axis]?.get(title);
+      if (known?.covariates !== undefined) return known;
+      const bytes = await fs.readFile(fileOf(factsOf(title)));
       let c: Covariates;
       let pages: number;
       try {
         pages = (await sharp(bytes).metadata()).pages ?? 1;
         c = await measureFile(bytes);
       } catch {
-        refuse(s, "unreadable");
-        continue;
+        return note(axis, title, { refused: "unreadable" });
       }
-      if (pages > 1) {
-        refuse(s, "animated");
-        continue;
-      }
-      const aspect = Math.max(c.width, c.height) / Math.min(c.width, c.height);
-      const slot = axis.slot(c, aspect);
-      if (slot === null) {
-        refuse(s, "fails the axis test");
-        continue;
-      }
-      if (!liftSlots && (s.filled.get(slot) ?? 0) >= (axis.slots[slot] ?? 0)) {
-        refuse(s, `slot ${slot} full`);
-        s.passedOver.push(entry);
-        continue;
-      }
-      if (axis.onePerCamera && c.camera !== null && s.cameras.has(c.camera)) {
-        refuse(s, "camera already picked");
-        continue;
-      }
-      const corpus = axis.part;
-      const nonOpaqueFraction = c.alpha?.nonOpaqueFraction ?? 0;
-      const record = {
-        drawnAs:
-          axis.name === "skin" || axis.part === "alpha"
-            ? `${axis.name}: ${slot}`
-            : axis.name,
-        camera: c.camera,
-        phone: c.phone,
-        meanL: round4(c.meanL),
-        lowKey: round4(c.lowKey),
-        skin: round4(c.skin),
-      };
-      const label = holdout3Label(axis.part, axis.stem, title, labels);
-      labels.add(label);
-      takenTitles.add(title);
-      takenSha.add(sha256);
-      takenAuthors.add(authorKey(f.author));
-      s.filled.set(slot, (s.filled.get(slot) ?? 0) + 1);
-      s.perQuery.set(query, (s.perQuery.get(query) ?? 0) + 1);
-      if (c.camera !== null) s.cameras.add(c.camera);
-      picks.push({
-        ...f,
-        sha256,
-        covariates: c,
-        part: axis.part,
-        label,
-        drawnAs: axis.name,
-        slot,
-        query,
-        orderKey: key,
-        record: {
-          ...record,
-          strata: holdout3Strata({
-            corpus,
-            width: c.width,
-            height: c.height,
-            nonOpaqueFraction: round4(nonOpaqueFraction),
-            phone: record.phone,
-            meanL: record.meanL,
-            lowKey: record.lowKey,
-            skin: record.skin,
-          }),
-        },
-      });
-      console.error(`picked ${label} (${axis.name}: ${slot}) ← ${title}`);
-      return true;
-    }
-    return false;
-  }
+      if (pages > 1) return note(axis, title, { refused: "animated" });
+      return note(axis, title, { covariates: c });
+    },
+  };
+  return { evaluator, verdicts, facts };
+}
 
-  for (const s of states) {
-    const q = quota(s.axis);
-    let n = 0;
-    while (n < q && (await takeOne(s, false))) n++;
-  }
-  // A part that ends short walks its axes again, in list order, one pick per
-  // axis per round, slot quotas lifted, until it is full or every pool ends.
-  const shortfalls: string[] = [];
-  for (const part of ["photo", "alpha", "graphic"] as const) {
-    const size = P.sizes[part];
-    const mine = states.filter((s) => s.axis.part === part);
-    let progress = true;
-    while (picks.filter((p) => p.part === part).length < size && progress) {
-      progress = false;
-      for (const s of mine) {
-        if (picks.filter((p) => p.part === part).length >= size) break;
-        if (await takeOne(s, true)) {
-          progress = true;
-          shortfalls.push(
-            `${part} was short: ${picks.at(-1)?.label} taken by ${s.axis.name} with its slot quotas lifted`,
-          );
+async function runDrawHoldout3(outPath: string): Promise<void> {
+  const exclusions = holdout3Exclusions();
+  await fs.mkdir(CANDIDATE_DIR, { recursive: true });
+  const pools: Holdout3PoolEntry[][] = [];
+  const queries: Holdout3DrawRecord["axes"][number]["queries"][] = [];
+  for (const axis of HOLDOUT3_DRAW) {
+    const attributed = new Map<string, string>();
+    const mine: Holdout3DrawRecord["axes"][number]["queries"] = [];
+    for (const q of axis.queries) {
+      const { totalhits, titles } = await commonsSearch(q.query);
+      let n = 0;
+      for (const t of titles) {
+        if (!attributed.has(t)) {
+          attributed.set(t, q.name);
+          n++;
         }
       }
+      mine.push({ ...q, totalhits, returned: titles.length, attributed: n });
+      console.error(
+        `${axis.name} / ${q.name}: ${titles.length} of ${totalhits}`,
+      );
     }
+    pools.push([...attributed].map(([title, query]) => ({ title, query })));
+    queries.push(mine);
   }
-  const strata = Object.fromEntries(
-    HOLDOUT3_STRATA.map((st) => [
-      st,
-      picks.filter((p) => p.record.strata.includes(st)).length,
-    ]),
-  );
-  const record = {
+  const live = liveEvaluator();
+  const walk = await walkHoldout3({
+    pools,
+    poolSizes: pools.map((p) => p.length),
+    exclusions,
+    evaluator: live.evaluator,
+  });
+  for (const p of walk.picks) {
+    console.error(`picked ${p.label} (${p.drawnAs}: ${p.slot}) ← ${p.title}`);
+  }
+  const record: Holdout3DrawRecord = {
     protocol: P,
+    skinRegion: SKIN_REGION,
     amendments: HOLDOUT3_AMENDMENTS,
     drawnAt: new Date().toISOString(),
     poolPerQuery: HOLDOUT3_POOL_PER_QUERY,
-    axes: states.map((s) => ({
-      part: s.axis.part,
-      name: s.axis.name,
-      test: s.axis.test,
-      slots: s.axis.slots,
-      queries: s.queries,
-      pool: s.pool.length,
-      consumed: s.cursor,
-      refusals: Object.fromEntries(s.refusals),
-      picks: picks.filter((p) => p.drawnAs === s.axis.name).map((p) => p.label),
-    })),
-    sizes: {
-      photo: picks.filter((p) => p.part === "photo").length,
-      alpha: picks.filter((p) => p.part === "alpha").length,
-      graphic: picks.filter((p) => p.part === "graphic").length,
-    },
-    strata,
-    shortfalls,
-    picks,
+    exclusions,
+    axes: HOLDOUT3_DRAW.map((axis, i) => {
+      const w = walk.axes[i];
+      if (w === undefined) throw new Error(`no walk for ${axis.name}`);
+      return {
+        part: axis.part,
+        name: axis.name,
+        test: axis.test,
+        slots: axis.slots,
+        queries: queries[i] ?? [],
+        pool: pools[i]?.length ?? 0,
+        consumed: w.walked.length,
+        refusals: w.refusals,
+        picks: w.picks,
+        walked: w.walked.map((e) => ({
+          ...e,
+          ...live.verdicts[i]?.get(e.title),
+        })),
+      };
+    }),
+    sizes: walk.sizes,
+    strata: walk.strata,
+    shortfalls: walk.shortfalls,
+    picks: walk.picks.map((p) => {
+      const f = live.facts.get(p.title);
+      if (f === undefined || typeof f === "string") {
+        throw new Error(`no facts for the pick ${p.title}`);
+      }
+      return {
+        label: p.label,
+        title: p.title,
+        url: f.url,
+        descriptionUrl: f.descriptionUrl,
+        mime: f.mime,
+        licence: f.licence,
+        author: f.author,
+        sha256: p.sha256,
+      };
+    }),
   };
-  await fs.writeFile(outPath, `${JSON.stringify(record, null, 2)}\n`);
+  await fs.writeFile(outPath, `${compactJson(record)}\n`);
   console.error(
-    `${picks.length} picked; sizes ${JSON.stringify(record.sizes)}; strata ${JSON.stringify(strata)}`,
+    `${walk.picks.length} picked; sizes ${JSON.stringify(walk.sizes)}; strata ${JSON.stringify(walk.strata)}`,
   );
   const short = (["photo", "alpha", "graphic"] as const).filter(
-    (p) => record.sizes[p] < P.sizes[p],
+    (p) => walk.sizes[p] < P.sizes[p],
   );
-  const thin = HOLDOUT3_STRATA.filter((st) => (strata[st] ?? 0) < P.strataMin);
+  const thin = HOLDOUT3_STRATA.filter(
+    (st) => (walk.strata[st] ?? 0) < P.strataMin,
+  );
   if (short.length > 0 || thin.length > 0) {
     console.error(
       `the draw does not meet the protocol: short parts ${short.join(", ") || "none"}; thin strata ${thin.join(", ") || "none"}`,
     );
+    process.exit(1);
+  }
+}
+
+/** The line that opens a table's generated holdout3 pins. */
+export const HOLDOUT3_PINS_BEGIN =
+  "// holdout3 pins (#129): written by `corpus-covariates.js --pin-holdout3` from fixtures/holdout3-draw.json; never edit by hand.";
+/** The line that closes them. */
+export const HOLDOUT3_PINS_END = "// end of the holdout3 pins";
+
+/** One pin table entry, as TypeScript object-literal text. */
+export function holdout3PinText(
+  pick: Holdout3Pick,
+  facts: Holdout3PickFacts,
+): string {
+  const j = (v: unknown): string => JSON.stringify(v);
+  const c = pick.covariates;
+  const url = facts.url.split("?")[0] ?? facts.url;
+  const ext = facts.mime === "image/png" ? ".png" : ".jpg";
+  const r = pick.record;
+  const record = `holdout3: { drawnAs: ${j(r.drawnAs)}, camera: ${j(r.camera)}, phone: ${j(r.phone)}, meanL: ${r.meanL}, lowKey: ${r.lowKey}, skin: ${r.skin}, strata: ${j(r.strata)} },`;
+  const head = `label: ${j(pick.label)},`;
+  const size = `ext: ${j(ext)}, width: ${c.width}, height: ${c.height}, split: "holdout3",`;
+  const who = `sha256: ${j(pick.sha256)}, source: ${j(facts.descriptionUrl)}, author: ${j(facts.author)}, licence: ${j(facts.licence)},`;
+  if (pick.part === "photo") {
+    const notes = [
+      c.orientation,
+      ...(c.camera === null ? [] : [c.camera]),
+      `mean L* ${c.meanL.toFixed(1)}`,
+      `mean C* ${c.meanC.toFixed(1)}`,
+      `detail ${c.detail.toFixed(2)}`,
+    ].join(", ");
+    return `{ ${head} urls: [${j(url)}], ${size} ${who} axis: ${j(r.drawnAs)}, notes: ${j(notes)}, ${record} },`;
+  }
+  if (pick.part === "alpha") {
+    const a = c.alpha;
+    if (a === null) throw new Error(`${pick.label} has no alpha covariates`);
+    const notes = `Cell ${pick.slot}; silhouette ${(a.silhouette ?? 0).toFixed(2)}. Drawn from the ${pick.query} query.`;
+    return `{ ${head} url: ${j(url)}, ${size} nonOpaqueFraction: ${round4(a.nonOpaqueFraction)}, softAlphaFraction: ${round4(a.softAlphaFraction)}, ${who} notes: ${j(notes)}, ${record} },`;
+  }
+  const notes = `Content type ${pick.drawnAs}, drawn from the ${pick.query} query; mean L* ${c.meanL.toFixed(1)}, mean C* ${c.meanC.toFixed(1)}, detail ${c.detail.toFixed(2)}.`;
+  return `{ ${head} url: ${j(url)}, ${size} ${who} notes: ${j(notes)}, ${record} },`;
+}
+
+/** Replace the lines between a table's holdout3 markers. */
+export function spliceHoldout3Pins(text: string, entries: string[]): string {
+  const lines = text.split("\n");
+  const begin = lines.findIndex((l) => l.trim() === HOLDOUT3_PINS_BEGIN);
+  const end = lines.findIndex((l) => l.trim() === HOLDOUT3_PINS_END);
+  if (begin < 0 || end < begin) {
+    throw new Error("the table has no holdout3 pin markers");
+  }
+  return [...lines.slice(0, begin + 1), ...entries, ...lines.slice(end)].join(
+    "\n",
+  );
+}
+
+/**
+ * Write the three tables' holdout3 pins from a committed draw record: the
+ * record is replayed, and the pins are the replay's picks, so a pin is never
+ * typed or spliced by hand. The tables are then formatted by Biome.
+ */
+async function runPinHoldout3(recordPath: string): Promise<void> {
+  const record = JSON.parse(
+    readFileSync(recordPath, "utf8"),
+  ) as Holdout3DrawRecord;
+  const walk = await replayHoldout3(record);
+  const facts = new Map(record.picks.map((p) => [p.label, p]));
+  const src = path.resolve(import.meta.dirname, "../src");
+  const tables = [
+    ["photo", "natural-images.ts"],
+    ["alpha", "alpha-images.ts"],
+    ["graphic", "graphic-images.ts"],
+  ] as const;
+  for (const [part, file] of tables) {
+    const entries = walk.picks
+      .filter((p) => p.part === part)
+      .map((p) => {
+        const f = facts.get(p.label);
+        if (f === undefined || f.sha256 !== p.sha256 || f.title !== p.title) {
+          throw new Error(
+            `the record's picks do not hold the replayed pick ${p.label}`,
+          );
+        }
+        return holdout3PinText(p, f);
+      });
+    const at = path.join(src, file);
+    await fs.writeFile(
+      at,
+      spliceHoldout3Pins(await fs.readFile(at, "utf8"), entries),
+    );
+    console.error(`${file}: ${entries.length} holdout3 pin(s)`);
+  }
+  const biome = spawnSync(
+    path.resolve(import.meta.dirname, "../node_modules/.bin/biome"),
+    ["format", "--write", ...tables.map(([, f]) => path.join(src, f))],
+    { stdio: "inherit", shell: false, env: process.env },
+  );
+  if (biome.status !== 0) {
+    console.error("biome format failed; run `pnpm run format`");
     process.exit(1);
   }
 }
@@ -1602,6 +2044,7 @@ if (
       commons: { type: "string" },
       files: { type: "boolean", default: false },
       "draw-holdout3": { type: "boolean", default: false },
+      "pin-holdout3": { type: "string" },
       out: { type: "string" },
     },
   });
@@ -1611,9 +2054,11 @@ if (
     await runFiles(positionals);
   } else if (values["draw-holdout3"] && values.out !== undefined) {
     await runDrawHoldout3(values.out);
+  } else if (values["pin-holdout3"] !== undefined) {
+    await runPinHoldout3(values["pin-holdout3"]);
   } else {
     console.error(
-      "Usage: corpus-covariates.js --commons <titles.txt> [--out <file.json>] | --files <image>... | --draw-holdout3 --out <file.json>",
+      "Usage: corpus-covariates.js --commons <titles.txt> [--out <file.json>] | --files <image>... | --draw-holdout3 --out <file.json> | --pin-holdout3 <draw.json>",
     );
     process.exit(1);
   }

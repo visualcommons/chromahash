@@ -6,7 +6,8 @@
       "node_modules/**",
       ".versions/**",
       "output/**",
-      "results/**"
+      "results/**",
+      "fixtures/holdout3-draw.json"
     ]
   },
   "organizeImports": {

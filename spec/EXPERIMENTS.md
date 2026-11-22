@@ -2934,7 +2934,9 @@ graphics part, that no decision has read:
     - *graphics*: a pin of the graphics part.
     - *alpha*: stores an alpha channel with a non-opaque fraction above 0.
     - *skin*: at least 0.10 of the 512 px reference's pixels inside the skin
-      region, CIELAB L\* 20–88, C\* 10–50 and hue 25°–70°.
+      region, CIELAB L\* 20–88, C\* 10–50 and hue 25°–80° (the hue band
+      holds every skin swatch it was set from, 44.3°–78.4°, and stops short
+      of sand at 93.6°; amendment 2).
     - *low-light*: mean L\* ≤ 30, or a low-key fraction (L\* ≤ 10) ≥ 0.25.
     - *extreme aspect*: long edge ÷ short edge ≥ 3.
 
@@ -2985,21 +2987,40 @@ graphics part, that no decision has read:
     candidates it passed over only for a full slot, in seeded order. The
     amendment changes no test, cut or quota, and was made with no encoder run
     on any candidate (`corpus-covariates.ts` `HOLDOUT3_AMENDMENTS`).
-- **The draw, 2026-11-22.** Re-run from the start under amendment 1, it
-  pooled the same files and took the same 87 picks as the first run, then one
-  more cut-out (`sealed3-cutout-icone-noir-pour-representer`, a
-  transparent/hard/detailed candidate passed over for a full cell). It
-  pinned 48 photographs, 24 cut-outs and 16 graphics. The strata hold
-  smartphone 16, graphics 16, alpha 24, skin 14, low-light 12 and extreme
-  aspect 16. Every source was probed present under its recorded licence
-  before pinning (`mise run corpus:licenses --probe`), and `mise run
-  selftest:metrics` checks the sizes, the strata minima, each pin's strata
+  - **Amendment 2, after review.** The skin region's hue band ended at 70°,
+    which contradicted its recorded basis: the swatches it was set from sit at
+    44.3°–78.4°, and 70° refused the palette's two light swatches, sRGB
+    (241,194,125) at 78.4° and (224,172,105) at 74.8°, so the skin axis's
+    light band under-sampled light skin. The band now ends at 80°. That
+    changes every candidate's skin figure, so the split was drawn again from
+    the start with the same queries, seed and quotas. The re-draw excludes
+    only the other splits' pins (the first run's own picks were in the tables
+    by then), and its record lists every candidate the walk reached with what
+    its facts and bytes answered. No encoder had run on any candidate.
+- **The draw, 2026-11-22**, under amendments 1 and 2. Every axis's pool had
+  the same size as in the run before it; the walk reached 2442 candidates and
+  pinned 48 photographs, 24 cut-outs and 16 graphics. Against the amendment-1 run, 84
+  picks are unchanged and four skin picks differ: the wider hue band moved
+  enough pixels into the region to change which candidates fill the dark and
+  light bands first. The strata hold smartphone 17, graphics 16, alpha 24,
+  skin 17, low-light 12 and extreme aspect 16. The record is committed as
+  `tools/comparison/fixtures/holdout3-draw.json`: the protocol, skin region
+  and exclusions it ran under, every query's hits, every walked candidate in
+  seeded order with its refusal or its covariates, and the picks. `mise run
+  selftest:metrics` replays it offline (`replayHoldout3`) under the
+  committed `HOLDOUT3_DRAW` and checks that the replay re-derives the
+  record's picks, refusals and strata, and that the shipped pins are exactly
+  those picks; the pins themselves are written from the replay by
+  `corpus-covariates.js --pin-holdout3`. Every source was probed present
+  under its recorded licence (`mise run corpus:licenses --probe`), and the
+  self-test also checks the sizes, the strata minima, each pin's strata
   against its recorded figures, and disjointness from every other pinned
   image, Kodak24 included, by SHA-256 and by Commons title. The pins name
   what the protocol admits, not what anyone chose: the skin stratum holds a
-  Moche ceramic portrait vessel and a pride of lions, the chroma floor a
-  scan whose EXIF names a flatbed scanner, and the graphics part a 1976
-  comic strip Commons records as public domain. Nothing has read the split.
+  Peruvian portrait head jar and a neo-Gothic cathedral (whose mean skin-pixel
+  L\* 61.0 makes it a light-band pick), the chroma floor a scan whose EXIF
+  names a flatbed scanner, and the graphics part a 1976 comic strip Commons
+  records as public domain. Nothing has read the split.
 
 The alpha allocation validated emphatically on that split: SSIMULACRA2
 −307.2 → −242.7, Butteraugli 57.56 → 44.36, DSSIM 0.2319 → 0.2179, αMAE

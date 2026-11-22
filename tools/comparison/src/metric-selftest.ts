@@ -97,7 +97,12 @@ import { compareArms, guardVerdictOnIntervals } from "./arms-core.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
 import {
   type CommonsFacts,
+  HOLDOUT3_AMENDMENTS,
   HOLDOUT3_DRAW,
+  HOLDOUT3_DRAW_RECORD,
+  HOLDOUT3_PINS_BEGIN,
+  HOLDOUT3_PINS_END,
+  type Holdout3DrawRecord,
   SKIN_REGION,
   admit,
   alphaCell,
@@ -112,9 +117,11 @@ import {
   isPhoneCamera,
   measureFile,
   pinnedCommonsTitle,
+  replayHoldout3,
   sha1Mismatch,
   silhouetteOf,
   skinBand,
+  spliceHoldout3Pins,
   srgbToLab,
 } from "./corpus-covariates.ts";
 import {
@@ -5571,6 +5578,173 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
       `${h3.length} pins against ${others.length} others`,
   );
 
+  // The committed draw record: the pins are re-derived from it offline, so
+  // "covariate-only seeded selection" is checked, not trusted (#151 V2).
+  const drawRecord = JSON.parse(
+    readFileSync(HOLDOUT3_DRAW_RECORD, "utf8"),
+  ) as Holdout3DrawRecord;
+  check(
+    "the draw record ran under the committed protocol, skin region, amendments and axes",
+    JSON.stringify(drawRecord.protocol) === JSON.stringify(HOLDOUT3_PROTOCOL) &&
+      JSON.stringify(drawRecord.skinRegion) === JSON.stringify(SKIN_REGION) &&
+      JSON.stringify(drawRecord.amendments) ===
+        JSON.stringify(HOLDOUT3_AMENDMENTS) &&
+      drawRecord.axes.length === HOLDOUT3_DRAW.length &&
+      drawRecord.axes.every(
+        (a, i) =>
+          a.name === HOLDOUT3_DRAW[i]?.name &&
+          a.part === HOLDOUT3_DRAW[i]?.part &&
+          a.queries.map((q) => `${q.name}=${q.query}`).join("|") ===
+            HOLDOUT3_DRAW[i]?.queries
+              .map((q) => `${q.name}=${q.query}`)
+              .join("|"),
+      ),
+    drawRecord.drawnAt,
+  );
+  const unordered = drawRecord.axes.filter(
+    (a) =>
+      a.walked.length !== a.consumed ||
+      a.consumed > a.pool ||
+      a.walked.some(
+        (w, i) =>
+          i > 0 &&
+          holdout3OrderKey(a.walked[i - 1]?.title ?? "") >=
+            holdout3OrderKey(w.title),
+      ) ||
+      a.walked.some((w) => !a.queries.some((q) => q.name === w.query)),
+  );
+  check(
+    "every axis's walked prefix is in ascending seeded order, attributed to its own queries",
+    unordered.length === 0,
+    unordered.map((a) => a.name).join(", ") ||
+      `${drawRecord.axes.reduce((n, a) => n + a.consumed, 0)} candidates walked`,
+  );
+  const replayed = await replayHoldout3(drawRecord);
+  const pickKey = (p: { label: string; title: string; sha256: string }) =>
+    `${p.label}|${p.title}|${p.sha256}`;
+  check(
+    "replaying the record re-derives its picks, refusals, sizes, strata and shortfalls exactly",
+    replayed.picks.map(pickKey).join("\n") ===
+      drawRecord.picks.map(pickKey).join("\n") &&
+      drawRecord.axes.every(
+        (a, i) =>
+          JSON.stringify(a.refusals) ===
+            JSON.stringify(replayed.axes[i]?.refusals) &&
+          a.picks.join(",") === replayed.axes[i]?.picks.join(",") &&
+          a.consumed === replayed.axes[i]?.walked.length,
+      ) &&
+      JSON.stringify(replayed.sizes) === JSON.stringify(drawRecord.sizes) &&
+      JSON.stringify(replayed.strata) === JSON.stringify(drawRecord.strata) &&
+      replayed.shortfalls.join("|") === drawRecord.shortfalls.join("|"),
+    `${replayed.picks.length} picks replayed`,
+  );
+  const shippedByLabel = new Map<string, Pin & { softAlphaFraction?: number }>(
+    h3.map((s) => [s.label, s]),
+  );
+  const pinMismatch = replayed.picks.filter((p) => {
+    const s = shippedByLabel.get(p.label);
+    if (s === undefined) return true;
+    const a = p.covariates.alpha;
+    return (
+      s.sha256 !== p.sha256 ||
+      pinnedCommonsTitle(s.source) !== p.title ||
+      s.width !== p.covariates.width ||
+      s.height !== p.covariates.height ||
+      JSON.stringify(s.holdout3) !== JSON.stringify(p.record) ||
+      (p.part === "alpha" &&
+        (a === null ||
+          s.nonOpaqueFraction !== Math.round(a.nonOpaqueFraction * 1e4) / 1e4 ||
+          s.softAlphaFraction !== Math.round(a.softAlphaFraction * 1e4) / 1e4))
+    );
+  });
+  const partOrder = (part: string): string =>
+    replayed.picks
+      .filter((p) => p.part === part)
+      .map((p) => p.label)
+      .join(",");
+  check(
+    "the shipped holdout3 pins are exactly the replayed picks, in draw order, with their figures and records",
+    pinMismatch.length === 0 &&
+      h3.length === replayed.picks.length &&
+      partOrder("photo") ===
+        CURATED_IMAGES.filter((s) => s.split === "holdout3")
+          .map((s) => s.label)
+          .join(",") &&
+      partOrder("alpha") ===
+        ALPHA_IMAGES.filter((s) => s.split === "holdout3")
+          .map((s) => s.label)
+          .join(",") &&
+      partOrder("graphic") ===
+        GRAPHIC_IMAGES.filter((s) => s.split === "holdout3")
+          .map((s) => s.label)
+          .join(","),
+    pinMismatch.map((p) => p.label).join(", ") ||
+      `${h3.length} pins, ${replayed.picks.length} picks`,
+  );
+  // A record that does not hold what the walk asks is refused, not guessed.
+  const tampered = (edit: (r: Holdout3DrawRecord) => void): Promise<string> => {
+    const r = JSON.parse(JSON.stringify(drawRecord)) as Holdout3DrawRecord;
+    edit(r);
+    return replayHoldout3(r).then(
+      (w) => w.picks.map(pickKey).join("\n"),
+      (e: unknown) => `threw: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  };
+  const firstPickAxis = drawRecord.axes.findIndex((a) => a.picks.length > 0);
+  const truncated = await tampered((r) => {
+    const a = r.axes[firstPickAxis];
+    if (a !== undefined) a.walked = a.walked.slice(0, 0);
+  });
+  const stripped = await tampered((r) => {
+    for (const a of r.axes) {
+      a.walked = a.walked.map(
+        ({ covariates: _c, refused: _r, ...rest }) => rest,
+      );
+    }
+  });
+  const unskinned = await tampered((r) => {
+    for (const a of r.axes) {
+      for (const w of a.walked) {
+        if (w.covariates !== undefined) w.covariates.skin = 0;
+      }
+    }
+  });
+  check(
+    "a record cut short or missing a verdict is refused, and changed covariates never replay to the same picks",
+    truncated.startsWith("threw:") &&
+      truncated.includes("past the 0 recorded") &&
+      stripped.startsWith("threw:") &&
+      stripped.includes("does not say") &&
+      unskinned !== drawRecord.picks.map(pickKey).join("\n"),
+    `${truncated.slice(0, 80)} | ${stripped.slice(0, 80)}`,
+  );
+  const spliced = spliceHoldout3Pins(
+    [
+      "[",
+      `  ${HOLDOUT3_PINS_BEGIN}`,
+      "  {old},",
+      `  ${HOLDOUT3_PINS_END}`,
+      "];",
+    ].join("\n"),
+    ["{a},", "{b},"],
+  );
+  check(
+    "the pin writer replaces exactly the lines between the markers, and refuses a table without them",
+    spliced ===
+      [
+        "[",
+        `  ${HOLDOUT3_PINS_BEGIN}`,
+        "{a},",
+        "{b},",
+        `  ${HOLDOUT3_PINS_END}`,
+        "];",
+      ].join("\n") &&
+      thrown(() => spliceHoldout3Pins("[\n];", [])).includes(
+        "no holdout3 pin markers",
+      ),
+    "",
+  );
+
   // The strata, from the recorded figures alone.
   type StratumInput = Parameters<typeof holdout3Strata>[0];
   const base: StratumInput = {
@@ -5640,15 +5814,18 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
   const labOf = (r: number, g: number, b: number): [number, number, number] =>
     srgbToLab(r, g, b);
   check(
-    "the skin region holds skin-coloured browns and refuses sand, green, near-black and near-white",
-    inSkinRegion(...labOf(198, 134, 66)) &&
+    "the skin region holds every swatch it was set from, light (h 74.8°, 78.4°) to dark, and refuses sand, green, near-black and near-white",
+    inSkinRegion(...labOf(241, 194, 125)) &&
+      inSkinRegion(...labOf(224, 172, 105)) &&
+      inSkinRegion(...labOf(198, 134, 66)) &&
+      inSkinRegion(...labOf(141, 85, 36)) &&
       inSkinRegion(...labOf(180, 120, 100)) &&
       inSkinRegion(...labOf(92, 51, 23)) &&
       !inSkinRegion(...labOf(194, 178, 128)) &&
       !inSkinRegion(...labOf(34, 139, 34)) &&
       !inSkinRegion(...labOf(60, 40, 30)) &&
       !inSkinRegion(...labOf(255, 219, 172)) &&
-      SKIN_REGION.maxHue === 70,
+      SKIN_REGION.maxHue === 80,
     "",
   );
   const skinRaster = covariatesOf(

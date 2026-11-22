@@ -1144,7 +1144,7 @@ absolute 4-neighbour Laplacian of L\*), all measured by
 - Split: holdout3
 - Axis: extreme aspect
 - Notes: landscape, LGE Nexus 4, mean L* 36.1, mean C* 10.4, detail 13.83
-- Drawn as: extreme aspect; strata: smartphone, extreme-aspect
+- Drawn as: extreme aspect; strata: smartphone, skin, extreme-aspect
 
 ### `sealed3-pano-view-north-from-ben`
 
@@ -1168,7 +1168,7 @@ absolute 4-neighbour Laplacian of L\*), all measured by
 - Split: holdout3
 - Axis: smartphone
 - Notes: landscape, Xiaomi Redmi Note 9 Pro, mean L* 57.8, mean C* 7.8, detail 8.09
-- Drawn as: smartphone; strata: smartphone
+- Drawn as: smartphone; strata: smartphone, skin
 
 ### `sealed3-phone-2018-american-athletic-conference`
 
@@ -1264,7 +1264,7 @@ absolute 4-neighbour Laplacian of L\*), all measured by
 - Split: holdout3
 - Axis: smartphone
 - Notes: landscape, Apple iPhone 6, mean L* 37.4, mean C* 11.6, detail 14.43
-- Drawn as: smartphone; strata: smartphone
+- Drawn as: smartphone; strata: smartphone, skin
 
 ### `sealed3-phone-pvjlvlja-montenegro-33239`
 
@@ -1290,6 +1290,18 @@ absolute 4-neighbour Laplacian of L\*), all measured by
 - Notes: portrait, NIKON CORPORATION NIKON D600, mean L* 54.2, mean C* 32.9, detail 6.84
 - Drawn as: skin: medium; strata: skin
 
+### `sealed3-skin-domkirken-kristiansand-norway-nygotisk`
+
+- Source: <https://commons.wikimedia.org/wiki/File:DOMKIRKEN_KRISTIANSAND_Norway_Nygotisk_korskirke_Thrap-Meyer_1885_Cathedral_Neo-Gothic_church_2023-10-18_INTERIOR_Alter_altertavle_av_Eilif_Peterssen_alterring_koret_Altar_piece_etc_IMG_3915.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/2/2b/DOMKIRKEN_KRISTIANSAND_Norway_Nygotisk_korskirke_Thrap-Meyer_1885_Cathedral_Neo-Gothic_church_2023-10-18_INTERIOR_Alter_altertavle_av_Eilif_Peterssen_alterring_koret_Altar_piece_etc_IMG_3915.jpg>
+- Author: Wolfmann
+- License: CC BY-SA 4.0
+- Dimensions: 5619x7493
+- Split: holdout3
+- Axis: skin: light
+- Notes: portrait, Apple iPhone 14 Pro, mean L* 50.7, mean C* 18.6, detail 7.98
+- Drawn as: skin: light; strata: smartphone, skin
+
 ### `sealed3-skin-emmy-at-esc2025-for`
 
 - Source: <https://commons.wikimedia.org/wiki/File:Emmy_at_ESC2025_for_Ireland_5.jpg>
@@ -1301,18 +1313,6 @@ absolute 4-neighbour Laplacian of L\*), all measured by
 - Axis: skin: dark
 - Notes: landscape, Canon Canon EOS R1, mean L* 31.6, mean C* 20.7, detail 6.13
 - Drawn as: skin: dark; strata: skin
-
-### `sealed3-skin-floral-tributes-to-harald`
-
-- Source: <https://commons.wikimedia.org/wiki/File:Floral_tributes_to_Harald_V_of_Norway,_Aug_30.jpg>
-- File: <https://upload.wikimedia.org/wikipedia/commons/4/4f/Floral_tributes_to_Harald_V_of_Norway%2C_Aug_30.jpg>
-- Author: Jonathan Mazin
-- License: CC BY-SA 4.0
-- Dimensions: 4000x2667
-- Split: holdout3
-- Axis: skin: light
-- Notes: landscape, Panasonic DC-S5M2X, mean L* 39.3, mean C* 17.6, detail 13.01
-- Drawn as: skin: light; strata: skin
 
 ### `sealed3-skin-her-majesty`
 
@@ -1326,17 +1326,17 @@ absolute 4-neighbour Laplacian of L\*), all measured by
 - Notes: portrait, Canon Canon EOS 5D Mark II, mean L* 74.1, mean C* 15.4, detail 4.64
 - Drawn as: skin: light; strata: skin
 
-### `sealed3-skin-lions-family-portrait-masai`
+### `sealed3-skin-indonesia-traffic-signs-warning`
 
-- Source: <https://commons.wikimedia.org/wiki/File:Lions_Family_Portrait_Masai_Mara.jpg>
-- File: <https://upload.wikimedia.org/wikipedia/commons/a/a1/Lions_Family_Portrait_Masai_Mara.jpg>
-- Author: Benh LIEU SONG
+- Source: <https://commons.wikimedia.org/wiki/File:Indonesia_Traffic-signs_Warning-sign-07.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/62/Indonesia_Traffic-signs_Warning-sign-07.jpg>
+- Author: CEphoto, Uwe Aranas
 - License: CC BY-SA 3.0
-- Dimensions: 5184x3456
+- Dimensions: 3306x4278
 - Split: holdout3
-- Axis: skin: medium
-- Notes: landscape, Canon Canon EOS 7D, mean L* 43.5, mean C* 22.5, detail 8.01
-- Drawn as: skin: medium; strata: skin
+- Axis: skin: dark
+- Notes: portrait, Canon Canon EOS 5D Mark III, mean L* 37.9, mean C* 24.3, detail 18.65
+- Drawn as: skin: dark; strata: skin
 
 ### `sealed3-skin-mumtaz-alia-akbari-2`
 
@@ -1362,26 +1362,26 @@ absolute 4-neighbour Laplacian of L\*), all measured by
 - Notes: landscape, FUJIFILM X-Pro3, mean L* 43.4, mean C* 15.2, detail 7.03
 - Drawn as: skin: medium; strata: skin
 
-### `sealed3-skin-portrait-vessel-of-a`
+### `sealed3-skin-portrait-head-jar-peru`
 
-- Source: <https://commons.wikimedia.org/wiki/File:Portrait_Vessel_of_a_Ruler,_100_BC_-_500_AD,_Moche,_north_coast_of_Peru,_ceramic_and_pigment_-_Art_Institute_of_Chicago_-_DSC00316.JPG>
-- File: <https://upload.wikimedia.org/wikipedia/commons/f/f1/Portrait_Vessel_of_a_Ruler%2C_100_BC_-_500_AD%2C_Moche%2C_north_coast_of_Peru%2C_ceramic_and_pigment_-_Art_Institute_of_Chicago_-_DSC00316.JPG>
+- Source: <https://commons.wikimedia.org/wiki/File:Portrait_head_jar,_Peru,_Moche_IV_or_V,_north_coast,_c._500_AD,_earthenware_-_Krannert_Art_Museum,_UIUC_-_DSC06498.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/9/95/Portrait_head_jar%2C_Peru%2C_Moche_IV_or_V%2C_north_coast%2C_c._500_AD%2C_earthenware_-_Krannert_Art_Museum%2C_UIUC_-_DSC06498.jpg>
 - Author: Daderot
-- License: CC0
-- Dimensions: 2694x4144
+- License: Public domain
+- Dimensions: 3495x3178
+- Split: holdout3
+- Axis: skin: medium
+- Notes: landscape, SONY DSC-RX100M3, mean L* 47.2, mean C* 25.9, detail 1.80
+- Drawn as: skin: medium; strata: skin
+
+### `sealed3-skin-washare-from-the-hamer`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Washare_from_the_Hamer_tribe_in_Logara,_near_Turmi,_Omo_Valley,_Ethiopia_(16882803797).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/c/cc/Washare_from_the_Hamer_tribe_in_Logara%2C_near_Turmi%2C_Omo_Valley%2C_Ethiopia_%2816882803797%29.jpg>
+- Author: Alfred Weidinger from Vienna, Austria
+- License: CC BY 2.0
+- Dimensions: 4992x7512
 - Split: holdout3
 - Axis: skin: dark
-- Notes: portrait, SONY DSC-H55, mean L* 52.8, mean C* 17.9, detail 3.61
-- Drawn as: skin: dark; strata: skin
-
-### `sealed3-skin-yogyakarta-indonesia-crossing-keeper`
-
-- Source: <https://commons.wikimedia.org/wiki/File:Yogyakarta_Indonesia_Crossing-keeper-house-at-Tugu-Railway-Station-01.jpg>
-- File: <https://upload.wikimedia.org/wikipedia/commons/b/bf/Yogyakarta_Indonesia_Crossing-keeper-house-at-Tugu-Railway-Station-01.jpg>
-- Author: CEphoto, Uwe Aranas
-- License: CC BY-SA 3.0
-- Dimensions: 3840x5760
-- Split: holdout3
-- Axis: skin: dark
-- Notes: portrait, Canon Canon EOS 5D Mark III, mean L* 37.1, mean C* 14.1, detail 7.47
+- Notes: portrait, Leica Camera AG Leica S2, mean L* 56.2, mean C* 17.4, detail 8.70
 - Drawn as: skin: dark; strata: skin
