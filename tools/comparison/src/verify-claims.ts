@@ -120,6 +120,10 @@ const abs = (n: number): number => Math.abs(n);
  */
 const PARENTHESISED_DELTA = /\(([+−–—-]?[\d.]+)%\)/;
 
+/** The bounds of an interval cell like "[−0.028, +0.011]". */
+const INTERVAL_LOWER = /^\[([+−–—-]?[\d.]+),/;
+const INTERVAL_UPPER = /, ([+−–—-]?[\d.]+)\]$/;
+
 const REGISTER: Claim[] = [
   // ── The v0.7 recipe's holdout verdict ────────────────────────────────────
   // Quoted in three places plus the Rust doc comment. §7.12's `L28C15 stack`
@@ -565,7 +569,75 @@ const REGISTER: Claim[] = [
     column: "Wikimedia",
     transform: abs,
   },
+
+  // ── Paired intervals quoted outside EXPERIMENTS.md ───────────────────────
+  // Raising the bootstrap to 10,000 resamples (§13.5) moved every interval
+  // below, and none of the quotes, because none was registered here. Each bound
+  // is its own claim: a quote of "[a, b]" is two figures. The quoted figures
+  // capture no sign, because `Number` does not read U+2212; the sign is in the
+  // pattern, and `abs` compares magnitudes.
+  {
+    file: "spec/RATIONALE.md",
+    what: "code 2's w_min 0.85 paired ΔE00 interval, lower bound",
+    pattern: /\[−([\d.]+), \+[\d.]+\] over 31 images/,
+    section: "12.3",
+    row: "t2 w_min 0.85 exp 1",
+    column: "paired 95% CI",
+    cellPattern: INTERVAL_LOWER,
+    transform: abs,
+  },
+  {
+    file: "spec/RATIONALE.md",
+    what: "code 2's w_min 0.85 paired ΔE00 interval, upper bound",
+    pattern: /\[−[\d.]+, \+([\d.]+)\] over 31 images/,
+    section: "12.3",
+    row: "t2 w_min 0.85 exp 1",
+    column: "paired 95% CI",
+    cellPattern: INTERVAL_UPPER,
+  },
+  ...spuriousRise("3"),
+  ...spuriousRise("4"),
 ];
+
+/**
+ * The three figures `V0.8-DECISIONS.md` D3 quotes for one of §13.2's rises in
+ * spurious detail off code 2: the paired difference and both interval bounds.
+ * All three are positive, so the signs are matched literally.
+ */
+function spuriousRise(code: "3" | "4"): Claim[] {
+  const row = `code ${code} − code 2`;
+  const lead = `code\\s+${code} − code 2 is \\+`;
+  const num = "[\\d.]+";
+  const at = (point: string, lo: string, hi: string) =>
+    new RegExp(`${lead}${point}\\s+\\[\\+${lo}, \\+${hi}\\]`);
+  const base = {
+    file: "spec/V0.8-DECISIONS.md",
+    section: "13.2",
+    row,
+  };
+  return [
+    {
+      ...base,
+      what: `${row} spurious detail, paired difference`,
+      pattern: at(`(${num})`, num, num),
+      column: "Spur Δ",
+    },
+    {
+      ...base,
+      what: `${row} spurious detail, interval lower bound`,
+      pattern: at(num, `(${num})`, num),
+      column: "paired 95% CI",
+      cellPattern: INTERVAL_LOWER,
+    },
+    {
+      ...base,
+      what: `${row} spurious detail, interval upper bound`,
+      pattern: at(num, num, `(${num})`),
+      column: "paired 95% CI",
+      cellPattern: INTERVAL_UPPER,
+    },
+  ];
+}
 
 // ─── Resolving a cell ───────────────────────────────────────────────────────
 
