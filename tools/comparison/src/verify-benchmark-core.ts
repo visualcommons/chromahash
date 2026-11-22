@@ -317,7 +317,18 @@ interface Cell {
   /** chromahash-perf/3: how often such a range holds the median. */
   rangeCoverage?: number;
   processMinNsPerOp?: number[];
+  /** chromahash-perf/3: how many processes completed (`perf/run.ts`). */
+  processes?: number;
   spreadPct?: number;
+}
+
+/**
+ * How many processes a chromahash-perf/3 cell completed, read from its process
+ * minima where it recorded them, else from its `processes` count; null for a
+ * cell that records neither.
+ */
+export function processesTaken(c: Cell): number | null {
+  return c.processMinNsPerOp?.length ?? c.processes ?? null;
 }
 
 /**
@@ -537,6 +548,11 @@ export class Runs {
       interval: [number, number] | null;
       /** Across processes, chromahash-perf/3 only. */
       spread: number | null;
+      /**
+       * chromahash-perf/3 only: the processes the cell completed and the
+       * processes its run planned, when it completed fewer. Null otherwise.
+       */
+      thin: { taken: number; expected: number } | null;
       /** The format of the run the cell was read from. */
       schema: string;
       /** The host directory of that run. */
@@ -545,7 +561,17 @@ export class Runs {
   >();
   /** Every loaded run's own value for each of its cells, by file. */
   private readonly perRun = new Map<string, Map<string, number>>();
-  private readonly pairById = new Map<string, PairRecord & { from: string }>();
+  private readonly pairById = new Map<
+    string,
+    PairRecord & {
+      from: string;
+      /**
+       * chromahash-perf/3 only: the complete AB/BA blocks the pair has and
+       * the blocks its run planned (processes / 2), when it has fewer.
+       */
+      thin: { taken: number; expected: number } | null;
+    }
+  >();
   private readonly aliases = new Map<string, string>();
   readonly loaded: RunDoc[] = [];
   /** The loaded runs grouped by host, in lookup order within each. */
@@ -770,12 +796,24 @@ export class Runs {
     );
     for (const doc of primaryFirst) {
       const isPrimary = doc.hostDir === this.primary;
+      // The run's own plan, which `unreadable` holds to MIN_PROCESSES. A cell
+      // the driver kept with fewer completed processes (`perf/run.ts` keeps
+      // any cell with one) is held to it here, or a cell that completed once
+      // would have no spread and escape every rule that reads one.
+      const planned = doc.schema === SCHEMA ? doc.config?.processes : undefined;
+      const short = (
+        taken: number,
+        expected: number | undefined,
+      ): { taken: number; expected: number } | null =>
+        expected !== undefined && taken < expected ? { taken, expected } : null;
       for (const c of doc.cells) {
         if (this.byId.has(c.id)) continue;
         if (!isPrimary && !primaryAbsent.has(targetOf(c.id))) continue;
         const range = c.rangeNsPerOp;
         const spread = doc.schema === SCHEMA ? processSpread(c) : null;
+        const taken = processesTaken(c);
         this.byId.set(c.id, {
+          thin: taken === null ? null : short(taken, planned),
           us: (c.nsPerOp ?? c.medianNsPerOp) / 1000,
           cell: c,
           from: this.runKey(doc),
@@ -794,7 +832,14 @@ export class Runs {
         // A pair is read from the run its base cell is read from, so a ratio
         // never mixes one run's numerator with another's denominator.
         if (!this.pairById.has(id) && base?.from === this.runKey(doc)) {
-          this.pairById.set(id, { ...p, from: this.runKey(doc) });
+          this.pairById.set(id, {
+            ...p,
+            from: this.runKey(doc),
+            thin: short(
+              p.blocks?.length ?? 0,
+              planned === undefined ? undefined : Math.floor(planned / 2),
+            ),
+          });
         }
       }
     }
@@ -917,7 +962,15 @@ export class Runs {
   ): Unstable[] {
     const out: Unstable[] = [];
     for (const id of [...cells].sort()) {
-      const spread = this.byId.get(id)?.spread;
+      const hit = this.byId.get(id);
+      // A cell that completed fewer processes than its run planned has a
+      // spread over too few samples, or none at all, so the spread rules
+      // cannot judge it: it is withheld for its sampling, before its spread.
+      if (hit?.thin) {
+        out.push({ id, spread: 0, kind: "thin-process", ...hit.thin });
+        continue;
+      }
+      const spread = hit?.spread;
       if (spread != null && spread > CROSS_RUN_TOLERANCE) {
         out.push({ id, spread, kind: "process" });
       }
@@ -926,9 +979,14 @@ export class Runs {
     // a cell whose processes do, even when both cells are steady on their own.
     for (const key of [...pairs].sort()) {
       const pair = this.pairById.get(key);
+      const id = key.replace("|", " / ");
+      if (pair?.thin) {
+        out.push({ id, spread: 0, kind: "thin-block", ...pair.thin });
+        continue;
+      }
       const spread = pair ? blockSpread(pair) : null;
       if (spread !== null && spread > CROSS_RUN_TOLERANCE) {
-        out.push({ id: key.replace("|", " / "), spread, kind: "block" });
+        out.push({ id, spread, kind: "block" });
       }
     }
     return out;
@@ -1087,13 +1145,22 @@ export interface Unstable {
   /** A cell id, or `base / arm` for a pair. */
   id: string;
   spread: number;
-  /** Across processes (a cell) or across A B / B A blocks (a pair). */
-  kind: "process" | "block";
+  /**
+   * Across processes (a cell) or across A B / B A blocks (a pair); or, for
+   * `thin-*`, too few of them completed for a spread to judge (`spread` is 0).
+   */
+  kind: "process" | "block" | "thin-process" | "thin-block";
+  /** `thin-*` only: how many completed, and how many the run planned. */
+  taken?: number;
+  expected?: number;
 }
 
 /**
  * Why a documented value is withheld: the cells and pairs it rests on whose
- * own samples spread past CROSS_RUN_TOLERANCE.
+ * own samples spread past CROSS_RUN_TOLERANCE, or that completed fewer
+ * processes (a cell) or A B / B A blocks (a pair, processes / 2) than their
+ * run planned — the spread of one process is undefined, so without this a cell
+ * that completed once would be held to the ±TOLERANCE band alone.
  *
  * Withholding is a property of one cell, not of the run. A cell whose
  * processes disagree by more than two runs of the host may cannot back a
@@ -1105,14 +1172,21 @@ export interface Unstable {
  */
 export function withheldReason(unstable: readonly Unstable[]): string {
   const bar = `${(CROSS_RUN_TOLERANCE * 100).toFixed(0)}%`;
+  const what = (u: Unstable): string => {
+    switch (u.kind) {
+      case "thin-process":
+        return `${u.id}: ${u.taken} of ${u.expected} processes completed`;
+      case "thin-block":
+        return `${u.id}: ${u.taken} of ${u.expected} A B / B A blocks complete`;
+      case "block":
+        return `${u.id}: A B / B A blocks ${(u.spread * 100).toFixed(1)}% apart, past the ${bar} host bar`;
+      case "process":
+        return `${u.id}: processes ${(u.spread * 100).toFixed(1)}% apart, past the ${bar} host bar`;
+    }
+  };
   return `withheld — ${unstable
-    .map(
-      (u) =>
-        `${u.id}: ${u.kind === "block" ? "A B / B A blocks" : "processes"} ${(u.spread * 100).toFixed(1)}% apart`,
-    )
-    .join(
-      "; ",
-    )}, past the ${bar} host bar; not published until a quieter session measures it`;
+    .map(what)
+    .join("; ")}; not published until a quieter session measures it`;
 }
 
 /** The placeholder a withheld value is written as: `TBD` in its own unit. */

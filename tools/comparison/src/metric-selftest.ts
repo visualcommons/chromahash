@@ -200,6 +200,7 @@ import {
   parseStages,
   parseTables,
   parseUnavailableMarker,
+  withheldReason,
 } from "./verify-benchmark-core.ts";
 
 let failures = 0;
@@ -2841,6 +2842,91 @@ for (const order of ["full first", "bounded first"] as const) {
       prose.edits[0]?.text === "TBD" &&
       fixRefusal(runFailures(loaded)) !== null,
     `first=${details(first.failures)} edits=${JSON.stringify(first.edits)} again=${JSON.stringify(again.counters)} prose=${details(prose.failures)}`,
+  );
+}
+
+// V5e. A cell that completed fewer processes than its run planned, or a pair
+//      with fewer AB/BA blocks than processes / 2, is withheld for its
+//      sampling: with one process there is no spread, so the noisy, unstable
+//      and withheld rules would otherwise pass it on the ±5% band alone. The
+//      run's own count is the bar, not MIN_PROCESSES: a six-process run's cell
+//      that completed four is thin too.
+{
+  const b = "encode/Rust/t1/512x512/gradient";
+  const a = `${b}/accel all`;
+  const once = "encode/Go/t1";
+  const R = new Runs([
+    run3(
+      "perf-report.json",
+      {
+        [b]: { us: 46700, mins: [46600, 46700, 46700, 46800] },
+        [a]: { us: 20000, mins: [20000, 20000, 20000, 20000] },
+        [once]: { us: 1000, mins: [1000] },
+      },
+      {
+        pairs: [
+          // One complete block of the two four processes plan.
+          { base: b, arm: a, ratio: 2.4, range: [2.4, 2.4], blocks: [2.4] },
+        ],
+      },
+    ),
+  ]);
+  const cellOnce = R.trace(() => R.est(once));
+  const steady = R.trace(() => R.est(b));
+  const pairOnce = R.trace(() => R.ratio(b, a));
+  const six = new Runs([
+    run3(
+      "perf-report.json",
+      { [b]: { us: 46700, mins: [46600, 46700, 46700, 46800] } },
+      { config: { mode: "bounded", reps: 5, processes: 6 } },
+    ),
+  ]);
+  const sixShort = six.trace(() => six.est(b));
+  // Counted from `processes` where a cell records no minima.
+  const countedDoc = run3("perf-report.json", { [once]: { us: 1000 } });
+  countedDoc.cells = countedDoc.cells.map((c) => ({ ...c, processes: 1 }));
+  const counted = new Runs([countedDoc]);
+  const countedOnce = counted.trace(() => counted.est(once));
+  const counters: Counters = {
+    checked: 0,
+    unbound: 0,
+    placeholders: 0,
+    pending: 0,
+    withheld: 0,
+    unavailable: 0,
+    tolerated: 0,
+  };
+  const prose = checkSweepClaims(
+    "Go encodes in 1.00 ms here",
+    R,
+    { counters, stability: checkStability(R) },
+    [
+      {
+        what: "go",
+        pattern: /encodes in (TBD|[\d.]+) ms/,
+        unit: "ms",
+        decimals: 2,
+        resolve: (RR) => RR.est(once),
+      },
+    ],
+  );
+  const reason = withheldReason(cellOnce.unstable);
+  check(
+    "a cell or pair that completed fewer processes or AB/BA blocks than its run planned is withheld, not held to the band alone",
+    cellOnce.unstable.length === 1 &&
+      cellOnce.unstable[0]?.kind === "thin-process" &&
+      reason.includes("1 of 4 processes completed") &&
+      steady.unstable.length === 0 &&
+      pairOnce.unstable.some(
+        (u) => u.kind === "thin-block" && u.taken === 1 && u.expected === 2,
+      ) &&
+      withheldReason(pairOnce.unstable).includes("1 of 2 A B / B A blocks") &&
+      sixShort.unstable[0]?.kind === "thin-process" &&
+      sixShort.unstable[0]?.expected === 6 &&
+      countedOnce.unstable[0]?.kind === "thin-process" &&
+      prose.withheld === 1 &&
+      prose.edits[0]?.text === "TBD",
+    `cell=${JSON.stringify(cellOnce.unstable)} pair=${JSON.stringify(pairOnce.unstable)} six=${JSON.stringify(sixShort.unstable)} counted=${JSON.stringify(countedOnce.unstable)} prose=${details(prose.failures)}`,
   );
 }
 
