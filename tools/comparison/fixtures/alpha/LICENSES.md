@@ -18,12 +18,15 @@ only its withdrawn image is still marked `holdout`, so a cached copy joins no
 sweep. `holdout2`, if any entry carries it, is the sealed replacement: every
 such entry is labelled `sealed-cutout-*`, and no tool fetches it until
 `spec/V0.8-DECISIONS.md` records the decision it answers as frozen.
+`holdout3` (#129), labelled `sealed3-cutout-*`, is the alpha part of the
+third sealed split, opened the same way, once per register entry; each of its
+entries lists the strata it sits in.
 
 **This file is generated.** Edit the table in `src/alpha-images.ts` and run
 `mise run corpus:licenses`; `--check` fails when the two disagree.
 
 
-38 images — 16 tune, 7 tune2, 1 holdout, 14 holdout2; 1 withdrawn.
+62 images — 16 tune, 7 tune2, 1 holdout, 14 holdout2, 24 holdout3; 1 withdrawn.
 
 ### `cutout-3d-star-greek`
 
@@ -443,3 +446,291 @@ such entry is labelled `sealed-cutout-*`, and no tool fetches it until
 - Split: holdout2
 - Alpha: 47.4% non-opaque, 0.0% soft-edged
 - Notes: Cell opaque/hard/detailed; silhouette 2.46. Silver marksmanship badge: lettered bar and hanging target pendant, binary mask.
+
+### `sealed3-cutout-abolengo`
+
+- Source: <https://commons.wikimedia.org/wiki/File:ABOLENGO.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/46/ABOLENGO.png>
+- Author: Benjaaladro
+- License: CC BY-SA 4.0
+- Dimensions: 424x637
+- Split: holdout3
+- Alpha: 49.2% non-opaque, 0.9% soft-edged
+- Notes: Cell opaque/hard/detailed; silhouette 2.25. Drawn from the clothing query.
+- Drawn as: alpha: opaque/hard/detailed; strata: alpha
+
+### `sealed3-cutout-anime-girl-publicdomainq`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Anime_girl_publicdomainq.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/e7/Anime_girl_publicdomainq.png>
+- Author: oksmith
+- License: CC0
+- Dimensions: 1570x2400
+- Split: holdout3
+- Alpha: 35.4% non-opaque, 0.3% soft-edged
+- Notes: Cell opaque/hard/detailed; silhouette 2.13. Drawn from the hair query.
+- Drawn as: alpha: opaque/hard/detailed; strata: alpha
+
+### `sealed3-cutout-barnstarman-a`
+
+- Source: <https://commons.wikimedia.org/wiki/File:BarnStarman_a.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/a/a7/BarnStarman_a.png>
+- Author: Jecowa
+- License: CC BY-SA 3.0
+- Dimensions: 800x800
+- Split: holdout3
+- Alpha: 78.8% non-opaque, 57.5% soft-edged
+- Notes: Cell transparent/soft/simple; silhouette 1.31. Drawn from the glow query.
+- Drawn as: alpha: transparent/soft/simple; strata: alpha
+
+### `sealed3-cutout-bic-j5`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Bic_J5.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/7/76/Bic_J5.png>
+- Author: USer:Bilou
+- License: CC BY-SA 3.0
+- Dimensions: 710x313
+- Split: holdout3
+- Alpha: 41.1% non-opaque, 0.4% soft-edged
+- Notes: Cell opaque/hard/simple; silhouette 1.36. Drawn from the kitchen query.
+- Drawn as: alpha: opaque/hard/simple; strata: alpha
+
+### `sealed3-cutout-bowl-of-chopped-almonds`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Bowl_of_chopped_almonds_no_bg.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/a/af/Bowl_of_chopped_almonds_no_bg.png>
+- Author: Douglas P Perkins
+- License: CC BY-SA 3.0
+- Dimensions: 1887x1876
+- Split: holdout3
+- Alpha: 21.8% non-opaque, 0.2% soft-edged
+- Notes: Cell opaque/hard/simple; silhouette 1.13. Drawn from the food query.
+- Drawn as: alpha: opaque/hard/simple; strata: alpha
+
+### `sealed3-cutout-canon-powershot-sx500-is`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Canon_Powershot_SX500_IS_Front_Cropped.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/7/72/Canon_Powershot_SX500_IS_Front_Cropped.png>
+- Author: Envagyokabela
+- License: CC BY-SA 4.0
+- Dimensions: 2681x2587
+- Split: holdout3
+- Alpha: 52.4% non-opaque, 0.1% soft-edged
+- Notes: Cell transparent/hard/simple; silhouette 1.43. Drawn from the cutout-photo query.
+- Drawn as: alpha: transparent/hard/simple; strata: alpha
+
+### `sealed3-cutout-copa-latina-transparent`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Copa_latina_transparent.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/1/1b/Copa_latina_transparent.png>
+- Author: HLA
+- License: CC BY-SA 4.0
+- Dimensions: 1400x3244
+- Split: holdout3
+- Alpha: 47.6% non-opaque, 0.4% soft-edged
+- Notes: Cell opaque/hard/detailed; silhouette 2.24. Drawn from the glass query.
+- Drawn as: alpha: opaque/hard/detailed; strata: alpha
+
+### `sealed3-cutout-cotinine-molecule-spacefill`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Cotinine_molecule_spacefill.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/1/14/Cotinine_molecule_spacefill.png>
+- Author: Jynto (more from this user)
+- License: CC0
+- Dimensions: 2000x1454
+- Split: holdout3
+- Alpha: 50.5% non-opaque, 0.2% soft-edged
+- Notes: Cell transparent/hard/simple; silhouette 1.39. Drawn from the smoke query.
+- Drawn as: alpha: transparent/hard/simple; strata: alpha
+
+### `sealed3-cutout-dba-herz`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Dba-Herz.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/0/0c/Dba-Herz.png>
+- Author: Matti Blume, MB-one
+- License: CC BY-SA 3.0
+- Dimensions: 1013x1003
+- Split: holdout3
+- Alpha: 26.1% non-opaque, 3.4% soft-edged
+- Notes: Cell opaque/soft/simple; silhouette 1.19. Drawn from the food query.
+- Drawn as: alpha: opaque/soft/simple; strata: alpha
+
+### `sealed3-cutout-fictional-planet-vulcan`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Fictional_Planet_Vulcan.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/d/db/Fictional_Planet_Vulcan.png>
+- Author: Shisma
+- License: CC BY 4.0
+- Dimensions: 4000x4000
+- Split: holdout3
+- Alpha: 57.6% non-opaque, 32.3% soft-edged
+- Notes: Cell transparent/soft/simple; silhouette 1.23. Drawn from the planets query.
+- Drawn as: alpha: transparent/soft/simple; strata: alpha
+
+### `sealed3-cutout-flowerc-ornament-gold`
+
+- Source: <https://commons.wikimedia.org/wiki/File:FlowerC_Ornament_Gold.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/3/3d/FlowerC_Ornament_Gold.png>
+- Author: unknown: antique floral ornament
+- License: CC0
+- Dimensions: 575x555
+- Split: holdout3
+- Alpha: 61.4% non-opaque, 0.0% soft-edged
+- Notes: Cell transparent/hard/detailed; silhouette 6.00. Drawn from the organisms query.
+- Drawn as: alpha: transparent/hard/detailed; strata: alpha
+
+### `sealed3-cutout-harpy-hawl-owl-smilie`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Harpy-Hawl-owl_Smilie_Take_it_easy.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/b/b0/Harpy-Hawl-owl_Smilie_Take_it_easy.png>
+- Author: CulmSee-Axel-acad.2161
+- License: CC BY-SA 4.0
+- Dimensions: 1200x1200
+- Split: holdout3
+- Alpha: 41.4% non-opaque, 14.1% soft-edged
+- Notes: Cell opaque/soft/simple; silhouette 1.31. Drawn from the organisms query.
+- Drawn as: alpha: opaque/soft/simple; strata: alpha
+
+### `sealed3-cutout-icone-noir-pour-representer`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Ic%C3%B4ne_noir_pour_repr%C3%A9senter_une_lavogne_pour_Pic_Patrimoine.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/5/50/Ic%C3%B4ne_noir_pour_repr%C3%A9senter_une_lavogne_pour_Pic_Patrimoine.png>
+- Author: PicPatrimoinePhilippeN
+- License: CC0
+- Dimensions: 1600x1600
+- Split: holdout3
+- Alpha: 88.9% non-opaque, 0.9% soft-edged
+- Notes: Cell transparent/hard/detailed; silhouette 6.02. Drawn from the icons query.
+- Drawn as: alpha: transparent/hard/detailed; strata: alpha
+
+### `sealed3-cutout-mortar-and-pestle-sand`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Mortar_and_pestle_-_sand_casting,_bronze-2.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/ec/Mortar_and_pestle_-_sand_casting%2C_bronze-2.png>
+- Author: File:Mortar_and_pestle_-_sand_casting,_bronze.jpg: Hans Chr. R. derivative Work: Saibo (Δ)
+- License: CC BY-SA 3.0
+- Dimensions: 2688x3776
+- Split: holdout3
+- Alpha: 58.3% non-opaque, 4.1% soft-edged
+- Notes: Cell transparent/soft/detailed; silhouette 2.06. Drawn from the kitchen query.
+- Drawn as: alpha: transparent/soft/detailed; strata: alpha
+
+### `sealed3-cutout-papas-fritas-argentinas-con`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Papas_fritas_argentinas_con_huevos_fritos_y_mayonesa_picante.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/2/2c/Papas_fritas_argentinas_con_huevos_fritos_y_mayonesa_picante.png>
+- Author: Horacio Cambeiro
+- License: CC BY-SA 3.0
+- Dimensions: 3832x2786
+- Split: holdout3
+- Alpha: 27.3% non-opaque, 3.6% soft-edged
+- Notes: Cell opaque/soft/simple; silhouette 1.17. Drawn from the food query.
+- Drawn as: alpha: opaque/soft/simple; strata: smartphone, alpha
+
+### `sealed3-cutout-passenger`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Passenger.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/9/99/Passenger.png>
+- Author: Yashwonth
+- License: CC BY-SA 4.0
+- Dimensions: 1042x1042
+- Split: holdout3
+- Alpha: 89.3% non-opaque, 5.9% soft-edged
+- Notes: Cell transparent/soft/simple; silhouette 1.38. Drawn from the icons query.
+- Drawn as: alpha: transparent/soft/simple; strata: alpha
+
+### `sealed3-cutout-pba-commissioner-s-cup`
+
+- Source: <https://commons.wikimedia.org/wiki/File:PBA_Commissioner%27s_Cup_Trophy_-_2011.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/a/aa/PBA_Commissioner%27s_Cup_Trophy_-_2011.png>
+- Author: PBA Commissioner's Cup Trophy - 2011.jpg: Dan Saavedra from Manila, Philippines derivative work: WayKurat (talk)
+- License: CC BY 2.0
+- Dimensions: 1182x1885
+- Split: holdout3
+- Alpha: 45.5% non-opaque, 3.4% soft-edged
+- Notes: Cell opaque/soft/detailed; silhouette 2.94. Drawn from the objects query.
+- Drawn as: alpha: opaque/soft/detailed; strata: alpha
+
+### `sealed3-cutout-picturesque-new-guinea-chapter`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Picturesque_New_Guinea_-_Chapter_5_banner.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/9/95/Picturesque_New_Guinea_-_Chapter_5_banner.png>
+- Author: Unknown engraver
+- License: Public domain
+- Dimensions: 1958x416
+- Split: holdout3
+- Alpha: 93.0% non-opaque, 22.8% soft-edged
+- Notes: Cell transparent/soft/detailed; silhouette 68.31. Drawn from the ornaments query.
+- Drawn as: alpha: transparent/soft/detailed; strata: alpha, extreme-aspect
+
+### `sealed3-cutout-pulitzer-prizes-medal`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Pulitzer_Prizes_(medal).png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/eb/Pulitzer_Prizes_%28medal%29.png>
+- Author: Daniel Chester French (1850–1931) and Augustus Lukeman (1872–1935)
+- License: Public domain
+- Dimensions: 2055x1101
+- Split: holdout3
+- Alpha: 17.4% non-opaque, 0.3% soft-edged
+- Notes: Cell opaque/hard/simple; silhouette 1.35. Drawn from the objects query.
+- Drawn as: alpha: opaque/hard/simple; strata: alpha
+
+### `sealed3-cutout-red-cement-mixer-truck`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Red_cement_mixer_truck.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/2/2d/Red_cement_mixer_truck.png>
+- Author: User: MrX
+- License: CC BY-SA 3.0
+- Dimensions: 2766x877
+- Split: holdout3
+- Alpha: 48.6% non-opaque, 3.2% soft-edged
+- Notes: Cell opaque/soft/detailed; silhouette 3.57. Drawn from the vehicles query.
+- Drawn as: alpha: opaque/soft/detailed; strata: alpha, extreme-aspect
+
+### `sealed3-cutout-runner-icon-colors2`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Runner_icon_colors2.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/8/8b/Runner_icon_colors2.png>
+- Author: Agonatrix
+- License: CC0
+- Dimensions: 768x748
+- Split: holdout3
+- Alpha: 73.0% non-opaque, 0.7% soft-edged
+- Notes: Cell transparent/hard/detailed; silhouette 3.04. Drawn from the icons query.
+- Drawn as: alpha: transparent/hard/detailed; strata: alpha
+
+### `sealed3-cutout-smart-cardprinter-closed`
+
+- Source: <https://commons.wikimedia.org/wiki/File:SMART_Cardprinter_closed.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/c/ce/SMART_Cardprinter_closed.png>
+- Author: Michael Ahrens
+- License: CC BY-SA 3.0
+- Dimensions: 1500x1500
+- Split: holdout3
+- Alpha: 59.0% non-opaque, 0.3% soft-edged
+- Notes: Cell transparent/hard/simple; silhouette 1.30. Drawn from the objects query.
+- Drawn as: alpha: transparent/hard/simple; strata: alpha
+
+### `sealed3-cutout-vine-leaf-ornament-gray`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Vine_leaf_ornament_Gray_LE.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/0/0e/Vine_leaf_ornament_Gray_LE.png>
+- Author: Inductiveload
+- License: CC0
+- Dimensions: 609x609
+- Split: holdout3
+- Alpha: 53.0% non-opaque, 0.0% soft-edged
+- Notes: Cell transparent/hard/detailed; silhouette 3.37. Drawn from the organisms query.
+- Drawn as: alpha: transparent/hard/detailed; strata: alpha
+
+### `sealed3-cutout-weird-tales-v36n04-separator`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Weird_Tales_v36n04_-_Separator_p.48.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/3/37/Weird_Tales_v36n04_-_Separator_p.48.png>
+- Author: Unknown authorUnknown author
+- License: Public domain
+- Dimensions: 771x27
+- Split: holdout3
+- Alpha: 73.8% non-opaque, 61.0% soft-edged
+- Notes: Cell transparent/soft/detailed; silhouette 10.99. Drawn from the ornaments query.
+- Drawn as: alpha: transparent/soft/detailed; strata: alpha, extreme-aspect

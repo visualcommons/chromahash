@@ -11,8 +11,14 @@ fatal: the corpus a number was measured on is part of what the number means.
 **This file is generated.** Edit the table in `src/graphic-images.ts` and run
 `mise run corpus:licenses`; `--check` fails when the two disagree.
 
+**Splits.** `tune` is what constants are chosen on; `holdout` is the graphics
+holdout, which no committed result has read. `holdout3` (#129), labelled
+`sealed3-graphic-*`, is the graphics part of the third sealed split: no tool
+fetches it until `spec/V0.8-DECISIONS.md` records the decision it answers as
+frozen, and then once per entry. Each of its entries lists the strata it sits in.
 
-24 images — 16 tune, 8 holdout.
+
+40 images — 16 tune, 8 holdout, 16 holdout3.
 
 ### `graphic-alphaplot-app`
 
@@ -253,3 +259,179 @@ fatal: the corpus a number was measured on is part of what the number means.
 - Dimensions: 4572x2500
 - Split: holdout
 - Notes: Flat colour-coded world map: large uniform regions, hard borders.
+
+### `sealed3-graphic-chart-dandenong-pv`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Dandenong_PV.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/8/83/Dandenong_PV.png>
+- Author: Sh1pp02
+- License: CC0
+- Dimensions: 1920x1080
+- Split: holdout3
+- Notes: Content type chart, drawn from the line query; mean L* 97.5, mean C* 0.9, detail 5.26.
+- Drawn as: chart; strata: graphics
+
+### `sealed3-graphic-chart-figure-3-education-where`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Figure_3_education_(Where_experts_and_amateurs_meet).png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/e1/Figure_3_education_%28Where_experts_and_amateurs_meet%29.png>
+- Author: Piotrus
+- License: CC BY-SA 4.0
+- Dimensions: 1066x517
+- Split: holdout3
+- Notes: Content type chart, drawn from the pie query; mean L* 92.3, mean C* 12.2, detail 4.51.
+- Drawn as: chart; strata: graphics
+
+### `sealed3-graphic-chart-miaoli-county-constituency-2`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Miaoli_County_Constituency_2_results_(coalition).png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/4a/Miaoli_County_Constituency_2_results_%28coalition%29.png>
+- Author: CptnPhasma
+- License: CC0
+- Dimensions: 1440x926
+- Split: holdout3
+- Notes: Content type chart, drawn from the line query; mean L* 97.6, mean C* 0.8, detail 5.01.
+- Drawn as: chart; strata: graphics
+
+### `sealed3-graphic-comic-jon-1976-03-18`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Jon_-_1976-03-18.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/a/a7/Jon_-_1976-03-18.png>
+- Author: Jim Davis
+- License: Public domain
+- Dimensions: 4932x1518
+- Split: holdout3
+- Notes: Content type comic, drawn from the strip query; mean L* 85.5, mean C* 0.0, detail 30.80.
+- Drawn as: comic; strata: graphics, extreme-aspect
+
+### `sealed3-graphic-comic-movie-mat-is-inspired`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Movie_Mat_is_Inspired_by_a_Thrilling_Film.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/f/f7/Movie_Mat_is_Inspired_by_a_Thrilling_Film.jpg>
+- Author: V.F. Macom
+- License: Public domain
+- Dimensions: 2745x2355
+- Split: holdout3
+- Notes: Content type comic, drawn from the strip-jpeg query; mean L* 44.7, mean C* 12.9, detail 7.09.
+- Drawn as: comic; strata: graphics, skin
+
+### `sealed3-graphic-diagram-cobs-encoding-process`
+
+- Source: <https://commons.wikimedia.org/wiki/File:COBS_encoding_process.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/e5/COBS_encoding_process.png>
+- Author: Lambtron
+- License: CC BY-SA 4.0
+- Dimensions: 1335x124
+- Split: holdout3
+- Notes: Content type diagram, drawn from the block query; mean L* 91.9, mean C* 3.3, detail 14.46.
+- Drawn as: diagram; strata: graphics, extreme-aspect
+
+### `sealed3-graphic-diagram-data-processing-flowchart-of`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Data_processing_flowchart_of_CE-4.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/0/0e/Data_processing_flowchart_of_CE-4.png>
+- Author: Jianjun Liu, Xin Ren, Wei Yan, Chunlai Li, He Zhang, Yang Jia, Xingguo Zeng, Wangli Chen, Xingye Gao, Dawei Liu, Xu Tan, Xiaoxia Zhang, Tao Ni, Hongbo Zhang, Wei Zuo, Yan Su & Weibin Wen
+- License: CC BY 4.0
+- Dimensions: 1326x819
+- Split: holdout3
+- Notes: Content type diagram, drawn from the flowchart query; mean L* 97.0, mean C* 0.1, detail 7.21.
+- Drawn as: diagram; strata: graphics
+
+### `sealed3-graphic-diagram-twins-consort-flow-diagram`
+
+- Source: <https://commons.wikimedia.org/wiki/File:TwiNS_CONSORT_Flow_Diagram_of_identical_twins_diet_trial.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/e4/TwiNS_CONSORT_Flow_Diagram_of_identical_twins_diet_trial.png>
+- Author: Authors of the study: Matthew J. Landry, PhD, RDN1,2; Catherine P. Ward, PhD, RD1; Kristen M. Cunanan, PhD3; Lindsay R. Durand, MPH, RD1; Dalia Perelman, MS, RDN1; Jennifer L. Robinson, PhD1; Tayler Hennings, MPH1; Linda Koh, PhD, MS, RN1; Christopher Dant, PhD1; Amanda Zeitlin, MPH1; Emily R. Ebel, PhD4; Erica D. Sonnenburg, PhD4; Justin L. Sonnenburg, PhD4,5,6; Christopher D. Gardner, PhD1
+- License: CC BY 4.0
+- Dimensions: 1680x1135
+- Split: holdout3
+- Notes: Content type diagram, drawn from the flowchart query; mean L* 96.0, mean C* 0.8, detail 6.93.
+- Drawn as: diagram; strata: graphics
+
+### `sealed3-graphic-map-1990-epping-forest-district`
+
+- Source: <https://commons.wikimedia.org/wiki/File:1990_Epping_Forest_District_Council_local_election_results_map_(revised).png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/3/38/1990_Epping_Forest_District_Council_local_election_results_map_%28revised%29.png>
+- Author: EppingStewart67
+- License: CC BY-SA 4.0
+- Dimensions: 3303x3130
+- Split: holdout3
+- Notes: Content type map, drawn from the election query; mean L* 83.0, mean C* 23.9, detail 6.52.
+- Drawn as: map; strata: graphics
+
+### `sealed3-graphic-map-fluchtroute-von-chris-van`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Fluchtroute_von_Chris_van_Oosterzee_1944_%E2%80%93_deutsche_Version.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/d/d4/Fluchtroute_von_Chris_van_Oosterzee_1944_%E2%80%93_deutsche_Version.png>
+- Author: Sterz
+- License: CC BY-SA 4.0
+- Dimensions: 1054x1492
+- Split: holdout3
+- Notes: Content type map, drawn from the topographic query; mean L* 77.4, mean C* 24.0, detail 7.33.
+- Drawn as: map; strata: graphics
+
+### `sealed3-graphic-map-hawaii-saare-kaart`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Hawaii_saare_kaart.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/3/3e/Hawaii_saare_kaart.png>
+- Author: Hawaii_Island_topographic_map-fr.svg: Sémhur derivative work: Pikne (talk)
+- License: CC BY-SA 3.0
+- Dimensions: 1415x1165
+- Split: holdout3
+- Notes: Content type map, drawn from the topographic query; mean L* 72.7, mean C* 18.0, detail 4.37.
+- Drawn as: map; strata: graphics
+
+### `sealed3-graphic-screenshot-discussiontools-usability-table-of`
+
+- Source: <https://commons.wikimedia.org/wiki/File:DiscussionTools_Usability_Table_of_Contents_screenshot_zh.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/d/dc/DiscussionTools_Usability_Table_of_Contents_screenshot_zh.png>
+- Author: User interface design by Jess Klein and other contributors to mw:Extension:DiscussionTools. Text primarily from the public domain source mw:Sample discussion by Whatamidoing (WMF) (originally), translated into Chinese
+- License: CC0
+- Dimensions: 726x1002
+- Split: holdout3
+- Notes: Content type screenshot, drawn from the ui query; mean L* 95.6, mean C* 1.6, detail 2.85.
+- Drawn as: screenshot; strata: graphics
+
+### `sealed3-graphic-screenshot-lingua-libre-2026-website`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Lingua_Libre_2026-Website-Topbar-Languages-Edit.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/b/b9/Lingua_Libre_2026-Website-Topbar-Languages-Edit.png>
+- Author: Yug
+- License: CC BY-SA 4.0
+- Dimensions: 1111x181
+- Split: holdout3
+- Notes: Content type screenshot, drawn from the website query; mean L* 94.2, mean C* 3.6, detail 8.77.
+- Drawn as: screenshot; strata: graphics, extreme-aspect
+
+### `sealed3-graphic-screenshot-screenshot-of-a-website`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Screenshot_of_a_website_for_public_peer_review_-_review_referencing_document_passages.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/1/1f/Screenshot_of_a_website_for_public_peer_review_-_review_referencing_document_passages.png>
+- Author: Daniel Bingham (screenshots of his FOSS website for public peer reviews)
+- License: CC BY 4.0
+- Dimensions: 1525x1408
+- Split: holdout3
+- Notes: Content type screenshot, drawn from the website query; mean L* 97.2, mean C* 0.6, detail 4.39.
+- Drawn as: screenshot; strata: graphics
+
+### `sealed3-graphic-text-cinderhill-s-people-s`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Cinderhill%27s_People%27s_Funeral_Speech.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/40/Cinderhill%27s_People%27s_Funeral_Speech.png>
+- Author: Cattrina77
+- License: CC BY-SA 3.0
+- Dimensions: 1621x1953
+- Split: holdout3
+- Notes: Content type text, drawn from the font query; mean L* 58.1, mean C* 8.7, detail 5.14.
+- Drawn as: text; strata: graphics
+
+### `sealed3-graphic-text-huxtable-typeface-sample`
+
+- Source: <https://commons.wikimedia.org/wiki/File:Huxtable_typeface_sample.png>
+- File: <https://upload.wikimedia.org/wikipedia/commons/7/79/Huxtable_typeface_sample.png>
+- Author: Raymond Larabie
+- License: Public domain
+- Dimensions: 1352x120
+- Split: holdout3
+- Notes: Content type text, drawn from the specimen query; mean L* 85.8, mean C* 0.0, detail 13.32.
+- Drawn as: text; strata: graphics, extreme-aspect

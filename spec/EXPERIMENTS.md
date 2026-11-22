@@ -2985,6 +2985,21 @@ graphics part, that no decision has read:
     candidates it passed over only for a full slot, in seeded order. The
     amendment changes no test, cut or quota, and was made with no encoder run
     on any candidate (`corpus-covariates.ts` `HOLDOUT3_AMENDMENTS`).
+- **The draw, 2026-11-22.** Re-run from the start under amendment 1, it
+  pooled the same files and took the same 87 picks as the first run, then one
+  more cut-out (`sealed3-cutout-icone-noir-pour-representer`, a
+  transparent/hard/detailed candidate passed over for a full cell). It
+  pinned 48 photographs, 24 cut-outs and 16 graphics. The strata hold
+  smartphone 16, graphics 16, alpha 24, skin 14, low-light 12 and extreme
+  aspect 16. Every source was probed present under its recorded licence
+  before pinning (`mise run corpus:licenses --probe`), and `mise run
+  selftest:metrics` checks the sizes, the strata minima, each pin's strata
+  against its recorded figures, and disjointness from every other pinned
+  image, Kodak24 included, by SHA-256 and by Commons title. The pins name
+  what the protocol admits, not what anyone chose: the skin stratum holds a
+  Moche ceramic portrait vessel and a pride of lions, the chroma floor a
+  scan whose EXIF names a flatbed scanner, and the graphics part a 1976
+  comic strip Commons records as public domain. Nothing has read the split.
 
 The alpha allocation validated emphatically on that split: SSIMULACRA2
 −307.2 → −242.7, Butteraugli 57.56 → 44.36, DSSIM 0.2319 → 0.2179, αMAE

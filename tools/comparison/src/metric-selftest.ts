@@ -151,6 +151,7 @@ import {
   graphicImagesToFetch,
 } from "./graphic-images.ts";
 import {
+  KODAK_SHA256,
   assertHoldout2Unread,
   assertHoldout3Unread,
   checkHoldout3Pins,
@@ -5490,6 +5491,84 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
     "the shipped tables' holdout3 seals, splits and draw records agree",
     shippedTables.length === 0,
     shippedTables.join(" | "),
+  );
+
+  // The shipped pins: sizes, strata, and disjointness from every other split.
+  type Pin = {
+    label: string;
+    split: string;
+    sha256: string;
+    source: string;
+    width: number;
+    height: number;
+    nonOpaqueFraction: number;
+    holdout3?: Holdout3Record | undefined;
+  };
+  const everyPin: Pin[] = [
+    ...CURATED_IMAGES.map((s) => ({ ...s, nonOpaqueFraction: 0 })),
+    ...ALPHA_IMAGES,
+    ...GRAPHIC_IMAGES.map((s) => ({ ...s, nonOpaqueFraction: 0 })),
+  ];
+  const h3 = everyPin.filter((s) => s.split === "holdout3");
+  const others = everyPin.filter((s) => s.split !== "holdout3");
+  const size = (corpus: "photo" | "alpha" | "graphic"): number =>
+    h3.filter((s) => inCorpus(s.label, corpus)).length;
+  check(
+    "holdout3 holds at least 48 photographs, 24 cut-outs and 16 graphics",
+    size("photo") >= HOLDOUT3_PROTOCOL.sizes.photo &&
+      size("alpha") >= HOLDOUT3_PROTOCOL.sizes.alpha &&
+      size("graphic") >= HOLDOUT3_PROTOCOL.sizes.graphic,
+    `${size("photo")} / ${size("alpha")} / ${size("graphic")}`,
+  );
+  const rederived = h3.filter((s) => {
+    const r = s.holdout3;
+    if (r === undefined) return true;
+    const corpus = corpora.find((c) => inCorpus(s.label, c)) ?? "photo";
+    const derived = holdout3Strata({
+      corpus,
+      width: s.width,
+      height: s.height,
+      nonOpaqueFraction: s.nonOpaqueFraction,
+      phone: r.phone,
+      meanL: r.meanL,
+      lowKey: r.lowKey,
+      skin: r.skin,
+    });
+    return derived.join(",") !== r.strata.join(",");
+  });
+  check(
+    "every holdout3 pin's recorded strata are the ones its recorded figures derive",
+    rederived.length === 0,
+    rederived.map((s) => s.label).join(", "),
+  );
+  const perStratum = HOLDOUT3_STRATA.map(
+    (st) =>
+      [st, h3.filter((s) => s.holdout3?.strata.includes(st)).length] as const,
+  );
+  check(
+    `every stratum holds at least ${HOLDOUT3_PROTOCOL.strataMin} pins`,
+    perStratum.every(([, n]) => n >= HOLDOUT3_PROTOCOL.strataMin),
+    perStratum.map(([st, n]) => `${st} ${n}`).join(", "),
+  );
+  const otherSha = new Set([...others.map((s) => s.sha256), ...KODAK_SHA256]);
+  const otherTitles = new Set(
+    others.map((s) => pinnedCommonsTitle(s.source)).filter((t) => t !== null),
+  );
+  const shaClash = h3.filter((s) => otherSha.has(s.sha256));
+  const titleClash = h3.filter((s) => {
+    const t = pinnedCommonsTitle(s.source);
+    return t === null || otherTitles.has(t);
+  });
+  const ownSha = new Set(h3.map((s) => s.sha256));
+  const ownTitles = new Set(h3.map((s) => pinnedCommonsTitle(s.source)));
+  check(
+    "holdout3 shares no image with tune, tune2, holdout or holdout2 (Kodak24 included), by SHA-256 and by Commons title, and repeats none",
+    shaClash.length === 0 &&
+      titleClash.length === 0 &&
+      ownSha.size === h3.length &&
+      ownTitles.size === h3.length,
+    [...shaClash, ...titleClash].map((s) => s.label).join(", ") ||
+      `${h3.length} pins against ${others.length} others`,
   );
 
   // The strata, from the recorded figures alone.
