@@ -1,6 +1,6 @@
 /**
  * The derivation `mise run register-verdict` prints: a frozen register entry's
- * judged comparisons, applied to its committed holdout2 results.
+ * judged comparisons, applied to its committed holdout results.
  * `spec/V0.8-DECISIONS.md` names every judged comparison and its baseline at
  * the freeze; this reads them back from `tools/comparison/results/` and
  * re-scores nothing.
@@ -21,6 +21,13 @@
  *      against the same named baselines. `arms --seed-sensitivity` cannot do
  *      this: it compares every arm with row 0 across the sweep.
  *
+ * On a holdout3 result, the stratum rule ({@link stratumRule}) also applies:
+ * a comparison that passes 1–3 overall fails if any stratum the pins record
+ * has a guard `FAIL` on its paired intervals, or a ΔE00 interval whose lower
+ * bound is above +1.0% of the stratum's incumbent mean. Condition 4 re-draws
+ * it with the rest. A holdout2 result records no strata, so C1 and C2 are
+ * unchanged by it.
+ *
  * Every result must carry the freeze's provenance — rev {@link FREEZE_REV} and
  * a clean tree — or this refuses to derive a verdict from it.
  *
@@ -33,16 +40,22 @@
  */
 
 import path from "node:path";
+import { ALPHA_IMAGES } from "./alpha-images.ts";
 import {
   type GuardVerdict,
+  type PairableRow,
   type PairedStat,
   compareArms,
   guardVerdictOnIntervals,
   pairedDeltas,
   statFor,
 } from "./arms-core.ts";
+import { HOLDOUT3_STRATA } from "./corpus.ts";
+import { GRAPHIC_IMAGES } from "./graphic-images.ts";
+import { CURATED_IMAGES } from "./natural-images.ts";
 import {
   type GuardTolerances,
+  type PerImage,
   type ResultFile,
   readResult,
 } from "./results.ts";
@@ -128,7 +141,21 @@ export interface JudgedComparison {
   atFloor: boolean;
   guards: GuardVerdict;
   medians: readonly [number, number];
-  r1: { lower3: boolean; holm: boolean; guardsOk: boolean; pass: boolean };
+  /**
+   * `strataOk`: no stratum fails the stratum rule. It holds trivially for a
+   * result that is not a holdout3 read, which records no strata.
+   */
+  r1: {
+    lower3: boolean;
+    holm: boolean;
+    guardsOk: boolean;
+    strataOk: boolean;
+    pass: boolean;
+  };
+  /** The stratum rule at the default seed; undefined unless a holdout3 result. */
+  strata: StratumRule | undefined;
+  /** Each stratum's image indices; undefined unless a holdout3 result. */
+  members: Map<string, number[]> | undefined;
   armRow: Row;
   baseRow: Row;
   tol: GuardTolerances;
@@ -207,6 +234,123 @@ export function guardsAtSeed(
   return guardVerdictOnIntervals(cmp, tol, artifactRise);
 }
 
+// ─── The stratum rule (spec/V0.8-DECISIONS.md, "The stratum rule") ─────────
+
+/**
+ * A stratum fails the arm when the lower bound of its paired ΔE00 interval
+ * (arm − incumbent) lies above this fraction of the stratum's incumbent mean.
+ */
+export const STRATUM_DE00_MARGIN = 0.01;
+
+/** One stratum of a holdout3 result, against the incumbent. */
+export interface StratumReading {
+  stratum: string;
+  /** Images of the result in the stratum. */
+  n: number;
+  /** The stratum's paired ΔE00 (arm − incumbent). */
+  deltaE: PairedStat;
+  /** The ΔE00 interval's lower bound, relative to the stratum's incumbent mean, in percent. */
+  lowerRel: number;
+  /** The guards on the stratum's paired intervals. */
+  guards: GuardVerdict;
+  /**
+   * `FAIL` when a guard is `FAIL` or the ΔE00 lower bound is above
+   * {@link STRATUM_DE00_MARGIN}; otherwise `inconclusive` when a guard is,
+   * which is reported and does not fail; otherwise `ok`.
+   */
+  verdict: GuardVerdict;
+}
+
+/** The stratum rule over one comparison: every stratum's reading, and whether any fails. */
+export interface StratumRule {
+  strata: StratumReading[];
+  fails: boolean;
+}
+
+/**
+ * The strata a holdout3 pin records, by image name (the pin's label), across
+ * the photographic, alpha and graphics tables. A name that is no holdout3 pin
+ * has none.
+ */
+export function holdout3StrataOf(name: string): readonly string[] {
+  const pin = [...CURATED_IMAGES, ...ALPHA_IMAGES, ...GRAPHIC_IMAGES].find(
+    (s) => s.label === name,
+  );
+  return pin?.holdout3?.strata ?? [];
+}
+
+/**
+ * Each stratum's image indices into `imageNames`, in the order a report lists
+ * the strata. A stratum no image falls in is left out: it is not reported.
+ */
+export function strataMembers(
+  imageNames: readonly string[],
+  strataOf: (name: string) => readonly string[] = holdout3StrataOf,
+): Map<string, number[]> {
+  const members = new Map<string, number[]>();
+  for (const stratum of HOLDOUT3_STRATA) {
+    const idx = imageNames.flatMap((name, i) =>
+      strataOf(name).includes(stratum) ? [i] : [],
+    );
+    if (idx.length > 0) members.set(stratum, idx);
+  }
+  return members;
+}
+
+const subset = (row: PairableRow, idx: readonly number[]): PairableRow => {
+  const perImage: PerImage = {};
+  for (const [key, series] of Object.entries(row.perImage) as [
+    keyof PerImage,
+    (number | null)[] | undefined,
+  ][]) {
+    if (series) perImage[key] = idx.map((i) => series[i] ?? null);
+  }
+  return { label: row.label, perImage };
+};
+
+/**
+ * The stratum rule for one arm against its incumbent: in each stratum, the
+ * guards on the stratum's paired intervals (`guardVerdictOnIntervals`, at the
+ * run's tolerances) and the paired ΔE00 interval's lower bound against
+ * {@link STRATUM_DE00_MARGIN} of the stratum's incumbent mean, drawn at
+ * `seed`. The overall rule carries the decision; this only removes an arm
+ * that passed it, and an `inconclusive` stratum does not.
+ */
+export function stratumRule(
+  arm: PairableRow,
+  base: PairableRow,
+  members: ReadonlyMap<string, readonly number[]>,
+  tol: GuardTolerances,
+  artifactRise: number | undefined,
+  seed: number = BOOTSTRAP_SEED,
+): StratumRule {
+  const strata: StratumReading[] = [];
+  for (const [stratum, idx] of members) {
+    const [cmp] = compareArms(
+      [subset(base, idx), subset(arm, idx)],
+      0,
+      BOOTSTRAP_RESAMPLES,
+      seed,
+    );
+    const deltaE = statFor(cmp, "ciede2000");
+    if (!deltaE) {
+      throw new Error(`stratum ${stratum} carries no paired ΔE00`);
+    }
+    const guards = guardVerdictOnIntervals(cmp, tol, artifactRise);
+    const lowerRel = (100 * deltaE.ci[0]) / deltaE.baseMean;
+    const worse = deltaE.ci[0] > STRATUM_DE00_MARGIN * deltaE.baseMean;
+    strata.push({
+      stratum,
+      n: idx.length,
+      deltaE,
+      lowerRel,
+      guards,
+      verdict: guards === "FAIL" || worse ? "FAIL" : guards,
+    });
+  }
+  return { strata, fails: strata.some((s) => s.verdict === "FAIL") };
+}
+
 const passes = (
   rel: number,
   delta: number,
@@ -240,6 +384,8 @@ export function deriveVerdict(
     const armRow = file.rows[ai];
     const baseRow = file.rows[bi];
     if (!armRow || !baseRow) throw new Error(`rows missing in ${name}`);
+    const members =
+      file.split === "holdout3" ? strataMembers(file.imageNames) : undefined;
     return {
       result: name,
       arm: arm.trim(),
@@ -256,6 +402,10 @@ export function deriveVerdict(
       baseRow,
       tol,
       rise,
+      members,
+      strata: members
+        ? stratumRule(armRow, baseRow, members, tol, rise)
+        : undefined,
     };
   });
 
@@ -265,6 +415,7 @@ export function deriveVerdict(
     const lower3 = l.rel <= -3;
     const significant = pHolm < 0.05 && l.stat.meanDelta < 0;
     const guardsOk = l.guards === "ok";
+    const strataOk = !l.strata?.fails;
     return {
       ...l,
       pHolm,
@@ -272,7 +423,8 @@ export function deriveVerdict(
         lower3,
         holm: significant,
         guardsOk,
-        pass: passes(l.rel, l.stat.meanDelta, pHolm, l.guards),
+        strataOk,
+        pass: passes(l.rel, l.stat.meanDelta, pHolm, l.guards) && strataOk,
       },
     };
   });
@@ -293,7 +445,12 @@ export function deriveVerdict(
     const adj = holm(ps);
     for (const [k, l] of comparisons.entries()) {
       const g = guardsAtSeed(l.armRow, l.baseRow, l.tol, l.rise, seed);
-      if (passes(l.rel, l.stat.meanDelta, adj[k] ?? 1, g) !== l.r1.pass) {
+      const strataOk = l.members
+        ? !stratumRule(l.armRow, l.baseRow, l.members, l.tol, l.rise, seed)
+            .fails
+        : true;
+      const pass = passes(l.rel, l.stat.meanDelta, adj[k] ?? 1, g) && strataOk;
+      if (pass !== l.r1.pass) {
         turned.push({ seed, arm: l.arm, base: l.base });
       }
     }

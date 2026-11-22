@@ -4117,6 +4117,8 @@ shape"`). Deviation 2 changed which check was run, and no outcome turns under
 either.
 
 Both entries are therefore `decided`. They confirm the v0.7 constants out of
-sample, and are the baseline the register's open format entries (D1–D6) are
-measured against.
+sample, and are the baseline the register's open format entries are
+measured against: D1–D6, and D8 and D9, which the register's 2026-11-22
+approval added. None of those reads `holdout2`: each reads `holdout3` once,
+overall and per stratum (`V0.8-DECISIONS.md`, "The stratum rule").
 

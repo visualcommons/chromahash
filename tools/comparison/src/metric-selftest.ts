@@ -220,7 +220,13 @@ import {
   sourceDigest,
 } from "./perf/provenance.ts";
 import { allTargets } from "./perf/targets.ts";
-import { deriveVerdict, guardsAtSeed } from "./register-verdict-core.ts";
+import {
+  deriveVerdict,
+  guardsAtSeed,
+  holdout3StrataOf,
+  strataMembers,
+  stratumRule,
+} from "./register-verdict-core.ts";
 import {
   ARTIFACT_ZERO_BASE_ALLOWANCE,
   RESULT_SCHEMA,
@@ -5300,6 +5306,38 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
     `${shippedReads.length} committed holdout3 read(s); bad: ${badReads.map((r) => r.file).join(",") || "none"}`,
   );
 
+  // The shipped register's D-entries (#131): each has exactly one status
+  // line, `open`, with `Criteria approved` dated and tied to a commit, the
+  // register table agrees with it, and the real gate refuses each one.
+  const dEntries = ["D1", "D2", "D3", "D4", "D5", "D6", "D8", "D9"];
+  const tableStatus = (id: string): string | undefined => {
+    const row = registerText.split("\n").find((l) => l.startsWith(`| ${id} |`));
+    return row?.split("|").at(-2)?.trim();
+  };
+  for (const id of dEntries) {
+    const found = registerStatus(registerText, id);
+    const section =
+      registerText
+        .split(new RegExp(`^### ${id}\\. `, "m"))[1]
+        ?.split(/^#{1,3} /m)[0] ?? "";
+    // A date, then the commit that records the approval: a SHA, or the
+    // squash commit of a numbered change.
+    const approved =
+      /- \*\*Status:\*\* open\. Criteria approved: 2026-\d\d-\d\d at /.test(
+        section,
+      ) && /2026-11-22[^.]*?at the commit of\s+#\d+\b/.test(section);
+    const refusal = thrown(() => openHoldout3(id));
+    check(
+      `the shipped register records ${id} as open with its criteria approved, its table row agrees, and the holdout3 gate refuses it`,
+      "status" in found &&
+        found.status === "open" &&
+        tableStatus(id) === "open" &&
+        approved &&
+        refusal.includes(`"${id}" as "open"`),
+      `${"status" in found ? found.status : found.error}; table ${tableStatus(id)}; approved ${approved}; ${refusal}`,
+    );
+  }
+
   // The pin tables: seal, record and split agree, in every part.
   const record: Holdout3Record = {
     drawnAs: "fixture",
@@ -6308,6 +6346,128 @@ console.log(
     "condition 4 fails a spurious rise from a zero baseline beyond the allowance",
     fromZero === "FAIL",
     fromZero,
+  );
+
+  // The stratum rule (spec/V0.8-DECISIONS.md, #131): an arm that passes
+  // overall fails on a stratum whose guard is FAIL on its intervals or whose
+  // ΔE00 interval lies above +1% of the stratum's incumbent mean; an
+  // inconclusive stratum is reported and does not fail it. 24 images: the
+  // first 16 in `skin`, the last 16 in `low-light`, so the middle 8 in both.
+  const n = 24;
+  const names = Array.from({ length: n }, (_, i) => `img${i}`);
+  const strataOfFixture = (name: string): readonly string[] => {
+    const i = Number(name.slice(3));
+    return [...(i < 16 ? ["skin"] : []), ...(i >= 8 ? ["low-light"] : [])];
+  };
+  const members = strataMembers(names, strataOfFixture);
+  check(
+    "strataMembers places each image in every stratum it records, in report order, and leaves empty strata out",
+    [...members.keys()].join(",") === "skin,low-light" &&
+      members.get("skin")?.length === 16 &&
+      members.get("low-light")?.length === 16 &&
+      members.get("low-light")?.[0] === 8,
+    JSON.stringify([...members.entries()]),
+  );
+  const series = (f: (i: number) => number): number[] =>
+    Array.from({ length: n }, (_, i) => f(i));
+  const strRow = (
+    de: (i: number) => number,
+    s2: (i: number) => number,
+  ): GuardRow =>
+    ({
+      label: "synthetic",
+      perImage: {
+        ciede2000: series(de),
+        ssimulacra2: series(s2),
+        butteraugli: series(() => 2),
+        dssim: series(() => 0.1),
+      },
+    }) as unknown as GuardRow;
+  const strTol = { ssimulacra2Drop: 1.0, relativeRise: 0.02 };
+  const baseDe = (i: number): number => 10 + (i % 5) / 10;
+  const strBase = strRow(baseDe, () => 50);
+  const better = (i: number): number => baseDe(i) * 0.95;
+  const verdicts = (r: ReturnType<typeof stratumRule>): string =>
+    r.strata.map((s) => `${s.stratum}=${s.verdict}`).join(",");
+
+  const pass = stratumRule(
+    strRow(better, () => 50),
+    strBase,
+    members,
+    strTol,
+    undefined,
+  );
+  check(
+    "stratum rule: an arm better in every stratum, guards flat, fails no stratum",
+    !pass.fails && verdicts(pass) === "skin=ok,low-light=ok",
+    verdicts(pass),
+  );
+
+  // 5% worse on ΔE00 in the images only low-light holds; skin keeps i < 8 at
+  // −5% and 8..15 at +5%, a mean of 0 whose interval does not clear +1%.
+  const worse = stratumRule(
+    strRow(
+      (i) => (i >= 8 ? baseDe(i) * 1.05 : better(i)),
+      () => 50,
+    ),
+    strBase,
+    members,
+    strTol,
+    undefined,
+  );
+  check(
+    "stratum rule: a stratum whose ΔE00 interval lies above +1% of its incumbent fails the arm, and only that stratum",
+    worse.fails &&
+      verdicts(worse) === "skin=ok,low-light=FAIL" &&
+      (worse.strata[1]?.lowerRel ?? 0) > 1,
+    `${verdicts(worse)} lower ${worse.strata.map((s) => s.lowerRel.toFixed(2)).join(",")}`,
+  );
+
+  // SSIMULACRA2 down 3 points (tolerance 1) on every low-light image.
+  const guardFail = stratumRule(
+    strRow(better, (i) => (i >= 8 ? 47 : 50)),
+    strBase,
+    members,
+    strTol,
+    undefined,
+  );
+  check(
+    "stratum rule: a stratum guard FAIL on its intervals fails the arm",
+    guardFail.fails &&
+      guardFail.strata.find((s) => s.stratum === "low-light")?.guards ===
+        "FAIL",
+    verdicts(guardFail),
+  );
+
+  // SSIMULACRA2 swinging ±4 around −1 in low-light: its interval straddles
+  // the −1.0 floor, so the guard is inconclusive, and that does not fail.
+  const unsure = stratumRule(
+    strRow(better, (i) => (i >= 8 ? (i % 2 === 0 ? 53 : 45) : 50)),
+    strBase,
+    members,
+    strTol,
+    undefined,
+  );
+  check(
+    "stratum rule: an inconclusive stratum is reported and does not fail the arm",
+    !unsure.fails &&
+      unsure.strata.find((s) => s.stratum === "low-light")?.verdict ===
+        "inconclusive",
+    verdicts(unsure),
+  );
+
+  const pinned = [...CURATED_IMAGES, ...ALPHA_IMAGES, ...GRAPHIC_IMAGES].find(
+    (s) => s.split === "holdout3" && (s.holdout3?.strata.length ?? 0) > 0,
+  );
+  check(
+    "holdout3StrataOf reads a pin's recorded strata, and none for an image that is no holdout3 pin",
+    pinned !== undefined &&
+      holdout3StrataOf(pinned.label).join(",") ===
+        pinned.holdout3?.strata.join(",") &&
+      holdout3StrataOf("kodak01").length === 0,
+    pinned
+      ? `${pinned.label}: ${holdout3StrataOf(pinned.label).join(",")}`
+      : "no pin",
   );
 }
 

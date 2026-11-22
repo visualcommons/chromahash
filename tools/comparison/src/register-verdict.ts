@@ -1,8 +1,8 @@
 /**
  * Print a frozen register entry's verdict, as `register-verdict-core.ts`
- * derives it from the committed holdout2 results: R1's conditions 1–3 for each
- * judged comparison, condition 4 across other bootstrap seeds, and C1's
- * ThumbHash admission. Re-scores nothing.
+ * derives it from the committed holdout results: R1's conditions 1–3 for each
+ * judged comparison, the stratum rule on a holdout3 result, condition 4 across
+ * other bootstrap seeds, and C1's ThumbHash admission. Re-scores nothing.
  *
  * Usage:
  *   node dist/register-verdict.js C1|C2 [--seeds N]
@@ -42,9 +42,20 @@ function main(): void {
         `    median ΔE00 ${l.medians[0].toFixed(3)} vs ${l.medians[1].toFixed(3)}\n` +
         `    R1: (1) ≥3% lower ${yes(l.r1.lower3)}  (2) Holm ${yes(l.r1.holm)}  (3) guards ok ${yes(l.r1.guardsOk)}`,
     );
+    if (l.strata) {
+      console.log(
+        `    stratum rule: ${l.strata.fails ? "a stratum fails" : "no stratum fails"}`,
+      );
+      for (const s of l.strata.strata) {
+        const sci = s.deltaE.ci.map((x) => signed(x, 3)).join(", ");
+        console.log(
+          `      ${s.stratum.padEnd(15)} n ${String(s.n).padStart(2)}  ΔE00 ${signed(s.deltaE.meanDelta, 3)} [${sci}] (lower ${signed(s.lowerRel, 2)}%)  guards (CI) ${s.guards}  ${s.verdict}`,
+        );
+      }
+    }
   }
   console.log(
-    `  ${v.comparisons.filter((l) => l.r1.pass).length} of ${v.comparisons.length} clear R1's conditions 1-3 at seed ${BOOTSTRAP_SEED}`,
+    `  ${v.comparisons.filter((l) => l.r1.pass).length} of ${v.comparisons.length} clear R1's conditions 1-3 (and the stratum rule, on holdout3) at seed ${BOOTSTRAP_SEED}`,
   );
 
   if (v.seeds.length > 0) {
