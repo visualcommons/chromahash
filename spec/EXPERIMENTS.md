@@ -3822,32 +3822,30 @@ The two thresholds in ΔE00, at the median incumbent of the same sweeps:
 | photo | 31 | 11.481 | 0.115 | 0.344 |
 | alpha | 10 | 15.689 | 0.157 | 0.471 |
 
-What it says:
+What the tables give, at α = 0.05 and power 0.8:
 
-1. **On the photographic splits, R1 is not short of power.** A true 3%
-   improvement is resolved after Holm at m = 2 for nearly every near-threshold
-   arm, at n = 31 and at n = 32 alike. What binds in R1 is its first condition,
-   the point estimate. An arm whose true improvement is exactly 3.0% has a point
-   estimate at or above 3.0% only about half the time, so R1 passes arms whose
-   true effect is comfortably above 3%, not arms at 3%.
-2. **R2's 1% margin is about the photographic median MDE.** For roughly half
-   the near-threshold photographic comparisons, a truly equal arm meets the
-   margin with probability 0.8. For the rest, an R2 entry can fail because 32
-   images cannot resolve 1%, not because the arm is worse. One percent is about
-   a tenth of a ΔE00 unit there (the table above).
-3. **The alpha holdout is the small split.** At n = 14 the near-threshold
-   median MDE is about 1.7 times the photographic one. R1's 3% is still
-   resolved for most near-threshold arms, but R2's 1% is met for only about a
-   quarter of them. The register applies R1, not R2, on the alpha split today
-   (C2, D6). An R2 rule there would need a margin nearer 2%, or it would fail
-   most arms that are in fact equal. C2's freeze judges four named
-   comparisons, so its Holm family is m = 4, larger than the m = 2 column
-   assumes, and its MDE larger with it, through z₁₋α/(2m). Its replacements were measured at effects far above either
-   threshold (§11.3's −17.10%), so that bites only on its smaller comparisons.
-4. **Read the near-threshold rows, not the all-arms rows, to plan.** The alpha
-   sweeps hold many layouts far from their incumbent, so their all-arms spread
-   is about four times the near-threshold one. Those rows bound the worst case.
-   They are not what a candidate near the threshold faces.
+1. **Photographic splits, within 3%.** The median MDE is 0.91% at n = 31 and
+   0.89% at n = 32 for m = 1, and 1.00% and 0.98% for m = 2. A 3% effect is
+   at or above the m = 2 MDE for 97% and 98% of these comparisons, and a 1%
+   effect at or above the m = 1 MDE for 56% and 57%. At the median incumbent,
+   1% is 0.115 ΔE00 and 3% is 0.344.
+2. **Alpha holdout2, within 3%.** At n = 14 the median MDE is 1.55% for m = 1
+   and 1.70% for m = 2, about 1.7 times the photographic n = 32 figure. A 3%
+   effect is at or above the m = 2 MDE for 81% of the comparisons, and a 1%
+   effect at or above the m = 1 MDE for 26%.
+3. **All arms against within 3%.** The all-arms rows are wider: on alpha
+   holdout2 the median is 6.86% against 1.55%, about four times, because the
+   alpha sweeps hold many layouts far from their incumbent.
+
+Caveats on reading them against the register:
+
+- The MDE is computed at m = 1 and m = 2 only. An entry whose Holm family is
+  larger has a larger MDE, through z₁₋α/(2m). C1 (m = 8) and C2 (m = 4),
+  whose freezes judge eight and four named comparisons, are two.
+- Power 0.8 at the MDE is the chance the Holm-adjusted test is significant. It
+  is not the chance R1 passes, because R1 also requires the point estimate to
+  be at least 3.0%, which an arm whose true effect is exactly 3.0% reaches
+  about half the time.
 
 **Assumptions.** The MDE is a normal approximation. Under the Student-t
 approximation on n − 1 df, which `mise run mde` prints beside it, the medians
@@ -3856,7 +3854,9 @@ decide on this formula. It decides on the percentile bootstrap, now at 10,000
 resamples (§13.5). That interval's standard error is the plug-in
 SD·√((n − 1)/n)/√n, narrower than the normal-theory one, so at n = 14 the
 bootstrap interval is somewhat anti-conservative, and the t figure is the
-closer guide. The images are treated as independent draws. Arms of one sweep
+closer guide. `mise run selftest:metrics` checks that width on a known sample
+of 14: the bootstrap interval comes out within 3% of the plug-in width, and
+narrower than the normal and the t intervals. The images are treated as independent draws. Arms of one sweep
 share images and an incumbent, so the comparisons above are not independent
 samples of σ, and the median and IQR describe the committed record rather than
 a population. The tune split's spread is assumed to carry over to the holdout.
