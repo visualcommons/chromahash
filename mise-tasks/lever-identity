@@ -4,10 +4,12 @@
 #
 # Usage: mise run lever-identity [--out tools/comparison/baselines/lever-identity.json]
 #
-# Encodes every fetched fixture image (sealed holdout2 photographs skipped)
+# Encodes every fetched fixture image (sealed holdout2 images skipped)
 # with every accel lever off and all seven on, at 100 px and 512 px for tier
 # codes 0-4 and at full resolution for codes 0-2, and requires identical
-# hashes and identical decoded pixels. Takes about an hour on the 7800X3D.
+# hashes and identical decoded pixels. A byte-changing negative control at
+# 100 px and 512 px must be reported as differing, or the run fails.
+# Takes about an hour on the 7800X3D.
 #
 # A file task rather than an inline one, because mise appends an inline task's
 # arguments instead of passing them as "$@".
