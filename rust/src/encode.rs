@@ -1686,13 +1686,26 @@ pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier
     if t.ac_coder != 0 {
         // Register D1: one arithmetic-coded stream in place of the fixed
         // fields, filling the rest of the shipped-size hash.
-        let l_widths: Vec<u32> = (0..l_codes.len()).map(|i| l_job.bits_at(i)).collect();
+        // The stream carries exactly the counts the decoder derives from the
+        // shape. A selection the grid cannot fill (an extreme aspect at a
+        // large count) is shorter, and its missing codes are coded as zero.
+        let l_widths: Vec<u32> = (0..shape.l_count()).map(|i| l_job.bits_at(i)).collect();
+        let pad = |codes: &[u32], n: usize, bits: &dyn Fn(usize) -> u32| -> Vec<u32> {
+            (0..n)
+                .map(|i| codes.get(i).copied().unwrap_or(center_code(bits(i))))
+                .collect()
+        };
+        let l_all = pad(&l_codes, shape.l_count(), &|i| l_widths[i]);
+        let a_all = pad(&a_codes, shape.c_count, &|_| c_bits);
+        let b_all = pad(&b_codes, shape.c_count, &|_| c_bits);
+        let alpha_n = if has_alpha { shape.alpha_ac_count } else { 0 };
+        let alpha_all = pad(&alpha_codes, alpha_n, &|_| shape.alpha_ac_bits);
         let streams = CodedAc {
-            l: (&l_codes, &l_widths),
-            a: &a_codes,
-            b: &b_codes,
+            l: (&l_all, &l_widths),
+            a: &a_all,
+            b: &b_all,
             c_bits,
-            alpha: &alpha_codes,
+            alpha: &alpha_all,
             alpha_bits: shape.alpha_ac_bits,
         };
         let (bytes, nbits) = streams.fit(body_len * 8 - bitpos);
@@ -2246,6 +2259,42 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// At an extreme aspect the candidate grid holds fewer frequencies than a
+    /// large bound asks for. The stream still carries the shape's full count
+    /// (the missing codes as zero), so encoder and decoder stay in step.
+    #[test]
+    fn coded_ac_pads_a_selection_the_grid_cannot_fill() {
+        let (w, h) = (200, 10);
+        let rgba: Vec<u8> = (0..w * h)
+            .flat_map(|i| {
+                let (x, y) = (i % w, i / w);
+                [(x * 255 / w) as u8, (y * 25) as u8, 90, 255]
+            })
+            .collect();
+        let bound = |base: usize| {
+            let mut t = coded(Tunables::DEFAULT);
+            t.layout_upper.l_tiers = [(base, 5), (0, 5)];
+            t
+        };
+        let order = SelectionOrder::new(encode_aspect(w, h), 2, 1.2, 0.15);
+        let fill = order.take(1000).coeffs.len();
+        assert!(fill < 256, "the grid must run short of both bounds: {fill}");
+        // Two bounds past the grid select the same frequencies, so with every
+        // code fitting they must render the same picture. Had the encoder
+        // coded only the selection while the decoder read the shape's count,
+        // each would read a different number of chroma codes as luma.
+        let (h64, h80) = (
+            encode_with(w, h, &rgba, Gamut::Srgb, &bound(64), 2),
+            encode_with(w, h, &rgba, Gamut::Srgb, &bound(80), 2),
+        );
+        assert_eq!(h64.len(), body_len_bytes(&Tunables::DEFAULT, false, 2));
+        assert_eq!(h80.len(), h64.len());
+        assert_eq!(
+            crate::decode::decode_with(&h64, &bound(64)),
+            crate::decode::decode_with(&h80, &bound(80))
+        );
     }
 
     #[test]
