@@ -148,6 +148,29 @@ interface SweepVariant {
   version?: string;
 }
 
+/** The byte lengths one tier's hashes must have, by alpha mode. */
+interface TierBytes {
+  opaque: number;
+  alpha: number;
+}
+
+/**
+ * The byte length `hash` must have under a per-tier `expectBytes`, read off
+ * its own alpha flag (byte 0, bit 6), or null when the config sets none.
+ */
+function expectedLength(
+  expect: SweepConfig["expectBytes"],
+  tier: number,
+  hash: Uint8Array,
+): number | null {
+  if (expect === undefined || typeof expect === "number") return null;
+  const lengths = expect[String(tier)];
+  if (!lengths) {
+    throw new Error(`expectBytes names no length for tier ${tier}`);
+  }
+  return ((hash[0] ?? 0) >> 6) & 1 ? lengths.alpha : lengths.opaque;
+}
+
 interface SweepConfig {
   name: string;
   description?: string;
@@ -239,8 +262,15 @@ interface SweepConfig {
    * silently change size and the table stops being the comparison it claims to
    * be. Declaring the budget turns that from a silent wrong answer into a
    * failed run.
+   *
+   * A config that spans tiers declares it per tier instead: a map from the
+   * tier code to the byte length of an opaque hash and of an alpha-mode one
+   * at that tier, checked image by image against the hash's own alpha flag.
+   * Every arm's tier must then be in the map. That is the only form that
+   * holds a mixed corpus to a budget: an alpha image's hash is shorter, so
+   * a mean over the corpus is neither length.
    */
-  expectBytes?: number;
+  expectBytes?: number | Record<string, TierBytes>;
   /**
    * Composite every input over the scoring backdrop and force alpha to opaque
    * before encoding, so the same pictures are measured in the format's *opaque*
@@ -541,6 +571,7 @@ async function scoreVariant(
   variant: SweepVariant,
   inputs: ImageInput[],
   versionBinaries: Map<string, string>,
+  expect?: SweepConfig["expectBytes"],
 ): Promise<SweepRow> {
   const tier = variant.tier ?? DEFAULT_TIER;
   // A tag variant runs its own binary; hashes are not portable across format
@@ -567,6 +598,12 @@ async function scoreVariant(
     const { smallWidth: w, smallHeight: h, smallRgba: rgba } = input;
     const gamut = input.gamut ?? "srgb";
     const hash = encodeViaRust(cli, w, h, rgba, gamut, tier, variant.tune);
+    const want = expectedLength(expect, tier, hash);
+    if (want !== null && hash.length !== want) {
+      throw new Error(
+        `${variant.label}: ${path.basename(input.filePath)} encodes to ${hash.length} B at tier ${tier}, not the ${want} B expectBytes declares for its alpha mode`,
+      );
+    }
     bytesSum += hash.length;
     bytes.push(hash.length);
 
@@ -875,7 +912,12 @@ async function main(): Promise<void> {
   const rows: SweepRow[] = [];
   for (const variant of config.variants) {
     const started = performance.now();
-    const row = await scoreVariant(variant, inputs, versionBinaries);
+    const row = await scoreVariant(
+      variant,
+      inputs,
+      versionBinaries,
+      config.expectBytes,
+    );
     rows.push(row);
     console.log(
       `  ${variant.label.padEnd(28)} ΔE00 ${row.meanCiede?.toFixed(3) ?? "N/A"} (${((performance.now() - started) / 1000).toFixed(0)}s)`,
@@ -884,7 +926,7 @@ async function main(): Promise<void> {
   const comparisons = applyGuards(rows, config);
 
   const expectBytes = config.expectBytes;
-  if (expectBytes !== undefined) {
+  if (typeof expectBytes === "number") {
     const off = rows.filter((r) => Math.abs(r.bytes - expectBytes) > 0.5);
     if (off.length > 0) {
       const detail = off
