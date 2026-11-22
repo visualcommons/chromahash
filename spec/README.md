@@ -5,8 +5,10 @@
 **Status:** Stable
 **Date:** 2026-09-01
 
-> **What "Stable" means here.** The wire format froze **at the 0.7.1 release**: from that
-> tag on, any change to it increments the `version` field (§2.5, §13). Every constant it
+> **What "Stable" means here.** Generation v1, first released in 0.7.1, is versioned
+> by the byte-0 `version` field, and any format change increments it (§2.5, §13). The
+> next release, v0.8, may change the format ([`V0.8-DECISIONS.md`](V0.8-DECISIONS.md)
+> Q10). Every constant v1
 > ships has evidence on a tune split (`EXPERIMENTS.md` §7–§11), except the two selection
 > weights: on the current tune corpus `ANISO_OBLIQUE = 1.2` / `SEL_HV = 0.15` are
 > indistinguishable from isotropic and `hv = 0` is ahead, so their case rested on the old
