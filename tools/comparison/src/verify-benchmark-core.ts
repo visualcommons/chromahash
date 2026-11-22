@@ -12,7 +12,13 @@
  * table bindings and the exit status stay in the CLI.
  */
 
-import { defaultMaxLoad, hostKey } from "./perf/host.ts";
+import {
+  defaultMaxLoad,
+  hostKey,
+  SUSTAINED_LOAD_FACTOR,
+  sustainedLoadBar,
+  WAIT_RULE,
+} from "./perf/host.ts";
 import { NOISY } from "./perf/probe.ts";
 
 // ─── The document, as tables ────────────────────────────────────────────────
@@ -390,6 +396,8 @@ export interface RunDoc {
     preflight?: {
       loaded?: boolean;
       maxLoad?: number;
+      /** The admission rule the driver applied (`perf/host.ts` WAIT_RULE). */
+      waitRule?: string;
       loadavgStart?: number[] | null;
       loadavgRounds?: (number[] | null)[];
       loadavgEnd?: number[] | null;
@@ -497,6 +505,12 @@ export function unreadable(doc: RunDoc): string | null {
  * to it — the start and the start of every process round — so a run that
  * started quiet and became loaded fails too. The end reading is not: it trails
  * the run's own last minutes, batch cells included.
+ *
+ * A run that records `waitRule` was admitted on sustained quiet, and each of
+ * its readings must also hold a 5-minute load under `SUSTAINED_LOAD_FACTOR`
+ * times the bar. A run that does not was admitted on the 1-minute rule alone,
+ * before the 5-minute half existed, and is held to that rule; a `waitRule`
+ * the gate does not know is a failure, not a pass.
  */
 export function loadProblem(doc: RunDoc): string | null {
   if (doc.schema !== SCHEMA) return null;
@@ -505,6 +519,10 @@ export function loadProblem(doc: RunDoc): string | null {
   if (p.loaded) {
     return "taken with --force-loaded above the load bar";
   }
+  if (p.waitRule !== undefined && p.waitRule !== WAIT_RULE) {
+    return `admitted under waitRule ${JSON.stringify(p.waitRule)}, which is not this gate's ${JSON.stringify(WAIT_RULE)}`;
+  }
+  const sustained = p.waitRule !== undefined;
   const bar = defaultMaxLoad(doc.environment.cores);
   const rounds = p.loadavgRounds ?? [];
   const processes = doc.config?.processes ?? 0;
@@ -522,6 +540,15 @@ export function loadProblem(doc: RunDoc): string | null {
     }
     if (load1 > bar) {
       return `1-minute load ${load1.toFixed(2)} at ${at}, above the bar of ${bar.toFixed(2)} for ${doc.environment.cores} threads`;
+    }
+    if (!sustained) continue;
+    const load5 = l?.[1];
+    if (load5 === undefined || !Number.isFinite(load5)) {
+      return `no 5-minute load average recorded at ${at}, though the run records waitRule`;
+    }
+    const bar5 = sustainedLoadBar(bar);
+    if (load5 >= bar5) {
+      return `5-minute load ${load5.toFixed(2)} at ${at}, not under ${bar5.toFixed(2)} (${SUSTAINED_LOAD_FACTOR}x the bar for ${doc.environment.cores} threads)`;
     }
   }
   return null;
@@ -1115,7 +1142,7 @@ export function runFailures(R: Runs): Failure[] {
   );
   add(
     "preflight.load",
-    "every round started below the load bar",
+    "every round started below the load bar (and, under waitRule, the 5-minute bar)",
     R.loadedRuns,
     (s) =>
       `${s} — so its figures are about the host's other work; re-run on a quiet host (benchmark:session waits for one)`,

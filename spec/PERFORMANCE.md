@@ -150,7 +150,15 @@ files) out of its dirty probe: an output is not a source.
 (Linux and macOS), the cpufreq governor, boost (the global switch,
 `intel_pstate/no_turbo`, or amd-pstate's per-policy `boost`) and SMT. The bar
 is a 1-minute load of one runnable task per eight hardware threads, never
-below 1. The session **waits** for the load to fall under it — after the
+below 1, **and** a 5-minute load under 1.5× that bar (`SUSTAINED_LOAD_FACTOR`
+in `perf/host.ts`; 3.0 on 16 threads). The 1-minute bar alone admitted a dip
+inside sustained load: in the 2026-10-10 overnight session every round was
+admitted at a 1-minute load of 1.86–2.0 while the 5-minute load stood at
+2.6–6.2, and 21 bound cells had one outlier process in run 1. The 5-minute
+average moves over minutes, so it rejects such a dip, and 1.5× leaves room
+for the decaying tail of the build and the previous round without demanding
+a host idle for a quarter of an hour. The session **waits** for the load to
+fall under both — after the
 build, before each sweep and **before every process round**, and before the
 stages — for up to `--load-timeout` seconds (default 1800) each time, and
 stops with what it saw if it does not. Refusing instead stopped the session at
@@ -159,16 +167,21 @@ still high after the build and after each round's `threads=auto` batch cells.
 Run alone, the driver refuses a loaded host unless given `--wait-for-load`;
 `--force-loaded` starts anyway and marks the run `loaded`. A governor other
 than `performance`, boost on and SMT on are reported, not refused — they need
-root. All of it, with `rustc --version`, the kernel, the seconds waited, and
-the load average at the start, at every process round and at the end, is
-recorded in the run's `environment.preflight`. `--pin CPULIST` runs every
+root. All of it, with `rustc --version`, the kernel, the seconds waited, the
+admission rule applied (`waitRule`), and the load average at the start, at
+every process round and at the end, is recorded in the run's
+`environment.preflight`. `--pin CPULIST` runs every
 harness under `taskset -c`.
 
 The gate does not take the driver's word for it. It recomputes the bar from
 the run's own core count — so `--max-load 50` does not move it — and holds the
 start and every round to it, so a run that started quiet and became loaded
 fails. (The end reading is recorded and not held: it trails the run's own
-batch cells.) It rejects, as a failure rather than a printed note, a `/3` run
+batch cells.) It holds the 5-minute half **only to a run that records
+`waitRule`**. A run taken before the rule, including the 2026-10-10 session's,
+was admitted on the 1-minute bar alone and is held to that alone, so its
+figures carry the weaker admission; a `waitRule` the gate does not recognise
+fails. It rejects, as a failure rather than a printed note, a `/3` run
 with fewer than four processes, an odd number, or fewer than five blocks; one
 with no git commit, digest and dirty bit; one with no preflight; and any
 `--quick` or `/1` run, under any file name.

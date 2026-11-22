@@ -20,12 +20,13 @@
  *   --reps N        timed blocks per process (default 5; 1 for --quick)
  *   --pin CPULIST   run every harness under `taskset -c CPULIST`
  *   --max-load L    refuse to start above this 1-minute load average
- *                   (default max(1, threads/8))
+ *                   (default max(1, threads/8)), or at a 5-minute load of
+ *                   1.5x it or more (host.ts SUSTAINED_LOAD_FACTOR)
  *   --force-loaded  start anyway; the run is marked loaded and the gate
  *                   refuses it as a baseline
  *   --wait-for-load [SECONDS]
- *                   instead of refusing a loaded host, wait for the 1-minute
- *                   load to fall under the bar — before the start and before
+ *                   instead of refusing a loaded host, wait for both loads to
+ *                   fall under their bars — before the start and before
  *                   every process round — for at most SECONDS (default 1800)
  *                   each time, then exit 3. Without it a round that starts
  *                   above the bar is only warned about, and the gate will
@@ -51,9 +52,11 @@ import {
   hostKey,
   machineId,
   mayStart,
+  overLoad,
   readLoadavg,
   readPreflight,
   rustcVersion,
+  sustainedLoadBar,
   waitForLoad,
 } from "./host.ts";
 import { makeFixture } from "./matrix.ts";
@@ -180,9 +183,10 @@ const waited: number[] = [];
 async function settle(at: string): Promise<ReturnType<typeof readLoadavg>> {
   if (WAIT_SECONDS === null || FORCE_LOADED) {
     const load = readLoadavg();
-    if (load !== null && load[0] > GATE_MAX_LOAD && at !== "start") {
+    const why = overLoad(load, GATE_MAX_LOAD);
+    if (why !== null && at !== "start") {
       process.stderr.write(
-        `perf: WARNING ${at} starts at a 1-minute load of ${load[0].toFixed(2)}, above the gate's ${GATE_MAX_LOAD.toFixed(2)} — verify:benchmark will refuse this run as a baseline; pass --wait-for-load\n`,
+        `perf: WARNING ${at} starts with the gate's bar crossed (${why}) — verify:benchmark will refuse this run as a baseline; pass --wait-for-load\n`,
       );
     }
     return load;
@@ -191,11 +195,11 @@ async function settle(at: string): Promise<ReturnType<typeof readLoadavg>> {
   const w = await waitForLoad({
     maxLoad: MAX_LOAD,
     timeoutMs: WAIT_SECONDS * 1000,
-    onWait: (load1, ms) => {
+    onWait: (why, _load, ms) => {
       if (ms - reported < 60_000) return;
       reported = ms;
       process.stderr.write(
-        `perf: ${at}: 1-minute load ${load1.toFixed(2)} is above ${MAX_LOAD.toFixed(2)}; waiting (${Math.round(ms / 1000)} s of at most ${WAIT_SECONDS} s)\n`,
+        `perf: ${at}: ${why}; waiting (${Math.round(ms / 1000)} s of at most ${WAIT_SECONDS} s)\n`,
       );
     },
   });
@@ -203,7 +207,7 @@ async function settle(at: string): Promise<ReturnType<typeof readLoadavg>> {
   if (!w.ok) {
     process.stderr.write(
       [
-        `perf: giving up at ${at} — the 1-minute load is still ${w.load?.[0].toFixed(2)} after ${WAIT_SECONDS} s, above ${MAX_LOAD.toFixed(2)}.`,
+        `perf: giving up at ${at} after ${WAIT_SECONDS} s — ${overLoad(w.load, MAX_LOAD) ?? "the load is still over the bar"}.`,
         "  Something else on this host is using it. Find it (`top`), or raise the",
         "  timeout with --wait-for-load SECONDS; --force-loaded measures anyway, but",
         "  verify:benchmark will not accept the run as a baseline.",
@@ -257,7 +261,7 @@ if (flag("--preflight")) {
   process.stderr.write(
     [
       `perf: preflight on ${hostKey(HOST_ENV)}`,
-      `  load average   ${show(preflight.loadavgStart?.join(" ") ?? null)} (bar ${MAX_LOAD.toFixed(2)}${waited[0] ? `, after waiting ${waited[0]} s` : ""})`,
+      `  load average   ${show(preflight.loadavgStart?.join(" ") ?? null)} (bars ${MAX_LOAD.toFixed(2)} at 1 min, under ${sustainedLoadBar(MAX_LOAD).toFixed(2)} at 5 min${waited[0] ? `, after waiting ${waited[0]} s` : ""})`,
       `  governor       ${show(preflight.governor)}`,
       `  boost          ${show(preflight.boost)}${preflight.boostSource ? ` (${preflight.boostSource})` : ""}`,
       `  SMT            ${show(preflight.smt)}`,
