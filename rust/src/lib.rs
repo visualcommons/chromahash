@@ -673,6 +673,10 @@ mod tests {
         let rgba = horizontal_gradient(w, h);
         let hash = ChromaHash::encode(w, h, &rgba, Gamut::Srgb);
         assert_eq!(hash.as_bytes().len(), 32);
+        // Header first (version 0, tier 1, opaque; aspect 4:1 → byte 191): a
+        // scrambled byte 0 can name tier 7, whose render runs for minutes, so
+        // a broken bit writer must fail here rather than time out the decode.
+        assert_eq!(hash.as_bytes()[..2], [8, 191]);
         let (dw, dh, pixels) = hash.decode();
         assert!(dw > dh, "panorama output should be wider than tall");
         assert_eq!(pixels.len(), (dw * dh * 4) as usize);

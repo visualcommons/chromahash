@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Apply a frozen register entry's judged comparisons to its committed holdout2 results"
+#MISE depends=["build:compare"]
+#
+# Usage: mise run register-verdict C1|C2
+#
+# spec/V0.8-DECISIONS.md names, at each freeze, every comparison the entry
+# judges and the baseline it is judged against. This prints R1's conditions 1-3
+# for each, with Holm across the entry's judged comparisons, and C1's ThumbHash
+# admission. Reads committed results only; re-scores nothing. Condition 4 is
+# `mise run arms --seed-sensitivity <result>`.
+#
+# A file task rather than an inline one, because mise appends an inline task's
+# arguments instead of passing them as "$@".
+set -euo pipefail
+
+node tools/comparison/dist/register-verdict.js "$@"

@@ -746,6 +746,580 @@ export const CURATED_IMAGES: NaturalImageSpec[] = [
     axis: "dense periodic man-made detail",
     notes: "landscape, mean L* 46, mean C* 46.1, detail 8.11",
   },
+  // ─── holdout2: the sealed photographic split (#76, pinned by #103) ────────
+  // Drawn on covariates alone, by the protocol #103 records, with no encoder
+  // run on any candidate. ensureNaturalImages never fetches these; only
+  // ensureHoldout2Images does, behind the register gate (holdout-images.ts).
+  // Unfetched outside that gate, they are in no tune mean (splitFor seals them).
+  {
+    label: "sealed-phone-aamsveenherfst",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/0/07/AamsveenHerfst.jpg",
+    ],
+    ext: ".jpg",
+    width: 2592,
+    height: 1936,
+    split: "holdout2",
+    sha256: "4e8e52de69d1b3f152a37cd898a0a5fbaaaed8c062f6313ed288700946e11929",
+    source: "https://commons.wikimedia.org/wiki/File%3AAamsveenHerfst.jpg",
+    author: "Pdreijnders",
+    licence: "CC BY-SA 3.0",
+    axis: "smartphone source",
+    notes: "landscape, Apple iPhone 4, mean L* 58.2, mean C* 31.5, detail 7.32",
+  },
+  {
+    label: "sealed-phone-april-at-keukenhof",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/f/f5/15_April_at_Keukenhof%2C_Lisse_%282022%29_421.jpg",
+    ],
+    ext: ".jpg",
+    width: 4032,
+    height: 2268,
+    split: "holdout2",
+    sha256: "791619f8494841d449dffbca92439d9ee8d731f1c8eea9120f43d63934a8ca8a",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3A15_April_at_Keukenhof,_Lisse_(2022)_421.jpg",
+    author: "Donald Trung Quoc Don (Chữ Hán: 徵國單) - Wikimedia Commons - ©",
+    licence: "CC BY-SA 4.0",
+    axis: "smartphone source",
+    notes:
+      "landscape, Google Pixel 4a, mean L* 49.4, mean C* 46.5, detail 16.81",
+  },
+  {
+    label: "sealed-phone-citrus-swallowtail-papilio",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/f/f5/Citrus_Swallowtail_Papilio_Demodocus_Butterfly.jpg",
+    ],
+    ext: ".jpg",
+    width: 3264,
+    height: 2448,
+    split: "holdout2",
+    sha256: "1908b2725b2fd7f08b41dbacd6c1316a4a0bf8d8f1d63b779f20f5560891025d",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3ACitrus_Swallowtail_Papilio_Demodocus_Butterfly.jpg",
+    author: "Danesman1",
+    licence: "CC BY-SA 3.0",
+    axis: "smartphone source",
+    notes:
+      "landscape, SAMSUNG GT-I9300, mean L* 41.3, mean C* 19.7, detail 8.24",
+  },
+  {
+    label: "sealed-phone-ger-by-munchen",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/0/01/GER_%E2%80%94_BY_%E2%80%94_M%C3%BCnchen_%E2%80%94_Stadtbezirk_1_%E2%80%94_Altstadt_%E2%80%94_Viktualienmarkt_8_%28F._S._Kustermann_GmbH_%E2%80%94_Warenpr%C3%A4sentation_Sieger_by_F%C3%BCrstenberg%29_2017_Mattes.jpg",
+    ],
+    ext: ".jpg",
+    width: 3264,
+    height: 1836,
+    split: "holdout2",
+    sha256: "b9c9b76da9662b7b005b7c51bd3f80e1856adda14eca08c4e43757d088c7df38",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AGER_%E2%80%94_BY_%E2%80%94_M%C3%BCnchen_%E2%80%94_Stadtbezirk_1_%E2%80%94_Altstadt_%E2%80%94_Viktualienmarkt_8_(F._S._Kustermann_GmbH_%E2%80%94_Warenpr%C3%A4sentation_Sieger_by_F%C3%BCrstenberg)_2017_Mattes.jpg",
+    author: "User:Mattes",
+    licence: "CC BY 3.0",
+    axis: "smartphone source",
+    notes:
+      "landscape, samsung SM-G920F, mean L* 51.0, mean C* 19.3, detail 8.04",
+  },
+  {
+    label: "sealed-phone-love-stadium-livebeyond",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/3/3e/%3DLOVE_STADIUM_LIVE%E3%80%8CBeyond_%22KYUN%22%E2%99%A1%E3%80%8DMUFG%E3%82%B9%E3%82%BF%E3%82%B8%E3%82%A2%E3%83%A0_2026%E5%B9%B46%E6%9C%8821%E6%97%A5%E3%81%AE%E6%9D%B1%E4%BA%AC_202606211727_IMG_2649.jpg",
+    ],
+    ext: ".jpg",
+    width: 4032,
+    height: 3024,
+    split: "holdout2",
+    sha256: "2adee09617e005c0b984af905c93b35cd55ddef3dc04879c93c44cb955784d48",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3A%3DLOVE_STADIUM_LIVE%E3%80%8CBeyond_%22KYUN%22%E2%99%A1%E3%80%8DMUFG%E3%82%B9%E3%82%BF%E3%82%B8%E3%82%A2%E3%83%A0_2026%E5%B9%B46%E6%9C%8821%E6%97%A5%E3%81%AE%E6%9D%B1%E4%BA%AC_202606211727_IMG_2649.jpg",
+    author: "ウィ貴公子",
+    licence: "CC BY-SA 4.0",
+    axis: "smartphone source",
+    notes:
+      "landscape, Apple iPhone 12 Pro, mean L* 52.1, mean C* 8.0, detail 14.26",
+  },
+  {
+    label: "sealed-phone-morag-zamek",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/3/39/Mor%C4%85g_Zamek_16.jpg",
+    ],
+    ext: ".jpg",
+    width: 4000,
+    height: 3000,
+    split: "holdout2",
+    sha256: "12e0f6736952e8449df636a69ffc520f419a91e87e3b50dc0f1b5711f4e63daa",
+    source: "https://commons.wikimedia.org/wiki/File%3AMor%C4%85g_Zamek_16.jpg",
+    author: "Zala",
+    licence: "CC BY-SA 4.0",
+    axis: "smartphone source",
+    notes:
+      "landscape, samsung SM-G998B, mean L* 51.7, mean C* 18.9, detail 15.85",
+  },
+  {
+    label: "sealed-phone-sienkiewicza-street-in",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/4/48/5_Sienkiewicza_Street_in_Prudnik%2C_2020.08.25_05.jpg",
+    ],
+    ext: ".jpg",
+    width: 3264,
+    height: 2448,
+    split: "holdout2",
+    sha256: "968abc0ecbfa23d6bc08264b0b0fc351b2baee63c9da5905930c3c6f459eb19c",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3A5_Sienkiewicza_Street_in_Prudnik,_2020.08.25_05.jpg",
+    author: "Wlodek k1",
+    licence: "CC BY 3.0",
+    axis: "smartphone source",
+    notes:
+      "landscape, Xiaomi Redmi Note 8 Pro, mean L* 44.1, mean C* 20.4, detail 18.90",
+  },
+  {
+    label: "sealed-phone-silesian-insurgents-monument",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/2/26/20230920_Silesian_Insurgents_Monument_Stara_Ligota_Katowice_08.jpg",
+    ],
+    ext: ".jpg",
+    width: 3000,
+    height: 4000,
+    split: "holdout2",
+    sha256: "b0781018a85c340f420b7f4f5d15dbe81a83f29b47bff82dbdda473ccb182775",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3A20230920_Silesian_Insurgents_Monument_Stara_Ligota_Katowice_08.jpg",
+    author: "Abraham",
+    licence: "CC BY-SA 4.0",
+    axis: "smartphone source",
+    notes: "portrait, HUAWEI MAR-LX1A, mean L* 53.3, mean C* 8.4, detail 9.35",
+  },
+  {
+    label: "sealed-phone-zhytomyr-park-plants",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/e/e0/%D0%A8%D0%B0%D0%B4%D1%83%D0%B0%D1%80%D1%96%D0%B2%D1%81%D1%8C%D0%BA%D0%B8%D0%B9_%D0%BF%D0%B0%D1%80_%D0%96%D0%B8%D1%82%D0%BE%D0%BC%D0%B8%D1%80_%D1%80%D0%BE%D1%81%D0%BB%D0%B8%D0%BD%D0%B8_08.jpg",
+    ],
+    ext: ".jpg",
+    width: 3024,
+    height: 4032,
+    split: "holdout2",
+    sha256: "3eee06313200bdf3ed22ab010b7f1a50497146183d11c4f8f8654866808b0668",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3A%D0%A8%D0%B0%D0%B4%D1%83%D0%B0%D1%80%D1%96%D0%B2%D1%81%D1%8C%D0%BA%D0%B8%D0%B9_%D0%BF%D0%B0%D1%80_%D0%96%D0%B8%D1%82%D0%BE%D0%BC%D0%B8%D1%80_%D1%80%D0%BE%D1%81%D0%BB%D0%B8%D0%BD%D0%B8_08.jpg",
+    author: "Letherian3",
+    licence: "CC BY-SA 4.0",
+    axis: "smartphone source",
+    notes:
+      "portrait, Apple iPhone 15 Pro Max, mean L* 54.5, mean C* 17.5, detail 5.08",
+  },
+  {
+    label: "sealed-night-christmas-lights-in",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/e/e3/Christmas_lights_in_Carnaby_Street%2C_London%2C_2022.jpg",
+    ],
+    ext: ".jpg",
+    width: 4032,
+    height: 3024,
+    split: "holdout2",
+    sha256: "bc4bdef5872d01f83b203920e2cb22fe50e314c84e087f368bc3a15aa8746f63",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AChristmas_lights_in_Carnaby_Street,_London,_2022.jpg",
+    author: "The wub",
+    licence: "CC BY-SA 4.0",
+    axis: "night, saturated artificial light",
+    notes:
+      "landscape, Google Pixel 4a, mean L* 17.3, mean C* 23.7, detail 10.25",
+  },
+  {
+    label: "sealed-night-neon-signs-at",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/8/8e/Neon_signs_at_night%2C_24th_October_2014.JPG",
+    ],
+    ext: ".jpg",
+    width: 2512,
+    height: 1824,
+    split: "holdout2",
+    sha256: "4fc89384c4929b875d11831c920dd51d0f7333a6545b2389d9364570d9b9ee30",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3ANeon_signs_at_night,_24th_October_2014.JPG",
+    author: "Tokumeigakarinoaoshima",
+    licence: "CC0",
+    axis: "night, saturated artificial light",
+    notes:
+      "landscape, Apple iPad Air, mean L* 23.7, mean C* 23.6, detail 10.92",
+  },
+  {
+    label: "sealed-night-save-on-meats",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/7/78/Save-On_Meats_-_Some_Pig_-_Night_Neon_on_Hastings%2C_Vancouver.jpg",
+    ],
+    ext: ".jpg",
+    width: 2560,
+    height: 1920,
+    split: "holdout2",
+    sha256: "190d91b214a0d21274d36d783036d90fb06eb7a342bfc6871df72599be8d2651",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3ASave-On_Meats_-_Some_Pig_-_Night_Neon_on_Hastings,_Vancouver.jpg",
+    author: "Mike W.",
+    licence: "CC BY-SA 2.0",
+    axis: "night, saturated artificial light",
+    notes:
+      "landscape, PENTAX Corporation PENTAX Optio WP, mean L* 21.6, mean C* 36.4, detail 3.96",
+  },
+  {
+    label: "sealed-interior-candleroom-in-serbian",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/e/e7/Candleroom_in_Serbian_orthodox_church_in_Ljubljana%2C_Slovenia.jpg",
+    ],
+    ext: ".jpg",
+    width: 4232,
+    height: 3136,
+    split: "holdout2",
+    sha256: "5d22c89506e5a65427b8f659b2d34604b00b12deb1bd0b29e7c9d64824141350",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3ACandleroom_in_Serbian_orthodox_church_in_Ljubljana,_Slovenia.jpg",
+    author: "Petar Milošević",
+    licence: "CC BY-SA 4.0",
+    axis: "warm artificial interior light",
+    notes:
+      "landscape, Panasonic DMC-G80, mean L* 18.3, mean C* 21.5, detail 3.45",
+  },
+  {
+    label: "sealed-interior-grits-bar-interior",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/8/82/Grits_Bar_Interior_New_Orleans_Jim_Beam.jpg",
+    ],
+    ext: ".jpg",
+    width: 4000,
+    height: 3000,
+    split: "holdout2",
+    sha256: "6b00a324c5002209308870871c3015e323db24ebd455ed5463e80ea4bf0cda11",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AGrits_Bar_Interior_New_Orleans_Jim_Beam.jpg",
+    author: "Infrogmation of New Orleans",
+    licence: "CC BY-SA 2.0",
+    axis: "warm artificial interior light",
+    notes:
+      "landscape, Canon Canon PowerShot SD1300 IS, mean L* 13.7, mean C* 13.7, detail 3.44",
+  },
+  {
+    label: "sealed-interior-interior-of-restaurant",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/4/4a/Interior_of_restaurant_Santa_Clara_on_an_evening_in_October_2024.jpg",
+    ],
+    ext: ".jpg",
+    width: 4608,
+    height: 3456,
+    split: "holdout2",
+    sha256: "8ce4586a83431f2479809c9c245672bfdcce0868c13c2915c82ad9284e6de1f1",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AInterior_of_restaurant_Santa_Clara_on_an_evening_in_October_2024.jpg",
+    author: "JIP",
+    licence: "CC BY-SA 4.0",
+    axis: "warm artificial interior light",
+    notes:
+      "landscape, OLYMPUS IMAGING CORP. E-M1, mean L* 36.1, mean C* 16.7, detail 5.01",
+  },
+  {
+    label: "sealed-interior-the-mind-palace",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/1/11/The_Mind_Palace_Bar_Interior.jpg",
+    ],
+    ext: ".jpg",
+    width: 7443,
+    height: 5504,
+    split: "holdout2",
+    sha256: "692f60eb76d3dd2087c986aae9458ed984349f1464aa882846820321ca6cbab7",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AThe_Mind_Palace_Bar_Interior.jpg",
+    author: "Sherlock: Escape Rooms",
+    licence: "CC0",
+    axis: "warm artificial interior light",
+    notes:
+      "landscape, NIKON CORPORATION NIKON D850, mean L* 29.1, mean C* 19.6, detail 13.89",
+  },
+  {
+    label: "sealed-chroma-canal-du-midi",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/b/bb/Canal_du_Midi%2C_Villeneuve-l%C3%A8s-B%C3%A9ziers_BW.jpg",
+    ],
+    ext: ".jpg",
+    width: 7360,
+    height: 4145,
+    split: "holdout2",
+    sha256: "06d6446cdb520e2912cce5a9de3157266b52a5e4c1b384e5491899076bc0b444",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3ACanal_du_Midi,_Villeneuve-l%C3%A8s-B%C3%A9ziers_BW.jpg",
+    author: "Christian Ferrer",
+    licence: "CC BY 4.0",
+    axis: "the chroma floor: monochrome",
+    notes:
+      "landscape, NIKON CORPORATION NIKON D810, mean L* 42.9, mean C* 0.0, detail 24.11",
+  },
+  {
+    label: "sealed-chroma-denis-mukwege-par",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/e/e1/Denis_Mukwege_par_Claude_Truong-Ngoc_novembre_2014.jpg",
+    ],
+    ext: ".jpg",
+    width: 3840,
+    height: 5760,
+    split: "holdout2",
+    sha256: "24595ae50606b79c8a9cdc484400af70663a757de3d69c4b655ba5cde322d6e6",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3ADenis_Mukwege_par_Claude_Truong-Ngoc_novembre_2014.jpg",
+    author: "Photo Claude TRUONG-NGOC",
+    licence: "CC BY-SA 3.0",
+    axis: "the chroma floor: monochrome",
+    notes:
+      "portrait, Canon Canon EOS 5D Mark III, mean L* 23.8, mean C* 0.0, detail 4.33",
+  },
+  {
+    label: "sealed-chroma-valle-de-pineta",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/8/82/Valle_de_Pineta_02.jpg",
+    ],
+    ext: ".jpg",
+    width: 4592,
+    height: 3448,
+    split: "holdout2",
+    sha256: "24a9788723f48a26bb779f6370c8983233b5251949bd7942e5ff53ed92a9b962",
+    source: "https://commons.wikimedia.org/wiki/File%3AValle_de_Pineta_02.jpg",
+    author: "Basotxerri",
+    licence: "CC BY-SA 4.0",
+    axis: "the chroma floor: monochrome",
+    notes:
+      "landscape, Panasonic DMC-GM1, mean L* 27.1, mean C* 0.0, detail 8.58",
+  },
+  {
+    label: "sealed-chroma-wandeltocht-rond-lago",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/6/64/Wandeltocht_rond_Lago_di_Pian_Pal%C3%B9_%281800_m%29._in_het_Nationaal_park_Stelvio_%28Itali%C3%AB%29._Kolkend_water_op_weg_naar_Lago_di_Pian_Pal%C3%B9.jpg",
+    ],
+    ext: ".jpg",
+    width: 5184,
+    height: 3456,
+    split: "holdout2",
+    sha256: "a582bf1e116a74afca01bee6473e30604a89c4c2e7804669ad2b2ffbbeda7907",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AWandeltocht_rond_Lago_di_Pian_Pal%C3%B9_(1800_m)._in_het_Nationaal_park_Stelvio_(Itali%C3%AB)._Kolkend_water_op_weg_naar_Lago_di_Pian_Pal%C3%B9.jpg",
+    author: "Dominicus Johannes Bergsma",
+    licence: "CC BY-SA 4.0",
+    axis: "the chroma floor: monochrome",
+    notes:
+      "landscape, Canon Canon EOS M, mean L* 46.3, mean C* 0.0, detail 9.82",
+  },
+  {
+    label: "sealed-highkey-arctic-camping-in",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/2/24/Arctic_camping_in_the_snow_%2852828251185%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 8025,
+    height: 5353,
+    split: "holdout2",
+    sha256: "a174306f42725b2badc8dc64b89c2afc6422692d291c75bb79274e86d8a88a3d",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AArctic_camping_in_the_snow_(52828251185).jpg",
+    author: "USFWSAlaska",
+    licence: "Public domain",
+    axis: "high key",
+    notes:
+      "landscape, Canon Canon EOS R5, mean L* 83.4, mean C* 8.7, detail 7.12",
+  },
+  {
+    label: "sealed-highkey-fanal-madeira-portugal",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/c/c2/Fanal_%28Madeira%2C_Portugal%29%2C_Lorbeerwald_--_2025_--_1540_%28high_key%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 6434,
+    height: 3619,
+    split: "holdout2",
+    sha256: "921b0a796e1dc281fd27a3439049d59ae4de9bd03c1c2d13803b0d9a6cf56489",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AFanal_(Madeira,_Portugal),_Lorbeerwald_--_2025_--_1540_(high_key).jpg",
+    author: "Dietmar Rabich",
+    licence: "CC BY-SA 4.0",
+    axis: "high key",
+    notes:
+      "landscape, Canon Canon EOS 5D Mark IV, mean L* 83.1, mean C* 6.8, detail 3.76",
+  },
+  {
+    label: "sealed-highkey-forks-isolated-on",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/4/4c/Forks_isolated_on_white_background_02.jpg",
+    ],
+    ext: ".jpg",
+    width: 5568,
+    height: 3712,
+    split: "holdout2",
+    sha256: "1e2c69c8fa8682693eca1c80d77cf67d3b163b52c7d07c304a76b413dd3438e6",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AForks_isolated_on_white_background_02.jpg",
+    author: "Jonatan Svensson Glad",
+    licence: "CC BY-SA 4.0",
+    axis: "high key",
+    notes:
+      "landscape, NIKON CORPORATION NIKON D500, mean L* 95.5, mean C* 0.7, detail 0.65",
+  },
+  {
+    label: "sealed-highkey-the-shops-at",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/6/6c/The_Shops_at_Midtown_Miami%2C_Miami%2C_United_States_%28Unsplash%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 5184,
+    height: 3456,
+    split: "holdout2",
+    sha256: "ea17201e0835dfd2d509e12ab6bef972958a796fc6e3b7ea3cef3253a4e24729",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AThe_Shops_at_Midtown_Miami,_Miami,_United_States_(Unsplash).jpg",
+    author: "William Stitt willpower",
+    licence: "CC0",
+    axis: "high key",
+    notes:
+      "landscape, Canon Canon EOS REBEL T5i, mean L* 81.3, mean C* 4.4, detail 5.86",
+  },
+  {
+    label: "sealed-portrait-ernest-nuamah-england",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/2/24/Ernest_Nuamah_England_v_Ghana_23_June_2026-113.jpg",
+    ],
+    ext: ".jpg",
+    width: 3333,
+    height: 5000,
+    split: "holdout2",
+    sha256: "bb4e67ad1975853e6ba562dc14471033172a7f23eb030e547e26f52efed20dae",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AErnest_Nuamah_England_v_Ghana_23_June_2026-113.jpg",
+    author: "Bryan Berlin",
+    licence: "CC BY-SA 4.0",
+    axis: "skin tone: dark",
+    notes: "portrait, SONY ILCE-7M4, mean L* 60.6, mean C* 48.8, detail 3.88",
+  },
+  {
+    label: "sealed-portrait-macharia-kamau-meets",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/8/83/Macharia_Kamau_meets_with_communities_in_Papua_New_Guinea.jpg",
+    ],
+    ext: ".jpg",
+    width: 4000,
+    height: 3000,
+    split: "holdout2",
+    sha256: "9fa6f93241bde67fc1f31e507d1ae20b8d638758c2040477fcb24245f793457e",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AMacharia_Kamau_meets_with_communities_in_Papua_New_Guinea.jpg",
+    author: "Aliceclements",
+    licence: "CC BY-SA 4.0",
+    axis: "skin tone: dark",
+    notes:
+      "landscape, Canon Canon PowerShot G16, mean L* 51.6, mean C* 10.2, detail 3.88",
+  },
+  {
+    label: "sealed-portrait-portrait-of-an",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/6/68/Portrait_of_an_old_indian_woman_%2825507743530%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 3456,
+    height: 5184,
+    split: "holdout2",
+    sha256: "4363c1be540061919c8af06e6322517e5d673c92dde17bad7e099e092cf9e62f",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3APortrait_of_an_old_indian_woman_(25507743530).jpg",
+    author: "Nithi Anand from Paris, France",
+    licence: "CC BY 2.0",
+    axis: "skin tone: medium",
+    notes:
+      "portrait, Canon Canon EOS 100D, mean L* 62.9, mean C* 35.2, detail 8.63",
+  },
+  {
+    label: "sealed-portrait-woman-with-shawl",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/7/70/Woman_with_Shawl_-_McLeod_Ganj_-_Himachal_Pradesh_-_India_%2826810940675%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 2736,
+    height: 3648,
+    split: "holdout2",
+    sha256: "6571815c71a5c865f0b6a94da6f282e13384d907eeed05060ba6c28521ceef6e",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AWoman_with_Shawl_-_McLeod_Ganj_-_Himachal_Pradesh_-_India_(26810940675).jpg",
+    author: "Adam Jones from Kelowna, BC, Canada",
+    licence: "CC BY-SA 2.0",
+    axis: "skin tone: medium",
+    notes:
+      "portrait, SONY DSC-HX400V, mean L* 48.0, mean C* 17.3, detail 10.30",
+  },
+  {
+    label: "sealed-portrait-jose-manuel-lucia",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/a/a0/Jos%C3%A9_Manuel_Luc%C3%ADa_Meg%C3%ADas.JPG",
+    ],
+    ext: ".jpg",
+    width: 3264,
+    height: 2448,
+    split: "holdout2",
+    sha256: "1fe7eefe6689131c31fa5820291effdd49bb424777f53b7007ab455d1ab1838d",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3AJos%C3%A9_Manuel_Luc%C3%ADa_Meg%C3%ADas.JPG",
+    author: "Jmlucia",
+    licence: "CC BY-SA 3.0",
+    axis: "skin tone: light",
+    notes:
+      "landscape, KONICA MINOLTA DiMAGE A200, mean L* 64.9, mean C* 13.3, detail 4.46",
+  },
+  {
+    label: "sealed-portrait-romina",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/e/e4/Romina_%2835553361002%29.jpg",
+    ],
+    ext: ".jpg",
+    width: 3254,
+    height: 4881,
+    split: "holdout2",
+    sha256: "54ba009d46a0320861bccbece6be64f58c218125c09503f40a97c001e2d05908",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3ARomina_(35553361002).jpg",
+    author: "Rodrigo Paredes from Ciudad Autónoma de Buenos Aires, Argent",
+    licence: "CC BY 2.0",
+    axis: "skin tone: light",
+    notes:
+      "portrait, Canon Canon EOS 6D, mean L* 66.8, mean C* 16.0, detail 1.71",
+  },
+  {
+    label: "sealed-natural-red-route-trail",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/2/23/Red_Route_trail%2C_Bedgebury_Forest_-_geograph.org.uk_-_5089200.jpg",
+    ],
+    ext: ".jpg",
+    width: 3000,
+    height: 4000,
+    split: "holdout2",
+    sha256: "7fac045346387e5833db490d04aa04566b7619dc6c8c513f9168bc18cba7302f",
+    source:
+      "https://commons.wikimedia.org/wiki/File%3ARed_Route_trail,_Bedgebury_Forest_-_geograph.org.uk_-_5089200.jpg",
+    author: "Oast House Archive",
+    licence: "CC BY-SA 2.0",
+    axis: "daylight outdoor",
+    notes:
+      "portrait, Canon Canon PowerShot S120, mean L* 43.4, mean C* 19.5, detail 8.47",
+  },
+  {
+    label: "sealed-natural-santa-pola",
+    urls: [
+      "https://upload.wikimedia.org/wikipedia/commons/0/0e/Santa_Pola_14.jpg",
+    ],
+    ext: ".jpg",
+    width: 4000,
+    height: 3000,
+    split: "holdout2",
+    sha256: "3d2a531f3928f504d17c3ba1333ba503c66cfb1a56302b8803632eabcdf9a15d",
+    source: "https://commons.wikimedia.org/wiki/File%3ASanta_Pola_14.jpg",
+    author: "TijsB from Utrecht, The Netherlands",
+    licence: "CC BY-SA 2.0",
+    axis: "daylight outdoor",
+    notes:
+      "landscape, Canon Canon PowerShot SX280 HS, mean L* 50.2, mean C* 16.3, detail 8.25",
+  },
 ];
 
 /** Where a curated image is cached. */

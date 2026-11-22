@@ -24,7 +24,7 @@ absolute 4-neighbour Laplacian of L\*), all measured by
 `src/corpus-covariates.ts --files` (#102).
 
 
-39 images — 31 tune, 8 tune2.
+71 images — 31 tune, 8 tune2, 32 holdout2.
 
 ### `chroma-black-and-white`
 
@@ -454,3 +454,355 @@ absolute 4-neighbour Laplacian of L\*), all measured by
 - Split: tune
 - Axis: skin tone and portrait framing
 - Notes: landscape, mean L* 50.6, mean C* 44.3, detail 5.33
+
+### `sealed-chroma-canal-du-midi`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3ACanal_du_Midi,_Villeneuve-l%C3%A8s-B%C3%A9ziers_BW.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/b/bb/Canal_du_Midi%2C_Villeneuve-l%C3%A8s-B%C3%A9ziers_BW.jpg>
+- Author: Christian Ferrer
+- License: CC BY 4.0
+- Dimensions: 7360x4145
+- Split: holdout2
+- Axis: the chroma floor: monochrome
+- Notes: landscape, NIKON CORPORATION NIKON D810, mean L* 42.9, mean C* 0.0, detail 24.11
+
+### `sealed-chroma-denis-mukwege-par`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3ADenis_Mukwege_par_Claude_Truong-Ngoc_novembre_2014.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/e1/Denis_Mukwege_par_Claude_Truong-Ngoc_novembre_2014.jpg>
+- Author: Photo Claude TRUONG-NGOC
+- License: CC BY-SA 3.0
+- Dimensions: 3840x5760
+- Split: holdout2
+- Axis: the chroma floor: monochrome
+- Notes: portrait, Canon Canon EOS 5D Mark III, mean L* 23.8, mean C* 0.0, detail 4.33
+
+### `sealed-chroma-valle-de-pineta`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AValle_de_Pineta_02.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/8/82/Valle_de_Pineta_02.jpg>
+- Author: Basotxerri
+- License: CC BY-SA 4.0
+- Dimensions: 4592x3448
+- Split: holdout2
+- Axis: the chroma floor: monochrome
+- Notes: landscape, Panasonic DMC-GM1, mean L* 27.1, mean C* 0.0, detail 8.58
+
+### `sealed-chroma-wandeltocht-rond-lago`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AWandeltocht_rond_Lago_di_Pian_Pal%C3%B9_(1800_m)._in_het_Nationaal_park_Stelvio_(Itali%C3%AB)._Kolkend_water_op_weg_naar_Lago_di_Pian_Pal%C3%B9.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/64/Wandeltocht_rond_Lago_di_Pian_Pal%C3%B9_%281800_m%29._in_het_Nationaal_park_Stelvio_%28Itali%C3%AB%29._Kolkend_water_op_weg_naar_Lago_di_Pian_Pal%C3%B9.jpg>
+- Author: Dominicus Johannes Bergsma
+- License: CC BY-SA 4.0
+- Dimensions: 5184x3456
+- Split: holdout2
+- Axis: the chroma floor: monochrome
+- Notes: landscape, Canon Canon EOS M, mean L* 46.3, mean C* 0.0, detail 9.82
+
+### `sealed-highkey-arctic-camping-in`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AArctic_camping_in_the_snow_(52828251185).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/2/24/Arctic_camping_in_the_snow_%2852828251185%29.jpg>
+- Author: USFWSAlaska
+- License: Public domain
+- Dimensions: 8025x5353
+- Split: holdout2
+- Axis: high key
+- Notes: landscape, Canon Canon EOS R5, mean L* 83.4, mean C* 8.7, detail 7.12
+
+### `sealed-highkey-fanal-madeira-portugal`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AFanal_(Madeira,_Portugal),_Lorbeerwald_--_2025_--_1540_(high_key).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/c/c2/Fanal_%28Madeira%2C_Portugal%29%2C_Lorbeerwald_--_2025_--_1540_%28high_key%29.jpg>
+- Author: Dietmar Rabich
+- License: CC BY-SA 4.0
+- Dimensions: 6434x3619
+- Split: holdout2
+- Axis: high key
+- Notes: landscape, Canon Canon EOS 5D Mark IV, mean L* 83.1, mean C* 6.8, detail 3.76
+
+### `sealed-highkey-forks-isolated-on`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AForks_isolated_on_white_background_02.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/4c/Forks_isolated_on_white_background_02.jpg>
+- Author: Jonatan Svensson Glad
+- License: CC BY-SA 4.0
+- Dimensions: 5568x3712
+- Split: holdout2
+- Axis: high key
+- Notes: landscape, NIKON CORPORATION NIKON D500, mean L* 95.5, mean C* 0.7, detail 0.65
+
+### `sealed-highkey-the-shops-at`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AThe_Shops_at_Midtown_Miami,_Miami,_United_States_(Unsplash).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/6c/The_Shops_at_Midtown_Miami%2C_Miami%2C_United_States_%28Unsplash%29.jpg>
+- Author: William Stitt willpower
+- License: CC0
+- Dimensions: 5184x3456
+- Split: holdout2
+- Axis: high key
+- Notes: landscape, Canon Canon EOS REBEL T5i, mean L* 81.3, mean C* 4.4, detail 5.86
+
+### `sealed-interior-candleroom-in-serbian`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3ACandleroom_in_Serbian_orthodox_church_in_Ljubljana,_Slovenia.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/e7/Candleroom_in_Serbian_orthodox_church_in_Ljubljana%2C_Slovenia.jpg>
+- Author: Petar Milošević
+- License: CC BY-SA 4.0
+- Dimensions: 4232x3136
+- Split: holdout2
+- Axis: warm artificial interior light
+- Notes: landscape, Panasonic DMC-G80, mean L* 18.3, mean C* 21.5, detail 3.45
+
+### `sealed-interior-grits-bar-interior`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AGrits_Bar_Interior_New_Orleans_Jim_Beam.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/8/82/Grits_Bar_Interior_New_Orleans_Jim_Beam.jpg>
+- Author: Infrogmation of New Orleans
+- License: CC BY-SA 2.0
+- Dimensions: 4000x3000
+- Split: holdout2
+- Axis: warm artificial interior light
+- Notes: landscape, Canon Canon PowerShot SD1300 IS, mean L* 13.7, mean C* 13.7, detail 3.44
+
+### `sealed-interior-interior-of-restaurant`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AInterior_of_restaurant_Santa_Clara_on_an_evening_in_October_2024.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/4a/Interior_of_restaurant_Santa_Clara_on_an_evening_in_October_2024.jpg>
+- Author: JIP
+- License: CC BY-SA 4.0
+- Dimensions: 4608x3456
+- Split: holdout2
+- Axis: warm artificial interior light
+- Notes: landscape, OLYMPUS IMAGING CORP. E-M1, mean L* 36.1, mean C* 16.7, detail 5.01
+
+### `sealed-interior-the-mind-palace`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AThe_Mind_Palace_Bar_Interior.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/1/11/The_Mind_Palace_Bar_Interior.jpg>
+- Author: Sherlock: Escape Rooms
+- License: CC0
+- Dimensions: 7443x5504
+- Split: holdout2
+- Axis: warm artificial interior light
+- Notes: landscape, NIKON CORPORATION NIKON D850, mean L* 29.1, mean C* 19.6, detail 13.89
+
+### `sealed-natural-red-route-trail`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3ARed_Route_trail,_Bedgebury_Forest_-_geograph.org.uk_-_5089200.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/2/23/Red_Route_trail%2C_Bedgebury_Forest_-_geograph.org.uk_-_5089200.jpg>
+- Author: Oast House Archive
+- License: CC BY-SA 2.0
+- Dimensions: 3000x4000
+- Split: holdout2
+- Axis: daylight outdoor
+- Notes: portrait, Canon Canon PowerShot S120, mean L* 43.4, mean C* 19.5, detail 8.47
+
+### `sealed-natural-santa-pola`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3ASanta_Pola_14.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/0/0e/Santa_Pola_14.jpg>
+- Author: TijsB from Utrecht, The Netherlands
+- License: CC BY-SA 2.0
+- Dimensions: 4000x3000
+- Split: holdout2
+- Axis: daylight outdoor
+- Notes: landscape, Canon Canon PowerShot SX280 HS, mean L* 50.2, mean C* 16.3, detail 8.25
+
+### `sealed-night-christmas-lights-in`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AChristmas_lights_in_Carnaby_Street,_London,_2022.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/e3/Christmas_lights_in_Carnaby_Street%2C_London%2C_2022.jpg>
+- Author: The wub
+- License: CC BY-SA 4.0
+- Dimensions: 4032x3024
+- Split: holdout2
+- Axis: night, saturated artificial light
+- Notes: landscape, Google Pixel 4a, mean L* 17.3, mean C* 23.7, detail 10.25
+
+### `sealed-night-neon-signs-at`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3ANeon_signs_at_night,_24th_October_2014.JPG>
+- File: <https://upload.wikimedia.org/wikipedia/commons/8/8e/Neon_signs_at_night%2C_24th_October_2014.JPG>
+- Author: Tokumeigakarinoaoshima
+- License: CC0
+- Dimensions: 2512x1824
+- Split: holdout2
+- Axis: night, saturated artificial light
+- Notes: landscape, Apple iPad Air, mean L* 23.7, mean C* 23.6, detail 10.92
+
+### `sealed-night-save-on-meats`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3ASave-On_Meats_-_Some_Pig_-_Night_Neon_on_Hastings,_Vancouver.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/7/78/Save-On_Meats_-_Some_Pig_-_Night_Neon_on_Hastings%2C_Vancouver.jpg>
+- Author: Mike W.
+- License: CC BY-SA 2.0
+- Dimensions: 2560x1920
+- Split: holdout2
+- Axis: night, saturated artificial light
+- Notes: landscape, PENTAX Corporation PENTAX Optio WP, mean L* 21.6, mean C* 36.4, detail 3.96
+
+### `sealed-phone-aamsveenherfst`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AAamsveenHerfst.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/0/07/AamsveenHerfst.jpg>
+- Author: Pdreijnders
+- License: CC BY-SA 3.0
+- Dimensions: 2592x1936
+- Split: holdout2
+- Axis: smartphone source
+- Notes: landscape, Apple iPhone 4, mean L* 58.2, mean C* 31.5, detail 7.32
+
+### `sealed-phone-april-at-keukenhof`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3A15_April_at_Keukenhof,_Lisse_(2022)_421.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/f/f5/15_April_at_Keukenhof%2C_Lisse_%282022%29_421.jpg>
+- Author: Donald Trung Quoc Don (Chữ Hán: 徵國單) - Wikimedia Commons - ©
+- License: CC BY-SA 4.0
+- Dimensions: 4032x2268
+- Split: holdout2
+- Axis: smartphone source
+- Notes: landscape, Google Pixel 4a, mean L* 49.4, mean C* 46.5, detail 16.81
+
+### `sealed-phone-citrus-swallowtail-papilio`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3ACitrus_Swallowtail_Papilio_Demodocus_Butterfly.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/f/f5/Citrus_Swallowtail_Papilio_Demodocus_Butterfly.jpg>
+- Author: Danesman1
+- License: CC BY-SA 3.0
+- Dimensions: 3264x2448
+- Split: holdout2
+- Axis: smartphone source
+- Notes: landscape, SAMSUNG GT-I9300, mean L* 41.3, mean C* 19.7, detail 8.24
+
+### `sealed-phone-ger-by-munchen`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AGER_%E2%80%94_BY_%E2%80%94_M%C3%BCnchen_%E2%80%94_Stadtbezirk_1_%E2%80%94_Altstadt_%E2%80%94_Viktualienmarkt_8_(F._S._Kustermann_GmbH_%E2%80%94_Warenpr%C3%A4sentation_Sieger_by_F%C3%BCrstenberg)_2017_Mattes.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/0/01/GER_%E2%80%94_BY_%E2%80%94_M%C3%BCnchen_%E2%80%94_Stadtbezirk_1_%E2%80%94_Altstadt_%E2%80%94_Viktualienmarkt_8_%28F._S._Kustermann_GmbH_%E2%80%94_Warenpr%C3%A4sentation_Sieger_by_F%C3%BCrstenberg%29_2017_Mattes.jpg>
+- Author: User:Mattes
+- License: CC BY 3.0
+- Dimensions: 3264x1836
+- Split: holdout2
+- Axis: smartphone source
+- Notes: landscape, samsung SM-G920F, mean L* 51.0, mean C* 19.3, detail 8.04
+
+### `sealed-phone-love-stadium-livebeyond`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3A%3DLOVE_STADIUM_LIVE%E3%80%8CBeyond_%22KYUN%22%E2%99%A1%E3%80%8DMUFG%E3%82%B9%E3%82%BF%E3%82%B8%E3%82%A2%E3%83%A0_2026%E5%B9%B46%E6%9C%8821%E6%97%A5%E3%81%AE%E6%9D%B1%E4%BA%AC_202606211727_IMG_2649.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/3/3e/%3DLOVE_STADIUM_LIVE%E3%80%8CBeyond_%22KYUN%22%E2%99%A1%E3%80%8DMUFG%E3%82%B9%E3%82%BF%E3%82%B8%E3%82%A2%E3%83%A0_2026%E5%B9%B46%E6%9C%8821%E6%97%A5%E3%81%AE%E6%9D%B1%E4%BA%AC_202606211727_IMG_2649.jpg>
+- Author: ウィ貴公子
+- License: CC BY-SA 4.0
+- Dimensions: 4032x3024
+- Split: holdout2
+- Axis: smartphone source
+- Notes: landscape, Apple iPhone 12 Pro, mean L* 52.1, mean C* 8.0, detail 14.26
+
+### `sealed-phone-morag-zamek`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AMor%C4%85g_Zamek_16.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/3/39/Mor%C4%85g_Zamek_16.jpg>
+- Author: Zala
+- License: CC BY-SA 4.0
+- Dimensions: 4000x3000
+- Split: holdout2
+- Axis: smartphone source
+- Notes: landscape, samsung SM-G998B, mean L* 51.7, mean C* 18.9, detail 15.85
+
+### `sealed-phone-sienkiewicza-street-in`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3A5_Sienkiewicza_Street_in_Prudnik,_2020.08.25_05.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/4/48/5_Sienkiewicza_Street_in_Prudnik%2C_2020.08.25_05.jpg>
+- Author: Wlodek k1
+- License: CC BY 3.0
+- Dimensions: 3264x2448
+- Split: holdout2
+- Axis: smartphone source
+- Notes: landscape, Xiaomi Redmi Note 8 Pro, mean L* 44.1, mean C* 20.4, detail 18.90
+
+### `sealed-phone-silesian-insurgents-monument`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3A20230920_Silesian_Insurgents_Monument_Stara_Ligota_Katowice_08.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/2/26/20230920_Silesian_Insurgents_Monument_Stara_Ligota_Katowice_08.jpg>
+- Author: Abraham
+- License: CC BY-SA 4.0
+- Dimensions: 3000x4000
+- Split: holdout2
+- Axis: smartphone source
+- Notes: portrait, HUAWEI MAR-LX1A, mean L* 53.3, mean C* 8.4, detail 9.35
+
+### `sealed-phone-zhytomyr-park-plants`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3A%D0%A8%D0%B0%D0%B4%D1%83%D0%B0%D1%80%D1%96%D0%B2%D1%81%D1%8C%D0%BA%D0%B8%D0%B9_%D0%BF%D0%B0%D1%80_%D0%96%D0%B8%D1%82%D0%BE%D0%BC%D0%B8%D1%80_%D1%80%D0%BE%D1%81%D0%BB%D0%B8%D0%BD%D0%B8_08.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/e0/%D0%A8%D0%B0%D0%B4%D1%83%D0%B0%D1%80%D1%96%D0%B2%D1%81%D1%8C%D0%BA%D0%B8%D0%B9_%D0%BF%D0%B0%D1%80_%D0%96%D0%B8%D1%82%D0%BE%D0%BC%D0%B8%D1%80_%D1%80%D0%BE%D1%81%D0%BB%D0%B8%D0%BD%D0%B8_08.jpg>
+- Author: Letherian3
+- License: CC BY-SA 4.0
+- Dimensions: 3024x4032
+- Split: holdout2
+- Axis: smartphone source
+- Notes: portrait, Apple iPhone 15 Pro Max, mean L* 54.5, mean C* 17.5, detail 5.08
+
+### `sealed-portrait-ernest-nuamah-england`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AErnest_Nuamah_England_v_Ghana_23_June_2026-113.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/2/24/Ernest_Nuamah_England_v_Ghana_23_June_2026-113.jpg>
+- Author: Bryan Berlin
+- License: CC BY-SA 4.0
+- Dimensions: 3333x5000
+- Split: holdout2
+- Axis: skin tone: dark
+- Notes: portrait, SONY ILCE-7M4, mean L* 60.6, mean C* 48.8, detail 3.88
+
+### `sealed-portrait-jose-manuel-lucia`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AJos%C3%A9_Manuel_Luc%C3%ADa_Meg%C3%ADas.JPG>
+- File: <https://upload.wikimedia.org/wikipedia/commons/a/a0/Jos%C3%A9_Manuel_Luc%C3%ADa_Meg%C3%ADas.JPG>
+- Author: Jmlucia
+- License: CC BY-SA 3.0
+- Dimensions: 3264x2448
+- Split: holdout2
+- Axis: skin tone: light
+- Notes: landscape, KONICA MINOLTA DiMAGE A200, mean L* 64.9, mean C* 13.3, detail 4.46
+
+### `sealed-portrait-macharia-kamau-meets`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AMacharia_Kamau_meets_with_communities_in_Papua_New_Guinea.jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/8/83/Macharia_Kamau_meets_with_communities_in_Papua_New_Guinea.jpg>
+- Author: Aliceclements
+- License: CC BY-SA 4.0
+- Dimensions: 4000x3000
+- Split: holdout2
+- Axis: skin tone: dark
+- Notes: landscape, Canon Canon PowerShot G16, mean L* 51.6, mean C* 10.2, detail 3.88
+
+### `sealed-portrait-portrait-of-an`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3APortrait_of_an_old_indian_woman_(25507743530).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/6/68/Portrait_of_an_old_indian_woman_%2825507743530%29.jpg>
+- Author: Nithi Anand from Paris, France
+- License: CC BY 2.0
+- Dimensions: 3456x5184
+- Split: holdout2
+- Axis: skin tone: medium
+- Notes: portrait, Canon Canon EOS 100D, mean L* 62.9, mean C* 35.2, detail 8.63
+
+### `sealed-portrait-romina`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3ARomina_(35553361002).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/e/e4/Romina_%2835553361002%29.jpg>
+- Author: Rodrigo Paredes from Ciudad Autónoma de Buenos Aires, Argent
+- License: CC BY 2.0
+- Dimensions: 3254x4881
+- Split: holdout2
+- Axis: skin tone: light
+- Notes: portrait, Canon Canon EOS 6D, mean L* 66.8, mean C* 16.0, detail 1.71
+
+### `sealed-portrait-woman-with-shawl`
+
+- Source: <https://commons.wikimedia.org/wiki/File%3AWoman_with_Shawl_-_McLeod_Ganj_-_Himachal_Pradesh_-_India_(26810940675).jpg>
+- File: <https://upload.wikimedia.org/wikipedia/commons/7/70/Woman_with_Shawl_-_McLeod_Ganj_-_Himachal_Pradesh_-_India_%2826810940675%29.jpg>
+- Author: Adam Jones from Kelowna, BC, Canada
+- License: CC BY-SA 2.0
+- Dimensions: 2736x3648
+- Split: holdout2
+- Axis: skin tone: medium
+- Notes: portrait, SONY DSC-HX400V, mean L* 48.0, mean C* 17.3, detail 10.30

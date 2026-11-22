@@ -164,7 +164,8 @@ pub const LAYOUT_B: AcLayout = AcLayout {
 /// Layout T0: the **v1 default-tier layout** (the shipped default at code 1). At a
 /// 32-byte budget the AC payload is 202 bits, and spending it on 28 luma
 /// coefficients at 4 bits plus 15 chroma at 3 beats the 26@5 / 9@4 split of
-/// [`LAYOUT_B`] by 2.09% mean ΔE00 on the never-tuned holdout split, with
+/// [`LAYOUT_B`] by 2.09% mean ΔE00 on the old photographic holdout (since spent,
+/// spec/EXPERIMENTS.md §11.12), with
 /// SSIMULACRA2, Butteraugli and DSSIM all improving (spec/EXPERIMENTS.md §4.5;
 /// the 3.5% this comment used to quote was the whole v0.7 recipe, not the
 /// layout alone, and §8.3 is where that recipe is measured).
@@ -179,7 +180,9 @@ pub const LAYOUT_B: AcLayout = AcLayout {
 /// ΔE00 on the alpha tune corpus, where every one of its 16 images improves. That
 /// is in-sample evidence. The never-tuned alpha holdout that put it at −16.2% mean
 /// ΔE00 has been retired (one of its images was deleted from Wikimedia Commons), so
-/// that figure can no longer be reproduced (§11.12). The alpha row's budget:
+/// that figure can no longer be reproduced (§11.12). Its replacement, the sealed
+/// alpha holdout v2, confirms the row out of sample at −13.66% (§13.7, register
+/// C2). The alpha row's budget:
 /// alpha = 54 + 9 + 22·4 L + 2·3·3 chroma + 28·3 alpha = 253 bits.
 pub const LAYOUT_T0: AcLayout = AcLayout {
     l_tiers: [(28, 4), (0, 4)],
@@ -640,7 +643,8 @@ impl Tunables {
     /// taper is inert on every column — EXPERIMENTS.md §12.2. The window stays
     /// off on the trade it makes, not on which channel it acts on.)
     ///
-    /// New in v1, and validated together on the never-tuned holdout split at
+    /// New in v1, and validated together on the old photographic holdout (since
+    /// spent, EXPERIMENTS.md §11.12) at
     /// −3.72% mean ΔE00 with SSIMULACRA2, Butteraugli and DSSIM all improving
     /// (EXPERIMENTS.md §7.12, §8):
     ///
