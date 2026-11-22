@@ -2524,6 +2524,15 @@ mod tests {
                     1,
                     "tier {tier} alpha {alpha}"
                 );
+                // Behind the flag is the coded stream one bit short of the
+                // hash, and the decoder drops the flag at the right bit.
+                let plain = Tunables { ac_coder: 1, ..big };
+                let (inner, _) = encode_parts(w, h, &smooth, Gamut::Srgb, &plain, tier, 1, false);
+                assert_eq!(
+                    crate::decode::decode_with(&hash, &big),
+                    crate::decode::decode_with(&inner, &plain),
+                    "tier {tier} alpha {alpha}"
+                );
                 let fixed = encode_with(w, h, &smooth, Gamut::Srgb, &Tunables::DEFAULT, tier);
                 assert_ne!(
                     crate::decode::decode_with(&hash, &big),
@@ -2621,6 +2630,19 @@ mod tests {
                 body_len_bytes(&Tunables::DEFAULT, false, tier),
                 "a 3-bit wider field moves the length at code {tier}"
             );
+        }
+        // Codes 0 and 1 read their own rows: a coded hash with those rows
+        // resized is still the shipped length.
+        let mut rows = coded(Tunables::DEFAULT);
+        rows.layout.l_tiers = [(40, 4), (0, 4)];
+        rows.layout_compact.l_tiers = [(30, 4), (0, 4)];
+        for alpha in [false, true] {
+            for tier in [0, DEFAULT_TIER] {
+                assert_eq!(
+                    body_len_bytes(&rows, alpha, tier),
+                    body_len_bytes(&Tunables::DEFAULT, alpha, tier)
+                );
+            }
         }
         // White noise at the shipped bound keeps the fixed fields (see the
         // adaptive test above), here under a non-default luma µ.

@@ -678,6 +678,13 @@ mod tests {
         assert_eq!(zero.finish(), (vec![0b100], 3));
         // And an empty stream is the termination alone: 0 then 1.
         assert_eq!(ArithEncoder::new().finish(), (vec![0b10], 2));
+        // With `low` at a quarter the termination is 1 then the pending 0,
+        // and the strip drops that 0: one bit is left.
+        let upper = ArithEncoder {
+            low: QUARTER,
+            ..ArithEncoder::new()
+        };
+        assert_eq!(upper.finish(), (vec![0b1], 1));
     }
 
     /// The bands are normative context labels, so their values are pinned,
