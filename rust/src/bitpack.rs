@@ -685,6 +685,53 @@ mod tests {
         assert!(ArithDecoder::new(&data, 0, 32).decode_bypass());
     }
 
+    /// The renormalisation's boundaries, on states built to land on them: a
+    /// decision that leaves `high` exactly at a half, or exactly at three
+    /// quarters with `low` at a quarter. Neither ever arises by chance in 32
+    /// bits, and each is where `<` and `<=` part. Encoder and decoder are
+    /// checked from the same state.
+    #[test]
+    fn renormalisation_takes_each_boundary_the_documented_way() {
+        let encoder = |low: u64, high: u64| ArithEncoder {
+            low,
+            high,
+            pending: 0,
+            out: Vec::new(),
+            nbits: 0,
+        };
+        let decoder = |low: u64, high: u64| ArithDecoder {
+            data: &[],
+            pos: 0,
+            end: 0,
+            low,
+            high,
+            value: low,
+        };
+        // [Q, 3Q + 1] at even odds splits at exactly a half. The zero branch
+        // ends there: `high < HALF` is false, so it is the underflow case,
+        // not an emitted zero.
+        let (low, high) = (QUARTER, THREE_QUARTERS + 1);
+        let mut e = encoder(low, high);
+        e.encode_p(false, 2048);
+        assert_eq!((e.low, e.high, e.pending, e.nbits), (0, HALF + 1, 1, 0));
+        let mut d = decoder(low, high);
+        assert!(!d.decode_p(2048));
+        assert_eq!((d.low, d.high), (0, HALF + 1));
+
+        // [Q, Q + 2863311531] at P(0) = 3/4 splits at exactly three
+        // quarters: `high < 3Q` is false, so nothing renormalises.
+        let (low, high) = (QUARTER, QUARTER + 2_863_311_531);
+        let mut e = encoder(low, high);
+        e.encode_p(false, 3072);
+        assert_eq!(
+            (e.low, e.high, e.pending, e.nbits),
+            (QUARTER, THREE_QUARTERS, 0, 0)
+        );
+        let mut d = decoder(low, high);
+        assert!(!d.decode_p(3072));
+        assert_eq!((d.low, d.high), (QUARTER, THREE_QUARTERS));
+    }
+
     const GOLDEN_STREAM_BITS: usize = 305;
     const GOLDEN_STREAM: [u8; 39] = [
         88, 75, 12, 105, 141, 43, 60, 172, 254, 195, 136, 104, 131, 132, 230, 2, 179, 221, 92, 196,
