@@ -74,7 +74,13 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
@@ -84,29 +90,49 @@ import {
   ALPHA_IMAGES,
   type AlphaImageSpec,
   alphaHoldout2Specs,
+  alphaHoldout3Specs,
   alphaImagesToFetch,
 } from "./alpha-images.ts";
 import { compareArms, guardVerdictOnIntervals } from "./arms-core.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
 import {
   type CommonsFacts,
+  HOLDOUT3_DRAW,
+  SKIN_REGION,
   admit,
+  alphaCell,
   alphaFractions,
   covariatesOf,
+  exifCamera,
+  holdout3Admission,
+  holdout3Label,
+  holdout3OrderKey,
+  inSkinRegion,
   isFreeLicence,
+  isPhoneCamera,
   measureFile,
+  pinnedCommonsTitle,
   sha1Mismatch,
   silhouetteOf,
+  skinBand,
   srgbToLab,
 } from "./corpus-covariates.ts";
 import {
   ALPHA_HOLDOUT2_PREFIX,
+  ALPHA_HOLDOUT3_PREFIX,
+  GRAPHIC_HOLDOUT3_PREFIX,
   HOLDOUT2_ALL_REFUSED,
   HOLDOUT2_PREFIX,
+  HOLDOUT3_PREFIX,
+  HOLDOUT3_PROTOCOL,
+  HOLDOUT3_STRATA,
+  type Holdout3Record,
   PHOTO_HOLDOUT_RETIRED,
   assertHoldout2Corpus,
+  holdout3Strata,
   inCorpus,
   inSplit,
+  isSealed,
   parseScratchPhotoSplit,
   parseSplit,
   partitionSealed,
@@ -119,10 +145,22 @@ import {
   tableRegisterProblems,
 } from "./experiments-register.ts";
 import {
+  type GraphicImageSpec,
+  GRAPHIC_IMAGES,
+  graphicHoldout3Specs,
+  graphicImagesToFetch,
+} from "./graphic-images.ts";
+import {
   assertHoldout2Unread,
+  assertHoldout3Unread,
+  checkHoldout3Pins,
   ensureHoldout2Images,
+  ensureHoldout3Images,
   holdout2Specs,
+  holdout3Reads,
+  holdout3Specs,
   openHoldout2,
+  openHoldout3,
   registerStatus,
 } from "./holdout-images.ts";
 import {
@@ -4462,8 +4500,8 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
   );
   check(
     "an unknown --split is refused, not defaulted",
-    thrown(() => parseSplit("holdout3", true)).startsWith("unknown --split"),
-    thrown(() => parseSplit("holdout3", true)),
+    thrown(() => parseSplit("holdout9", true)).startsWith("unknown --split"),
+    thrown(() => parseSplit("holdout9", true)),
   );
 
   // The seal: by prefix, out of "all", out of every scratch tool.
@@ -4994,8 +5032,12 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
     author: "fixture",
     make: null,
     model: null,
+    software: null,
     dateTimeOriginal: null,
     categories: [],
+    width: 4000,
+    height: 3000,
+    size: 5_000_000,
   };
   const reason = (f: CommonsFacts | string | undefined): string => {
     const a = admit(f);
@@ -5039,6 +5081,682 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
     "the shipped pin table's prefixes and splits agree",
     shipped === "",
     shipped || `${holdout2Specs().length} holdout2 pin(s)`,
+  );
+  rmSync(dir, { recursive: true, force: true });
+}
+
+// --- holdout3: the third sealed split (#129) --------------------------------
+//
+// The seal, the gate (one read per register entry and tool), the fetchers,
+// the strata, and the covariates and protocol the draw ran on. Like holdout2's
+// block, every refusal is driven from fixtures, without the network.
+{
+  console.log("\nholdout3 — the seal, the gate, the strata and the draw:");
+
+  const thrown = (f: () => unknown): string => {
+    try {
+      f();
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    return "";
+  };
+  const rejected = async (f: () => Promise<unknown>): Promise<string> => {
+    try {
+      await f();
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    return "";
+  };
+  const corpora = ["photo", "alpha", "graphic"] as const;
+
+  // The seal: by prefix, one corpus each, out of "all" and every scratch tool.
+  for (const [label, corpus] of [
+    [`${HOLDOUT3_PREFIX}phone-fixture`, "photo"],
+    [`${ALPHA_HOLDOUT3_PREFIX}fixture`, "alpha"],
+    [`${GRAPHIC_HOLDOUT3_PREFIX}chart-fixture`, "graphic"],
+  ] as const) {
+    const inside = corpora.filter((c) => inCorpus(label, c));
+    check(
+      `${label} is holdout3, sealed, real, in the ${corpus} corpus alone, and out of "all"`,
+      splitFor(label) === "holdout3" &&
+        isSealed(splitFor(label)) &&
+        tierFor(label) === "real" &&
+        inside.join(",") === corpus &&
+        !inSplit(label, "all") &&
+        inSplit(label, "holdout3"),
+      `${splitFor(label)} ${inside.join(",")}`,
+    );
+  }
+  check(
+    "the two seals never claim each other's images",
+    !HOLDOUT3_PREFIX.startsWith(HOLDOUT2_PREFIX) &&
+      splitFor(`${HOLDOUT2_PREFIX}x`) === "holdout2" &&
+      splitFor(`${HOLDOUT3_PREFIX}x`) === "holdout3",
+    "",
+  );
+  check(
+    "--split holdout3 parses, and a scratch tool refuses it",
+    parseSplit("holdout3", false) === "holdout3" &&
+      thrown(() => parseScratchPhotoSplit("holdout3")).includes(
+        "does not read holdout3",
+      ),
+    thrown(() => parseScratchPhotoSplit("holdout3")),
+  );
+  const parted = partitionSealed([
+    "/fx/natural/natural-open.jpg",
+    `/fx/natural/${HOLDOUT3_PREFIX}phone-x.jpg`,
+    `/fx/alpha/${ALPHA_HOLDOUT3_PREFIX}x.png`,
+    `/fx/graphic/${GRAPHIC_HOLDOUT3_PREFIX}map-x.png`,
+  ]);
+  check(
+    "the report drops every cached sealed3- image",
+    parted.open.join(",") === "/fx/natural/natural-open.jpg" &&
+      parted.sealed.length === 3,
+    `open=${parted.open.join(",")}`,
+  );
+  const shippedSealed3 = [
+    ...CURATED_IMAGES,
+    ...ALPHA_IMAGES,
+    ...GRAPHIC_IMAGES,
+  ].filter((s) => s.label.startsWith(HOLDOUT3_PREFIX));
+  check(
+    "splitFor maps every shipped sealed3-* label to holdout3, and every shipped holdout3 pin is labelled sealed3-*",
+    shippedSealed3.every((s) => splitFor(s.label) === "holdout3") &&
+      [...CURATED_IMAGES, ...ALPHA_IMAGES, ...GRAPHIC_IMAGES]
+        .filter((s) => s.split === "holdout3")
+        .every((s) => s.label.startsWith(HOLDOUT3_PREFIX)),
+    `${shippedSealed3.length} sealed3- pin(s)`,
+  );
+
+  // The gate, against a fixture register.
+  const dir = mkdtempSync(path.join(tmpdir(), "holdout3-gate-"));
+  const fixturePath = path.join(dir, "V0.8-DECISIONS.md");
+  writeFileSync(
+    fixturePath,
+    [
+      "# register",
+      "",
+      "### D1. Frozen",
+      "",
+      "- **Status:** frozen. Criteria approved.",
+      "",
+      "### D2. Open",
+      "",
+      "- **Status:** open. Criteria approved.",
+      "",
+      "### D3. Decided",
+      "",
+      "- **Status:** decided.",
+      "",
+    ].join("\n"),
+  );
+  const opened = (() => {
+    try {
+      return openHoldout3("D1", fixturePath);
+    } catch {
+      return null;
+    }
+  })();
+  check(
+    "a frozen entry opens holdout3, and the opening names its split and the register's digest",
+    opened !== null &&
+      opened.split === "holdout3" &&
+      opened.decision === "D1" &&
+      /^[0-9a-f]{64}$/.test(opened.registerSha256),
+    opened === null ? "refused" : opened.registerSha256.slice(0, 12),
+  );
+  for (const [what, id, at, expect] of [
+    ["an open entry", "D2", fixturePath, 'as "open"'],
+    ["a decided entry", "D3", fixturePath, 'as "decided"'],
+    ["no --decision", undefined, fixturePath, "--split holdout3 needs"],
+    ["an absent entry", "D9", fixturePath, "no decision headed"],
+    ["a missing register", "D1", path.join(dir, "absent.md"), "does not exist"],
+  ] as const) {
+    const message = thrown(() => openHoldout3(id, at));
+    check(
+      `the holdout3 gate refuses ${what}`,
+      message.includes(expect) && message.includes("holdout3"),
+      message,
+    );
+  }
+
+  // One read per entry and tool, under any result name.
+  const results = path.join(dir, "results");
+  mkdirSync(results);
+  const read = (file: string, tool: string, split: string, decision: string) =>
+    writeFileSync(
+      path.join(results, file),
+      JSON.stringify({
+        tool,
+        split,
+        settings: { [split]: { decision } },
+      }),
+    );
+  read("d1-sweep-holdout3.json", "sweep", "holdout3", "D1");
+  read("d2-sweep-holdout2.json", "sweep", "holdout2", "D2");
+  check(
+    "a second sweep of holdout3 for one entry is refused, whatever its result is named",
+    thrown(() => assertHoldout3Unread("D1", "sweep", results)).includes(
+      "already been read by sweep",
+    ),
+    thrown(() => assertHoldout3Unread("D1", "sweep", results)),
+  );
+  check(
+    "another entry, or the other tool, may still read it once; a holdout2 read does not count",
+    thrown(() => assertHoldout3Unread("D1", "rd-budget", results)) === "" &&
+      thrown(() => assertHoldout3Unread("D2", "sweep", results)) === "",
+    "",
+  );
+  check(
+    "holdout3Reads lists exactly the holdout3 results",
+    holdout3Reads(results)
+      .map((r) => `${r.file}:${r.tool}:${r.decision}`)
+      .join(",") === "d1-sweep-holdout3.json:sweep:D1",
+    JSON.stringify(holdout3Reads(results)),
+  );
+  const existing = path.join(results, "d1-sweep-holdout3.json");
+  check(
+    "a committed holdout3 result file is never overwritten either",
+    thrown(() => assertHoldout2Unread(existing, "holdout3")).includes(
+      "already holds a holdout3 reading",
+    ),
+    thrown(() => assertHoldout2Unread(existing, "holdout3")),
+  );
+  const registerText = readFileSync(
+    path.resolve(import.meta.dirname, "../../../spec/V0.8-DECISIONS.md"),
+    "utf8",
+  );
+  const shippedReads = holdout3Reads();
+  const byEntry = new Map<string, number>();
+  for (const r of shippedReads) {
+    byEntry.set(
+      `${r.decision}/${r.tool}`,
+      (byEntry.get(`${r.decision}/${r.tool}`) ?? 0) + 1,
+    );
+  }
+  const badReads = shippedReads.filter((r) => {
+    const s = registerStatus(registerText, r.decision);
+    return (
+      !("status" in s) ||
+      (s.status !== "frozen" && s.status !== "decided") ||
+      (byEntry.get(`${r.decision}/${r.tool}`) ?? 0) > 1
+    );
+  });
+  check(
+    "every committed holdout3 read names an entry the register has frozen or decided, at most once per tool",
+    badReads.length === 0,
+    `${shippedReads.length} committed holdout3 read(s); bad: ${badReads.map((r) => r.file).join(",") || "none"}`,
+  );
+
+  // The pin tables: seal, record and split agree, in every part.
+  const record: Holdout3Record = {
+    drawnAs: "fixture",
+    camera: null,
+    phone: false,
+    meanL: 50,
+    lowKey: 0,
+    skin: 0,
+    strata: [],
+  };
+  const photo: NaturalImageSpec = {
+    label: `${HOLDOUT3_PREFIX}daylight-fixture`,
+    urls: ["https://example.invalid/sealed3.jpg"],
+    ext: ".jpg",
+    width: 4,
+    height: 3,
+    split: "holdout3",
+    sha256: "0".repeat(64),
+    source: "https://example.invalid/sealed3",
+    author: "fixture",
+    licence: "CC0",
+    axis: "fixture",
+    notes: "fixture",
+    holdout3: record,
+  };
+  const { holdout3: _drop, ...bare } = photo;
+  check(
+    "holdout3Specs returns the photographic sealed3- pins",
+    holdout3Specs([photo, { ...bare, label: "natural-x", split: "tune" }])
+      .length === 1,
+    "",
+  );
+  for (const [what, bad] of [
+    ["a holdout3 pin with no draw record", bare],
+    ["a sealed3- pin on another split", { ...photo, split: "tune" as const }],
+    ["a holdout3 pin without the seal", { ...photo, label: "natural-x" }],
+    [
+      "a draw record on a tune pin",
+      { ...photo, label: "natural-x", split: "tune" as const },
+    ],
+    [
+      "a photograph sealed as a cut-out",
+      { ...photo, label: `${ALPHA_HOLDOUT3_PREFIX}x` },
+    ],
+  ] as const) {
+    const message = thrown(() => holdout3Specs([bad]));
+    check(`${what} is refused`, message !== "", message);
+  }
+  check(
+    "a pin carrying another part's seal is refused by the generic check",
+    thrown(() =>
+      checkHoldout3Pins(
+        [
+          {
+            label: `${GRAPHIC_HOLDOUT3_PREFIX}x`,
+            split: "holdout3" as const,
+            holdout3: record,
+          },
+        ],
+        ALPHA_HOLDOUT3_PREFIX,
+        "alpha",
+      ),
+    ).includes("is labelled"),
+    "",
+  );
+  const naturalTable: NaturalImageSpec[] = [
+    { ...bare, label: "natural-open", split: "tune" },
+    photo,
+  ];
+  check(
+    "the natural-image fetch skips every holdout3 pin",
+    naturalImagesToFetch(undefined, naturalTable)
+      .map((s) => s.label)
+      .join(",") === "natural-open",
+    "",
+  );
+  const askedSealed3 = thrown(() =>
+    naturalImagesToFetch([photo.label], naturalTable),
+  );
+  check(
+    "a holdout3 pin asked for by label is refused, naming its gated fetcher",
+    askedSealed3.includes("sealed holdout3 split") &&
+      askedSealed3.includes("ensureHoldout3Images"),
+    askedSealed3,
+  );
+  if (opened !== null) {
+    const empty = await rejected(() => ensureHoldout3Images(opened, []));
+    check(
+      "an opened holdout3 with no photographic pins refuses rather than scoring nothing",
+      empty.includes("no pinned photographs"),
+      empty,
+    );
+  }
+
+  const cutout: AlphaImageSpec = {
+    label: `${ALPHA_HOLDOUT3_PREFIX}fixture`,
+    url: "https://example.invalid/cutout.png",
+    ext: ".png",
+    width: 4,
+    height: 4,
+    split: "holdout3",
+    nonOpaqueFraction: 0.5,
+    softAlphaFraction: 0.1,
+    sha256: "0".repeat(64),
+    source: "https://example.invalid/cutout",
+    author: "fixture",
+    licence: "CC0",
+    notes: "fixture",
+    holdout3: record,
+  };
+  const { holdout3: _c, ...openCutout } = cutout;
+  const alphaTable: AlphaImageSpec[] = [
+    { ...openCutout, label: "cutout-open", split: "tune" },
+    cutout,
+  ];
+  const holdout2Opening = {
+    decision: "D1",
+    register: "r",
+    registerSha256: "0",
+  };
+  const alphaLabels = (s: AlphaImageSpec[]): string =>
+    s.map((x) => x.label).join(",");
+  check(
+    "the alpha part of holdout3 needs a holdout3 opening, and then fetches exactly its pins",
+    thrown(() => alphaImagesToFetch("holdout3", alphaTable)).includes(
+      "openHoldout3",
+    ) &&
+      thrown(() =>
+        alphaImagesToFetch("holdout3", alphaTable, holdout2Opening),
+      ).includes("openHoldout3") &&
+      opened !== null &&
+      alphaLabels(alphaImagesToFetch("holdout3", alphaTable, opened)) ===
+        cutout.label,
+    "",
+  );
+  check(
+    "no unopened alpha fetch reaches a holdout3 pin, and a holdout3 opening does not open holdout2",
+    alphaLabels(alphaImagesToFetch(undefined, alphaTable)) === "cutout-open" &&
+      opened !== null &&
+      thrown(() => alphaImagesToFetch("holdout2", alphaTable, opened)) !== "",
+    alphaLabels(alphaImagesToFetch(undefined, alphaTable)),
+  );
+  check(
+    "an opened alpha holdout3 with no pins refuses",
+    opened !== null &&
+      thrown(() =>
+        alphaImagesToFetch(
+          "holdout3",
+          [alphaTable[0] as AlphaImageSpec],
+          opened,
+        ),
+      ).includes("no pinned images"),
+    "",
+  );
+  const graphic: GraphicImageSpec = {
+    label: `${GRAPHIC_HOLDOUT3_PREFIX}chart-fixture`,
+    url: "https://example.invalid/chart.png",
+    ext: ".png",
+    width: 4,
+    height: 4,
+    split: "holdout3",
+    sha256: "0".repeat(64),
+    source: "https://example.invalid/chart",
+    author: "fixture",
+    licence: "CC0",
+    notes: "fixture",
+    holdout3: record,
+  };
+  const { holdout3: _g, ...openGraphic } = graphic;
+  const graphicTable: GraphicImageSpec[] = [
+    { ...openGraphic, label: "graphic-open", split: "tune" },
+    { ...openGraphic, label: "graphic-old-holdout", split: "holdout" },
+    graphic,
+  ];
+  const graphicLabels = (s: GraphicImageSpec[]): string =>
+    s.map((x) => x.label).join(",");
+  check(
+    "the graphics fetch skips holdout3 unless opened, and then fetches exactly its pins",
+    graphicLabels(graphicImagesToFetch(undefined, graphicTable)) ===
+      "graphic-open,graphic-old-holdout" &&
+      thrown(() => graphicImagesToFetch("holdout3", graphicTable)).includes(
+        "openHoldout3",
+      ) &&
+      opened !== null &&
+      graphicLabels(graphicImagesToFetch("holdout3", graphicTable, opened)) ===
+        graphic.label &&
+      thrown(() =>
+        graphicImagesToFetch("holdout3", graphicTable.slice(0, 2), opened),
+      ).includes("no pinned images"),
+    graphicLabels(graphicImagesToFetch(undefined, graphicTable)),
+  );
+  const shippedTables = [
+    thrown(() => holdout3Specs()),
+    thrown(() => alphaHoldout3Specs()),
+    thrown(() => graphicHoldout3Specs()),
+  ].filter((m) => m !== "");
+  check(
+    "the shipped tables' holdout3 seals, splits and draw records agree",
+    shippedTables.length === 0,
+    shippedTables.join(" | "),
+  );
+
+  // The strata, from the recorded figures alone.
+  type StratumInput = Parameters<typeof holdout3Strata>[0];
+  const base: StratumInput = {
+    corpus: "photo",
+    width: 4000,
+    height: 3000,
+    nonOpaqueFraction: 0,
+    phone: false,
+    meanL: 50,
+    lowKey: 0,
+    skin: 0,
+  };
+  const strata = (over: Partial<StratumInput>): string =>
+    holdout3Strata({ ...base, ...over }).join(",");
+  check(
+    "a plain daylight photograph is in no stratum",
+    strata({}) === "",
+    strata({}),
+  );
+  check(
+    "the strata thresholds sit where the protocol puts them, inclusive",
+    strata({ phone: true }) === "smartphone" &&
+      strata({ skin: HOLDOUT3_PROTOCOL.skinMin }) === "skin" &&
+      strata({ skin: HOLDOUT3_PROTOCOL.skinMin - 1e-4 }) === "" &&
+      strata({ meanL: HOLDOUT3_PROTOCOL.lowLightMeanL }) === "low-light" &&
+      strata({ meanL: HOLDOUT3_PROTOCOL.lowLightMeanL + 0.01 }) === "" &&
+      strata({ lowKey: HOLDOUT3_PROTOCOL.lowLightLowKey }) === "low-light" &&
+      strata({ width: 3000, height: 1000 }) === "extreme-aspect" &&
+      strata({ width: 1000, height: 2999 }) === "",
+    [strata({ phone: true }), strata({ width: 3000, height: 1000 })].join(" "),
+  );
+  check(
+    "graphics content is the graphics stratum; an alpha raster's colour figures place it in no colour stratum",
+    strata({ corpus: "graphic" }) === "graphics" &&
+      strata({
+        corpus: "alpha",
+        nonOpaqueFraction: 0.4,
+        meanL: 5,
+        lowKey: 0.9,
+        skin: 0.5,
+      }) === "alpha",
+    strata({ corpus: "alpha", nonOpaqueFraction: 0.4, meanL: 5, lowKey: 0.9 }),
+  );
+  check(
+    "the protocol's strata are the six the issue fixes",
+    HOLDOUT3_STRATA.join(",") ===
+      "smartphone,graphics,alpha,skin,low-light,extreme-aspect" &&
+      HOLDOUT3_PROTOCOL.strataMin === 8 &&
+      HOLDOUT3_PROTOCOL.sizes.photo === 48 &&
+      HOLDOUT3_PROTOCOL.sizes.alpha === 24 &&
+      HOLDOUT3_PROTOCOL.sizes.graphic === 16,
+    HOLDOUT3_STRATA.join(","),
+  );
+  const quota = (part: string): number =>
+    HOLDOUT3_DRAW.filter((a) => a.part === part)
+      .flatMap((a) => Object.values(a.slots))
+      .reduce((x, y) => x + y, 0);
+  check(
+    "the draw's quotas sum to each part's size",
+    quota("photo") === HOLDOUT3_PROTOCOL.sizes.photo &&
+      quota("alpha") === HOLDOUT3_PROTOCOL.sizes.alpha &&
+      quota("graphic") === HOLDOUT3_PROTOCOL.sizes.graphic,
+    `${quota("photo")}/${quota("alpha")}/${quota("graphic")}`,
+  );
+
+  // The covariates the draw adds: skin, the capture device, the order.
+  const labOf = (r: number, g: number, b: number): [number, number, number] =>
+    srgbToLab(r, g, b);
+  check(
+    "the skin region holds skin-coloured browns and refuses sand, green, near-black and near-white",
+    inSkinRegion(...labOf(198, 134, 66)) &&
+      inSkinRegion(...labOf(180, 120, 100)) &&
+      inSkinRegion(...labOf(92, 51, 23)) &&
+      !inSkinRegion(...labOf(194, 178, 128)) &&
+      !inSkinRegion(...labOf(34, 139, 34)) &&
+      !inSkinRegion(...labOf(60, 40, 30)) &&
+      !inSkinRegion(...labOf(255, 219, 172)) &&
+      SKIN_REGION.maxHue === 70,
+    "",
+  );
+  const skinRaster = covariatesOf(
+    makeRgba(4, 2, (x) => (x < 1 ? [198, 134, 66] : [34, 139, 34])),
+    4,
+    2,
+    { width: 4, height: 2 },
+  );
+  check(
+    "skin is the in-region fraction, and skinL their mean L*",
+    Math.abs(skinRaster.skin - 0.25) < 1e-12 &&
+      skinRaster.skinL !== null &&
+      Math.abs(skinRaster.skinL - labOf(198, 134, 66)[0]) < 1e-9 &&
+      skinRaster.camera === null &&
+      !skinRaster.phone,
+    `skin ${skinRaster.skin} skinL ${skinRaster.skinL}`,
+  );
+  check(
+    "skin bands split at mean L* 45 and 60",
+    skinBand(44.9) === "dark" &&
+      skinBand(45) === "medium" &&
+      skinBand(59.9) === "medium" &&
+      skinBand(60) === "light" &&
+      skinBand(null) === null,
+    "",
+  );
+  const phones: [string | null, string | null, boolean][] = [
+    ["Apple", "iPhone 13 Pro", true],
+    ["Apple", "iPad Air", false],
+    ["samsung", "SM-G998B", true],
+    ["samsung", "SM-T870", false],
+    ["SAMSUNG", "NX300", false],
+    ["SONY", "ILCE-7M4", false],
+    ["Sony", "G8341", true],
+    ["Google", "Pixel 6", true],
+    ["HUAWEI", "MAR-LX1A", true],
+    ["NIKON CORPORATION", "NIKON D850", false],
+    ["Canon", "Canon EOS 5D Mark III", false],
+    ["Microsoft", "Lumia 950", true],
+    ["Xiaomi", "Redmi Note 8 Pro", true],
+    ["Xiaomi", "Xiaomi Pad 5", false],
+    [null, null, false],
+  ];
+  const wrongPhones = phones.filter(
+    ([mk, md, want]) => isPhoneCamera(mk, md) !== want,
+  );
+  check(
+    "isPhoneCamera names phones and refuses tablets and cameras",
+    wrongPhones.length === 0,
+    wrongPhones.map(([mk, md]) => `${mk} ${md}`).join("; "),
+  );
+  // A little-endian TIFF IFD0 with Make (inline, ≤ 4 bytes) and Model (offset).
+  const tiff = Buffer.alloc(64);
+  tiff.write("Exif\0\0II", 0, "latin1");
+  tiff.writeUInt16LE(42, 8);
+  tiff.writeUInt32LE(8, 10);
+  tiff.writeUInt16LE(2, 14);
+  tiff.writeUInt16LE(0x010f, 16);
+  tiff.writeUInt16LE(2, 18);
+  tiff.writeUInt32LE(4, 20);
+  tiff.write("LGE\0", 24, "latin1");
+  tiff.writeUInt16LE(0x0110, 28);
+  tiff.writeUInt16LE(2, 30);
+  tiff.writeUInt32LE(7, 32);
+  tiff.writeUInt32LE(40, 36);
+  tiff.write("Nexus\0\0", 46, "latin1");
+  const cam = exifCamera(tiff);
+  check(
+    "exifCamera reads IFD0 Make (inline) and Model (by offset), and a malformed block names neither",
+    cam.make === "LGE" &&
+      cam.model === "Nexus" &&
+      exifCamera(Buffer.from("not exif at all")).make === null &&
+      exifCamera(undefined).model === null &&
+      exifCamera(tiff.subarray(0, 20)).make === null,
+    JSON.stringify(cam),
+  );
+  check(
+    'the seeded order is SHA-256 of "holdout3:" + the title',
+    holdout3OrderKey("File:Fixture.jpg") ===
+      createHash("sha256").update("holdout3:File:Fixture.jpg").digest("hex") &&
+      HOLDOUT3_PROTOCOL.seed === "holdout3",
+    holdout3OrderKey("File:Fixture.jpg").slice(0, 12),
+  );
+  check(
+    "a pin's source page and a search hit compare as one Commons title",
+    pinnedCommonsTitle(
+      "https://commons.wikimedia.org/wiki/File%3AValle_de_Pineta_02.jpg",
+    ) === "File:Valle de Pineta 02.jpg" &&
+      pinnedCommonsTitle(
+        "https://commons.wikimedia.org/wiki/File:Jos%C3%A9_Manuel_Luc%C3%ADa_Meg%C3%ADas.JPG",
+      ) === "File:José Manuel Lucía Megías.JPG" &&
+      pinnedCommonsTitle("https://example.invalid/wiki/File:x.jpg") === null,
+    "",
+  );
+  check(
+    "alpha cells follow #107's cuts and leave the gaps unassigned",
+    alphaCell({
+      nonOpaqueFraction: 0.2,
+      softAlphaFraction: 0,
+      silhouette: 1.2,
+    }) === "opaque/hard/simple" &&
+      alphaCell({
+        nonOpaqueFraction: 0.6,
+        softAlphaFraction: 0.05,
+        silhouette: 2.5,
+      }) === "transparent/soft/detailed" &&
+      alphaCell({
+        nonOpaqueFraction: 0.6,
+        softAlphaFraction: 0.02,
+        silhouette: 2.5,
+      }) === null &&
+      alphaCell({
+        nonOpaqueFraction: 0.6,
+        softAlphaFraction: 0.05,
+        silhouette: 1.7,
+      }) === null &&
+      alphaCell({
+        nonOpaqueFraction: 0.6,
+        softAlphaFraction: 0.05,
+        silhouette: null,
+      }) === null,
+    "",
+  );
+  const candidate: CommonsFacts = {
+    title: "File:Fixture.jpg",
+    url: "https://example.invalid/Fixture.jpg",
+    descriptionUrl: "https://example.invalid/File:Fixture.jpg",
+    sha1: "0".repeat(40),
+    mime: "image/jpeg",
+    licence: "CC BY-SA 4.0",
+    author: "fixture",
+    make: "Apple",
+    model: "iPhone 11",
+    software: null,
+    dateTimeOriginal: null,
+    categories: [],
+    width: 4032,
+    height: 3024,
+    size: 3_000_000,
+  };
+  const why = (
+    part: "photo" | "alpha" | "graphic",
+    over: Partial<CommonsFacts>,
+    phone = false,
+  ) =>
+    holdout3Admission(
+      part,
+      { ...candidate, ...over },
+      { onePerCamera: phone },
+    ) ?? "admitted";
+  check(
+    "the draw's admission rules refuse what the protocol says, before any download",
+    why("photo", {}) === "admitted" &&
+      why("photo", { model: null }).includes("camera model") &&
+      why("photo", { width: 1900, height: 1200 }).includes("2000") &&
+      why("photo", { categories: ["Oil paintings"] }).includes("art") &&
+      why("photo", { categories: ["AI-generated images"] }).includes(
+        "machine",
+      ) &&
+      why("photo", { software: "Adobe Photoshop" }, true).includes("editor") &&
+      why("photo", { software: "Adobe Photoshop" }) === "admitted" &&
+      why("photo", { author: "" }).includes("author") &&
+      why("alpha", {
+        mime: "image/png",
+        model: null,
+        categories: ["Coats of arms"],
+      }).includes("logo") &&
+      why("alpha", { mime: "image/png", model: null }) === "admitted" &&
+      why("graphic", { mime: "image/png" }).includes("photograph") &&
+      why("graphic", { mime: "image/png", model: null }) === "admitted",
+    [why("photo", {}), why("graphic", { mime: "image/png" })].join(" | "),
+  );
+  const labels = new Set<string>([`${HOLDOUT3_PREFIX}phone-aamsveen-herfst`]);
+  check(
+    "labels carry the part's seal, are slugged from the title, and never repeat",
+    holdout3Label("photo", "phone", "File:Aamsveen Herfst.jpg", labels) ===
+      `${HOLDOUT3_PREFIX}phone-aamsveen-herfst-2` &&
+      holdout3Label(
+        "alpha",
+        "cutout",
+        "File:Café au lait (1).png",
+        new Set(),
+      ) === `${ALPHA_HOLDOUT3_PREFIX}cafe-au-lait-1` &&
+      holdout3Label("graphic", "map", "File:Карта.png", new Set()).startsWith(
+        `${GRAPHIC_HOLDOUT3_PREFIX}map-`,
+      ),
+    holdout3Label("graphic", "map", "File:Карта.png", new Set()),
   );
   rmSync(dir, { recursive: true, force: true });
 }

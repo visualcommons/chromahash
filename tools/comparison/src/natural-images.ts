@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ensurePinnedFixture } from "./corpus-pin.ts";
-import type { CorpusSplit } from "./corpus.ts";
+import { type CorpusSplit, type Holdout3Record, isSealed } from "./corpus.ts";
 
 const NATURAL_DIR = path.resolve(import.meta.dirname, "../fixtures/natural");
 
@@ -52,6 +52,11 @@ export interface NaturalImageSpec {
    * back out of this string.
    */
   notes: string;
+  /**
+   * A holdout3 pin's draw record and strata (#129); present on every holdout3
+   * pin and on no other (`holdout-images.ts` `holdout3Specs`).
+   */
+  holdout3?: Holdout3Record;
 }
 
 /**
@@ -1329,10 +1334,10 @@ export function naturalImagePath(spec: NaturalImageSpec): string {
 
 /**
  * The curated pins `ensureNaturalImages` fetches: every one that is not in
- * the sealed holdout2 split, or only the labels in `only`. A label that is
- * unknown, or that names a holdout2 pin, throws before anything is fetched.
- * `images` is the table to select from, so the self-test can drive it with
- * fixtures.
+ * a sealed split (holdout2, holdout3), or only the labels in `only`. A label
+ * that is unknown, or that names a sealed pin, throws before anything is
+ * fetched. `images` is the table to select from, so the self-test can drive
+ * it with fixtures.
  */
 export function naturalImagesToFetch(
   only?: readonly string[],
@@ -1346,16 +1351,20 @@ export function naturalImagesToFetch(
       if (spec === undefined) {
         throw new Error(`unknown curated image label: ${label}`);
       }
-      if (spec.split === "holdout2") {
+      if (isSealed(spec.split)) {
+        const fetcher =
+          spec.split === "holdout2"
+            ? "ensureHoldout2Images"
+            : "ensureHoldout3Images";
         throw new Error(
-          `${label} is in the sealed holdout2 split; only ensureHoldout2Images fetches it, through the register gate`,
+          `${label} is in the sealed ${spec.split} split; only ${fetcher} fetches it, through the register gate`,
         );
       }
     }
   }
   return images.filter(
     (spec) =>
-      spec.split !== "holdout2" && (wanted === null || wanted.has(spec.label)),
+      !isSealed(spec.split) && (wanted === null || wanted.has(spec.label)),
   );
 }
 

@@ -3,10 +3,16 @@ import path from "node:path";
 import { ensurePinnedFixture } from "./corpus-pin.ts";
 import {
   ALPHA_HOLDOUT2_PREFIX,
+  ALPHA_HOLDOUT3_PREFIX,
   type CorpusSplit,
   HOLDOUT2_PREFIX,
+  type Holdout3Record,
 } from "./corpus.ts";
-import type { Holdout2Opening } from "./holdout-images.ts";
+import {
+  type Holdout2Opening,
+  type Holdout3Opening,
+  checkHoldout3Pins,
+} from "./holdout-images.ts";
 
 const ALPHA_DIR = path.resolve(import.meta.dirname, "../fixtures/alpha");
 
@@ -61,6 +67,11 @@ export interface AlphaImageSpec {
    * to "tune" and join every alpha tune sweep.
    */
   withdrawn?: string;
+  /**
+   * A holdout3 pin's draw record and strata (#129); present on every
+   * `sealed3-cutout-*` pin and on no other ({@link alphaHoldout3Specs}).
+   */
+  holdout3?: Holdout3Record;
 }
 
 /**
@@ -779,12 +790,32 @@ export function alphaHoldout2Specs(
 export function alphaImagesToFetch(
   split?: CorpusSplit,
   images: readonly AlphaImageSpec[] = ALPHA_IMAGES,
-  opening?: Holdout2Opening,
+  opening?: Holdout2Opening | Holdout3Opening,
 ): AlphaImageSpec[] {
   if (split === "holdout") throw new Error(ALPHA_HOLDOUT_RETIRED);
+  const sealed3 = alphaHoldout3Specs(images);
+  if (split === "holdout3") {
+    if (opening === undefined || !("split" in opening)) {
+      throw new Error(
+        "the alpha part of holdout3 is sealed: it is fetched only through the register gate (openHoldout3), for one decision spec/V0.8-DECISIONS.md records as frozen",
+      );
+    }
+    const withdrawn = sealed3.filter((s) => s.withdrawn !== undefined);
+    if (withdrawn.length > 0) {
+      throw new Error(
+        `an alpha holdout3 pin is withdrawn (${withdrawn.map((s) => s.label).join(", ")}), so the split cannot be read whole`,
+      );
+    }
+    if (sealed3.length === 0) {
+      throw new Error(
+        `the alpha part of holdout3 has no pinned images in this table, so decision "${opening.decision}" cannot be read against it`,
+      );
+    }
+    return sealed3;
+  }
   const sealed = alphaHoldout2Specs(images);
   if (split === "holdout2") {
-    if (opening === undefined) {
+    if (opening === undefined || "split" in opening) {
       throw new Error(
         "the alpha holdout2 split is sealed: it is fetched only through the register gate (openHoldout2), for one decision spec/V0.8-DECISIONS.md records as frozen",
       );
@@ -809,8 +840,19 @@ export function alphaImagesToFetch(
     (spec) =>
       spec.withdrawn === undefined &&
       spec.split !== "holdout2" &&
+      spec.split !== "holdout3" &&
       (split === undefined || spec.split === split),
   );
+}
+
+/**
+ * The alpha holdout3 pins (#129), after checking that every `sealed3-` alpha
+ * pin is `sealed3-cutout-*` and holdout3, and carries its draw record.
+ */
+export function alphaHoldout3Specs(
+  images: readonly AlphaImageSpec[] = ALPHA_IMAGES,
+): AlphaImageSpec[] {
+  return checkHoldout3Pins(images, ALPHA_HOLDOUT3_PREFIX, "alpha");
 }
 
 /**
@@ -831,7 +873,7 @@ export function alphaImagesToFetch(
  */
 export async function ensureAlphaImages(
   split?: CorpusSplit,
-  opening?: Holdout2Opening,
+  opening?: Holdout2Opening | Holdout3Opening,
 ): Promise<string[]> {
   const specs = alphaImagesToFetch(split, ALPHA_IMAGES, opening);
   await fs.mkdir(ALPHA_DIR, { recursive: true });
@@ -854,9 +896,9 @@ export async function ensureAlphaImages(
   if (downloaded > 0) {
     console.log(`Downloaded ${downloaded} alpha image(s) to ${ALPHA_DIR}`);
   }
-  if (split === "holdout2" && opening !== undefined) {
+  if ((split === "holdout2" || split === "holdout3") && opening !== undefined) {
     console.log(
-      `alpha holdout2 opened for decision "${opening.decision}" (${opening.register} sha256 ${opening.registerSha256.slice(0, 12)})`,
+      `alpha ${split} opened for decision "${opening.decision}" (${opening.register} sha256 ${opening.registerSha256.slice(0, 12)})`,
     );
   }
   return paths;

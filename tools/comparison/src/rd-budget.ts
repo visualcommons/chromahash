@@ -21,14 +21,16 @@
  * by `--max-images` or `--formats` is not a result and goes to `output/sweeps/`.
  *
  * Usage:
- *   node dist/rd-budget.js [--split tune|tune2|holdout2|all] [--decision ID]
+ *   node dist/rd-budget.js [--split tune|tune2|holdout2|holdout3|all] [--decision ID]
  *                          [--budgets 16,21,24,32,...]
  *                          [--max-images N] [--out <name>] [--formats a,b,c]
  *                          [--out-dir DIR]
  *
  * `all` is every split that is not sealed. `holdout2` opens only for a
  * decision `spec/V0.8-DECISIONS.md` records as frozen (`--decision`), whole
- * and once (`holdout-images.ts`). `holdout` is refused: the photographic
+ * and once (`holdout-images.ts`). `holdout3` opens the same way and reads its
+ * photographic part; each register entry reads it with this tool at most
+ * once, under any result name (`assertHoldout3Unread`). `holdout` is refused: the photographic
  * holdout is spent and is `tune2` now, so the committed
  * `rd-budget-holdout.json` scored what a re-run calls `--split tune2`.
  *   node dist/rd-budget.js --summarize results/rd-budget-holdout.json
@@ -65,10 +67,14 @@ import { gamutToSrgbReference } from "./gamut.ts";
 import { generateFixtures } from "./generate-fixtures.ts";
 import {
   type Holdout2Opening,
+  type Holdout3Opening,
   assertHoldout2Unread,
+  assertHoldout3Unread,
   ensureHoldout2Images,
+  ensureHoldout3Images,
   ensureHoldoutImages,
   openHoldout2,
+  openHoldout3,
 } from "./holdout-images.ts";
 import { loadImage } from "./image-loader.ts";
 import { computeAllMetrics, setScoringConfig } from "./metrics.ts";
@@ -205,6 +211,7 @@ const { values } = parseArgs({
 
 let splitArg: CorpusSplit | "all" = "tune";
 let holdout2: Holdout2Opening | null = null;
+let holdout3: Holdout3Opening | null = null;
 // --summarize reads a result that already exists and scores nothing, so it
 // neither needs nor opens a split.
 if (values.summarize === undefined) {
@@ -212,23 +219,27 @@ if (values.summarize === undefined) {
     splitArg = parseSplit(values.split ?? "tune", true);
     // A photographs-only tool: the only "holdout" left is the graphics one.
     if (splitArg === "holdout") throw new Error(PHOTO_HOLDOUT_RETIRED);
-    if (values.decision !== undefined && splitArg !== "holdout2") {
+    const sealed = splitArg === "holdout2" || splitArg === "holdout3";
+    if (values.decision !== undefined && !sealed) {
       throw new Error(
-        `--decision names the register decision a holdout2 reading answers; it means nothing on --split ${splitArg}`,
+        `--decision names the register decision a sealed reading (holdout2, holdout3) answers; it means nothing on --split ${splitArg}`,
       );
     }
-    if (splitArg === "holdout2") {
-      // A partial or side-channel look at the sealed split is still a look.
-      if (
-        values["max-images"] !== undefined ||
+    // A partial or side-channel look at the sealed split is still a look.
+    if (
+      sealed &&
+      (values["max-images"] !== undefined ||
         values.formats !== undefined ||
-        values["out-dir"] !== undefined
-      ) {
-        throw new Error(
-          "--split holdout2 takes none of --max-images, --formats or --out-dir: the sealed split is read whole, once, into a committed result",
-        );
-      }
-      holdout2 = openHoldout2(values.decision);
+        values["out-dir"] !== undefined)
+    ) {
+      throw new Error(
+        `--split ${splitArg} takes none of --max-images, --formats or --out-dir: the sealed split is read whole, once, into a committed result`,
+      );
+    }
+    if (splitArg === "holdout2") holdout2 = openHoldout2(values.decision);
+    if (splitArg === "holdout3") {
+      holdout3 = openHoldout3(values.decision);
+      assertHoldout3Unread(holdout3.decision, "rd-budget");
     }
   } catch (e) {
     console.error(e instanceof Error ? e.message : String(e));
@@ -262,6 +273,10 @@ async function loadCorpus(): Promise<ImageInput[]> {
   if (splitArg === "holdout2") {
     if (holdout2 === null) throw new Error("holdout2 was not opened");
     await ensureHoldout2Images(holdout2);
+  }
+  if (splitArg === "holdout3") {
+    if (holdout3 === null) throw new Error("holdout3 was not opened");
+    await ensureHoldout3Images(holdout3);
   }
 
   const paths: string[] = [];
@@ -694,7 +709,9 @@ async function main(): Promise<void> {
         : RESULTS_DIR;
   const name = `${values.out ?? "rd-budget"}-${splitArg}`;
   const outPath = resultPath(outDir, name);
-  if (splitArg === "holdout2") assertHoldout2Unread(outPath);
+  if (splitArg === "holdout2" || splitArg === "holdout3") {
+    assertHoldout2Unread(outPath, splitArg);
+  }
 
   let inputs = await loadCorpus();
   if (maxImages !== null) inputs = inputs.slice(0, maxImages);
@@ -862,6 +879,7 @@ async function main(): Promise<void> {
       formats: effectiveArgs.formats,
       jxl: effectiveArgs.jxl,
       ...(holdout2 !== null ? { holdout2 } : {}),
+      ...(holdout3 !== null ? { holdout3 } : {}),
     },
     provenance,
     imageNames: provenance.corpus.map((c) => c.name),

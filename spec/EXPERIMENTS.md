@@ -2908,6 +2908,76 @@ photographic one:
   hold one image each. No encoder has run on a pinned image either; the
   split is fetched only when the gate opens.
 
+**What #129 adds: `holdout3`.** C1 read the photographic half of `holdout2`
+and C2 its alpha half (§13.7), so neither is unread for the v0.8 D-entries.
+`holdout3` is a third sealed split, with a photographic, an alpha and a
+graphics part, that no decision has read:
+
+- **The seal.** Labels `sealed3-*`, `sealed3-cutout-*` and `sealed3-graphic-*`,
+  the split `holdout3`. `sealed3-` does not start with `sealed-`, so the two
+  seals never claim each other's images. `sweep` and `rd-budget` read it only
+  with `--split holdout3 --decision <ID>`, only for an entry
+  `V0.8-DECISIONS.md` records as `frozen`, only whole, and **once per entry**:
+  a second read by the same tool for the same entry refuses under any result
+  name, because the gate counts the committed results that record a holdout3
+  reading for that entry, not a file name. `sweep` reads the parts its
+  config's corpus names, and `all` reads all three in one run; `rd-budget`
+  reads the photographic part. No other tool reads it.
+- **The protocol**, committed before any candidate was measured
+  (`corpus.ts` `HOLDOUT3_PROTOCOL`, `corpus-covariates.ts` `HOLDOUT3_DRAW` and
+  `SKIN_REGION`). No encoder, decoder or metric runs on a candidate.
+  - **Strata**, each decided by a covariate or by licence and EXIF metadata
+    alone, so a conditional candidate can name one as its activation class.
+    A pin may sit in several, and records them.
+    - *smartphone*: the file's EXIF Make and Model name a phone
+      (`isPhoneCamera`; tablets are not phones).
+    - *graphics*: a pin of the graphics part.
+    - *alpha*: stores an alpha channel with a non-opaque fraction above 0.
+    - *skin*: at least 0.10 of the 512 px reference's pixels inside the skin
+      region, CIELAB L\* 20–88, C\* 10–50 and hue 25°–70°.
+    - *low-light*: mean L\* ≤ 30, or a low-key fraction (L\* ≤ 10) ≥ 0.25.
+    - *extreme aspect*: long edge ÷ short edge ≥ 3.
+
+    On the alpha part the colour covariates describe the stored RGB under
+    transparent pixels, so an alpha pin is placed in neither colour stratum.
+    The skin region is a colour test, not a detector: sand, wood and warm walls
+    fall in it too, and the stratum means "this much skin-coloured area".
+  - **Sizes.** At least 48 photographs, 24 cut-outs and 16 graphics, and at
+    least 8 pins in every stratum.
+  - **Order.** Each axis pools the first 200 hits of each of its Commons
+    searches, attributes each file to its first query in list order, and
+    takes candidates in ascending `sha256("holdout3:" + title)`.
+  - **Admission, on Commons' facts, before any download.** A free licence
+    (`isFreeLicence`), a recorded author, no deletion, unfree or
+    machine-generated category, at most 100 MP, and not pinned in any corpus
+    by title or by SHA-256, Kodak24 included. No author already pinned in any
+    corpus, and none twice. Photographs: JPEG, long edge ≥ 2000 px, an EXIF
+    camera model, at most 50 MB, and no art, scan, map, diagram, poster,
+    screenshot, collage, HDR or composite category; the smartphone axis also
+    refuses an EXIF Software naming a desktop editor or stitcher. Cut-outs:
+    PNG, long edge ≥ 512 px, at most 25 MB, and none of #107's excluded words
+    nor heraldry or insignia (the reason #107's police patch was dropped).
+    Graphics: long edge ≥ 1000 px, at most 25 MB, no EXIF camera model, and no
+    logo, photograph or scan category.
+  - **Axes and tests**, each run in order, an image one axis took being out
+    of every later one. At most two picks per query (one on the smartphone
+    axis, three on the alpha one), and one per camera model on the smartphone
+    axis. Photographs, 48: smartphone 10 (a phone camera, one per model,
+    from 19 `Taken with …` categories); extreme aspect 8 (aspect ≥ 3); low
+    light 9 (the stratum's test); skin 9 (skin ≥ 0.10, three per tone band by
+    the skin pixels' mean L\*: dark below 45, medium below 60, light above);
+    high key 4 (high-key fraction ≥ 0.35); chroma floor 4 (mean C\* ≤ 4);
+    daylight 4 (mean L\* ≥ 35 and low-key fraction < 0.25). Cut-outs, 24:
+    three in each of #107's eight cells (an alpha channel, non-opaque 0.05–0.95,
+    not animated, assigned by #107's cuts). Graphics, 16: screenshot, chart,
+    map and diagram 3 each, comic and text 2 each (no transparency, not
+    animated).
+
+  - **Shortfall.** A part that ends short walks its axes again, in list
+    order, one pick per axis per round, with slot quotas lifted, until it is
+    full; a draw that still misses a size or a stratum minimum fails rather
+    than pins.
+
 The alpha allocation validated emphatically on that split: SSIMULACRA2
 −307.2 → −242.7, Butteraugli 57.56 → 44.36, DSSIM 0.2319 → 0.2179, αMAE
 0.2696 → 0.1675. Those figures are from the retired split and cannot be

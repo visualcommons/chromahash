@@ -1,7 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ensurePinnedFixture } from "./corpus-pin.ts";
-import type { CorpusSplit } from "./corpus.ts";
+import {
+  type CorpusSplit,
+  GRAPHIC_HOLDOUT3_PREFIX,
+  type Holdout3Record,
+} from "./corpus.ts";
+import { type Holdout3Opening, checkHoldout3Pins } from "./holdout-images.ts";
 
 const GRAPHIC_DIR = path.resolve(import.meta.dirname, "../fixtures/graphic");
 
@@ -35,6 +40,11 @@ export interface GraphicImageSpec {
   licence: string;
   /** What this image is here to cover. */
   notes: string;
+  /**
+   * A holdout3 pin's draw record and strata (#129); present on every
+   * `sealed3-graphic-*` pin and on no other ({@link graphicHoldout3Specs}).
+   */
+  holdout3?: Holdout3Record;
 }
 
 /**
@@ -400,14 +410,58 @@ export const GRAPHIC_IMAGES: GraphicImageSpec[] = [
 ];
 
 /**
- * Ensure every graphics fixture is present and content-pinned. A fetch failure
- * or digest mismatch throws — see `ensureNaturalImages` for why.
+ * The graphics holdout3 pins (#129), after checking that every `sealed3-`
+ * graphics pin is `sealed3-graphic-*` and holdout3, and carries its draw
+ * record.
  */
-export async function ensureGraphicImages(): Promise<string[]> {
+export function graphicHoldout3Specs(
+  images: readonly GraphicImageSpec[] = GRAPHIC_IMAGES,
+): GraphicImageSpec[] {
+  return checkHoldout3Pins(images, GRAPHIC_HOLDOUT3_PREFIX, "graphics");
+}
+
+/**
+ * The pins {@link ensureGraphicImages} fetches. `holdout3` needs the gate's
+ * opening and returns exactly the sealed part, refusing an empty one. Any
+ * other split, or none, returns every pin that is not sealed: the tune and
+ * holdout graphics every graphics sweep has always fetched, which the loader
+ * then filters by split.
+ */
+export function graphicImagesToFetch(
+  split?: CorpusSplit,
+  images: readonly GraphicImageSpec[] = GRAPHIC_IMAGES,
+  opening?: Holdout3Opening,
+): GraphicImageSpec[] {
+  const sealed = graphicHoldout3Specs(images);
+  if (split === "holdout3") {
+    if (opening === undefined) {
+      throw new Error(
+        "the graphics part of holdout3 is sealed: it is fetched only through the register gate (openHoldout3), for one decision spec/V0.8-DECISIONS.md records as frozen",
+      );
+    }
+    if (sealed.length === 0) {
+      throw new Error(
+        `the graphics part of holdout3 has no pinned images in this table, so decision "${opening.decision}" cannot be read against it`,
+      );
+    }
+    return sealed;
+  }
+  return images.filter((s) => s.split !== "holdout3");
+}
+
+/**
+ * Ensure the graphics fixtures are present and content-pinned. A fetch
+ * failure or digest mismatch throws — see `ensureNaturalImages` for why.
+ * Which pins: {@link graphicImagesToFetch}.
+ */
+export async function ensureGraphicImages(
+  split?: CorpusSplit,
+  opening?: Holdout3Opening,
+): Promise<string[]> {
   await fs.mkdir(GRAPHIC_DIR, { recursive: true });
   const paths: string[] = [];
   let downloaded = 0;
-  for (const spec of GRAPHIC_IMAGES) {
+  for (const spec of graphicImagesToFetch(split, GRAPHIC_IMAGES, opening)) {
     const filePath = path.join(GRAPHIC_DIR, `${spec.label}${spec.ext}`);
     if (
       await ensurePinnedFixture({

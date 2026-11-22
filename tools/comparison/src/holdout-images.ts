@@ -1,8 +1,13 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { ensurePinnedFixture, sha256 } from "./corpus-pin.ts";
-import { HOLDOUT2_PREFIX, inCorpus } from "./corpus.ts";
+import {
+  type CorpusSplit,
+  HOLDOUT2_PREFIX,
+  HOLDOUT3_PREFIX,
+  inCorpus,
+} from "./corpus.ts";
 import {
   CURATED_IMAGES,
   type NaturalImageSpec,
@@ -215,13 +220,22 @@ export function openHoldout2(
   decision: string | undefined,
   registerPath: string = DECISION_REGISTER,
 ): Holdout2Opening {
+  return openSealed("holdout2", decision, registerPath);
+}
+
+/** The register check both sealed splits open through. */
+function openSealed(
+  split: "holdout2" | "holdout3",
+  decision: string | undefined,
+  registerPath: string,
+): Holdout2Opening {
   const where = path
     .relative(REPO_ROOT, registerPath)
     .split(path.sep)
     .join("/");
   if (decision === undefined || decision === "") {
     throw new Error(
-      `--split holdout2 needs --decision <ID>: the sealed holdout opens only for one decision ${where} records as frozen`,
+      `--split ${split} needs --decision <ID>: the sealed holdout opens only for one decision ${where} records as frozen`,
     );
   }
   if (!DECISION_ID.test(decision)) {
@@ -234,16 +248,16 @@ export function openHoldout2(
     bytes = readFileSync(registerPath);
   } catch {
     throw new Error(
-      `holdout2 is sealed: ${where} does not exist, so no decision is frozen (the register is #77)`,
+      `${split} is sealed: ${where} does not exist, so no decision is frozen (the register is #77)`,
     );
   }
   const found = registerStatus(bytes.toString("utf8"), decision);
   if ("error" in found) {
-    throw new Error(`holdout2 is sealed: ${where} ${found.error}`);
+    throw new Error(`${split} is sealed: ${where} ${found.error}`);
   }
   if (found.status !== "frozen") {
     throw new Error(
-      `holdout2 is sealed: ${where} records decision "${decision}" as "${found.status}", and only a frozen decision opens it`,
+      `${split} is sealed: ${where} records decision "${decision}" as "${found.status}", and only a frozen decision opens it`,
     );
   }
   return {
@@ -253,16 +267,198 @@ export function openHoldout2(
   };
 }
 
+// ─── The third sealed holdout (holdout3, #129) ──────────────────────────────
+
+/**
+ * Proof that the gate opened holdout3, and what it read. It names its split,
+ * so a holdout2 opening cannot stand in for it; a result scored on holdout3
+ * records it as `settings.holdout3`.
+ */
+export interface Holdout3Opening extends Holdout2Opening {
+  split: "holdout3";
+}
+
+/**
+ * The holdout3 gate: the same register check as {@link openHoldout2}. Only an
+ * entry the register records as `frozen` opens it; `open` has no approved
+ * criterion and `decided` has been answered.
+ *
+ * @param registerPath Overridable only so the self-test can drive the gate.
+ */
+export function openHoldout3(
+  decision: string | undefined,
+  registerPath: string = DECISION_REGISTER,
+): Holdout3Opening {
+  return {
+    split: "holdout3",
+    ...openSealed("holdout3", decision, registerPath),
+  };
+}
+
+/** Where committed results live (`results.ts` `RESULTS_DIR`, which imports this module). */
+const RESULTS_DIR = path.join(REPO_ROOT, "tools/comparison/results");
+
+/** A committed holdout3 reading: which tool read it, for which entry, into which file. */
+export interface Holdout3Read {
+  file: string;
+  tool: string;
+  decision: string;
+}
+
+/**
+ * Every committed result that read holdout3. A result file is a holdout3
+ * reading when its `split` is `holdout3`; one that says so but records no
+ * decision is reported as decision `""`, so it still counts against the seal.
+ */
+export function holdout3Reads(
+  resultsDir: string = RESULTS_DIR,
+): Holdout3Read[] {
+  let files: string[];
+  try {
+    files = readdirSync(resultsDir).filter((f) => f.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  const reads: Holdout3Read[] = [];
+  for (const f of files.sort()) {
+    let body: unknown;
+    try {
+      body = JSON.parse(readFileSync(path.join(resultsDir, f), "utf8"));
+    } catch {
+      continue;
+    }
+    if (typeof body !== "object" || body === null) continue;
+    const r = body as {
+      split?: unknown;
+      tool?: unknown;
+      settings?: { holdout3?: { decision?: unknown } };
+    };
+    if (r.split !== "holdout3") continue;
+    const decision = r.settings?.holdout3?.decision;
+    reads.push({
+      file: f,
+      tool: typeof r.tool === "string" ? r.tool : "",
+      decision: typeof decision === "string" ? decision : "",
+    });
+  }
+  return reads;
+}
+
+/**
+ * Refuse a second holdout3 reading by `tool` for one register entry. holdout3
+ * is read once per entry: an entry's arms are fixed by its selection rule
+ * before the read, and every arm is scored in that one run. A second run under
+ * any name — a new config, a renamed result — is a second look, and is
+ * refused before anything is fetched. `sweep` and `rd-budget` are counted
+ * apart: one applies the entry's rule, the other places it against the other
+ * formats, as C1 read holdout2 with both.
+ */
+export function assertHoldout3Unread(
+  decision: string,
+  tool: string,
+  resultsDir: string = RESULTS_DIR,
+): void {
+  const earlier = holdout3Reads(resultsDir).filter(
+    (r) => r.tool === tool && r.decision === decision,
+  );
+  if (earlier.length > 0) {
+    throw new Error(
+      `holdout3 has already been read by ${tool} for decision "${decision}" (${earlier.map((r) => r.file).join(", ")}); holdout3 is read once per entry, and reopening a decided question takes a new register entry`,
+    );
+  }
+}
+
+/**
+ * Check that a pin table's holdout3 pins, and only those, carry the part's
+ * seal and a draw record, and that no pin of the table carries another
+ * part's seal. Shared by the three tables' `*Holdout3Specs`.
+ */
+export function checkHoldout3Pins<
+  T extends { label: string; split: CorpusSplit; holdout3?: unknown },
+>(images: readonly T[], seal: string, part: string): T[] {
+  const mismatched = images.filter((s) => {
+    const sealed = s.split === "holdout3";
+    const labelled = s.label.startsWith(HOLDOUT3_PREFIX);
+    return (
+      sealed !== labelled ||
+      (labelled && !s.label.startsWith(seal)) ||
+      (sealed && s.holdout3 === undefined) ||
+      (!sealed && s.holdout3 !== undefined)
+    );
+  });
+  if (mismatched.length > 0) {
+    throw new Error(
+      `every ${part} holdout3 pin, and only a holdout3 pin, is labelled "${seal}*" and carries a draw record; these are not: ${mismatched.map((s) => `${s.label} (${s.split})`).join(", ")}`,
+    );
+  }
+  return images.filter((s) => s.split === "holdout3");
+}
+
+/**
+ * The photographic holdout3 pins: labelled `sealed3-*` with no other corpus's
+ * prefix after the seal (`sealed3-cutout-*` is the alpha part,
+ * `sealed3-graphic-*` the graphics part).
+ */
+export function holdout3Specs(
+  images: readonly NaturalImageSpec[] = CURATED_IMAGES,
+): NaturalImageSpec[] {
+  const wrongCorpus = images.filter(
+    (s) => s.label.startsWith(HOLDOUT3_PREFIX) && !inCorpus(s.label, "photo"),
+  );
+  if (wrongCorpus.length > 0) {
+    throw new Error(
+      `a photographic holdout3 pin carries another corpus's prefix after "${HOLDOUT3_PREFIX}": ${wrongCorpus.map((s) => s.label).join(", ")}`,
+    );
+  }
+  return checkHoldout3Pins(images, HOLDOUT3_PREFIX, "photographic");
+}
+
+/**
+ * Ensure the photographic holdout3 pins are present and content-pinned. Takes
+ * the gate's {@link Holdout3Opening}, so only {@link openHoldout3} can reach
+ * them, and refuses an empty part rather than scoring nothing.
+ */
+export async function ensureHoldout3Images(
+  opening: Holdout3Opening,
+  images: readonly NaturalImageSpec[] = CURATED_IMAGES,
+): Promise<string[]> {
+  const specs = holdout3Specs(images);
+  if (specs.length === 0) {
+    throw new Error(
+      `holdout3 has no pinned photographs in this table, so decision "${opening.decision}" cannot be read against it`,
+    );
+  }
+  const paths: string[] = [];
+  for (const spec of specs) {
+    const filePath = naturalImagePath(spec);
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await ensurePinnedFixture({
+      filePath,
+      urls: spec.urls,
+      sha256: spec.sha256,
+      label: spec.label,
+    });
+    paths.push(filePath);
+  }
+  console.log(
+    `holdout3 (photographic) opened for decision "${opening.decision}" (${opening.register} sha256 ${opening.registerSha256.slice(0, 12)})`,
+  );
+  return paths;
+}
+
 /**
  * Refuse to overwrite a committed holdout2 result. The split is read once per
  * question: a second run under the same name, after the first has been seen,
  * is the forking path the seal exists to close. A result that has to be
  * re-read is a new, named run, and the document says why.
  */
-export function assertHoldout2Unread(resultFile: string): void {
+export function assertHoldout2Unread(
+  resultFile: string,
+  split: "holdout2" | "holdout3" = "holdout2",
+): void {
   if (existsSync(resultFile)) {
     throw new Error(
-      `${path.relative(REPO_ROOT, resultFile)} already holds a holdout2 reading; the sealed split is read once per question, so a re-read needs a new name and a reason recorded in spec/EXPERIMENTS.md`,
+      `${path.relative(REPO_ROOT, resultFile)} already holds a ${split} reading; the sealed split is read once per question, so a re-read needs a new name and a reason recorded in spec/EXPERIMENTS.md`,
     );
   }
 }
