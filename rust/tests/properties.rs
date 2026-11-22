@@ -523,4 +523,92 @@ proptest! {
         prop_assert_eq!(a.as_bytes(), b.as_bytes());
         prop_assert_eq!(a.decode(), b.decode());
     }
+
+    /// Register D1's validity design with the entropy coder on
+    /// (`Tunables::ac_coder`): the code is total, so a byte string that
+    /// validates decodes, and validation is exactly the shipped validator's.
+    ///
+    /// The strings are random, not perturbed encodes: a valid header and the
+    /// header-implied length are drawn on purpose (most random strings fail
+    /// the length check and prove nothing about the decoder), with a random
+    /// header byte and a wrong length mixed in for the rejection paths.
+    #[test]
+    fn with_the_coder_on_anything_from_bytes_accepts_decodes(
+        tier in 2u8..=MAX_TIER,
+        alpha in any::<bool>(),
+        aspect in any::<u8>(),
+        payload_seed in any::<u64>(),
+        header in prop_oneof![Just(None), any::<u8>().prop_map(Some)],
+        len_delta in prop_oneof![Just(0isize), -3isize..=3],
+    ) {
+        let t = coded_tunables();
+        let len = if alpha { ALPHA_LEN } else { OPAQUE_LEN }[tier as usize];
+        let len = (len as isize + len_delta).max(0) as usize;
+        let mut state = payload_seed | 1;
+        let mut bytes: Vec<u8> = (0..len)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state as u8
+            })
+            .collect();
+        if len >= 2 {
+            bytes[0] = header.unwrap_or((tier << 3) | ((alpha as u8) << 6));
+            bytes[1] = aspect;
+        }
+
+        let coded = ChromaHash::from_bytes_tuned(&bytes, &t);
+        // Every rejection is the named error the shipped validator gives the
+        // same bytes: the coded length is the shipped length.
+        let shipped = ChromaHash::from_bytes(&bytes);
+        prop_assert_eq!(coded.as_ref().err(), shipped.as_ref().err());
+        if let Ok(hash) = coded {
+            let (dw, dh, pixels) = hash.decode_tuned(&t);
+            // The tier's natural size, which the header alone fixes.
+            let (nw, nh, _) = shipped.unwrap().decode();
+            prop_assert_eq!((dw, dh), (nw, nh));
+            prop_assert_eq!(pixels.len(), (dw * dh * 4) as usize);
+            let (cw, ch, _) = hash.decode_capped_tuned(8, 8, &t);
+            prop_assert!(cw <= 8 && ch <= 8 && cw > 0 && ch > 0);
+        }
+    }
+
+    /// Coded hashes at codes 2–4 are the shipped length, validate, and decode
+    /// at the tier's size, with a bound large enough that the encoder has to
+    /// cut the stream to fit.
+    #[test]
+    fn coded_hashes_validate_and_decode_at_the_tier_size(
+        opaque in any::<bool>(),
+        tier in 2u8..=MAX_TIER,
+        seed in any::<u64>(),
+    ) {
+        let t = coded_tunables();
+        let (w, h, rgba) = deterministic_image(seed, opaque);
+        let coded = ChromaHash::encode_tuned_quality(w, h, &rgba, Gamut::Srgb, &t, tier);
+        let shipped = ChromaHash::encode_with_quality(w, h, &rgba, Gamut::Srgb, tier);
+        prop_assert_eq!(coded.as_bytes().len(), shipped.as_bytes().len());
+        let parsed = ChromaHash::from_bytes_tuned(coded.as_bytes(), &t)
+            .map_err(|e| TestCaseError::fail(format!("rejected its own output: {e}")))?;
+        let (dw, dh, pixels) = parsed.decode_tuned(&t);
+        let (nw, nh, _) = shipped.decode();
+        prop_assert_eq!((dw, dh), (nw, nh));
+        prop_assert_eq!(pixels.len(), (dw * dh * 4) as usize);
+    }
+}
+
+/// The coder on, with a bound of twice the shipped upper-tier counts in both
+/// alpha modes, so random content overflows the stream and the fit search
+/// runs.
+fn coded_tunables() -> Tunables {
+    let mut t = Tunables {
+        ac_coder: 1,
+        ..Tunables::DEFAULT
+    };
+    t.layout_upper.l_tiers = [(52, 5), (0, 5)];
+    t.layout_upper.c_count = 18;
+    t.layout_upper.la_tiers = [(44, 4), (0, 4)];
+    t.layout_upper.ca_count = 6;
+    t.layout_upper.a_count = 56;
+    t
 }
