@@ -132,6 +132,21 @@ mod tests {
     }
 
     #[test]
+    fn write_bits_lands_in_the_addressed_bytes() {
+        // Exact bytes, not a round trip through `read_bits`: a writer that
+        // computes the wrong byte index from `bitpos + i` must show here, at
+        // an offset where it cannot underflow, rather than downstream as a
+        // scrambled descriptor byte (which can name a reserved tier and send
+        // a decode test into a minutes-long render).
+        let mut buf = [0u8; 4];
+        write_bits(&mut buf, 8, 8, 0xAB);
+        assert_eq!(buf, [0, 0xAB, 0, 0]);
+        let mut buf = [0u8; 4];
+        write_bits(&mut buf, 13, 6, 0b10_1101);
+        assert_eq!(buf, [0, 0b1010_0000, 0b0000_0101, 0]);
+    }
+
+    #[test]
     fn zero_value() {
         let mut buf = [0u8; 4];
         write_bits(&mut buf, 0, 8, 0);

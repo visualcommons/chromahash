@@ -130,7 +130,9 @@ export const TUNE_ARMS: ReadonlyArray<{ label: string; tune: string | null }> =
  * The encode levers whose share grows with the tier rather than the source:
  * `scale_fit = 2` searches every scale code over every selected coefficient,
  * and tier 4 selects ~16× the coefficients of tier 1. Priced at tier 4 on the
- * centre fixture, against a `shipped` cell measured in the same block.
+ * centre fixture. `shipped` is §2's tier-4 encode cell under the lever
+ * table's name (an alias, `plan.ts`), and every other arm is a paired ratio
+ * against it.
  */
 export const TIER4_ACCEL_ARMS: ReadonlyArray<{
   label: string;
@@ -144,7 +146,8 @@ export const TIER4_ACCEL_ARMS: ReadonlyArray<{
 
 /**
  * §12.1 item 4's two decode levers, alone and together with everything else,
- * each against a `shipped` decode measured in the same block.
+ * each a paired ratio against §2's decode cell at the same tier and raster,
+ * which `shipped` names (an alias, `plan.ts`).
  */
 export const DECODE_ACCEL_ARMS: ReadonlyArray<{
   label: string;

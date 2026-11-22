@@ -30,6 +30,7 @@ CAP is `natural` or `CWxCH`.
 """
 
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -39,9 +40,50 @@ import sys
 SCHEMA = "chromahash-perf-stages/1"
 DECODE_SCHEMA = "chromahash-perf-decode-stages/1"
 
-# Every artifact this recorder writes. The dirty probe excludes all of them,
-# not only the one being written; see `provenance`.
-RECORDER_OUTPUTS = ("perf-stages.json", "perf-decode-stages.json")
+# Every measurement output in the tree, repo-root-relative: this recorder's two
+# artifacts and the per-host sweep baselines `mise run benchmark:session` copies
+# in. The dirty probe excludes all of them, not only the one being written; see
+# `provenance`. Kept identical to MEASUREMENT_OUTPUTS in
+# tools/comparison/src/perf/provenance.ts, which `selftest:metrics` asserts.
+MEASUREMENT_OUTPUTS = (
+    "tools/comparison/baselines/hosts",
+    "tools/comparison/baselines/perf-decode-stages.json",
+    "tools/comparison/baselines/perf-stages.json",
+)
+
+# The sources that decide what a measurement measures, including the tasks that
+# build and run it (`.mise.toml`, `mise-tasks/benchmark`). A cell records a
+# digest of them at HEAD, so `verify:benchmark` can trace it after a squash
+# merge has made its commit unreachable: some commit in master's history has the
+# same sources. Kept identical to MEASURED_PATHS in
+# tools/comparison/src/perf/provenance.ts, which `selftest:metrics` asserts.
+MEASURED_PATHS = (
+    ".mise.toml",
+    "Package.swift",
+    "bindings",
+    "csharp",
+    "go",
+    "mise-tasks/benchmark",
+    "python",
+    "rust",
+    "swift",
+    "tools/benchmark/record_stages.py",
+    "tools/comparison/src/perf",
+    "tools/comparison/src/stats.ts",
+    "typescript",
+)
+
+# Files under MEASURED_PATHS that cannot change a measurement, and so do not
+# enter the digest: a README edit must not orphan a baseline. The same rule as
+# `isDocumentation` in provenance.ts; `selftest:metrics` checks the two digests
+# agree on HEAD.
+DOCUMENTATION = re.compile(r"\.(md|markdown|rst)$", re.IGNORECASE)
+
+
+def is_documentation(path: str) -> bool:
+    """Whether a repo path is documentation: Markdown, reStructuredText, or under docs/."""
+    return DOCUMENTATION.search(path) is not None or "docs" in path.split("/")
+
 
 # Provenance is recorded so `verify:benchmark` can refuse a baseline that cannot
 # be traced to a source state. The recorder's own artifacts are excluded from the
@@ -50,11 +92,13 @@ RECORDER_OUTPUTS = ("perf-stages.json", "perf-decode-stages.json")
 # invocation after the first observes its predecessor's write and records
 # `dirty: true` — which the gate hard-fails with advice ("re-run from a clean
 # tree") that no multi-invocation table can ever follow. The exclusion covers
-# the sibling artifact too: §0's procedure records §1 and then §1.1 before
-# committing either, and a measurement output is not a source input, so the
-# encode baseline being modified says nothing about what the decode run built.
-# Every other path still counts. The probe also runs *after* the write rather
-# than before, so it sees anything the build itself left behind.
+# the sibling artifact and the per-host sweep baselines too: a measurement
+# output is not a source input, so a copied-in `perf-report.json` says nothing
+# about what this run built. That is what makes `benchmark:session`'s order
+# free — §0 used to require sweeps, then stages, then copies, because a copy
+# made first dirtied every recording after it. Every other path still counts.
+# The probe also runs *after* the write rather than before, so it sees anything
+# the build itself left behind.
 
 
 def git(*args: str) -> str:
@@ -64,16 +108,44 @@ def git(*args: str) -> str:
     ).stdout.strip()
 
 
+def source_digest(rev: str = "HEAD") -> str | None:
+    """SHA-256 over `git ls-tree -r -z` of MEASURED_PATHS, less documentation.
+
+    The same digest as `sourceDigest` in provenance.ts.
+
+    Each kept entry (`<mode> <type> <object>\\t<path>`) is hashed followed by a
+    newline, in git's order. None when nothing is left to digest.
+    """
+    listing = subprocess.run(
+        ["git", "ls-tree", "-r", "-z", "--full-tree", rev, "--", *MEASURED_PATHS],
+        capture_output=True,
+        check=False,
+    )
+    if listing.returncode != 0:
+        return None
+    kept = [
+        entry
+        for entry in listing.stdout.split(b"\0")
+        if b"\t" in entry
+        and not is_documentation(entry.split(b"\t", 1)[1].decode("utf-8", "replace"))
+    ]
+    if not kept:
+        return None
+    return hashlib.sha256(b"".join(entry + b"\n" for entry in kept)).hexdigest()
+
+
 def provenance(out: str) -> dict[str, object]:
-    """The revision these shares were measured at, and whether anything else was dirty."""
+    """The revision measured, its sources' digest, and whether anything else was dirty."""
     top = git("rev-parse", "--show-toplevel")
-    here = os.path.dirname(os.path.abspath(out))
-    excluded = {os.path.abspath(out)} | {os.path.join(here, n) for n in RECORDER_OUTPUTS}
-    rels = sorted(os.path.relpath(p, top) if top else p for p in excluded)
+    rels = {os.path.relpath(os.path.abspath(out), top) if top else out, *MEASUREMENT_OUTPUTS}
     # `:/` is every path in the repo; `:(exclude,top)` is repo-root-relative, so
     # this is correct regardless of the working directory the task runs from.
-    status = git("status", "--porcelain", "--", ":/", *(f":(exclude,top){r}" for r in rels))
-    return {"rev": git("rev-parse", "--short", "HEAD"), "dirty": status != ""}
+    status = git("status", "--porcelain", "--", ":/", *(f":(exclude,top){r}" for r in sorted(rels)))
+    return {
+        "rev": git("rev-parse", "--short", "HEAD"),
+        "dirty": status != "",
+        "digest": source_digest(),
+    }
 
 
 RERECORD = {
