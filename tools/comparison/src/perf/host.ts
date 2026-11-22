@@ -33,6 +33,52 @@ export function defaultMaxLoad(cores: number): number {
   return Math.max(1, cores / 8);
 }
 
+/**
+ * How far above the 1-minute bar the 5-minute load average may stand when a
+ * run or a round is admitted: it must be under this multiple of the bar.
+ *
+ * The 1-minute bar alone admitted a momentary dip inside sustained load. In the
+ * 2026-10-10 overnight session every round was admitted at a 1-minute load of
+ * 1.86–2.0 against a bar of 2.0, while the 5-minute load at the same moment was
+ * 2.6–6.2, and 21 cells had one outlier process in run 1 — a burst of load
+ * right after the dip. The 5-minute average rises and falls over minutes, so it
+ * rejects such a dip; 1.5× rather than 1× leaves room for the decaying tail of
+ * the sweep's own last round and build, so the rule does not demand a host idle
+ * for a quarter of an hour. At 3.0 on that 16-thread host it would have refused
+ * every round of the session.
+ */
+export const SUSTAINED_LOAD_FACTOR = 1.5;
+
+/**
+ * The admission rule the driver applies, recorded as
+ * `environment.preflight.waitRule`. `verify:benchmark` holds the 5-minute half
+ * only to runs that record it: an earlier run was admitted on the 1-minute
+ * rule alone and is held to that.
+ */
+export const WAIT_RULE = `load1 <= bar && load5 < ${SUSTAINED_LOAD_FACTOR} * bar`;
+
+/** The 5-minute load a run or round must be under, for a 1-minute `maxLoad`. */
+export const sustainedLoadBar = (maxLoad: number): number =>
+  maxLoad * SUSTAINED_LOAD_FACTOR;
+
+/**
+ * Why `load` is not quiet enough to start a run or a round under `maxLoad`, or
+ * null when it is: the 1-minute load at or under the bar, and the 5-minute load
+ * under `SUSTAINED_LOAD_FACTOR` times it. An unreadable load is admitted: there
+ * is nothing to wait for.
+ */
+export function overLoad(load: Loadavg | null, maxLoad: number): string | null {
+  if (load === null) return null;
+  if (load[0] > maxLoad) {
+    return `1-minute load average ${load[0].toFixed(2)} is above ${maxLoad.toFixed(2)}`;
+  }
+  const sustained = sustainedLoadBar(maxLoad);
+  if (load[1] >= sustained) {
+    return `5-minute load average ${load[1].toFixed(2)} is not under ${sustained.toFixed(2)} (${SUSTAINED_LOAD_FACTOR}x the bar)`;
+  }
+  return null;
+}
+
 /** One value if every CPU agrees, `mixed: a, b` otherwise, null if none read. */
 export function summarize(values: readonly string[]): string | null {
   const distinct = [...new Set(values.map((v) => v.trim()))].sort();
@@ -64,6 +110,11 @@ export interface Preflight {
    */
   waitedSeconds: number[];
   maxLoad: number;
+  /**
+   * The admission rule applied at the start and at every round (`WAIT_RULE`).
+   * Absent from runs taken before the 5-minute half existed.
+   */
+  waitRule?: string;
   /** Started above `maxLoad` because `--force-loaded` said to. Not a baseline. */
   loaded: boolean;
   governor: string | null;
@@ -125,8 +176,10 @@ export interface LoadWait {
 }
 
 /**
- * Poll the 1-minute load average until it is at or under `maxLoad`, or until
- * `timeoutMs` has passed.
+ * Poll the load average until `overLoad` admits it — the 1-minute load at or
+ * under `maxLoad` and the 5-minute load under `SUSTAINED_LOAD_FACTOR` times it
+ * — or until `timeoutMs` has passed. A 1-minute dip inside sustained load is
+ * waited out, not admitted.
  *
  * Load is the one host property the person running a sweep can fix by waiting,
  * and the sweep itself is what most often needs waiting out: the 1-minute
@@ -146,8 +199,11 @@ export async function waitForLoad(o: {
   read?: () => Loadavg | null;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
-  /** Called before each sleep with the reading and the time waited so far. */
-  onWait?: (load1: number, waitedMs: number) => void;
+  /**
+   * Called before each sleep with why the reading was not admitted, the
+   * reading, and the time waited so far.
+   */
+  onWait?: (why: string, load: Loadavg, waitedMs: number) => void;
 }): Promise<LoadWait> {
   const read = o.read ?? (() => readLoadavg());
   const sleep =
@@ -159,11 +215,12 @@ export async function waitForLoad(o: {
   for (;;) {
     const load = read();
     const waitedMs = now() - start;
-    if (load === null || load[0] <= o.maxLoad) {
+    const why = overLoad(load, o.maxLoad);
+    if (load === null || why === null) {
       return { ok: true, waitedMs, load };
     }
     if (waitedMs >= o.timeoutMs) return { ok: false, waitedMs, load };
-    o.onWait?.(load[0], waitedMs);
+    o.onWait?.(why, load, waitedMs);
     await sleep(Math.min(poll, o.timeoutMs - waitedMs));
   }
 }
@@ -211,6 +268,7 @@ export function readPreflight(
     loadavgEnd: null,
     waitedSeconds: [],
     maxLoad,
+    waitRule: WAIT_RULE,
     loaded: false,
     governor: summarize(perCpu("scaling_governor")),
     boost: boost.value,
@@ -233,13 +291,9 @@ export function readPreflight(
  */
 export function judgePreflight(p: Preflight, forceLoaded: boolean): Preflight {
   const warnings: string[] = [];
-  const load1 = p.loadavgStart?.[0];
-  const over = load1 !== undefined && load1 > p.maxLoad;
-  if (over) {
-    warnings.push(
-      `1-minute load average ${load1.toFixed(2)} is above ${p.maxLoad.toFixed(2)}`,
-    );
-  }
+  const why = overLoad(p.loadavgStart, p.maxLoad);
+  const over = why !== null;
+  if (why !== null) warnings.push(why);
   // amd-pstate and intel_pstate in active mode take their policy from the
   // energy-performance preference, and their `powersave` governor is not the
   // legacy one; `performance` is still the only setting that pins the request.
@@ -260,10 +314,8 @@ export function judgePreflight(p: Preflight, forceLoaded: boolean): Preflight {
 }
 
 /** Whether the run may start. */
-export const mayStart = (p: Preflight, forceLoaded: boolean): boolean => {
-  const load1 = p.loadavgStart?.[0];
-  return forceLoaded || load1 === undefined || load1 <= p.maxLoad;
-};
+export const mayStart = (p: Preflight, forceLoaded: boolean): boolean =>
+  forceLoaded || overLoad(p.loadavgStart, p.maxLoad) === null;
 
 /**
  * A host's key: the directory its baselines live in. OS, architecture and CPU

@@ -10,8 +10,8 @@
 #                   no copy into baselines/, no --fix. Implies --allow-dirty.
 #   --skip-build    the harnesses are already built at this commit
 #   --load-timeout SECONDS
-#                   how long to wait, each time, for the 1-minute load to fall
-#                   under the bar (default 1800): after the build, before each
+#                   how long to wait, each time, for the load to fall
+#                   under its bars (default 1800): after the build, before each
 #                   sweep and each of its process rounds, and before the stages
 #   --set-primary   make this host the one PERFORMANCE.md speaks for
 #                   (baselines/hosts/PRIMARY). Without it a session on another
