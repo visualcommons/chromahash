@@ -613,11 +613,24 @@ fn render_flat(
     }
 }
 
+/// The raster a decode renders at before any cap: the header tier's natural
+/// size, or, for register entry D2's cut ([`Tunables::cut_tier`] below the
+/// header's tier), the natural size of the code the cut stands for, since the
+/// prefix carries a code-k placeholder. A byte cut (`trunc_bytes`) keeps the
+/// header tier's size, as every result measured with it did.
+fn natural_size(hash: &[u8], t: &Tunables) -> (u32, u32) {
+    let (tier, _has_alpha, aspect) = read_header_fields(hash, t);
+    let shown = match t.cut_tier {
+        Some(k) if k < tier => k,
+        _ => tier,
+    };
+    decode_output_size(aspect, shown)
+}
+
 /// Decode a ChromaHash into RGBA pixel data in the given output gamut, with
 /// explicit tunables. Returns (width, height, rgba_pixels).
 pub fn decode_to_with(hash: &[u8], t: &Tunables, output: Gamut) -> (u32, u32, Vec<u8>) {
-    let (tier, _has_alpha, aspect) = read_header_fields(hash, t);
-    let (w, h) = decode_output_size(aspect, tier);
+    let (w, h) = natural_size(hash, t);
     let rgba = render_at_size(hash, w as usize, h as usize, t, output);
     (w, h, rgba)
 }
@@ -648,8 +661,7 @@ pub fn decode_capped_to_with(
     t: &Tunables,
     output: Gamut,
 ) -> (u32, u32, Vec<u8>) {
-    let (tier, _has_alpha, aspect) = read_header_fields(hash, t);
-    let (nat_w, nat_h) = decode_output_size(aspect, tier);
+    let (nat_w, nat_h) = natural_size(hash, t);
     let w = nat_w.min(max_w);
     let h = nat_h.min(max_h);
     let rgba = render_at_size(hash, w as usize, h as usize, t, output);
@@ -1327,11 +1339,16 @@ mod tests {
                         trunc_bytes: len,
                         ..base
                     };
+                    // The cut renders at code k's natural size, which a byte
+                    // cut, keeping the header's code-3 size, reaches capped.
                     let cut = decode_to_with(&hash, &by_tier, Gamut::Srgb);
-                    assert_ne!(cut, full, "premise: a code-{k} cut drops codes");
+                    let (kw, kh) = decode_output_size(hash[1], k);
+                    assert_eq!((cut.0, cut.1), (kw, kh), "code-{k} raster");
+                    let full_at_k = decode_capped_to_with(&hash, kw, kh, &base, Gamut::Srgb);
+                    assert_ne!(cut, full_at_k, "premise: a code-{k} cut drops codes");
                     assert_eq!(
                         cut,
-                        decode_to_with(&hash, &by_bytes, Gamut::Srgb),
+                        decode_capped_to_with(&hash, kw, kh, &by_bytes, Gamut::Srgb),
                         "alpha {alpha} interleave {interleave} cut at code {k} ({len} B)"
                     );
                     // With both set, the shorter cut applies, either way round.
@@ -1344,16 +1361,13 @@ mod tests {
                         trunc_bytes: len - 7,
                         ..by_tier
                     };
+                    let shorter = Tunables {
+                        trunc_bytes: len - 7,
+                        ..base
+                    };
                     assert_eq!(
                         decode_to_with(&hash, &both, Gamut::Srgb),
-                        decode_to_with(
-                            &hash,
-                            &Tunables {
-                                trunc_bytes: len - 7,
-                                ..base
-                            },
-                            Gamut::Srgb
-                        )
+                        decode_capped_to_with(&hash, kw, kh, &shorter, Gamut::Srgb)
                     );
                 }
                 // A cut at the hash's own code, or above it, is no cut.
@@ -1465,9 +1479,10 @@ mod tests {
             cut_tier: Some(1),
             ..il
         };
+        let (kw, kh) = decode_output_size(hash[1], 1);
         assert_eq!(
             decode_to_with(&hash, &t, Gamut::Srgb),
-            decode_to_with(&want, &il, Gamut::Srgb)
+            decode_capped_to_with(&want, kw, kh, &il, Gamut::Srgb)
         );
     }
 
