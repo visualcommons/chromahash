@@ -1383,16 +1383,6 @@ const ALPHA_SUBSETS: Record<string, ImageSubset> = {
  * §13.8's per-row baselines: every D1 arm against its own tier's shipped arm,
  * the first arm of that tier in `entropy-coded-ac`.
  */
-const D9_TIER_BASELINES: Record<string, string> = Object.fromEntries(
-  [0, 1, 2, 3, 4].flatMap((k) =>
-    [
-      "cfl_bits=5 cfl_range=0.5",
-      "cfl_bits=8 cfl_range=0.25",
-      "cfl_bits=10 cfl_range=1.0",
-    ].map((gain) => [`t${k} free ${gain}`, `t${k} shipped`]),
-  ),
-);
-
 const D1_TIER_BASELINES: Record<string, string> = Object.fromEntries(
   [
     [
@@ -1406,6 +1396,20 @@ const D1_TIER_BASELINES: Record<string, string> = Object.fromEntries(
     ["t4", ["coded x2", "coded x3", "coded x4", "adaptive x3"]],
   ].flatMap(([tier, arms]) =>
     (arms as string[]).map((arm) => [`${tier} ${arm}`, `${tier} shipped`]),
+  ),
+);
+
+/**
+ * §13.14's per-row baselines: every free D9 arm against its own code's
+ * shipped arm, the first arm of that code in `cfl-oracle`.
+ */
+const D9_TIER_BASELINES: Record<string, string> = Object.fromEntries(
+  [0, 1, 2, 3, 4].flatMap((k) =>
+    [
+      "cfl_bits=5 cfl_range=0.5",
+      "cfl_bits=8 cfl_range=0.25",
+      "cfl_bits=10 cfl_range=1.0",
+    ].map((gain) => [`t${k} free ${gain}`, `t${k} shipped`]),
   ),
 );
 
