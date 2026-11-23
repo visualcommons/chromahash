@@ -249,6 +249,7 @@ import {
   realCorpusOf,
   tierBaselinePairs,
 } from "./stratify-core.ts";
+import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
 import {
   decodeDigest,
   expectedLength,
@@ -6588,11 +6589,154 @@ console.log(
     unequal = (e as Error).message;
   }
   check(
-    "identityMismatches names exactly the images whose digests differ, in order, and refuses unaligned series",
+    "identityMismatches names exactly the images whose digests differ, in order, and refuses unaligned series (D2 part 1)",
     none.length === 0 &&
       some.join(",") === "b,c" &&
       unequal === "identicalTo compares 3 decodes against 2, over 3 images",
     `${none.join(",")}|${some.join(",")}|${unequal}`,
+  );
+}
+
+{
+  console.log("\nD2's embedded-tiers reading (embedded-core.ts)");
+  const specs = embeddedCuts(
+    [
+      "t0 native",
+      "t1 native",
+      "t2 interleaved cut 1",
+      "t2 seq cut 1",
+      "t3 interleaved cut 2",
+      "t4 interleaved cut 1",
+      "t2 interleaved full",
+    ].map((label) => ({ label })),
+  );
+  check(
+    "embeddedCuts reads a cut one code down against tk native and t(k-1) native, and drops a deeper cut or one whose native arms are absent",
+    JSON.stringify(specs) ===
+      JSON.stringify([
+        {
+          k: 1,
+          order: "interleaved",
+          cut: "t2 interleaved cut 1",
+          native: "t1 native",
+          below: "t0 native",
+        },
+        {
+          k: 1,
+          order: "seq",
+          cut: "t2 seq cut 1",
+          native: "t1 native",
+          below: "t0 native",
+        },
+      ]),
+    JSON.stringify(specs.map((s) => s.cut)),
+  );
+
+  // Six images. Native code 1 scores 10 on each, native code 0 one more, so
+  // the gap G is +1.000 exactly. The guard metrics are equal across arms,
+  // so every guard interval is [0, 0] and ok.
+  const guards = {
+    ssimulacra2: [50, 52, 54, 56, 58, 60],
+    butteraugli: [3, 3, 3, 3, 3, 3],
+    dssim: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+  };
+  const ladderRow = (label: string, ciede2000: number[]) => ({
+    label,
+    perImage: { ciede2000, ...guards },
+  });
+  const tol = { ssimulacra2Drop: 1.0, relativeRise: 0.02 };
+  const rows = [
+    ladderRow("t0 native", [11, 11, 11, 11, 11, 11]),
+    ladderRow("t1 native", [10, 10, 10, 10, 10, 10]),
+    ladderRow("t2 interleaved cut 1", [10.1, 10.3, 10.2, 10.4, 10.2, 10.2]),
+    ladderRow("t2 seq cut 1", [11.2, 11.6, 11.4, 11.5, 11.3, 11.6]),
+  ];
+  const [il, seq] = embeddedCuts(rows).map((s) => readCut(s, rows, tol, 0.05));
+  check(
+    "readCut: Δ is cut − native k, G is native k−1 − native k, condition 1 is U < G, and a cut a tier step worse does not qualify",
+    il !== undefined &&
+      seq !== undefined &&
+      Math.abs(il.gapMean - 1) < 1e-12 &&
+      Math.abs(il.delta.meanDelta - 0.2333333333) < 1e-9 &&
+      il.upper < 1 &&
+      il.cond1 &&
+      il.guardsOk &&
+      il.qualifies &&
+      il.pass &&
+      Math.abs(il.marginRel - 7.666666667) < 1e-6 &&
+      seq.delta.meanDelta > 1 &&
+      !seq.cond1 &&
+      !seq.qualifies &&
+      !seq.pass,
+    `${il?.delta.meanDelta.toFixed(4)} [${il?.delta.ci.map((x) => x.toFixed(3)).join(", ")}] G ${il?.gapMean} margin ${il?.marginRel.toFixed(3)}%; seq ${seq?.delta.meanDelta.toFixed(3)}`,
+  );
+
+  // One stratum where the cut costs more than that stratum's own gap fails
+  // the cut; the literal +1.0% test fails both strata and gates nothing.
+  const sRows = [
+    ladderRow("t0 native", [10.5, 10.5, 10.5, 12, 12, 12]),
+    ladderRow("t1 native", [10, 10, 10, 10, 10, 10]),
+    ladderRow("t2 interleaved cut 1", [10.8, 10.9, 10.7, 10.5, 10.6, 10.4]),
+  ];
+  const members = new Map([
+    ["skin", [0, 1, 2]],
+    ["low-light", [3, 4, 5]],
+  ]);
+  const [spec] = embeddedCuts(sRows);
+  const strat = spec ? readCut(spec, sRows, tol, 0.05, members) : undefined;
+  const byName = new Map((strat?.strata ?? []).map((s) => [s.stratum, s]));
+  check(
+    "the stratum rule with D2's margin: a stratum fails when its Δ interval's lower bound is above its own gap, and the literal +1.0% test is reported, not gated",
+    strat?.cond1 === true &&
+      byName.get("skin")?.verdict === "FAIL" &&
+      byName.get("low-light")?.verdict === "ok" &&
+      byName.get("skin")?.literalFails === true &&
+      byName.get("low-light")?.literalFails === true &&
+      !strat.pass,
+    [...byName.values()]
+      .map(
+        (s) =>
+          `${s.stratum} Δ [${s.delta.ci.map((x) => x.toFixed(3)).join(", ")}] G ${s.gap.meanDelta.toFixed(3)} ${s.verdict}`,
+      )
+      .join("; "),
+  );
+
+  // The selection rule: qualifying interleaved cuts by relative margin, two
+  // frozen, the third past the cap; a seq control is never a candidate.
+  const fake = (
+    cut: string,
+    k: number,
+    order: "interleaved" | "seq",
+    qualifies: boolean,
+    marginRel: number,
+  ) =>
+    ({
+      spec: { k, order, cut, native: "", below: "" },
+      qualifies,
+      marginRel,
+    }) as unknown as Parameters<typeof selectCuts>[0][number];
+  const pick = selectCuts([
+    fake("c1", 1, "interleaved", true, 2.0),
+    fake("c2", 2, "interleaved", true, 5.0),
+    fake("c3", 3, "interleaved", true, 3.0),
+    fake("s1", 1, "seq", true, 9.0),
+  ]);
+  const pick2 = selectCuts([
+    fake("c1", 1, "interleaved", false, 2.0),
+    fake("c2", 2, "interleaved", true, 1.0),
+    fake("c3", 3, "interleaved", true, 1.0),
+  ]);
+  const cuts = (rs: readonly { spec: { cut: string } }[]) =>
+    rs.map((r) => r.spec.cut).join(",");
+  check(
+    "selectCuts freezes at most two qualifying interleaved cuts by relative margin (ties to the lower cut), and decides the rest in sample",
+    cuts(pick.frozen) === "c2,c3" &&
+      cuts(pick.capped) === "c1" &&
+      cuts(pick.notQualified) === "" &&
+      cuts(pick2.frozen) === "c2,c3" &&
+      cuts(pick2.notQualified) === "c1" &&
+      cuts(pick2.capped) === "",
+    `${cuts(pick.frozen)}|${cuts(pick.capped)}|${cuts(pick2.frozen)}|${cuts(pick2.notQualified)}`,
   );
 }
 

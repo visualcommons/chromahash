@@ -30,6 +30,7 @@ import { parseArgs } from "node:util";
 import { compareArms, guardVerdictOnIntervals, statFor } from "./arms-core.ts";
 import { holdout3Strata } from "./corpus.ts";
 import { measureFile } from "./corpus-covariates.ts";
+import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
 import { CURATED_IMAGES } from "./natural-images.ts";
 import {
   holdout3StrataOf,
@@ -143,19 +144,74 @@ const { values, positionals } = parseArgs({
     by: { type: "string", default: "detail" },
     bins: { type: "string", default: "3" },
     strata: { type: "boolean", default: false },
+    embedded: { type: "boolean", default: false },
   },
 });
 
 const sweepName = positionals[0];
 if (!sweepName) {
   console.error(
-    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata",
+    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata | stratify <sweep> --embedded",
   );
   process.exit(2);
 }
 if (values.strata) {
   await printStrata(sweepName);
   process.exit(0);
+}
+if (values.embedded) {
+  await printEmbedded(sweepName);
+  process.exit(0);
+}
+
+/**
+ * `--embedded`: register entry D2's reading of an `embedded-tiers-ladder`
+ * result (`embedded-core.ts`). Each cut against native code k, with the same
+ * run's gap from native k−1 to native k as its margin, overall and in each
+ * holdout3 stratum, the strata found as `--strata` finds them. On tune it
+ * also applies D2's selection rule; on tune the strata gate nothing.
+ */
+async function printEmbedded(name: string): Promise<void> {
+  const file = readResult(RESULTS_DIR, name);
+  if (!file) {
+    console.error(`no committed result ${name} — run the sweep`);
+    process.exit(1);
+  }
+  const strataOf =
+    file.split === "holdout3"
+      ? holdout3StrataOf
+      : await measuredStrata(file.imageNames);
+  const members = strataMembers(file.imageNames, strataOf);
+  const tol = file.settings.guardTolerances as GuardTolerances;
+  const rise = (file.settings.artifactGuardRise as number | null) ?? undefined;
+  const sign = (x: number, d: number) => `${x >= 0 ? "+" : ""}${x.toFixed(d)}`;
+  const pct = (x: number, base: number) => sign((100 * x) / base, 2);
+  console.log(
+    `${name} (${file.split}, ${file.imageNames.length} images): each cut against native code k; margin G = the same run's gap from native k-1 to native k`,
+  );
+  for (const [s, idx] of members) console.log(`  ${s}: ${idx.length} images`);
+  const readings = embeddedCuts(file.rows).map((spec) =>
+    readCut(spec, file.rows, tol, rise, members),
+  );
+  for (const r of readings) {
+    const base = r.delta.baseMean;
+    console.log(
+      `\n${r.spec.cut} vs ${r.spec.native} (margin from ${r.spec.below})\n  ${"overall".padEnd(15)} n ${String(r.n).padStart(3)}  Δ ${sign(r.delta.meanDelta, 3)} [${sign(r.delta.ci[0], 3)}, ${sign(r.upper, 3)}] = ${pct(r.delta.meanDelta, base)}%  G ${sign(r.gapMean, 3)} = ${pct(r.gapMean, base)}%  U < G ${r.cond1 ? "yes" : "no"}  guards (CI) ${r.guards}  margin ${sign(r.marginRel, 2)}%  ${r.qualifies ? "qualifies" : "does not qualify"}`,
+    );
+    for (const s of r.strata ?? []) {
+      console.log(
+        `  ${s.stratum.padEnd(15)} n ${String(s.n).padStart(3)}  Δ ${sign(s.delta.meanDelta, 3)} [${sign(s.delta.ci[0], 3)}, ${sign(s.delta.ci[1], 3)}] = ${pct(s.delta.meanDelta, s.delta.baseMean)}%  G ${pct(s.gap.meanDelta, s.delta.baseMean)}%  guards (CI) ${s.guards}  ${s.verdict}${s.literalFails ? "  (+1.0% test: FAIL)" : ""}`,
+      );
+    }
+  }
+  if (file.split !== "holdout3") {
+    const pick = selectCuts(readings);
+    const list = (rs: readonly { spec: { cut: string } }[]) =>
+      rs.map((r) => r.spec.cut).join(", ") || "none";
+    console.log(
+      `\nD2's selection rule: frozen ${list(pick.frozen)}; decided in sample (not qualifying) ${list(pick.notQualified)}; past the two-arm cap ${list(pick.capped)}`,
+    );
+  }
 }
 
 /**
