@@ -81,6 +81,8 @@ export const FREEZE_REVS: Record<string, string> = {
   C2: FREEZE_REV,
   // D1 froze its code-3 and code-4 comparisons at #132's freeze commit.
   D1: "e3b2eb63eb08ff98a32cd980d9163cb1d0685490",
+  // D3 froze its code-3 and code-4 window arms at #134's freeze commit.
+  D3: "40bf6f2f927d1f4d6446d5a40bab1781455e73f5",
 };
 
 /** [result, arm, baseline]: one judged comparison, as the freeze names it. */

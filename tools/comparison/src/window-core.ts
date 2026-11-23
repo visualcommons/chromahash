@@ -267,7 +267,12 @@ export function windowVerdict(
  * The arms each window entry froze, and the holdout result that reads them
  * (`spec/V0.8-DECISIONS.md`, D3, "Frozen arms").
  */
-export const WINDOW_FROZEN: Record<string, WindowFreeze> = {};
+export const WINDOW_FROZEN: Record<string, WindowFreeze> = {
+  D3: {
+    result: "synthesis-window-codes34-frozen-holdout3",
+    arms: ["t3 w_min 0.85 exp 1", "t4 w_min 0.7 exp 1"],
+  },
+};
 
 /**
  * Derive window entry `id`'s verdict from its committed holdout3 read, which

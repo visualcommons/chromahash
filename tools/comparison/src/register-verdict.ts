@@ -2,10 +2,12 @@
  * Print a frozen register entry's verdict, as `register-verdict-core.ts`
  * derives it from the committed holdout results: R1's conditions 1–3 for each
  * judged comparison, the stratum rule on a holdout3 result, condition 4 across
- * other bootstrap seeds, and C1's ThumbHash admission. Re-scores nothing.
+ * other bootstrap seeds, and C1's ThumbHash admission. A window entry (D3)
+ * is judged under R2 with an artifact primary instead (`window-core.ts`).
+ * Re-scores nothing.
  *
  * Usage:
- *   node dist/register-verdict.js C1|C2|D1 [--seeds N]
+ *   node dist/register-verdict.js C1|C2|D1|D3 [--seeds N]
  */
 
 import { parseArgs } from "node:util";

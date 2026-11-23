@@ -251,6 +251,7 @@ import {
 } from "./stratify-core.ts";
 import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
 import {
+  deriveWindowVerdict,
   readWindow,
   selectWindows,
   windowArms,
@@ -6331,6 +6332,37 @@ console.log(
         (v.admission?.metrics ?? [])
           .map((m) => `${m.key}=${m.wins}`)
           .join(", "),
+      );
+    }
+  }
+
+  // D3's holdout3 read (#134): both frozen window arms pass R2's artifact
+  // primary, ΔE00 non-inferiority and the guards, no stratum fails, and no
+  // outcome turns under 20 other seeds.
+  {
+    let w: ReturnType<typeof deriveWindowVerdict> | undefined;
+    try {
+      w = deriveWindowVerdict("D3", 20);
+    } catch (e) {
+      check("D3's committed read derives a verdict", false, String(e));
+    }
+    if (w) {
+      check(
+        "D3: every frozen window arm's R2 outcome, guards and stratum rule are the recorded ones, and condition 4 turns none",
+        w.readings.length === 2 &&
+          w.readings.every(
+            (r) =>
+              r.pass &&
+              r.primary &&
+              r.cond1 &&
+              r.guards === "ok" &&
+              !r.strata?.some((s) => s.verdict === "FAIL"),
+          ) &&
+          w.seeds.length === 20 &&
+          w.turned.length === 0,
+        `${w.readings
+          .map((r) => `${r.spec.arm}=${r.pass} guards ${r.guards}`)
+          .join(", ")}; ${w.turned.length} turned`,
       );
     }
   }
