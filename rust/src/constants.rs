@@ -1094,6 +1094,23 @@ mod tests {
         }
     }
 
+    /// The per-cell index the encoder's refinement reads its window through:
+    /// the alpha flag picks the row and the tier code the column, and a
+    /// reserved code reads the top tier's entry. The shipped encoder runs no
+    /// refinement, so no vector reaches it; this pins it.
+    #[test]
+    fn cell_index_reads_the_alpha_flag_and_the_tier() {
+        assert_eq!(cell_index(false, 0), (0, 0));
+        assert_eq!(cell_index(true, 3), (1, 3));
+        assert_eq!(cell_index(false, 4), (0, 4));
+        assert_eq!(cell_index(true, MAX_TIER + 3), (1, MAX_TIER as usize));
+        // The two cells the v0.8 verdict tapers, read through it.
+        let (a, t) = cell_index(true, 3);
+        assert_eq!(WINDOW_W_MIN[a][t], 0.85);
+        let (a, t) = cell_index(false, 4);
+        assert_eq!(WINDOW_W_MIN[a][t], 0.7);
+    }
+
     fn identity_error(m: &[[f64; 3]; 3]) -> f64 {
         let mut err = 0.0_f64;
         for (i, row) in m.iter().enumerate() {
