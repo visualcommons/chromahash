@@ -1203,6 +1203,57 @@ const REGISTER: Claim[] = [
     column: "relative",
     transform: abs,
   },
+  // ── Register D8's verdict (#138) ─────────────────────────────────────────
+  // The status line quotes the pick's tune ΔE00 against the shipped layout's
+  // and its relative difference, at code 0 (§13.13 table 0), and the best
+  // graphics layout (table 1).
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D8: the pick's code-0 tune ΔE00",
+    pattern: /ΔE00 that is not the shipped layout \(([\d.]+) against/,
+    section: "13.13",
+    table: 0,
+    row: "t0 L26@3 C6@3",
+    column: "ΔE00",
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D8: the shipped compact layout's code-0 tune ΔE00",
+    pattern: /shipped layout \([\d.]+ against ([\d.]+)\)/,
+    section: "13.13",
+    table: 0,
+    row: "t0 L19@4 C6@3 (shipped)",
+    column: "ΔE00",
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D8: the pick's relative difference on tune",
+    pattern: /It is \+([\d.]+)% against the\s+shipped layout, not 3% better/,
+    section: "13.13",
+    table: 0,
+    row: "t0 L26@3 C6@3",
+    column: "relative",
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D8: the pick's relative difference, in the verdict",
+    pattern: /is a tie on tune \(\+([\d.]+)%, interval/,
+    section: "13.13",
+    table: 0,
+    row: "t0 L26@3 C6@3",
+    column: "relative",
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D8: the best graphics layout on tune",
+    pattern:
+      /On the\s+graphics tune split, which gates nothing, the best is −([\d.]+)%/,
+    section: "13.13",
+    table: 1,
+    row: "t0 L30@3 C3@3",
+    column: "relative",
+    transform: abs,
+  },
 
   // ── The holdout2 confirmations (register C1, C2) ─────────────────────────
   // #120 read the sealed splits once and recorded the outcome in §13.7: the
