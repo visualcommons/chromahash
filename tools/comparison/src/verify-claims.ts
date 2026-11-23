@@ -1237,7 +1237,7 @@ const REGISTER: Claim[] = [
   {
     file: "spec/V0.8-DECISIONS.md",
     what: "D8: the pick's relative difference, in the verdict",
-    pattern: /is a tie on tune \(\+([\d.]+)%, interval/,
+    pattern: /is a tie on tune \(\+([\d.]+)%; 95% interval of the paired ΔE00/,
     section: "13.13",
     table: 0,
     row: "t0 L26@3 C6@3",

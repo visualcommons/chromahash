@@ -5235,7 +5235,8 @@ What the tune result says:
 1. **No layout beats the shipped one on the photographs.** Every one of
    the 14 candidates has a higher mean ΔE00 than `L19@4 C6@3`, and none
    has an interval wholly below zero. The leading layouts are §11.10's
-   plateau: `L26@3 C6@3` is +0.09% with an interval of [−0.067, +0.085],
+   plateau: `L26@3 C6@3` is +0.09% with a 95% interval of the paired ΔE00
+   difference of [−0.067, +0.085],
    and five layouts sit within +0.35%.
 2. **The graphics split leans the other way, and not far.** Five layouts
    score below the shipped one on graphics, the best `L30@3 C3@3` at
