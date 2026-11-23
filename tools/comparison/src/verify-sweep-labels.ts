@@ -178,6 +178,8 @@ const TUNE_KEYS = [
   "trunc_bytes",
   "cut_tier",
   "ac_coder",
+  "downsample",
+  "downsample_edge",
   "alpha_dc_bits",
   "alpha_scale_bits",
   "alpha_ac_count",

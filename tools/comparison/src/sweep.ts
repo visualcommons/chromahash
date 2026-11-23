@@ -54,6 +54,7 @@ import {
   RUST_CLI,
   decodeViaRust,
   encodeViaRust,
+  encodeViaRustAsync,
 } from "./adapters/chromahash.ts";
 import {
   type CorpusSet,
@@ -97,7 +98,7 @@ import {
   openHoldout2,
   openHoldout3,
 } from "./holdout-images.ts";
-import { loadImage } from "./image-loader.ts";
+import { loadImage, upright } from "./image-loader.ts";
 import {
   BACKDROP_SETS,
   type BackdropSetName,
@@ -107,6 +108,7 @@ import {
 } from "./metrics.ts";
 import { ensureIqaAvailable, iqaVersionBanner } from "./metrics/iqa.ts";
 import { ensureNaturalImages } from "./natural-images.ts";
+import { defaultJobs, mapConcurrent } from "./pool.ts";
 import {
   type PerImage,
   RESULTS_DIR,
@@ -289,6 +291,21 @@ interface SweepConfig {
    * layout" are the same measurement.
    */
   forceOpaque?: boolean;
+  /**
+   * The raster every arm encodes. `"harness"` (the default) is the ≤100 px
+   * encoder input `loadImage` makes, which every sweep before register entry
+   * D5 scored. `"native"` is the source file at its own resolution, upright
+   * (`image-loader.ts` `upright`), the input D5's downsampling acts on: at
+   * 100 px there is almost nothing to resample. The scoring reference is the
+   * same display-resolution one either way, so only the encoder input moves.
+   *
+   * A native source takes minutes per encode at the top tiers, so the run
+   * encodes every arm of an image ahead of scoring, `CHROMAHASH_JOBS` images
+   * at a time, one arm at a time per image to bound memory. A native run
+   * refuses `capToTier0`, `version` and `forceOpaque`, which act on the
+   * harness raster.
+   */
+  encodeSource?: "harness" | "native";
 }
 
 /** Per-variant aggregate row of the decision table. */
@@ -575,12 +592,61 @@ function resolveVersionBinaries(variants: SweepVariant[]): Map<string, string> {
   return resolved;
 }
 
+/**
+ * Every arm's hash of every image at the image's native resolution
+ * (`encodeSource: "native"`), indexed `[variant][image]`. Images run
+ * {@link defaultJobs} at a time; an image's arms run one after another, so
+ * at most that many native rasters and encoder processes are alive at once.
+ */
+async function encodeNative(
+  variants: readonly SweepVariant[],
+  inputs: readonly ImageInput[],
+): Promise<Uint8Array[][]> {
+  for (const v of variants) {
+    if (v.capToTier0 || v.version) {
+      throw new Error(
+        `variant "${v.label}": encodeSource "native" cannot honour capToTier0 or version, which act on the harness raster`,
+      );
+    }
+  }
+  const started = performance.now();
+  let done = 0;
+  const perImage = await mapConcurrent(inputs, defaultJobs(), async (input) => {
+    const { data, info } = await upright(input.fileBuffer)
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const rgba = new Uint8Array(data);
+    const hashes: Uint8Array[] = [];
+    for (const v of variants) {
+      hashes.push(
+        await encodeViaRustAsync(
+          RUST_CLI,
+          info.width,
+          info.height,
+          rgba,
+          input.gamut ?? "srgb",
+          v.tier ?? DEFAULT_TIER,
+          v.tune,
+        ),
+      );
+    }
+    done++;
+    console.log(
+      `  encoded ${path.basename(input.filePath)} at ${info.width}x${info.height}, ${variants.length} arms (${done}/${inputs.length}, ${((performance.now() - started) / 1000).toFixed(0)}s)`,
+    );
+    return hashes;
+  });
+  return variants.map((_, v) => perImage.map((h) => h[v] as Uint8Array));
+}
+
 async function scoreVariant(
   variant: SweepVariant,
   inputs: ImageInput[],
   versionBinaries: Map<string, string>,
   expect?: SweepConfig["expectBytes"],
   reference?: SweepRow,
+  preEncoded?: readonly Uint8Array[],
 ): Promise<SweepRow> {
   const tier = variant.tier ?? DEFAULT_TIER;
   // A tag variant runs its own binary; hashes are not portable across format
@@ -604,10 +670,13 @@ async function scoreVariant(
   const digests: string[] = [];
   let bytesSum = 0;
 
-  for (const input of inputs) {
+  for (const [i, input] of inputs.entries()) {
     const { smallWidth: w, smallHeight: h, smallRgba: rgba } = input;
     const gamut = input.gamut ?? "srgb";
-    const hash = encodeViaRust(cli, w, h, rgba, gamut, tier, variant.tune);
+    const hash = preEncoded
+      ? preEncoded[i]
+      : encodeViaRust(cli, w, h, rgba, gamut, tier, variant.tune);
+    if (!hash) throw new Error(`${variant.label}: no hash for image ${i}`);
     const want = expectedLength(expect, tier, hash);
     if (want !== null && hash.length !== want) {
       throw new Error(
@@ -908,6 +977,11 @@ async function main(): Promise<void> {
       `config ${config.name} selects no image on the ${split} split of the ${corpus} corpus`,
     );
   }
+  if (config.forceOpaque && config.encodeSource === "native") {
+    throw new Error(
+      `config ${config.name}: forceOpaque flattens the harness raster, not a native source`,
+    );
+  }
   if (config.forceOpaque) {
     // Flatten both the encoder input and the reference, so the images enter the
     // encoder with no alpha at all and are scored against their own opaque
@@ -948,8 +1022,13 @@ async function main(): Promise<void> {
   checkIdenticalTo(config.variants, config.name);
   const identity: { arm: string; of: string; images: number }[] = [];
 
+  const native =
+    config.encodeSource === "native"
+      ? await encodeNative(config.variants, inputs)
+      : null;
+
   const rows: SweepRow[] = [];
-  for (const variant of config.variants) {
+  for (const [v, variant] of config.variants.entries()) {
     const started = performance.now();
     const reference =
       variant.identicalTo === undefined
@@ -961,6 +1040,7 @@ async function main(): Promise<void> {
       versionBinaries,
       config.expectBytes,
       reference,
+      native?.[v],
     );
     if (reference) {
       identity.push({
@@ -1007,6 +1087,9 @@ async function main(): Promise<void> {
       artifactGuardRise: config.artifactGuardRise ?? null,
       artifactGridEdge: config.artifactGridEdge ?? null,
       forceOpaque: config.forceOpaque ?? false,
+      // Recorded only when it is not the default, so every earlier result's
+      // settings stay what they were.
+      ...(config.encodeSource === "native" ? { encodeSource: "native" } : {}),
       expectBytes: config.expectBytes ?? null,
       realOnly: config.realOnly ?? false,
       // Each identicalTo arm, and the images whose decodes it matched exactly:
