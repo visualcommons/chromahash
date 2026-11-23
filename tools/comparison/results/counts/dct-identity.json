@@ -42,7 +42,7 @@
     ]
   },
   "provenance": {
-    "rev": "b33a37af3b25eaa4d568d6ee8560db76cc9e006f",
+    "rev": "f4d656955e60e62a268e8cb9624738cceb874855",
     "dirty": false,
     "dirtyPaths": [],
     "iqaCli": "unused",
@@ -154,20 +154,12 @@
         "sha256": "ecdded63aa63c820ea3597ad54368a6a37762c8b21d8a2468c04e074e513dbe5"
       },
       {
-        "name": "graphic-block-diagram-arch",
-        "sha256": "96a3b45b68420d3a30c7c75353c14b6b868ae192b717867d2899ca899b16542e"
-      },
-      {
         "name": "graphic-circuit-schematic",
         "sha256": "21b08cc6349ed77eaf46b5441d0a87b138da341c78b3c6d7871003002a8f05be"
       },
       {
         "name": "graphic-comic-strip-1940",
         "sha256": "cfb1ac7c0ac7cf23889e8c166fc8d3f9060b32f4136f12436a8eab5b4754aa7d"
-      },
-      {
-        "name": "graphic-comic-wiggle-much",
-        "sha256": "f0ef6ccd47a41f6434ad799f95689fab4f329fd9c258651d789e99cb46484086"
       },
       {
         "name": "graphic-flat-design-desk",
@@ -178,20 +170,12 @@
         "sha256": "620e583c5123dd2fa7775b954a4fa62a683d38fa9b4f66f07dae03fcb68a66e9"
       },
       {
-        "name": "graphic-gnome-desktop",
-        "sha256": "ac321db9b5bdfd7fb0e42ee3f7ab484337b11d8b0891de5567da75bed004038d"
-      },
-      {
         "name": "graphic-infographic-timeline",
         "sha256": "9992cd11ecde839df92bfca7bb5f9f26cbf34995a8defe816303447c8799f7c5"
       },
       {
         "name": "graphic-lineart-pictographs",
         "sha256": "cefed9c71dc7a3f8c7564fc52dd9e57bf667d5fc794913cd4c8f3689e8b9f4a8"
-      },
-      {
-        "name": "graphic-lineart-scarecrow",
-        "sha256": "ff8d79e50f91a00d0f1e7f33f06fe828282d315f53bee6c27178f2b94262f10d"
       },
       {
         "name": "graphic-logo-solid-blue",
@@ -202,20 +186,12 @@
         "sha256": "cc1dfe32b5a69817debaba2ae3fe28133a249d78809d26355607f182bf1c941c"
       },
       {
-        "name": "graphic-playfair-piecharts",
-        "sha256": "95e0cedb123c1237e954b1d1092d11be48b52104f2c78ba7354b06d53d5b4f86"
-      },
-      {
         "name": "graphic-scientific-plot",
         "sha256": "9230123c94a491ed5da769521bbe0607f5e26b7b48cc31b0637421055b03aa89"
       },
       {
         "name": "graphic-sheet-music-dense",
         "sha256": "b7781ee6d008381c4e160b390e2cb8ce65f076be9659a7c0e179389b33732585"
-      },
-      {
-        "name": "graphic-smps-schematic",
-        "sha256": "334e85b5b4b8c3abe1860dacb90da7bbd357569faa57dc8b6510070efa4ff839"
       },
       {
         "name": "graphic-tiling-wm",
@@ -226,20 +202,12 @@
         "sha256": "ea2ff4f323ad6cfa1f68831a26c530d600ecbc689a6cf1b16f13ed05520da5bf"
       },
       {
-        "name": "graphic-transit-diagram",
-        "sha256": "4191a1ad8c1b4a897c537a422df91cfb87734826c38c0f0a885f729f96e4627d"
-      },
-      {
         "name": "graphic-web-app-screenshot",
         "sha256": "3af04a4bc4dfdd53ab6bf5d4f17b2f37ab100fa021b60a169d3ab876ceb3fae0"
       },
       {
         "name": "graphic-wikipedia-text-page",
         "sha256": "47a33fc28e64aa8e9218235caaa759060d653a9b8c4b7fd2bd733e75387b6dfc"
-      },
-      {
-        "name": "graphic-world-map-colour",
-        "sha256": "e21e3a23daa9e8e5b43c61255350df5efa1211ec281cd9567ca6e07cc0703233"
       },
       {
         "name": "kodak01",
@@ -869,14 +837,6 @@
       "strata": []
     },
     {
-      "name": "graphic-block-diagram-arch",
-      "corpus": "graphic",
-      "split": "holdout",
-      "width": 5052,
-      "height": 4540,
-      "strata": []
-    },
-    {
       "name": "graphic-circuit-schematic",
       "corpus": "graphic",
       "split": "tune",
@@ -890,14 +850,6 @@
       "split": "tune",
       "width": 2612,
       "height": 985,
-      "strata": []
-    },
-    {
-      "name": "graphic-comic-wiggle-much",
-      "corpus": "graphic",
-      "split": "holdout",
-      "width": 3637,
-      "height": 2263,
       "strata": []
     },
     {
@@ -917,14 +869,6 @@
       "strata": []
     },
     {
-      "name": "graphic-gnome-desktop",
-      "corpus": "graphic",
-      "split": "holdout",
-      "width": 1920,
-      "height": 1080,
-      "strata": []
-    },
-    {
       "name": "graphic-infographic-timeline",
       "corpus": "graphic",
       "split": "tune",
@@ -938,14 +882,6 @@
       "split": "tune",
       "width": 3676,
       "height": 618,
-      "strata": []
-    },
-    {
-      "name": "graphic-lineart-scarecrow",
-      "corpus": "graphic",
-      "split": "holdout",
-      "width": 1817,
-      "height": 2061,
       "strata": []
     },
     {
@@ -965,14 +901,6 @@
       "strata": []
     },
     {
-      "name": "graphic-playfair-piecharts",
-      "corpus": "graphic",
-      "split": "holdout",
-      "width": 6306,
-      "height": 3456,
-      "strata": []
-    },
-    {
       "name": "graphic-scientific-plot",
       "corpus": "graphic",
       "split": "tune",
@@ -986,14 +914,6 @@
       "split": "tune",
       "width": 1781,
       "height": 2363,
-      "strata": []
-    },
-    {
-      "name": "graphic-smps-schematic",
-      "corpus": "graphic",
-      "split": "holdout",
-      "width": 7016,
-      "height": 4961,
       "strata": []
     },
     {
@@ -1013,14 +933,6 @@
       "strata": []
     },
     {
-      "name": "graphic-transit-diagram",
-      "corpus": "graphic",
-      "split": "holdout",
-      "width": 9983,
-      "height": 13113,
-      "strata": []
-    },
-    {
       "name": "graphic-web-app-screenshot",
       "corpus": "graphic",
       "split": "tune",
@@ -1034,14 +946,6 @@
       "split": "tune",
       "width": 1646,
       "height": 1975,
-      "strata": []
-    },
-    {
-      "name": "graphic-world-map-colour",
-      "corpus": "graphic",
-      "split": "holdout",
-      "width": 4572,
-      "height": 2500,
       "strata": []
     },
     {
@@ -2285,136 +2189,6 @@
       "controlDiffering": 0
     },
     {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "harness",
-      "tier": 0,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 8,
-      "controlDiffering": 8
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "harness",
-      "tier": 1,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 8,
-      "controlDiffering": 8
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "harness",
-      "tier": 2,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 8,
-      "controlDiffering": 8
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "harness",
-      "tier": 3,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 8,
-      "controlDiffering": 8
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "harness",
-      "tier": 4,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 8,
-      "controlDiffering": 8
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "512",
-      "tier": 0,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 8,
-      "controlDiffering": 8
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "512",
-      "tier": 1,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 8,
-      "controlDiffering": 8
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "512",
-      "tier": 2,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 8,
-      "controlDiffering": 8
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "512",
-      "tier": 3,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 8,
-      "controlDiffering": 8
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "512",
-      "tier": 4,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 8,
-      "controlDiffering": 8
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "full",
-      "tier": 0,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 0,
-      "controlDiffering": 0
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "full",
-      "tier": 1,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 0,
-      "controlDiffering": 0
-    },
-    {
-      "corpus": "graphic",
-      "split": "holdout",
-      "size": "full",
-      "tier": 2,
-      "encodes": 8,
-      "differing": 0,
-      "controlEncodes": 0,
-      "controlDiffering": 0
-    },
-    {
       "corpus": "photo",
       "split": "tune2",
       "size": "harness",
@@ -2814,10 +2588,10 @@
     "diffs": []
   },
   "totals": {
-    "encodes": 1989,
+    "encodes": 1885,
     "differing": 0,
-    "controlEncodes": 1530,
-    "controlDiffering": 1313
+    "controlEncodes": 1450,
+    "controlDiffering": 1233
   },
   "diffs": []
 }
