@@ -1,0 +1,70 @@
+{
+  "name": "embedded-tiers-ladder",
+  "description": "Register entry D2 (spec/V0.8-DECISIONS.md, #133): embedded tiers. Native codes 0-4 on the shipped channel-sequential order ('tK native'); the same codes in the interleaved order (Tunables::interleave, alpha's AC codes merged as a fourth channel) at full length, each identicalTo its native arm, so the run fails if any image decodes to other pixels (part 1); the interleaved cuts 'tJ interleaved cut k', a code-J hash decoded from only the first L(k) bytes of its alpha mode (Tunables::cut_tier, rendered at code k's natural size) for k = 1, 2, 3 and J = k + 1; and the same cuts of a channel-sequential hash ('tJ seq cut k') as the control that prices the interleaving, which judge nothing. Cut k is read against 'tk native', and its margin is the paired gap from 't(k-1) native' to 'tk native' in the same run (D2's 'How the primary metric is read'). Bytes are the encoded hash's, not the cut's. Corpus all with realOnly: the photographic, alpha and graphics tune images, so the holdout3 read covers every stratum. Rows against the code-0 incumbent, which the printed tables show by default, are at other byte counts and are not judged.",
+  "corpus": "all",
+  "realOnly": true,
+  "backdrops": "white-black-grey",
+  "alphaFidelity": true,
+  "expectBytes": {
+    "0": { "opaque": 21, "alpha": 21 },
+    "1": { "opaque": 32, "alpha": 32 },
+    "2": { "opaque": 108, "alpha": 103 },
+    "3": { "opaque": 411, "alpha": 388 },
+    "4": { "opaque": 1623, "alpha": 1528 }
+  },
+  "variants": [
+    { "label": "t0 native", "tier": 0 },
+    { "label": "t1 native", "tier": 1 },
+    { "label": "t2 native", "tier": 2 },
+    { "label": "t3 native", "tier": 3 },
+    { "label": "t4 native", "tier": 4 },
+    {
+      "label": "t0 interleaved full",
+      "tier": 0,
+      "tune": "interleave=1",
+      "identicalTo": "t0 native"
+    },
+    {
+      "label": "t1 interleaved full",
+      "tier": 1,
+      "tune": "interleave=1",
+      "identicalTo": "t1 native"
+    },
+    {
+      "label": "t2 interleaved full",
+      "tier": 2,
+      "tune": "interleave=1",
+      "identicalTo": "t2 native"
+    },
+    {
+      "label": "t3 interleaved full",
+      "tier": 3,
+      "tune": "interleave=1",
+      "identicalTo": "t3 native"
+    },
+    {
+      "label": "t4 interleaved full",
+      "tier": 4,
+      "tune": "interleave=1",
+      "identicalTo": "t4 native"
+    },
+    {
+      "label": "t2 interleaved cut 1",
+      "tier": 2,
+      "tune": "interleave=1 cut_tier=1"
+    },
+    {
+      "label": "t3 interleaved cut 2",
+      "tier": 3,
+      "tune": "interleave=1 cut_tier=2"
+    },
+    {
+      "label": "t4 interleaved cut 3",
+      "tier": 4,
+      "tune": "interleave=1 cut_tier=3"
+    },
+    { "label": "t2 seq cut 1", "tier": 2, "tune": "cut_tier=1" },
+    { "label": "t3 seq cut 2", "tier": 3, "tune": "cut_tier=2" },
+    { "label": "t4 seq cut 3", "tier": 4, "tune": "cut_tier=3" }
+  ]
+}
