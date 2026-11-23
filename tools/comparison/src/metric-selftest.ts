@@ -7327,6 +7327,19 @@ console.log(
   put("dct-identity", ident("open", 1, 3));
   const moved = deriveD4Verdict(dir, "fff");
   rmSync(dir, { recursive: true, force: true });
+  // The committed records: the register's D4 verdict, re-derived.
+  const shipped = deriveD4Verdict();
+  check(
+    "D4's committed counts: 2.930× against the shipped default, 1.166× against ACCEL_ALL (the faster incumbent), no differing open or vector hash, so it fails in sample with holdout3 unread",
+    shipped.outcome === "fails in sample" &&
+      shipped.holdout3 === null &&
+      shipped.speed.fasterIncumbent === "ACCEL_ALL" &&
+      shipped.speed.pairs.map((p) => p.ratio.toFixed(3)).join(" ") ===
+        "2.930 1.166" &&
+      shipped.speed.pairs.every((p) => p.agree) &&
+      shipped.open.pass,
+    `${shipped.outcome}: ${shipped.speed.pairs.map((p) => `${p.label} ${p.ratio.toFixed(3)}`).join(", ")}; open differing ${shipped.open.differing}`,
+  );
   check(
     "deriveD4Verdict: qualifies with holdout3 unread before the freeze; passes on a zero holdout3 count at the freeze rev; fails on holdout3 on a differing hash; fails in sample on a slow pair or a differing open hash; refuses a read at another rev or from a dirty tree",
     before.qualifies &&
