@@ -12,12 +12,12 @@
  * least one hash, so a count of zero comes from a comparison that can see a
  * difference.
  *
- * Without `--split`, it counts every image outside the seal (`corpus.ts`
- * `partitionSealed`: tune, tune2 and the unsealed graphics holdout, the
- * generated fixtures included), and every input of
+ * Without `--split`, it counts every tuning image ({@link D4_OPEN_SPLITS}:
+ * tune and tune2, the generated fixtures included), and every input of
  * `spec/test-vectors/integration-encode.json` at codes 0–4, whose shipped
- * hash at its own code must be its expected hash. holdout2 and alpha holdout
- * v2 are never encoded.
+ * hash at its own code must be its expected hash. The graphics `holdout`,
+ * which no committed result has read, holdout2 and alpha holdout v2 are never
+ * encoded.
  *
  * With `--split holdout3 --decision D4` it is D4's one holdout3 read: the
  * register gate must record D4 as frozen, a second read is refused, and all
@@ -40,12 +40,13 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import sharp from "sharp";
 import { ensureAlphaImages } from "./alpha-images.ts";
-import { HOLDOUT3_STRATA, inCorpus, isSealed, splitFor } from "./corpus.ts";
+import { HOLDOUT3_STRATA, inCorpus, splitFor } from "./corpus.ts";
 import {
   CONTROL_SIZES,
   COUNTS_DIR,
   D4_CANDIDATE,
   D4_CONTROL,
+  D4_OPEN_SPLITS,
   type IdentityRecord,
   type Observation,
   SIZES,
@@ -183,7 +184,7 @@ async function images(sealedRead: boolean): Promise<string[]> {
     path.join(TOOL_ROOT, "fixtures/**/*.{png,jpg}"),
   )) {
     const split = splitFor(path.parse(entry).name);
-    if (sealedRead ? split === "holdout3" : !isSealed(split)) {
+    if (sealedRead ? split === "holdout3" : D4_OPEN_SPLITS.includes(split)) {
       paths.push(entry);
     }
   }

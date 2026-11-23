@@ -7326,7 +7326,30 @@ console.log(
   put("dct-instructions", instr(2.9, 2.2));
   put("dct-identity", ident("open", 1, 3));
   const moved = deriveD4Verdict(dir, "fff");
+  const image = (name: string, split: string) => ({
+    name,
+    corpus: "graphic",
+    split,
+    width: 1,
+    height: 1,
+    strata: [],
+  });
+  const withImages = (images: ReturnType<typeof image>[]) => ({
+    ...ident("open", 0, 3),
+    images,
+  });
+  put("dct-identity", withImages([image("g", "tune"), image("k", "tune2")]));
+  const tuningOnly = deriveD4Verdict(dir);
+  put("dct-identity", withImages([image("g", "tune"), image("h", "holdout")]));
+  const spendsHoldout = thrown(() => deriveD4Verdict(dir));
   rmSync(dir, { recursive: true, force: true });
+  check(
+    "deriveD4Verdict refuses an open count that encoded an image outside tune and tune2 (the unread graphics holdout)",
+    tuningOnly.qualifies &&
+      spendsHoldout.includes("outside tune and tune2") &&
+      spendsHoldout.includes("holdout"),
+    spendsHoldout,
+  );
   // The committed records: the register's D4 verdict, re-derived.
   const shipped = deriveD4Verdict();
   check(

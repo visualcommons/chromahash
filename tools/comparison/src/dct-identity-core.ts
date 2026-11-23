@@ -35,6 +35,12 @@ export const COUNTS_DIR = path.join(
 /** The one candidate, and the negative control `lever-identity` uses. */
 export const D4_CANDIDATE = "dct_separable=1";
 export const D4_CONTROL = "mu_l=3";
+/**
+ * The splits the open count encodes: tuning data only. The graphics
+ * `holdout` is unsealed but no committed result has read it (`corpus.ts`),
+ * so D4 does not spend it on a byte-identity count either.
+ */
+export const D4_OPEN_SPLITS: readonly string[] = ["tune", "tune2"];
 /** D4's speed threshold, unchanged by the amendment. */
 export const SPEED_THRESHOLD = 2.0;
 
@@ -104,7 +110,7 @@ export interface IdentityRecord {
   schema: 1;
   tool: "dct-identity";
   name: string;
-  /** `open` for every unsealed split; `holdout3` for the entry's one read. */
+  /** `open` for the tuning splits ({@link D4_OPEN_SPLITS}); `holdout3` for the entry's one read. */
   split: "open" | "holdout3";
   settings: {
     candidate: string;
@@ -344,6 +350,12 @@ export function deriveD4Verdict(
   assertClean("dct-identity", open.provenance);
   if (open.split !== "open")
     throw new Error("dct-identity is not the open count");
+  const outside = open.images.filter((i) => !D4_OPEN_SPLITS.includes(i.split));
+  if (outside.length > 0) {
+    throw new Error(
+      `dct-identity encoded ${outside.length} image(s) outside ${D4_OPEN_SPLITS.join(" and ")} (${outside[0]?.name}, ${outside[0]?.split}); refusing to derive D4 from it`,
+    );
+  }
   const speed = readSpeed(instr);
   const openReading = readIdentity(open);
   const qualifies = speed.pass && openReading.pass;
