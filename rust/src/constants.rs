@@ -609,9 +609,12 @@ pub struct Tunables {
     /// Unlike [`Tunables::dct_separable`], every one of these produces the
     /// same bytes as the path it replaces — the unit tests beside each one and
     /// `tests/accel_levers.rs` hold them to that over the spec vectors and a
-    /// randomized input set. They are `false` in [`Tunables::DEFAULT`] only so
-    /// the shipped path stays the reference each lever is measured against;
-    /// turning one on changes the time an operation takes and nothing else.
+    /// randomized input set. [`Tunables::DEFAULT`] turns on each lever that
+    /// has landed as the shipped path. Off, a flag selects the unaccelerated
+    /// path, which stays as the reference `mise run lever-identity` and
+    /// `mise run benchmark:counts` compare the shipped path against
+    /// (`accel_*=0`); either setting changes the time an operation takes and
+    /// nothing else.
     ///
     /// §12.1 items 1 and 2: a per-job dequantization table keyed on
     /// `(bit width, index)`, the per-index bit widths computed once, and the
@@ -897,7 +900,7 @@ impl Tunables {
         ac_nearest: true,
         scale_fit: 2,
         dct_separable: false,
-        accel_quant_table: false,
+        accel_quant_table: true,
         accel_dct_lanes: false,
         accel_gamma_lut_cache: false,
         accel_flat_cos: false,

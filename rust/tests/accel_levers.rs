@@ -106,7 +106,7 @@ fn the_shipped_defaults_set_each_lever_as_listed() {
             "{name} does not set anything the reference leaves unset"
         );
     }
-    assert!(!d.accel_quant_table);
+    assert!(d.accel_quant_table);
     assert!(!d.accel_dct_lanes);
     assert!(!d.accel_gamma_lut_cache);
     assert!(!d.accel_flat_cos);
