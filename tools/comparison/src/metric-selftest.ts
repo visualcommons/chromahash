@@ -93,27 +93,14 @@ import {
   alphaHoldout3Specs,
   alphaImagesToFetch,
 } from "./alpha-images.ts";
+import {
+  d6Arms,
+  d6Members,
+  selectionKey as d6SelectionKey,
+  readD6,
+  selectD6,
+} from "./alpha-tiers-core.ts";
 import { compareArms, guardVerdictOnIntervals } from "./arms-core.ts";
-import {
-  type IdentityRecord,
-  type InstructionRecord,
-  type Observation,
-  deriveD4Verdict,
-  readIdentity,
-  readSpeed,
-  tallyCells,
-  tallyStrata,
-  totalsOf,
-} from "./dct-identity-core.ts";
-import {
-  type ProcessCounts,
-  block as countBlock,
-  geomean,
-  pairReading,
-  parsePerfStat,
-  perIteration,
-  runsAgree,
-} from "./perf/count.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
 import {
   type CommonsFacts,
@@ -166,14 +153,37 @@ import {
   splitFor,
   tierFor,
 } from "./corpus.ts";
+import {
+  type IdentityRecord,
+  type InstructionRecord,
+  type Observation,
+  deriveD4Verdict,
+  readIdentity,
+  readSpeed,
+  tallyCells,
+  tallyStrata,
+  totalsOf,
+} from "./dct-identity-core.ts";
 import { rewriteCell } from "./doc-tables.ts";
+import {
+  type D5Speed,
+  armLabel,
+  d5Arms,
+  d5Candidates,
+  d5Verdict,
+  deriveD5Verdict,
+  readD5,
+  readD5Speed,
+  selectD5,
+} from "./downsample-core.ts";
+import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
 import {
   type TableRegisterInput,
   tableRegisterProblems,
 } from "./experiments-register.ts";
 import {
-  type GraphicImageSpec,
   GRAPHIC_IMAGES,
+  type GraphicImageSpec,
   graphicHoldout3Specs,
   graphicImagesToFetch,
 } from "./graphic-images.ts";
@@ -198,6 +208,7 @@ import {
   orientedSize,
 } from "./image-loader.ts";
 import {
+  MDE_EXCLUDED,
   PHOTO_HOLDOUT2_CANDIDATES,
   mdeCell,
   readSpread,
@@ -213,7 +224,18 @@ import {
 } from "./natural-images.ts";
 import { classifyProbe, repoRelative } from "./perf/availability.ts";
 import {
+  type ProcessCounts,
+  block as countBlock,
+  geomean,
+  pairReading,
+  parsePerfStat,
+  perIteration,
+  runsAgree,
+} from "./perf/count.ts";
+import {
   type Preflight,
+  SUSTAINED_LOAD_FACTOR,
+  WAIT_RULE,
   defaultMaxLoad,
   hostKey,
   judgePreflight,
@@ -221,9 +243,7 @@ import {
   overLoad,
   readLoadavg,
   readPreflight,
-  SUSTAINED_LOAD_FACTOR,
   sustainedLoadBar,
-  WAIT_RULE,
   waitForLoad,
 } from "./perf/host.ts";
 import { planMatrix, planRun, roundOrder } from "./perf/plan.ts";
@@ -242,8 +262,10 @@ import {
 import { allTargets } from "./perf/targets.ts";
 import {
   deriveVerdict,
+  entryMembers,
   guardsAtSeed,
   holdout3StrataOf,
+  opacityMembers,
   strataMembers,
   stratumRule,
 } from "./register-verdict-core.ts";
@@ -270,25 +292,6 @@ import {
   realCorpusOf,
   tierBaselinePairs,
 } from "./stratify-core.ts";
-import {
-  type D5Speed,
-  armLabel,
-  d5Arms,
-  d5Candidates,
-  d5Verdict,
-  deriveD5Verdict,
-  readD5,
-  readD5Speed,
-  selectD5,
-} from "./downsample-core.ts";
-import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
-import {
-  deriveWindowVerdict,
-  readWindow,
-  selectWindows,
-  windowArms,
-  windowVerdict,
-} from "./window-core.ts";
 import {
   checkIdenticalTo,
   checkNativeSource,
@@ -335,6 +338,13 @@ import {
   stabilityFailures,
   withheldReason,
 } from "./verify-benchmark-core.ts";
+import {
+  deriveWindowVerdict,
+  readWindow,
+  selectWindows,
+  windowArms,
+  windowVerdict,
+} from "./window-core.ts";
 
 let failures = 0;
 
@@ -6330,6 +6340,13 @@ console.log(
       guards: ["ok", "ok"],
       pHolm: [0.0004, 0.0004],
     },
+    // D6's holdout3 read (#137): both frozen alpha rows pass R1 and the
+    // stratum rule, the opacity halves included. Both p sit at the floor, ×2.
+    D6: {
+      pass: [true, true],
+      guards: ["ok", "ok"],
+      pHolm: [0.0004, 0.0004],
+    },
   } as const;
   for (const [id, want] of Object.entries(recorded)) {
     let v: ReturnType<typeof deriveVerdict> | undefined;
@@ -6374,6 +6391,23 @@ console.log(
         )
         .join(", "),
     );
+    if (id === "D6") {
+      check(
+        "D6: each comparison's stratum rule reads the opacity halves beside the pinned strata, and none fails",
+        got.every(
+          (c) =>
+            c.strata !== undefined &&
+            !c.strata.fails &&
+            c.strata.strata.map((s) => s.stratum).includes("mostly-opaque") &&
+            c.strata.strata
+              .map((s) => s.stratum)
+              .includes("mostly-transparent"),
+        ),
+        got
+          .map((c) => c.strata?.strata.map((s) => s.stratum).join("/"))
+          .join(" | "),
+      );
+    }
     if (id === "C1") {
       check(
         "C1: the compact row's ThumbHash admission holds on all four means",
@@ -7687,6 +7721,169 @@ console.log(
         "true,true,false,true,true" &&
       failing.join(",") === "t2 low-light",
     `pass ${shipped.pass}; tiers ${shipped.readings.map((r) => r.pass).join(",")}; failing ${failing.join(",")}`,
+  );
+}
+
+// ─── D6: the alpha allocation at codes 3–4 (alpha-tiers-core.ts) ────────────
+{
+  console.log("\nD6's alpha-row reading (alpha-tiers-core.ts)");
+  const specs = d6Arms(
+    [
+      "t3 A28@3 L22@4 C3@3 (shipped)",
+      "t3 A23@4 L20@4 C3@3",
+      "t4 A23@4 L20@4 C3@3",
+      "t3 A23@4 L20@4",
+      "t2 A23@4 L20@4 C3@3",
+    ].map((label) => ({ label })),
+  );
+  check(
+    "d6Arms reads tK <row> against tK A28@3 L22@4 C3@3 (shipped) at codes 3 and 4, and drops the incumbent itself, an arm whose incumbent is absent, a partial row and another tier",
+    JSON.stringify(specs) ===
+      JSON.stringify([
+        {
+          k: 3,
+          row: "A23@4 L20@4 C3@3",
+          arm: "t3 A23@4 L20@4 C3@3",
+          incumbent: "t3 A28@3 L22@4 C3@3 (shipped)",
+        },
+      ]),
+    JSON.stringify(specs),
+  );
+
+  // The opacity halves: cut at 0.5, the cut itself transparent, an unpinned
+  // name in neither, an empty half left out; and off the real pins, the
+  // tune alpha corpus splits in two non-empty halves.
+  const frac: Record<string, number> = { a: 0.1, b: 0.5, c: 0.49, d: 0.9 };
+  const halves = opacityMembers(["a", "b", "x", "c", "d"], (n) => frac[n]);
+  const opaqueOnly = opacityMembers(["a", "c"], (n) => frac[n]);
+  const tuneAlpha = ALPHA_IMAGES.filter(
+    (s) => s.split === "tune" && !s.withdrawn,
+  ).map((s) => s.label);
+  const pinned = opacityMembers(tuneAlpha);
+  const both = d6Members(
+    ["a", "d"],
+    (n) => (n === "a" ? ["alpha", "skin"] : ["alpha"]),
+    (n) => frac[n],
+  );
+  check(
+    "opacityMembers cuts at a non-opaque fraction of 0.5 (0.5 itself mostly-transparent), skips an unpinned name and an empty half, reads the pins by default, and d6Members puts the opacity halves after the stratum rule's strata",
+    JSON.stringify([...halves]) ===
+      JSON.stringify([
+        ["mostly-opaque", [0, 3]],
+        ["mostly-transparent", [1, 4]],
+      ]) &&
+      JSON.stringify([...opaqueOnly]) ===
+        JSON.stringify([["mostly-opaque", [0, 1]]]) &&
+      pinned.size === 2 &&
+      (pinned.get("mostly-opaque")?.length ?? 0) +
+        (pinned.get("mostly-transparent")?.length ?? 0) ===
+        tuneAlpha.length &&
+      JSON.stringify([...both]) ===
+        JSON.stringify([
+          ["alpha", [0, 1]],
+          ["skin", [0]],
+          ["mostly-opaque", [0]],
+          ["mostly-transparent", [1]],
+        ]),
+    `${JSON.stringify([...halves])} | ${JSON.stringify([...both])} | pins ${[...pinned].map(([s, i]) => `${s} ${i.length}`).join(", ")}`,
+  );
+  // On holdout3's alpha pins (their recorded strata and fractions, no image
+  // read), D6's stratum rule reads the pinned strata and both opacity halves;
+  // every other entry reads the pinned strata alone.
+  const sealedAlpha = ALPHA_IMAGES.filter((s) => s.holdout3).map(
+    (s) => s.label,
+  );
+  const d6Strata = [...entryMembers("D6", sealedAlpha).keys()];
+  const d1Strata = [...entryMembers("D1", sealedAlpha).keys()];
+  check(
+    "entryMembers: D6's holdout3 strata are the pinned ones then mostly-opaque and mostly-transparent; D1's are the pinned ones alone",
+    sealedAlpha.length === 24 &&
+      d1Strata.includes("alpha") &&
+      JSON.stringify(d6Strata) ===
+        JSON.stringify([...d1Strata, "mostly-opaque", "mostly-transparent"]),
+    `${d6Strata.join(", ")} | ${d1Strata.join(", ")}`,
+  );
+
+  // Six images, the incumbent 10 everywhere. At code 3, A is 4% better with
+  // every guard flat; B is 5% better but its SSIMULACRA2 falls 3 points on
+  // every image (FAIL); C is 1% better. At code 4, the best eligible arm is
+  // 2% better, under Q13's 3%.
+  const guards = {
+    ssimulacra2: [50, 52, 54, 56, 58, 60],
+    butteraugli: [3, 3, 3, 3, 3, 3],
+    dssim: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+  };
+  const dRow = (
+    label: string,
+    ciede2000: number[],
+    ssimulacra2 = guards.ssimulacra2,
+  ) => ({ label, perImage: { ...guards, ciede2000, ssimulacra2 } });
+  const flat = (x: number) => [x, x, x, x, x, x];
+  const tol = { ssimulacra2Drop: 1.0, relativeRise: 0.02 };
+  const rows = [
+    dRow("t3 A28@3 L22@4 C3@3 (shipped)", flat(10)),
+    dRow("t3 A23@4 L20@4 C3@3", flat(9.6)),
+    dRow(
+      "t3 A16@5 L23@4 C3@3",
+      flat(9.5),
+      guards.ssimulacra2.map((v) => v - 3),
+    ),
+    dRow("t3 A24@3 L22@4 C5@3", flat(9.9)),
+    dRow("t4 A28@3 L22@4 C3@3 (shipped)", flat(10)),
+    dRow("t4 A23@4 L20@4 C3@3", flat(9.8)),
+  ];
+  const readings = d6Arms(rows).map((s) => readD6(s, rows, tol));
+  const pick = selectD6(readings);
+  const [a, b, c] = readings;
+  check(
+    "readD6/selectD6: per tier the lowest mean ΔE00 among arms whose guards (CI) are not FAIL, frozen when at least 3.0% better and decided in sample otherwise (Q13)",
+    a !== undefined &&
+      b !== undefined &&
+      c !== undefined &&
+      Math.abs(a.rel + 4) < 1e-9 &&
+      a.lower3 &&
+      a.eligible &&
+      b.guards === "FAIL" &&
+      !b.eligible &&
+      !c.lower3 &&
+      pick.tiers[0]?.pick?.spec.row === "A23@4 L20@4 C3@3" &&
+      pick.tiers[0]?.frozen === true &&
+      pick.tiers[1]?.pick?.spec.arm === "t4 A23@4 L20@4 C3@3" &&
+      pick.tiers[1]?.frozen === false &&
+      pick.tiers[1]?.outcome ===
+        "decided in sample: the pick is not 3.0% better (Q13)" &&
+      pick.frozen.map((r) => r.spec.arm).join(",") === "t3 A23@4 L20@4 C3@3" &&
+      d6SelectionKey(pick) ===
+        "t3 A23@4 L20@4 C3@3 true | t4 A23@4 L20@4 C3@3 false",
+    `${pick.tiers.map((t) => `${t.k}: ${t.pick?.spec.arm} ${t.outcome}`).join("; ")}`,
+  );
+  // §13.6's spread leaves D6's own tune sweep out, though it is an alpha
+  // tune result at the incumbent's bytes.
+  const committedSpread = readSpread(
+    path.join(import.meta.dirname, "..", "results"),
+  );
+  check(
+    "readSpread leaves alpha-tiers34 out of §13.6's population (MDE_EXCLUDED), so a register entry's tune sweep moves no earlier power statement",
+    MDE_EXCLUDED["alpha-tiers34"] !== undefined &&
+      committedSpread.comparisons.alpha.length > 0 &&
+      !committedSpread.comparisons.alpha.some(
+        (c) => c.result === "alpha-tiers34",
+      ) &&
+      !committedSpread.incumbents.alpha.some(
+        (c) => c.result === "alpha-tiers34",
+      ),
+    `${committedSpread.comparisons.alpha.length} alpha comparisons`,
+  );
+  const noneEligible = selectD6(
+    readings.filter((r) => r.spec.k === 4 || !r.eligible),
+  );
+  check(
+    "selectD6: a tier with no eligible candidate picks none and is decided in sample",
+    noneEligible.tiers[0]?.pick === null &&
+      noneEligible.tiers[0]?.outcome ===
+        "decided in sample: no candidate's guards (CI) avoid FAIL" &&
+      noneEligible.frozen.length === 0,
+    noneEligible.tiers[0]?.outcome ?? "",
   );
 }
 

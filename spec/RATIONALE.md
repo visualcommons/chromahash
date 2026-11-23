@@ -555,9 +555,13 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
    no longer be reproduced (`EXPERIMENTS.md` §11.12). Its sealed replacement,
    alpha holdout v2, measures the row at −13.66% mean ΔE00 out of sample, and
    the compact and code-2 alpha rows at −10.19% and −8.99%; all three stand
-   under R1 (`EXPERIMENTS.md` §13.7, `V0.8-DECISIONS.md` C2). Codes 3–4 alpha,
-   inherited from the code-2 measurement rather than measured directly, is
-   registered as D6 and open; nothing has measured it at those codes.
+   under R1 (`EXPERIMENTS.md` §13.7, `V0.8-DECISIONS.md` C2). Codes 3–4
+   inherit the code-2 row scaled by `4^(level)`; D6 measured them, and the
+   count split stays flat there, but the 3-bit alpha field binds: a 5-bit
+   alpha row at the same bytes is 13.50% better at code 3 and 22.69% at
+   code 4 on `holdout3`'s alpha pins, and passes R1 at both
+   (`EXPERIMENTS.md` §13.12). Adopting it is a format change the v0.8
+   verdict lands or declines; the shipped rows are unchanged until then.
 3. ~~**Code 3–4 positioning**~~ — **resolved in v0.7 by repositioning them**
    (`README.md` §14.1). Size-matched WebP overtakes code 3 and AVIF/WebP/JPEG
    beat code 4, AVIF by 19% on ΔE00 (`EXPERIMENTS.md` §11.14). Entropy coding

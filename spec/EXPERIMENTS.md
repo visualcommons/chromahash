@@ -822,6 +822,20 @@ mise run arms --seed-sensitivity downsample-before-dct                  # §13.1
 mise run sweep downsample-before-dct-frozen --split holdout3 --decision D5  # §13.11
 mise run register-verdict D5                                            # §13.11
 
+# Register D6, the alpha allocation at codes 3-4 (§13.12): the tune sweep,
+# each alpha row's ΔE00 and guards against its tier's shipped row, overall,
+# per stratum and per opacity half, with D6's selection rule and its re-draw
+# under 20 seeds
+mise run sweep alpha-tiers34                                            # §13.12
+mise run stratify alpha-tiers34 --alpha-tiers                           # §13.12
+mise run arms --seed-sensitivity alpha-tiers34                          # §13.12
+# Its one holdout3 read, at the freeze commit eec3495; a second read for D6
+# refuses, so this line cannot run again as written. Then its verdict,
+# re-derived from the committed result (re-scores nothing)
+mise run sweep alpha-tiers34-frozen --split holdout3 --decision D6      # §13.12
+mise run register-verdict D6                                            # §13.12
+mise run stratify alpha-tiers34-frozen-holdout3 --alpha-tiers           # §13.12
+
 # Check the tables in this file against the results above
 mise run verify:experiments
 mise run verify:experiments --list-unbound
@@ -3779,7 +3793,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 995 | 754 | 701 | 651 | 175 | 169 | 88 | 87 |
+| all committed sweeps | 1021 | 779 | 726 | 674 | 175 | 172 | 88 | 87 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3797,10 +3811,11 @@ its holdout3 read (§13.8), and to 898 when D2 committed its tune ladder
 and then 916 when it committed the two `embedded-tiers-identity` results of
 part 1 (§13.9), and to 932 and then 936 when D3 committed its tune sweep
 and its holdout3 read (§13.10), and to 983 and then 995 when D5 committed
-its tune sweep and its holdout3 read (§13.11). The
+its tune sweep and its holdout3 read (§13.11), and to 1018 and then 1021 when D6
+committed its tune sweep and its holdout3 read (§13.12). The
 row compares every arm with its sweep's
 first row whatever the arm's tier, so it includes cross-tier comparisons at
-different byte counts that no decision judged: 231 of the 995 arms, 13 of them
+different byte counts that no decision judged: 245 of the 1021 arms, 13 of them
 D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
 row, and the 2 code-4 rows of its holdout3 read against its code-3 row),
 30 D2's (every row but `t0 interleaved full` of `embedded-tiers-ladder` and
@@ -3809,7 +3824,8 @@ D3's (every code-3 and code-4 row of `synthesis-window-codes34` and of its
 holdout3 read against its code-2 row, which D3 reads on spurious detail
 alone) and 48 D5's (every code-1 to code-4 row of `downsample-before-dct`
 and of its holdout3 read against its code-0 incumbent; D5 reads each arm
-against its own tier's), the
+against its own tier's), 14 D6's (every code-4 row of `alpha-tiers34`
+and of its holdout3 read against its code-3 shipped row), the
 rest from the tier ladders and mixed-tier tables of earlier sweeps. The
 prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
@@ -4962,3 +4978,167 @@ another, which the adaptive/conditional rule judges as it stands. The
 oklab placement, which the tune result found all but free, was not read:
 the selection chose on speed, and against `ACCEL_ALL` it does not reach
 2.0× at any edge. The shipped encoder is unchanged.
+
+### 13.12 D6: the alpha allocation at codes 3–4 (2026-11)
+
+Codes 2–4 share one alpha-mode base row, `A28@3 L22@4 C3@3`, scaled by
+`4^(level)`: 28 alpha, 22 luma and 3 + 3 chroma AC coefficients per base,
+×4 at code 2, ×16 at code 3 and ×64 at code 4. §11.11 chose it at code 2,
+where it is within 0.06% of the best equal-budget row, and codes 3 and 4
+inherited it unmeasured. Register entry D6 asks whether those two codes want
+a different split. `V0.8-DECISIONS.md` D6 records the candidates, the
+opacity strata and the selection rule, all committed before the first
+result.
+
+Every candidate is a 190-bit base row, the shipped row's budget: 190 is the
+only base budget that gives the shipped alpha-mode length at both codes,
+388 B at ×16 and 1528 B at ×64. The candidates are §11.11's four
+equal-budget rows and seven more: a luma-heavier row, chroma bought from
+luma, and five rows that spend the budget on alpha *precision* (4- and
+5-bit alpha fields) rather than alpha count. §11.11's two 192-bit rows are
+4 B and 16 B over at codes 3 and 4 and are left out.
+
+**Tune (`mise run sweep alpha-tiers34`).** The 16 alpha tune images,
+composited over white, black and grey. Every alpha-mode hash is its tier's
+shipped length, checked image by image. Each row is read against its own
+tier's shipped row, at equal bytes (`mise run stratify alpha-tiers34
+--alpha-tiers`); `relative` is the difference of means over the shipped
+row's mean, and the interval and guards are paired.
+
+| row | ΔE00 | relative | 95% CI of Δ | guards (CI) | αMAE |
+|---|---|---|---|---|---|
+| t3 A28@3 L22@4 C3@3 (shipped) | 9.757 | — | — | — | 0.1096 |
+| t3 A24@3 L22@4 C5@3 | 9.617 | −1.44% | [−0.259, −0.054] | ok | 0.1098 |
+| t3 A32@3 L19@4 C3@3 | 9.808 | +0.52% | [+0.024, +0.078] | FAIL | 0.1094 |
+| t3 A20@3 L28@4 C3@3 | 9.673 | −0.86% | [−0.146, −0.027] | ok | 0.1102 |
+| t3 A40@3 L13@4 C3@3 | 9.968 | +2.16% | [+0.122, +0.307] | FAIL | 0.1092 |
+| t3 A12@3 L34@4 C3@3 | 9.691 | −0.68% | [−0.171, +0.046] | ok | 0.1131 |
+| t3 A28@3 L19@4 C5@3 | 9.669 | −0.90% | [−0.192, −0.017] | FAIL | 0.1096 |
+| t3 A16@4 L27@4 C3@3 | 8.885 | −8.94% | [−1.151, −0.599] | ok | 0.0846 |
+| t3 A23@4 L20@4 C3@3 | 8.897 | −8.82% | [−1.174, −0.580] | ok | 0.0807 |
+| t3 A12@5 L28@4 C3@3 | 8.897 | −8.81% | [−1.146, −0.557] | ok | 0.0849 |
+| t3 A16@5 L23@4 C3@3 | 8.774 | −10.08% | [−1.307, −0.657] | ok | 0.0778 |
+| t3 A20@5 L18@4 C3@3 | 8.757 | −10.25% | [−1.354, −0.648] | ok | 0.0737 |
+| t4 A28@3 L22@4 C3@3 (shipped) | 8.744 | — | — | — | 0.1085 |
+| t4 A24@3 L22@4 C5@3 | 8.632 | −1.28% | [−0.192, −0.044] | ok | 0.1086 |
+| t4 A32@3 L19@4 C3@3 | 8.794 | +0.58% | [+0.015, +0.098] | inconclusive | 0.1085 |
+| t4 A20@3 L28@4 C3@3 | 8.661 | −0.95% | [−0.147, −0.034] | ok | 0.1087 |
+| t4 A40@3 L13@4 C3@3 | 8.973 | +2.62% | [+0.093, +0.428] | FAIL | 0.1084 |
+| t4 A12@3 L34@4 C3@3 | 8.607 | −1.57% | [−0.255, −0.042] | ok | 0.1091 |
+| t4 A28@3 L19@4 C5@3 | 8.683 | −0.70% | [−0.120, −0.011] | inconclusive | 0.1085 |
+| t4 A16@4 L27@4 C3@3 | 7.608 | −12.99% | [−1.450, −0.872] | ok | 0.0752 |
+| t4 A23@4 L20@4 C3@3 | 7.702 | −11.91% | [−1.371, −0.766] | ok | 0.0744 |
+| t4 A12@5 L28@4 C3@3 | 7.235 | −17.25% | [−1.878, −1.148] | ok | 0.0627 |
+| t4 A16@5 L23@4 C3@3 | 7.233 | −17.28% | [−1.902, −1.149] | ok | 0.0605 |
+| t4 A20@5 L18@4 C3@3 | 7.296 | −16.56% | [−1.871, −1.057] | ok | 0.0591 |
+
+By opacity half, the same relative differences over the 7 mostly-opaque
+images (non-opaque fraction below 0.5) and the 9 mostly-transparent ones.
+Every tune alpha image falls in the `alpha` stratum and in no other
+holdout3 stratum, so the stratum table is the overall row and is not
+repeated.
+
+| row | mostly-opaque (7) | mostly-transparent (9) |
+|---|---|---|
+| t3 A24@3 L22@4 C5@3 | −2.14% | −0.48% |
+| t3 A32@3 L19@4 C3@3 | +0.64% | +0.36% |
+| t3 A20@3 L28@4 C3@3 | −1.26% | −0.32% |
+| t3 A40@3 L13@4 C3@3 | +2.54% | +1.65% |
+| t3 A12@3 L34@4 C3@3 | −1.84% | +0.90% |
+| t3 A28@3 L19@4 C5@3 | −1.51% | −0.07% |
+| t3 A16@4 L27@4 C3@3 | −6.21% | −12.69% |
+| t3 A23@4 L20@4 C3@3 | −5.15% | −13.84% |
+| t3 A12@5 L28@4 C3@3 | −6.39% | −12.13% |
+| t3 A16@5 L23@4 C3@3 | −6.29% | −15.26% |
+| t3 A20@5 L18@4 C3@3 | −5.68% | −16.52% |
+| t4 A24@3 L22@4 C5@3 | −2.05% | −0.31% |
+| t4 A32@3 L19@4 C3@3 | +0.79% | +0.31% |
+| t4 A20@3 L28@4 C3@3 | −1.30% | −0.50% |
+| t4 A40@3 L13@4 C3@3 | +3.69% | +1.27% |
+| t4 A12@3 L34@4 C3@3 | −2.29% | −0.66% |
+| t4 A28@3 L19@4 C5@3 | −1.22% | −0.04% |
+| t4 A16@4 L27@4 C3@3 | −8.75% | −18.31% |
+| t4 A23@4 L20@4 C3@3 | −6.97% | −18.09% |
+| t4 A12@5 L28@4 C3@3 | −11.65% | −24.26% |
+| t4 A16@5 L23@4 C3@3 | −10.93% | −25.22% |
+| t4 A20@5 L18@4 C3@3 | −9.40% | −25.53% |
+
+What the tune result says:
+
+1. **The count split §11.11 measured is flat at codes 3 and 4.** Every
+   3-bit row is within 2.7% of the shipped row at both codes, as at code 2,
+   and the rows with more alpha coefficients (`A32@3`, `A40@3`) are the
+   worst. Their αMAE barely moves: 3-bit alpha fields already carry every
+   coefficient a 3-bit code can resolve, so a larger count buys zeros.
+2. **Alpha precision is what binds at codes 3 and 4.** Every row with 4- or
+   5-bit alpha fields is 8.8% to 10.3% better at code 3 and 11.9% to 17.3%
+   better at code 4, with every guard `ok` on intervals and αMAE down by a
+   quarter to almost a half. The 5-bit rows lead at both codes. At code 2,
+   §11.11's 4-bit row `A16@4 L14@4 C9@4` trailed the shipped 3-bit row;
+   with 16 and 64 times the coefficients, the extra bits pay.
+3. **The gain is largest on mostly-transparent cut-outs, and holds on the
+   mostly-opaque ones.** For the 5-bit rows, −12% to −17% on the
+   mostly-transparent half at code 3 and −24% to −26% at code 4, against
+   −6% and −9% to −12% on the mostly-opaque half. That is the dependence
+   `RATIONALE.md` future work item 14 warned of, and it is why the opacity
+   halves are strata of their own on `holdout3`. No half loses.
+
+**Selection (the rule D6 recorded before this run).** Per code, the row
+with the lowest tune ΔE00 whose `guards (CI)` against the code's shipped
+row is not `FAIL`: `t3 A20@5 L18@4 C3@3` (−10.25%) and
+`t4 A16@5 L23@4 C3@3` (−17.28%; `A12@5 L28@4` is 0.002 behind). Both clear
+Q13's 3%, so both are frozen, one Holm family of two. The selection does not
+change under 20 other seeds. The code-3 pick's guards are `inconclusive`
+on the mostly-opaque half on tune, which gates nothing there. Q8's power
+statement for the pair on `holdout3`'s 24 alpha pins at m = 2, from each
+comparison's tune spread (σ_rel 7.65% and 8.96%): an MDE of 4.81% at
+code 3 and 5.64% at code 4. Neither resolves R1's 3%; both are about half
+the tune estimate.
+
+**The holdout3 read.** D6 froze at `eec3495`, and read `holdout3`'s alpha
+part once from a clean tree at that commit: `mise run sweep
+alpha-tiers34-frozen --split holdout3 --decision D6`, over its 24 alpha
+pins, with exactly the four frozen rows. The result is committed as
+`alpha-tiers34-frozen-holdout3.json`, and `mise run register-verdict D6`
+re-derives every row below from it.
+
+| comparison (row vs its code's shipped row, equal bytes) | ΔE00 | 95% CI of Δ | relative | p Holm | guards (CI) |
+|---|---|---|---|---|---|
+| code 3: `t3 A20@5 L18@4 C3@3` | −0.992 | [−1.314, −0.664] | −13.50% | ≤ 0.0004 | ok |
+| code 4: `t4 A16@5 L23@4 C3@3` | −1.526 | [−1.827, −1.237] | −22.69% | ≤ 0.0004 | ok |
+
+Per stratum, the relative difference over each stratum's pins (a pin may
+sit in several; every pin is in `alpha`, so that column is the overall
+row), and over each opacity half:
+
+| comparison | smartphone (1) | extreme aspect (3) | mostly-opaque (11) | mostly-transparent (13) |
+|---|---|---|---|---|
+| code 3: `t3 A20@5 L18@4 C3@3` | −9.25% | −3.66% | −11.48% | −16.10% |
+| code 4: `t4 A16@5 L23@4 C3@3` | −15.69% | −10.69% | −19.19% | −27.13% |
+
+The shipped rows score 7.347 at code 3 and 6.725 at code 4 (medians 7.420
+and 6.739, against 7.155 and 5.440 for the frozen rows). Under R1 and the
+stratum rule (`mise run register-verdict D6`):
+
+1. **Both rows pass R1.** Each is past 3% (−13.50% and −22.69%), each is
+   Holm-significant with its p at the resampling floor, and every guard is
+   `ok` on its paired interval, SSIMULACRA2, Butteraugli and DSSIM alike.
+2. **No stratum fails.** Every stratum and both opacity halves are `ok`,
+   except the three extreme-aspect pins, whose guards are `inconclusive`
+   at both codes (n = 3); their ΔE00 intervals are nowhere near the
+   rule's +1.0%. The mostly-opaque half gains less than the
+   mostly-transparent one, as on tune, but out of sample by −11.48% and
+   −19.19%, more than on tune.
+3. **Condition 4 holds.** Under 20 bootstrap seeds other than 42 no
+   outcome turns, overall or in any stratum.
+
+**D6 passes R1 at codes 3 and 4.** Both effects are larger out of sample
+than on tune, and both are well past the MDE Q8 computed. They are the
+best rows measured, not a bracketed optimum. Both use 5-bit alpha fields,
+the widest in the grid, so no wider-precision row was run. At code 3,
+`A20@5` is also the grid's largest 5-bit count, and the tune gain was
+still rising with count there (−8.81%, −10.08%, −10.25% for `A12@5`,
+`A16@5` and `A20@5`). At code 4 the 5-bit counts peak inside the grid.
+The shipped bytes are unchanged: adopting a 5-bit alpha row at codes 3 and 4 is a
+format change, and a per-code row ends the single base row that codes 2–4
+share, which the v0.8 verdict lands in every language or declines.

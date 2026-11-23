@@ -27,9 +27,16 @@ import fs from "node:fs/promises";
 import { glob } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import {
+  d6Arms,
+  d6Members,
+  selectionKey as d6SelectionKey,
+  readD6,
+  selectD6,
+} from "./alpha-tiers-core.ts";
 import { compareArms, guardVerdictOnIntervals, statFor } from "./arms-core.ts";
-import { holdout3Strata } from "./corpus.ts";
 import { measureFile } from "./corpus-covariates.ts";
+import { holdout3Strata } from "./corpus.ts";
 import { COUNTS_DIR } from "./dct-identity-core.ts";
 import {
   type D5Speed,
@@ -43,12 +50,6 @@ import {
   selectionKey,
 } from "./downsample-core.ts";
 import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
-import {
-  WINDOW_FLOOR,
-  readWindow,
-  selectWindows,
-  windowArms,
-} from "./window-core.ts";
 import { CURATED_IMAGES } from "./natural-images.ts";
 import {
   holdout3StrataOf,
@@ -75,6 +76,12 @@ import {
   realCorpusOf,
   tierBaselinePairs,
 } from "./stratify-core.ts";
+import {
+  WINDOW_FLOOR,
+  readWindow,
+  selectWindows,
+  windowArms,
+} from "./window-core.ts";
 
 /** The three covariates `natural-images.ts` records, parsed out of `notes`. */
 interface Covariates {
@@ -167,13 +174,14 @@ const { values, positionals } = parseArgs({
     embedded: { type: "boolean", default: false },
     window: { type: "boolean", default: false },
     downsample: { type: "boolean", default: false },
+    "alpha-tiers": { type: "boolean", default: false },
   },
 });
 
 const sweepName = positionals[0];
 if (!sweepName) {
   console.error(
-    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata | stratify <sweep> --embedded | stratify <sweep> --window | stratify <sweep> --downsample",
+    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata | stratify <sweep> --embedded | stratify <sweep> --window | stratify <sweep> --downsample | stratify <sweep> --alpha-tiers",
   );
   process.exit(2);
 }
@@ -191,6 +199,10 @@ if (values.window) {
 }
 if (values.downsample) {
   await printDownsample(sweepName);
+  process.exit(0);
+}
+if (values["alpha-tiers"]) {
+  await printAlphaTiers(sweepName);
   process.exit(0);
 }
 
@@ -421,6 +433,69 @@ async function printDownsample(name: string): Promise<void> {
           speed,
         ),
       ) !== selectionKey(pick),
+  );
+  console.log(
+    `  under ${seeds.length} seeds other than ${BOOTSTRAP_SEED}, the selection changes at ${turned.length}${turned.length > 0 ? ` (seeds ${turned.join(", ")})` : ""}`,
+  );
+}
+
+/**
+ * `--alpha-tiers`: register entry D6's reading of an `alpha-tiers34` result
+ * (`alpha-tiers-core.ts`). Each candidate row at code k against
+ * `tK A28@3 L22@4 C3@3 (shipped)`: its paired ΔE00, its relative difference
+ * against R1's 3.0%, and its guards, overall, in each holdout3 stratum (found
+ * as `--strata` finds them) and in the two opacity halves. On tune it also
+ * applies D6's selection rule and re-draws it under 20 other seeds; on tune
+ * the strata gate nothing.
+ */
+async function printAlphaTiers(name: string): Promise<void> {
+  const file = readResult(RESULTS_DIR, name);
+  if (!file) {
+    console.error(`no committed result ${name} — run the sweep`);
+    process.exit(1);
+  }
+  const strataOf =
+    file.split === "holdout3"
+      ? holdout3StrataOf
+      : await measuredStrata(file.imageNames);
+  const members = d6Members(file.imageNames, strataOf);
+  const tol = file.settings.guardTolerances as GuardTolerances;
+  const sign = (x: number, d: number) => `${x >= 0 ? "+" : ""}${x.toFixed(d)}`;
+  const iv = (s: { meanDelta: number; ci: [number, number] }) =>
+    `${sign(s.meanDelta, 3)} [${sign(s.ci[0], 3)}, ${sign(s.ci[1], 3)}]`;
+  const pct = (x: number, base: number) => `${sign((100 * x) / base, 2)}%`;
+  console.log(
+    `${name} (${file.split}, ${file.imageNames.length} images): each candidate row's ΔE00 and guards against its tier's shipped row; R1's condition 1 is 3.0% lower`,
+  );
+  for (const [s, idx] of members) console.log(`  ${s}: ${idx.length} images`);
+  const specs = d6Arms(file.rows);
+  const readings = specs.map((spec) => readD6(spec, file.rows, tol, members));
+  for (const r of readings) {
+    console.log(
+      `\n${r.spec.arm} vs ${r.spec.incumbent}\n  ${"overall".padEnd(18)} n ${String(r.n).padStart(3)}  ΔE00 ${iv(r.delta)} = ${pct(r.delta.meanDelta, r.delta.baseMean)} ${r.lower3 ? "≥ 3%" : "< 3%"}  guards (CI) ${r.guards}`,
+    );
+    for (const s of r.strata ?? []) {
+      console.log(
+        `  ${s.stratum.padEnd(18)} n ${String(s.n).padStart(3)}  ΔE00 ${iv(s.deltaE)} = ${pct(s.deltaE.meanDelta, s.deltaE.baseMean)}  guards (CI) ${s.guards}  ${s.verdict}`,
+      );
+    }
+  }
+  if (file.split === "holdout3") return;
+  const pick = selectD6(readings);
+  console.log("\nD6's selection rule:");
+  for (const t of pick.tiers) {
+    console.log(
+      `  code ${t.k}: ${t.pick ? `${t.pick.spec.arm} (${sign(t.pick.rel, 2)}%, guards (CI) ${t.pick.guards})` : "none"}; ${t.outcome}`,
+    );
+  }
+  const seeds = otherSeeds(20);
+  const turned = seeds.filter(
+    (seed) =>
+      d6SelectionKey(
+        selectD6(
+          specs.map((spec) => readD6(spec, file.rows, tol, undefined, seed)),
+        ),
+      ) !== d6SelectionKey(pick),
   );
   console.log(
     `  under ${seeds.length} seeds other than ${BOOTSTRAP_SEED}, the selection changes at ${turned.length}${turned.length > 0 ? ` (seeds ${turned.join(", ")})` : ""}`,

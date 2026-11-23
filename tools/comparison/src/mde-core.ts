@@ -52,6 +52,21 @@ export const PHOTO_HOLDOUT2_CANDIDATES = 32;
 /** "Near the threshold": a mean effect within 3% of the incumbent's mean. */
 export const NEAR = 0.03;
 
+/**
+ * Committed tune results that are not §13.6's population, and why. §13.6 is
+ * the pre-data power statement every register freeze quotes; a register
+ * entry's own tune sweep, committed after it, would otherwise join the spread
+ * and move a statement other freezes already cite. The entries that sweep on
+ * corpus `all` never joined it (the spread reads only `photo` and `alpha`);
+ * D6's sweeps the alpha corpus alone, so it is named here. Its own power
+ * statement is computed at its freeze from its own spread (`V0.8-DECISIONS.md`
+ * D6, Q8).
+ */
+export const MDE_EXCLUDED: Readonly<Record<string, string>> = {
+  "alpha-tiers34":
+    "register D6's tune sweep (#137), committed after §13.6; its freeze computes its own Q8 statement",
+};
+
 export type MdeCorpus = "photo" | "alpha";
 export const MDE_CORPORA: readonly MdeCorpus[] = ["photo", "alpha"];
 
@@ -152,6 +167,7 @@ export function readSpread(
     .map((f) => f.replace(/\.json$/, ""))
     .sort();
   for (const name of names) {
+    if (MDE_EXCLUDED[name] !== undefined) continue;
     const file = readResult(resultsDir, name);
     if (!file || file.tool !== "sweep" || file.split !== "tune") continue;
     const corpus = file.settings.corpus;

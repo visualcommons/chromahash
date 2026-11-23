@@ -1108,6 +1108,70 @@ const REGISTER: Claim[] = [
     }),
   ),
 
+  // ── Register D6 (#137) ───────────────────────────────────────────────────
+  // The entry quotes the two tune selections its rule froze (§13.12 table 0)
+  // and their holdout3 readings (§13.12 table 2); RATIONALE.md quotes the
+  // readings where it records the verdict.
+  ...(
+    [
+      [3, "t3 A20@5 L18@4 C3@3", /`t3 A20@5 L18@4 C3@3` \(−([\d.]+)%\)/],
+      [4, "t4 A16@5 L23@4 C3@3", /`t4 A16@5 L23@4 C3@3` \(−([\d.]+)%\)/],
+    ] as const
+  ).map(
+    ([code, row, pattern]): Claim => ({
+      file: "spec/V0.8-DECISIONS.md",
+      what: `D6: the code-${code} selection's tune gain`,
+      pattern,
+      section: "13.12",
+      table: 0,
+      row,
+      column: "relative",
+      transform: abs,
+    }),
+  ),
+  ...(
+    [
+      [
+        "spec/V0.8-DECISIONS.md",
+        "the verdict",
+        3,
+        /`A20@5 L18@4 C3@3` is ([\d.]+)% better than the shipped/,
+      ],
+      [
+        "spec/V0.8-DECISIONS.md",
+        "the verdict",
+        4,
+        /`A16@5 L23@4 C3@3` is ([\d.]+)% better\./,
+      ],
+      [
+        "spec/RATIONALE.md",
+        "future work item 2",
+        3,
+        /alpha row at the same bytes is ([\d.]+)% better at code 3/,
+      ],
+      [
+        "spec/RATIONALE.md",
+        "future work item 2",
+        4,
+        /better at code 3 and ([\d.]+)% at\n {3}code 4/,
+      ],
+    ] as const
+  ).map(
+    ([file, where, code, pattern]): Claim => ({
+      file,
+      what: `D6: the code-${code} holdout3 gain, in ${where}`,
+      pattern,
+      section: "13.12",
+      table: 2,
+      row:
+        code === 3
+          ? "code 3: `t3 A20@5 L18@4 C3@3`"
+          : "code 4: `t4 A16@5 L23@4 C3@3`",
+      column: "relative",
+      transform: abs,
+    }),
+  ),
+
   // ── Register D8's prior evidence (#131) ──────────────────────────────────
   // The code-0 retune entry quotes the tune plateau's top two (§11.10) and
   // C1's holdout2 reading of the candidate (§13.7) by hand.

@@ -1427,6 +1427,37 @@ const D5_FROZEN_BASELINES: Record<string, string> = Object.fromEntries(
   ]),
 );
 
+/** §13.12's candidate rows at codes 3 and 4, as `alpha-tiers34` labels them. */
+const D6_ROWS = [
+  "A24@3 L22@4 C5@3",
+  "A32@3 L19@4 C3@3",
+  "A20@3 L28@4 C3@3",
+  "A40@3 L13@4 C3@3",
+  "A12@3 L34@4 C3@3",
+  "A28@3 L19@4 C5@3",
+  "A16@4 L27@4 C3@3",
+  "A23@4 L20@4 C3@3",
+  "A12@5 L28@4 C3@3",
+  "A16@5 L23@4 C3@3",
+  "A20@5 L18@4 C3@3",
+] as const;
+/** §13.12's per-row baselines: every D6 row against its own tier's shipped row. */
+const D6_TIER_BASELINES: Record<string, string> = Object.fromEntries(
+  [3, 4].flatMap((k) =>
+    D6_ROWS.map((r) => [`t${k} ${r}`, `t${k} A28@3 L22@4 C3@3 (shipped)`]),
+  ),
+);
+
+/** §13.12's holdout3 rows: D6's two frozen rows, by doc label. */
+const D6_FROZEN_ROWS: Record<string, string> = {
+  "code 3: `t3 A20@5 L18@4 C3@3`": "t3 A20@5 L18@4 C3@3",
+  "code 4: `t4 A16@5 L23@4 C3@3`": "t4 A16@5 L23@4 C3@3",
+};
+const D6_FROZEN_BASELINES: Record<string, string> = {
+  "code 3: `t3 A20@5 L18@4 C3@3`": "t3 A28@3 L22@4 C3@3 (shipped)",
+  "code 4: `t4 A16@5 L23@4 C3@3`": "t4 A28@3 L22@4 C3@3 (shipped)",
+};
+
 /** §13.8's holdout3 rows: D1's two frozen comparisons, by doc label. */
 const D1_FROZEN_ROWS: Record<string, string> = {
   "code 3: `t3 coded x3` vs `t3 shipped`": "t3 coded x3",
@@ -2886,6 +2917,83 @@ const BINDINGS: Binding[] = [
     rowBaselines: D5_FROZEN_BASELINES,
   },
 
+  // §13.12 — register D6 on tune: every alpha row against its own tier's
+  // shipped row, then the same rows in each opacity half.
+  {
+    kind: "rows",
+    section: "13.12",
+    table: 0,
+    sweep: "alpha-tiers34",
+    columns: {
+      ΔE00: "meanCiede",
+      relative: "ciedeDeltaPct",
+      "95% CI of Δ": "diffCi:ciede2000",
+      "guards (CI)": "guardsCiVsBaseline",
+      αMAE: "meanAlphaMae",
+    },
+    rowBaselines: D6_TIER_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "13.12",
+    table: 1,
+    sweep: "alpha-tiers34",
+    columns: {
+      "mostly-opaque (7)": "ciedeDeltaPct",
+      "mostly-transparent (9)": "ciedeDeltaPct",
+    },
+    subsets: {
+      "mostly-opaque (7)": transparency(0.5, false),
+      "mostly-transparent (9)": transparency(0.5, true),
+    },
+    rowBaselines: D6_TIER_BASELINES,
+  },
+  // §13.12 — D6's one holdout3 read, at the freeze: the two frozen rows
+  // overall (the entry-family Holm and the named-baseline guards from the
+  // `register` binding beside it), then per pinned stratum and opacity half.
+  {
+    kind: "rows",
+    section: "13.12",
+    table: 2,
+    sweep: "alpha-tiers34-frozen-holdout3",
+    columns: {
+      ΔE00: "diff:ciede2000",
+      "95% CI of Δ": "diffCi:ciede2000",
+      relative: "ciedeDeltaPct",
+    },
+    aliases: D6_FROZEN_ROWS,
+    rowBaselines: D6_FROZEN_BASELINES,
+  },
+  {
+    kind: "register",
+    section: "13.12",
+    table: 2,
+    entry: "D6",
+    columns: { "p Holm": "pHolm", "guards (CI)": "guards" },
+    rows: D6_FROZEN_ROWS,
+  },
+  {
+    kind: "rows",
+    section: "13.12",
+    table: 3,
+    sweep: "alpha-tiers34-frozen-holdout3",
+    columns: {
+      "smartphone (1)": "ciedeDeltaPct",
+      "extreme aspect (3)": "ciedeDeltaPct",
+      "mostly-opaque (11)": "ciedeDeltaPct",
+      "mostly-transparent (13)": "ciedeDeltaPct",
+    },
+    subsets: {
+      "smartphone (1)": (n) => holdout3StrataOf(n).includes("smartphone"),
+      "extreme aspect (3)": (n) =>
+        holdout3StrataOf(n).includes("extreme-aspect"),
+      "mostly-opaque (11)": transparency(0.5, false),
+      "mostly-transparent (13)": transparency(0.5, true),
+    },
+    aliases: D6_FROZEN_ROWS,
+    rowBaselines: D6_FROZEN_BASELINES,
+  },
+
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
   {
@@ -3184,6 +3292,16 @@ const EXPECTED_CELLS: Record<string, number> = {
   // six strata (30).
   "13.11#4": 20,
   "13.11#5": 30,
+  // §13.12, register D6 on tune: every row's ΔE00 and αMAE (48) and the 22
+  // candidates' relative, interval and guards (66); then the 22 candidates'
+  // relative differences in each opacity half (44).
+  "13.12#0": 114,
+  "13.12#1": 44,
+  // D6's holdout3 read: the two frozen rows' ΔE00 difference, interval and
+  // relative (6) with their entry-family Holm and guards (4); then their
+  // relative differences in two strata and two opacity halves (8).
+  "13.12#2": 10,
+  "13.12#3": 8,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */

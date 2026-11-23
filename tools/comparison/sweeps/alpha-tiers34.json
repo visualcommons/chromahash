@@ -1,0 +1,133 @@
+{
+  "name": "alpha-tiers34",
+  "description": "Register entry D6 (spec/V0.8-DECISIONS.md, #137): is the shipped alpha-mode base row A28@3 L22@4 C3@3, which codes 2-4 share scaled by 4^level, still right at codes 3 and 4? Each tier is decided separately against its own shipped arm, the first arm of that tier. Every arm is a 190-bit base row, the shipped row's budget, and 190 is the only base budget that gives the shipped alpha-mode length at both codes (388 B at x16, 1528 B at x64; expectBytes, checked per image), so every comparison is at equal bytes. The first four candidates are EXPERIMENTS.md 11.11's equal-budget arms at that budget; its two 192-bit rows (A16@4 L14@4 C9@4, A12@4 L18@4 C9@4) are 104 B against 103 B at code 2 but 392 B against 388 B at code 3 and 1544 B against 1528 B at code 4, so they are not equal-budget here and are left out. The other seven, fixed with the rest before any committed result, extend 11.11's directions to the budgets the upper tiers have: a luma-heavier row (A12@3 L34@4), chroma bought from luma (A28@3 L19@4 C5@3), and five rows that spend the budget on alpha precision rather than alpha count (A16@4 and A23@4; A12@5, A16@5 and A20@5), since at x16 and x64 the 3-bit alpha field, not the count, may bind. The rows are set through the bare layout keys, which write every row of the table; at codes 3 and 4 only the upper-tier base is read, so each arm is a per-tier row in effect, with no new Tunables knob. Corpus alpha (alpha mode is the only one the row moves), with alpha-tier1's white-black-grey backdrops and alpha fidelity. Cross-tier rows of the printed tables (a code-4 arm against the code-3 shipped arm) are at different byte counts and are not judged: D6's selection rule reads each arm against its own tier's shipped arm (mise run stratify alpha-tiers34 --alpha-tiers).",
+  "corpus": "alpha",
+  "backdrops": "white-black-grey",
+  "alphaFidelity": true,
+  "expectBytes": {
+    "3": { "opaque": 411, "alpha": 388 },
+    "4": { "opaque": 1623, "alpha": 1528 }
+  },
+  "variants": [
+    {
+      "label": "t3 A28@3 L22@4 C3@3 (shipped)",
+      "tier": 3,
+      "tune": "la1=22:4 ca=3:3 alpha_ac_count=28 alpha_ac_bits=3"
+    },
+    {
+      "label": "t3 A24@3 L22@4 C5@3",
+      "tier": 3,
+      "tune": "la1=22:4 ca=5:3 alpha_ac_count=24 alpha_ac_bits=3"
+    },
+    {
+      "label": "t3 A32@3 L19@4 C3@3",
+      "tier": 3,
+      "tune": "la1=19:4 ca=3:3 alpha_ac_count=32 alpha_ac_bits=3"
+    },
+    {
+      "label": "t3 A20@3 L28@4 C3@3",
+      "tier": 3,
+      "tune": "la1=28:4 ca=3:3 alpha_ac_count=20 alpha_ac_bits=3"
+    },
+    {
+      "label": "t3 A40@3 L13@4 C3@3",
+      "tier": 3,
+      "tune": "la1=13:4 ca=3:3 alpha_ac_count=40 alpha_ac_bits=3"
+    },
+    {
+      "label": "t3 A12@3 L34@4 C3@3",
+      "tier": 3,
+      "tune": "la1=34:4 ca=3:3 alpha_ac_count=12 alpha_ac_bits=3"
+    },
+    {
+      "label": "t3 A28@3 L19@4 C5@3",
+      "tier": 3,
+      "tune": "la1=19:4 ca=5:3 alpha_ac_count=28 alpha_ac_bits=3"
+    },
+    {
+      "label": "t3 A16@4 L27@4 C3@3",
+      "tier": 3,
+      "tune": "la1=27:4 ca=3:3 alpha_ac_count=16 alpha_ac_bits=4"
+    },
+    {
+      "label": "t3 A23@4 L20@4 C3@3",
+      "tier": 3,
+      "tune": "la1=20:4 ca=3:3 alpha_ac_count=23 alpha_ac_bits=4"
+    },
+    {
+      "label": "t3 A12@5 L28@4 C3@3",
+      "tier": 3,
+      "tune": "la1=28:4 ca=3:3 alpha_ac_count=12 alpha_ac_bits=5"
+    },
+    {
+      "label": "t3 A16@5 L23@4 C3@3",
+      "tier": 3,
+      "tune": "la1=23:4 ca=3:3 alpha_ac_count=16 alpha_ac_bits=5"
+    },
+    {
+      "label": "t3 A20@5 L18@4 C3@3",
+      "tier": 3,
+      "tune": "la1=18:4 ca=3:3 alpha_ac_count=20 alpha_ac_bits=5"
+    },
+    {
+      "label": "t4 A28@3 L22@4 C3@3 (shipped)",
+      "tier": 4,
+      "tune": "la1=22:4 ca=3:3 alpha_ac_count=28 alpha_ac_bits=3"
+    },
+    {
+      "label": "t4 A24@3 L22@4 C5@3",
+      "tier": 4,
+      "tune": "la1=22:4 ca=5:3 alpha_ac_count=24 alpha_ac_bits=3"
+    },
+    {
+      "label": "t4 A32@3 L19@4 C3@3",
+      "tier": 4,
+      "tune": "la1=19:4 ca=3:3 alpha_ac_count=32 alpha_ac_bits=3"
+    },
+    {
+      "label": "t4 A20@3 L28@4 C3@3",
+      "tier": 4,
+      "tune": "la1=28:4 ca=3:3 alpha_ac_count=20 alpha_ac_bits=3"
+    },
+    {
+      "label": "t4 A40@3 L13@4 C3@3",
+      "tier": 4,
+      "tune": "la1=13:4 ca=3:3 alpha_ac_count=40 alpha_ac_bits=3"
+    },
+    {
+      "label": "t4 A12@3 L34@4 C3@3",
+      "tier": 4,
+      "tune": "la1=34:4 ca=3:3 alpha_ac_count=12 alpha_ac_bits=3"
+    },
+    {
+      "label": "t4 A28@3 L19@4 C5@3",
+      "tier": 4,
+      "tune": "la1=19:4 ca=5:3 alpha_ac_count=28 alpha_ac_bits=3"
+    },
+    {
+      "label": "t4 A16@4 L27@4 C3@3",
+      "tier": 4,
+      "tune": "la1=27:4 ca=3:3 alpha_ac_count=16 alpha_ac_bits=4"
+    },
+    {
+      "label": "t4 A23@4 L20@4 C3@3",
+      "tier": 4,
+      "tune": "la1=20:4 ca=3:3 alpha_ac_count=23 alpha_ac_bits=4"
+    },
+    {
+      "label": "t4 A12@5 L28@4 C3@3",
+      "tier": 4,
+      "tune": "la1=28:4 ca=3:3 alpha_ac_count=12 alpha_ac_bits=5"
+    },
+    {
+      "label": "t4 A16@5 L23@4 C3@3",
+      "tier": 4,
+      "tune": "la1=23:4 ca=3:3 alpha_ac_count=16 alpha_ac_bits=5"
+    },
+    {
+      "label": "t4 A20@5 L18@4 C3@3",
+      "tier": 4,
+      "tune": "la1=18:4 ca=3:3 alpha_ac_count=20 alpha_ac_bits=5"
+    }
+  ]
+}
