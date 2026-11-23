@@ -437,9 +437,22 @@ pub(crate) fn shipped_fields(t: &Tunables) -> Tunables {
 /// hash is the shipped hash's size, and its own layout only bounds what the
 /// coded stream carries.
 pub(crate) fn body_len_bytes(t: &Tunables, has_alpha: bool, tier: u8) -> usize {
-    if t.ac_coder[tier_index(tier)] != 0 {
-        return body_len_bytes(&shipped_fields(t), has_alpha, tier);
-    }
+    // Not a recursive call on `shipped_fields(t)`: the fixed-width length is
+    // read straight off the rows, so a `shipped_fields` that left the coder
+    // on gives a wrong length rather than an endless loop.
+    let fixed;
+    let rows = if t.ac_coder[tier_index(tier)] != 0 {
+        fixed = shipped_fields(t);
+        &fixed
+    } else {
+        t
+    };
+    fields_len_bytes(rows, has_alpha, tier)
+}
+
+/// The byte length the fixed-width fields of `t`'s rows give a (alpha mode,
+/// tier), whatever `t`'s coder says.
+fn fields_len_bytes(t: &Tunables, has_alpha: bool, tier: u8) -> usize {
     let shape = ac_shape(t, has_alpha, tier);
     let mut bits = prefix_bits(t) as usize + ac_payload_bits(&shape);
     if has_alpha {
