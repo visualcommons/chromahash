@@ -34,7 +34,12 @@ import {
   readD6,
   selectD6,
 } from "./alpha-tiers-core.ts";
-import { compareArms, guardVerdictOnIntervals, statFor } from "./arms-core.ts";
+import {
+  type PairableRow,
+  compareArms,
+  guardVerdictOnIntervals,
+  statFor,
+} from "./arms-core.ts";
 import {
   type Bound,
   D9_BAR,
@@ -44,6 +49,17 @@ import {
 } from "./cfl-oracle-core.ts";
 import { measureFile } from "./corpus-covariates.ts";
 import { holdout3Strata } from "./corpus.ts";
+import {
+  CELLS,
+  type AlphaMode,
+  assertCombinationProvenance,
+  COMBINATION_FLOOR,
+  COMBINATION_SEEDS,
+  comboLabel,
+  deployedRow,
+  parseCombo,
+  readCell,
+} from "./combination-core.ts";
 import { COUNTS_DIR } from "./dct-identity-core.ts";
 import {
   type D5Speed,
@@ -183,13 +199,14 @@ const { values, positionals } = parseArgs({
     downsample: { type: "boolean", default: false },
     "alpha-tiers": { type: "boolean", default: false },
     "cfl-oracle": { type: "boolean", default: false },
+    combination: { type: "boolean", default: false },
   },
 });
 
 const sweepName = positionals[0];
 if (!sweepName) {
   console.error(
-    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata | stratify <sweep> --embedded | stratify <sweep> --window | stratify <sweep> --downsample | stratify <sweep> --alpha-tiers | stratify <sweep> --cfl-oracle",
+    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata | stratify <sweep> --embedded | stratify <sweep> --window | stratify <sweep> --downsample | stratify <sweep> --alpha-tiers | stratify <sweep> --cfl-oracle | stratify <sweep> --combination",
   );
   process.exit(2);
 }
@@ -215,6 +232,10 @@ if (values["alpha-tiers"]) {
 }
 if (values["cfl-oracle"]) {
   await printCflOracle(sweepName);
+  process.exit(0);
+}
+if (values.combination) {
+  await printCombination(sweepName);
   process.exit(0);
 }
 
@@ -357,6 +378,123 @@ async function printWindow(name: string): Promise<void> {
     );
     console.log(
       `  under ${seeds.length} seeds other than ${BOOTSTRAP_SEED}, the selection changes at ${turned.length}${turned.length > 0 ? ` (seeds ${turned.join(", ")})` : ""}`,
+    );
+  }
+}
+
+/**
+ * `--combination`: the v0.8 verdict's combination check on a
+ * `v08-combination` tune result (`combination-core.ts`). Per cell, the best
+ * single, every candidate against it under R2 with δ = 1.0% and condition 4
+ * under 20 other seeds, and the row the cell adopts. Then every row against
+ * its code's shipped row, overall, per corpus and in each stratum (the
+ * strata found as `--strata` finds them), which gates nothing.
+ */
+async function printCombination(name: string): Promise<void> {
+  const file = readResult(RESULTS_DIR, name);
+  if (!file) {
+    console.error(`no committed result ${name} — run the sweep`);
+    process.exit(1);
+  }
+  if (file.split === "holdout3" || file.split === "holdout2") {
+    console.error(
+      `${name} reads a sealed split; the combination check is tune only`,
+    );
+    process.exit(1);
+  }
+  assertCombinationProvenance(name, file.provenance);
+  const strataOf = await measuredStrata(file.imageNames);
+  const members = strataMembers(file.imageNames, strataOf);
+  const corpora = new Map<string, number[]>();
+  for (const [i, n] of file.imageNames.entries()) {
+    const c = realCorpusOf(n) ?? "other";
+    corpora.set(`corpus ${c}`, [...(corpora.get(`corpus ${c}`) ?? []), i]);
+  }
+  const cellIdx = (mode: string): number[] =>
+    file.imageNames.flatMap((n, i) =>
+      (realCorpusOf(n) === "alpha") === (mode === "alpha") ? [i] : [],
+    );
+  const tol = file.settings.guardTolerances as GuardTolerances;
+  const sign = (x: number, d: number) => `${x >= 0 ? "+" : ""}${x.toFixed(d)}`;
+  const iv = (s: { meanDelta: number; ci: [number, number] }) =>
+    `${sign(s.meanDelta, 3)} [${sign(s.ci[0], 3)}, ${sign(s.ci[1], 3)}]`;
+  const pct = (x: number, base: number) => `${sign((100 * x) / base, 2)}%`;
+  console.log(
+    `${name} (${file.split}, ${file.imageNames.length} images): each cell's combinations against its best single under R2 with δ = 1.0% (guards not FAIL, D3's spurious mean ≤ 0, stable under ${COMBINATION_SEEDS} other seeds)`,
+  );
+  for (const [s, idx] of [...corpora, ...members]) {
+    console.log(`  ${s}: ${idx.length} images`);
+  }
+  const adopted: string[] = [];
+  const adoptedBy = new Map<string, string>();
+  for (const cell of CELLS) {
+    const r = readCell(cell, file.rows, cellIdx(cell.mode), tol);
+    console.log(
+      `\ncell t${cell.k} ${cell.mode} (n ${r.n}; components ${cell.components.join(", ")})`,
+    );
+    for (const s of r.singles) {
+      console.log(
+        `  single ${s.arm.padEnd(14)} mean ΔE00 ${s.mean.toFixed(4)}${s.arm === r.best ? "  ← S*" : ""}`,
+      );
+    }
+    for (const c of r.candidates) {
+      const turned = r.turned.find((t) => t.arm === c.arm);
+      console.log(
+        `  ${c.arm.padEnd(16)} vs ${r.best}: ΔE00 ${iv(c.delta)} = ${pct(c.delta.meanDelta, c.delta.baseMean)} (U ${sign(c.upperRel, 2)}%) ${c.cond1 ? "≤ δ" : "> δ"}  guards (CI) ${c.guards}  Spur vs ${COMBINATION_FLOOR} ${c.spurious ? iv(c.spurious) : "—"} ${c.cond3 ? "" : "(> 0)"}  ${c.pass ? "passes" : "fails"}${turned ? `; turns at seeds ${turned.seeds.join(", ")}` : ""}`,
+      );
+    }
+    console.log(
+      `  adopted: ${r.adopted}${r.dropped.length > 0 ? `; interaction drops ${r.dropped.join(", ")}` : ""}`,
+    );
+    adopted.push(`t${cell.k} ${cell.mode}: ${r.adopted}`);
+    adoptedBy.set(`${cell.k} ${cell.mode}`, r.adopted);
+  }
+  console.log(`\nThe combination: ${adopted.join("; ")}`);
+  console.log(
+    "\nEvery row against its code's shipped row (reported, gating nothing):",
+  );
+  const report = (r: PairableRow, k: number): void => {
+    const shipped = file.rows.find((x) => x.label.trim() === `t${k} shipped`);
+    if (!shipped) return;
+    const [cmp] = compareArms([shipped, r]);
+    const d = statFor(cmp, "ciede2000");
+    if (!d) return;
+    console.log(
+      `\n${r.label} vs t${k} shipped\n  ${"overall".padEnd(17)} n ${String(d.pairs).padStart(3)}  ΔE00 ${iv(d)} = ${pct(d.meanDelta, d.baseMean)}  guards (CI) ${guardVerdictOnIntervals(cmp, tol, undefined)}`,
+    );
+    const rule = stratumRule(
+      r,
+      shipped,
+      new Map([...corpora, ...members]),
+      tol,
+      undefined,
+    );
+    for (const s of rule.strata) {
+      console.log(
+        `  ${s.stratum.padEnd(17)} n ${String(s.n).padStart(3)}  ΔE00 ${iv(s.deltaE)} = ${pct(s.deltaE.meanDelta, s.deltaE.baseMean)}  guards (CI) ${s.guards}  ${s.verdict}`,
+      );
+    }
+  };
+  for (const r of file.rows) {
+    const p = parseCombo(r.label);
+    if (p) report({ ...r, label: comboLabel(p.k, p.components) }, p.k);
+  }
+  // The format as it ships: each image by the row its own alpha flag adopts.
+  console.log(
+    "\nThe deployed format, each image by its own alpha flag's adopted row (reported, gating nothing):",
+  );
+  for (const k of [3, 4] as const) {
+    const pick = (mode: AlphaMode): string => {
+      const a = adoptedBy.get(`${k} ${mode}`);
+      if (!a) throw new Error(`no adopted row for t${k} ${mode}`);
+      return a;
+    };
+    report(
+      deployedRow(file.rows, k, {
+        opaque: pick("opaque"),
+        alpha: pick("alpha"),
+      }),
+      k,
     );
   }
 }

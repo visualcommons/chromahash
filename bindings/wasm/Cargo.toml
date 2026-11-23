@@ -3,7 +3,7 @@ name = "chromahash-wasm"
 # Edition 2021 (like chromahash-c): a thin wasm-bindgen wrapper needs no 2024
 # features. The core crate stays on edition 2024.
 edition = "2021"
-version = "0.7.2"
+version = "0.8.0"
 authors = ["Justin Chung <noreply@justinchung.net>"]
 description = "WebAssembly bindings (wasm-bindgen) exposing the ChromaHash core to JavaScript/TypeScript on the web"
 license = "MIT OR Apache-2.0"

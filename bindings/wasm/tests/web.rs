@@ -165,7 +165,7 @@ fn from_bytes_rejects_a_malformed_header() {
     );
 
     let mut bad_version = valid.clone();
-    bad_version[0] |= 0b0000_0001;
+    bad_version[0] |= 0b0000_0010; // version 3: no generation this build implements
     assert!(
         ChromaHash::from_bytes(&bad_version).is_err(),
         "unsupported version"

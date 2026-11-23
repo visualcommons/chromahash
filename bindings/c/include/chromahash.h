@@ -72,7 +72,7 @@ enum ChromaHashStatus
      */
     CHROMA_HASH_STATUS_INTERNAL = 4,
     /**
-     * The bytes are not a valid v1 ChromaHash (bad version, tier, reserved bit,
+     * The bytes are not a valid v2 ChromaHash (bad version, tier, reserved bit,
      * or the length does not match the self-describing header).
      */
     CHROMA_HASH_STATUS_INVALID_DATA = 5,
@@ -188,7 +188,7 @@ ChromaHashStatus chromahash_encode_with_quality(uint32_t width,
                                                 ChromaHash **out_hash);
 
 /**
- * Reconstruct a handle from a raw v1 hash of `len` bytes. The header is
+ * Reconstruct a handle from a raw v2 hash of `len` bytes. The header is
  * self-describing, so `len` may be any tier's byte length; malformed bytes are
  * rejected with [`ChromaHashStatus::InvalidData`]. On success `*out_hash`
  * receives a new handle to free with [`chromahash_free`].

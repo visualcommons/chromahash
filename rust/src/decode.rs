@@ -2,7 +2,8 @@ use crate::aspect::decode_output_size;
 use crate::bitpack::{AcHistory, AcModels, ArithDecoder, read_bits};
 use crate::color::{oklab_to_linear_output, oklab_to_linear_srgb};
 use crate::constants::{
-    ALPHA_FLAG_BIT, Gamut, TIER_BITS, Tunables, VERSION_BITS, ac_shape, prefix_bits, shipped_fields,
+    ALPHA_FLAG_BIT, Gamut, TIER_BITS, Tunables, VERSION_BITS, ac_shape, prefix_bits,
+    shipped_fields, tier_index,
 };
 use crate::dct::{
     SelectionOrder, dct_decode_pixel_flat, dct_decode_pixel_separable, precompute_cos_table,
@@ -187,7 +188,10 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     // Register D1's adaptive mode: the first payload bit picks the coded
     // stream (1) or the shipped fixed fields (0) in the bits after it. Drop
     // the bit and decode the rest in the mode it names; the last bit reads 0.
-    if t.ac_coder == 2 {
+    let ti = tier_index(tier);
+    // The window is per (alpha mode, tier) cell, both read from byte 0.
+    let ai = has_alpha as usize;
+    if t.ac_coder[ti] == 2 {
         let start = prefix_bits(t) as usize
             + if has_alpha {
                 (t.alpha_dc_bits + t.alpha_scale_bits) as usize
@@ -205,7 +209,10 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
             inner[(i - 1) / 8] |= bit(i) << ((i - 1) % 8);
         }
         let mode = if bit(start) == 1 {
-            Tunables { ac_coder: 1, ..*t }
+            Tunables {
+                ac_coder: [1; crate::constants::TIER_CODES],
+                ..*t
+            }
         } else {
             shipped_fields(t)
         };
@@ -319,7 +326,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     // from one arithmetic-coded stream over the rest of the hash. The decoder
     // is total, so any bytes of the validated length decode.
     let mut alpha_raw: Option<Vec<u32>> = None;
-    if t.ac_coder != 0 {
+    if t.ac_coder[ti] != 0 {
         let mut dec = ArithDecoder::new(hash, bitpos, hash.len() * 8);
         let mut models = AcModels::new();
         let mut hist = AcHistory::default();
@@ -450,15 +457,15 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     };
 
     // 5. Synthesis window + frequency filter for the render raster
-    let l_weights = window_weights(&l_sel, t.w_min_l, t.w_exp_l);
-    let c_weights = window_weights(&c_sel, t.w_min_c, t.w_exp_c);
+    let l_weights = window_weights(&l_sel, t.w_min_l[ai][ti], t.w_exp_l[ai][ti]);
+    let c_weights = window_weights(&c_sel, t.w_min_c[ai][ti], t.w_exp_c[ai][ti]);
 
     let (l_vals, l_scan) = prepare_channel(&l_ac, &l_sel.coeffs, &l_weights, w, h);
     let (a_vals, a_scan) = prepare_channel(&a_ac, &c_sel.coeffs, &c_weights, w, h);
     let (b_vals, b_scan) = prepare_channel(&b_ac, &c_sel.coeffs, &c_weights, w, h);
     let (alpha_vals, alpha_scan) = if let Some(sel) = &alpha_sel {
         // Alpha is structural, not chromatic — share the luma window shape.
-        let weights = window_weights(sel, t.w_min_l, t.w_exp_l);
+        let weights = window_weights(sel, t.w_min_l[ai][ti], t.w_exp_l[ai][ti]);
         prepare_channel(&alpha_ac, &sel.coeffs, &weights, w, h)
     } else {
         (vec![], vec![])
@@ -994,11 +1001,11 @@ mod tests {
         // every pixel. gradient_200x50 → 32×8.
         use crate::ChromaHash;
         let hash = ChromaHash::encode(200, 50, &gradient_image(200, 50), Gamut::Srgb);
-        // Pin the header before decoding (byte 0 = version 0, tier 1, opaque;
+        // Pin the header before decoding (byte 0 = version 1, tier 1, opaque;
         // byte 1 = round((log2 4 + 4) / 8 · 255) = 191). An encoder that
         // scrambles byte 0 can name tier 7, whose 4^6-scaled render runs for
         // minutes, so without this the sweep times out here instead of failing.
-        assert_eq!(hash.as_bytes()[..2], [8, 191]);
+        assert_eq!(hash.as_bytes()[..2], [9, 191]);
         let (w, h, rgba) = hash.decode();
         assert_eq!((w, h), (32, 8));
         let px = |i: usize| &rgba[i * 4..i * 4 + 4];
@@ -1314,8 +1321,10 @@ mod tests {
     #[test]
     fn cut_tier_cuts_at_the_lower_codes_length_in_each_alpha_mode() {
         // D2's cut is the length a code-k hash of the same alpha mode has,
-        // which is not one byte count across the two modes at code 2.
-        let d = Tunables::DEFAULT;
+        // which is not one byte count across the two modes at code 2. The cut
+        // reads fixed-width fields (D2 measured the v1 rows), so code 3 is
+        // read with the length rows and the coder off, as D2 ran it.
+        let d = crate::constants::shipped_fields(&Tunables::DEFAULT);
         assert_ne!(
             crate::constants::body_len_bytes(&d, false, 2),
             crate::constants::body_len_bytes(&d, true, 2),
@@ -1703,7 +1712,7 @@ mod tests {
         // A tapered window, so even zero-valued synthetic coefficients would
         // show: they move p_K and with it every coded coefficient's weight.
         let base = Tunables {
-            w_min_l: 0.6,
+            w_min_l: [[0.6; crate::constants::TIER_CODES]; 2],
             ..Tunables::DEFAULT
         };
         let hash = opaque_hash();

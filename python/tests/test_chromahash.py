@@ -157,7 +157,7 @@ def test_from_bytes_rejects_wrong_length(tier: int):
         # garbage.
         ("reserved bit set", lambda b: b | 0b1000_0000),
         ("reserved tier code", lambda b: (b & ~0b0011_1000) | ((MAX_TIER + 1) << 3)),
-        ("unsupported version", lambda b: b | 0b0000_0001),
+        ("unsupported version", lambda b: b | 0b0000_0010),
     ],
 )
 def test_from_bytes_rejects_a_malformed_header(what, mutate):
@@ -232,7 +232,7 @@ def test_tier_constants_come_from_the_core():
     ordering the format guarantees, and the byte length each code selects.
     """
     assert COMPACT_TIER < DEFAULT_TIER < MAX_TIER
-    assert FORMAT_VERSION == 0
+    assert FORMAT_VERSION == 1
 
     rgba = solid_image(4, 4, 128, 128, 128, 255)
     assert (

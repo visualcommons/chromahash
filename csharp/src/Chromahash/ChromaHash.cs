@@ -151,7 +151,7 @@ public sealed class ChromaHash : IEquatable<ChromaHash>
     /// disagrees with the header all throw here rather than at first use.
     /// </remarks>
     /// <exception cref="ArgumentException">
-    /// <paramref name="data"/> is not a valid v1 ChromaHash.
+    /// <paramref name="data"/> is not a valid v2 ChromaHash.
     /// </exception>
     public static ChromaHash FromBytes(byte[] data)
     {

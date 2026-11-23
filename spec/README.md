@@ -1,22 +1,31 @@
 # ChromaHash Format Specification
 
-**Release:** 0.7.2
-**Wire-format generation:** v1 (`version` field = 0)
+**Release:** 0.8.0
+**Wire-format generation:** v2 (`version` field = 1)
 **Status:** Stable
-**Date:** 2026-09-01
+**Date:** 2026-11-23
 
-> **What "Stable" means here.** Generation v1, first released in 0.7.1, is versioned
-> by the byte-0 `version` field, and any format change increments it (§2.5, §13). The
-> next release, v0.8, may change the format ([`V0.8-DECISIONS.md`](V0.8-DECISIONS.md)
-> Q10). Every constant v1
-> ships has evidence on a tune split (`EXPERIMENTS.md` §7–§11), except the two selection
+> **What "Stable" means here.** Generation v2, first released in 0.8.0, is versioned
+> by the byte-0 `version` field, and any format change increments it (§2.5, §13). It is
+> generation v1 (0.7.x, `version` 0) with codes 3 and 4 changed by the v0.8 verdict
+> ([`V0.8-DECISIONS.md`](V0.8-DECISIONS.md), "The v0.8 verdict"): code 3 carries its AC
+> codes in an arithmetic-coded stream (§3.6), alpha-mode codes 3 and 4 carry a 5-bit
+> alpha row (§3.2), and the decoder tapers alpha-mode code-3 and opaque code-4 hashes with
+> a synthesis window (§11.1).
+> Codes 0–2 decode exactly as in v1, but a v2 decoder implements v2 alone and rejects a
+> v1 hash by its `version` field. The release name 1.0 is not a release of its own: it
+> will be an alias of the v0.y.z release shown to be the best the format can be
+> (`V0.8-DECISIONS.md` Q10). Every constant v2
+> ships has evidence on a tune split (`EXPERIMENTS.md` §7–§11, §13), except the two selection
 > weights: on the current tune corpus `ANISO_OBLIQUE = 1.2` / `SEL_HV = 0.15` are
 > indistinguishable from isotropic and `hv = 0` is ahead, so their case rested on the old
 > holdout, which `SEL_HV` was selected on (`EXPERIMENTS.md` §11.5, §11.12). That holdout
 > is spent. Register entries C1 (photographic) and C2 (alpha) in
 > [`V0.8-DECISIONS.md`](V0.8-DECISIONS.md) re-read the shipped constants once on new
 > sealed splits, and both are decided: every shipped constant stands under R1
-> (`EXPERIMENTS.md` §13.7).
+> (`EXPERIMENTS.md` §13.7). The three v2 changes each passed their own rule once on the
+> sealed `holdout3` (`EXPERIMENTS.md` §13.8, §13.10, §13.12), and their combination was
+> checked on tune before it landed (§13.15).
 
 > ChromaHash is a compact, self-describing Low Quality Image Placeholder (LQIP)
 > format designed for professional photo management at scale. It encodes a
@@ -26,11 +35,12 @@
 > header) trades size for detail, roughly quadrupling the byte length per tier
 > while doubling the rendered resolution on each axis.
 >
-> The release version (`0.7.2`, semver) and the **wire-format generation** (`v1`,
-> the 3-bit `version` field, value `0`) are independent axes: the release follows
+> The release version (`0.8.0`, semver) and the **wire-format generation** (`v2`,
+> the 3-bit `version` field, value `1`) are independent axes: the release follows
 > semver, while the on-wire `version` field increments only on an incompatible
-> format break (`1`→v2, `2`→v3, …). This generation is a clean break with **no
-> backward compatibility** with the older v0.6 bitstream.
+> format break (`0` was v1, `1` is v2, `2`→v3, …). Generation v1 was a clean break
+> with **no backward compatibility** with the older v0.6 bitstream; v2 is detectably
+> distinct from v1 by its `version` field.
 >
 > **Design rationale:** [`RATIONALE.md`](RATIONALE.md) records why each decision
 > is what it is — the alternatives considered (including the audio-codec and
@@ -53,7 +63,7 @@
 10. [Encoding Algorithm](#10-encoding-algorithm)
 11. [Decoding Algorithm](#11-decoding-algorithm)
 12. [Constants & Matrices](#12-constants--matrices)
-13. [Changes to v1 (0.7.1)](#13-changes-to-v1-071)
+13. [Changes to v2 (0.8.0) and v1 (0.7.1)](#13-changes-to-v2-080-and-v1-071)
 14. [Trade-offs & Limitations](#14-trade-offs--limitations)
 15. [Future Directions: JPEG XL VarDCT Evaluation](#15-future-directions-jpeg-xl-vardct-evaluation)
 16. [Appendix A: ThumbHash Comparison](#appendix-a-thumbhash-comparison--acknowledgment)
@@ -138,7 +148,7 @@ field group):
 
 | Bits | Field | Width | Meaning |
 |------|-------|-------|---------|
-| 0–2 | `version` | 3 | Wire-format generation. `0` = **v1** (this spec). |
+| 0–2 | `version` | 3 | Wire-format generation. `1` = **v2** (this spec); `0` was v1. |
 | 3–5 | `tier` | 3 | Tier code, ordered by quality. `0` is the **compact tier**, `1` is the default, `2..=4` are the higher quality tiers; `5..=7` reserved. |
 | 6 | `hasAlpha` | 1 | Alpha channel present. |
 | 7 | reserved | 1 | MUST be 0. |
@@ -158,23 +168,29 @@ renderLevel(tier) = max(0, tier − 1)
 
 Codes `5..=7` are reserved and MUST be rejected (§2.6).
 
-`FORMAT_VERSION = 0` is the first generation of this self-describing scheme. Future
-incompatible breaks increment the field (`1`→v2, `2`→v3, …); a decoder MUST reject a
-`version` it does not implement.
+`FORMAT_VERSION = 1` is the second generation of this self-describing scheme (`0` was
+v1, chromahash 0.7.x). Future incompatible breaks increment the field (`2`→v3, …); a
+decoder MUST reject a `version` it does not implement. A v2 decoder implements v2 alone,
+so it rejects a v1 hash: an application holding v1 hashes detects them by the `version`
+field (`isVersionSupported`) and re-encodes them. Codes 0–2 carry the same bytes in both
+generations apart from byte 0; codes 3 and 4 do not (§13).
 
-This is a **clean break**: there is no backward compatibility with the older v0.6
-bitstream (whose byte 0 was the `L_dc` value, not a version field). The two are not
-co-detectable from bytes alone, so an application storing a mix of generations must track
-which is which out of band. A v1 decoder validates the descriptor + length (§2.6, §3.5)
-and rejects anything that is not a well-formed v1 hash.
+Generation v1 was a **clean break** from the older v0.6 bitstream (whose byte 0 was the
+`L_dc` value, not a version field). The two are not co-detectable from bytes alone, so an
+application storing a mix of v0.6 and later hashes must track which is which out of band.
+A v2 decoder validates the descriptor + length (§2.6, §3.5) and rejects anything that is
+not a well-formed v2 hash.
 
 ### 2.6 Self-Describing Length, Validation, and Padding
 
-A v1 hash is **variable length**, fully determined by `(tier, hasAlpha)` via the length
+A v2 hash is **variable length**, fully determined by `(tier, hasAlpha)` via the length
 formula in §3.5. Decodability is established by **structure, not a checksum**:
 `from_bytes` (the validating constructor) checks the `version`, the `tier` range, the
 reserved bit, and that the byte length exactly equals the formula — and **fails early** on
-any mismatch. A byte string that passes these checks is guaranteed to decode.
+any mismatch. A byte string that passes these checks is guaranteed to decode. At code 3
+that guarantee rests on the coded stream being a **total code** (§3.6): every bit string
+of the header-implied length decodes, with every AC code in range, so the O(1) length
+check stays the complete validity check there too.
 
 There is deliberately **no CRC or checksum**. A checksum verifies *integrity*, not
 *decodability*: a bit-flip that happens to land on a still-valid hash would decode to a
@@ -227,12 +243,19 @@ AC coefficients follow the prefix (and the alpha DC/scale in alpha mode), in **s
 order** (§6.2): the j-th value in each channel's field is the j-th selected `(cx, cy)`
 pair.
 
-The per-channel split is a **three-row table, not one base scaled by `4^(tier−2)`**: codes
-0 and 1 each have their own row, and codes 2–4 scale the code-2 base by `4^(tier−2)`. Bits
-per coefficient are constant within a row. The split exists because the count-vs-precision
+The per-channel split is a **table of five rows, one per tier code, not one base scaled by
+`4^(tier−2)`**: codes 0 and 1 each have their own row, code 2 scales its base by 4, and
+codes 3 and 4 each scale a row of their own by `4^(tier−2)` (16 and 64). Bits per
+coefficient are constant within a row. The split exists because the count-vs-precision
 optimum moves with the budget — at 32 bytes the format is measurably better off with more,
 coarser coefficients than the code-2 row scaled down would give it (`EXPERIMENTS.md` §4.2,
-§8.1), and the compact tier's smaller budget moves it again (§11.10).
+§8.1), the compact tier's smaller budget moves it again (§11.10), and at codes 3–4 the
+alpha field's precision binds (§13.12). In generation v1 codes 3 and 4 scaled the code-2
+base; v2 gave each its own row (§13).
+
+At code 3 the row is a **bound**, not a set of fields: the AC payload is the
+arithmetic-coded stream of §3.6, which carries at most the row's counts at the row's widths
+and fills exactly the payload the **length row** gives (the code-2 base scaled by 16, §3.5).
 
 **Compact tier (code 0, 21 bytes):**
 
@@ -281,7 +304,40 @@ b AC (chroma)   36 @ 4            12 @ 3
 A AC (alpha)    —                 112 @ 3
 ```
 
-At tier `m ≥ 2`, every coefficient count in that row is multiplied by `4^(m−2)`; see §3.5.
+At code 2 every coefficient count in that row is multiplied by 4; see §3.5. The same row,
+scaled by `4^(m−2)`, is the **length row** of codes 3 and 4: it fixes their byte length
+(§3.5), and in generation v1 it was their layout as well.
+
+**Code-3 row (×16; a bound on the coded stream, §3.6):**
+
+```
+Field           no-alpha          alpha
+──────────────────────────────────────────
+L AC            78 @ 5            54 @ 4
+a AC (chroma)   27 @ 4            9 @ 3
+b AC (chroma)   27 @ 4            9 @ 3
+A AC (alpha)    —                 60 @ 5
+```
+
+The opaque bound is three times the code-2 base; the alpha bound is three times the 5-bit
+alpha row `A20@5 L18@4 C3@3` (register entries D1 and D6, `V0.8-DECISIONS.md`). As
+fixed fields these rows would overflow the hash; the coded stream carries the leading codes
+of each channel that fit (§3.6).
+
+**Code-4 row (×64; fixed fields):**
+
+```
+Field           no-alpha          alpha
+──────────────────────────────────────────
+L AC            26 @ 5            23 @ 4
+a AC (chroma)   9 @ 4             3 @ 3
+b AC (chroma)   9 @ 4             3 @ 3
+A AC (alpha)    —                 16 @ 5
+```
+
+The opaque half is the code-2 base. The alpha half spends the same 190 bits per base row on
+fewer, finer alpha coefficients: 16 at 5 bits in place of 28 at 3 (register entry D6), so
+its length is the length row's, 1528 bytes.
 
 **On the alpha rows.** They are not the opaque rows with luma trimmed. The alpha channel
 carries a silhouette, which is high-frequency and is most of what a cut-out placeholder
@@ -292,10 +348,11 @@ rows do — 28 alpha coefficients against 3 chroma at code 1. This is measured, 
 
 The alpha AC **count and bit width are per row**, like every other count in this table.
 They must not be hoisted into a single constant: code 1 wants 28 coefficients where the
-compact tier's smaller budget wants 16. An implementation MUST also keep the alpha count
-non-decreasing as the tier rises — 16 / 28 / 112 / 448 / 1792 for codes 0 / 1 / 2 / 3 / 4
-— since a higher tier with fewer alpha coefficients is a higher quality tier that renders
-a worse silhouette.
+compact tier's smaller budget wants 16, and codes 3 and 4 want a 5-bit field where codes
+0–2 want 3 bits. An implementation MUST also keep the alpha count non-decreasing as the
+tier rises — 16 / 28 / 112 / 960 / 1024 for codes 0 / 1 / 2 / 3 / 4 (at code 3 the
+count is the stream's bound) — since a higher tier with fewer alpha coefficients is a
+higher quality tier that renders a worse silhouette.
 
 ### 3.3 Layout Diagram
 
@@ -316,10 +373,11 @@ Compact tier (code 0), no-alpha (21 bytes):
 │ descr  │ aspect │ L_dc|a_dc|b_dc|L_scl|a_scl|b_scl│ L_ac×19(4b) | a_ac×6(3b) | b_ac×6(3b)│
 └────────┴────────┴────────────────────────────────┴──────────────────────────────────────┘
 
-Higher tiers use identical framing and the code-2 row (no-alpha L 104 @ 5b, a/b 36 @ 4b;
-alpha L 88 @ 4b, a/b 12 @ 3b, A 112 @ 3b), with every AC coefficient count multiplied by
-4^(tier−2). The compact tier is NOT part of that scaling — it is its own row at the
-default tier's render size.
+Higher tiers use identical framing. Code 2 lays out the code-2 row (no-alpha L 104 @ 5b,
+a/b 36 @ 4b; alpha L 88 @ 4b, a/b 12 @ 3b, A 112 @ 3b); code 4 lays out its own row the
+same way, channel after channel, with every count multiplied by 64; code 3 carries one
+arithmetic-coded stream after the prefix (§3.6). The compact tier is NOT part of any
+scaling — it is its own row at the default tier's render size.
 ```
 
 ### 3.5 Quality Multiplier (Tier) & Length Formula
@@ -337,8 +395,10 @@ countScale(tier)  = 4^renderLevel(tier)
   edge `32·2^level`: 32 / 64 / 128 / 256 px). This MUST be a bit-shift of the rounded
   base size, not a re-rounding of `32·2^level / ratio` (the two diverge — see §8.2).
 - **Coefficient budget** — codes 0 and 1 each read their own row of §3.2 directly; tier
-  `m ≥ 2` reads the code-2 row with each per-channel count multiplied by `4^(m−2)`. The
-  candidate frequency pool grows with the grid, so every `K(tier)` remains satisfiable.
+  `m ≥ 2` reads its own row with each per-channel count multiplied by `4^(m−2)`. The
+  candidate frequency pool grows with the grid, so every fixed-width `K(tier)` remains
+  satisfiable. Code 3's bound may exceed the candidates at an extreme aspect; its
+  selection is then every candidate, and the stream codes the rest as zero (§3.6).
 
 Valid tier codes are `0..=4` (`MAX_TIER = 4`); `5..=7` are reserved and MUST be rejected.
 Codes 0 and 1 share a render level, so shifting by the raw code rather than by
@@ -357,10 +417,13 @@ body_bits = 54 + (9 if hasAlpha else 0) + ac_bits     # alpha terms 0 when opaqu
 length    = ceil(body_bits / 8)    bytes
 ```
 
-where `K_*`/`B_*` come from the §3.2 row for that tier: codes 0 and 1 read their own rows
-directly, and tier `m ≥ 2` reads the code-2 row with every count times `4^(m−2)`. Note
-`B_alpha` is read from the row like every other width — it is 3 bits in v0.7, not the 4 it
-was before §11.3.
+where `K_*`/`B_*` come from the tier's **length row**: codes 0 and 1 read their own rows
+directly, and tier `m ≥ 2` reads the code-2 row with every count times `4^(m−2)`. The
+length row is the tier's own row everywhere but codes 3 and 4. Code 4's own row fills the
+same payload exactly (its alpha half trades alpha count for alpha precision at equal bits),
+and code 3's row only bounds the coded stream, which fills the length row's payload
+(§3.6). Note `B_alpha` is read from the row like every other width — it is 3 bits in the
+length rows, not the 4 it was before §11.3.
 
 | tier code | no-alpha | alpha |
 |---|---|---|
@@ -380,6 +443,87 @@ encoding; the reference implementation does not provide one. Applications are re
 for choosing an encoding appropriate to their context (e.g. base64url per RFC 4648 §5 for
 web and API use, hex for debugging). Because the byte length is self-describing (§3.5), any
 consistently applied encoding is unambiguous without additional framing.
+
+### 3.6 The Coded AC Stream (Code 3)
+
+At code 3 (`AC_CODED[tier]`, `spec/constants.py`) the AC payload is one **adaptive binary
+arithmetic-coded stream** instead of fixed-width fields (register entry D1,
+`V0.8-DECISIONS.md`; `EXPERIMENTS.md` §13.8). It starts right after the prefix (and the
+alpha DC and scale in alpha mode, which keep their fields) and runs to the end of the hash,
+whose length is the length row's (§3.5). Every bit at or past the end reads as zero.
+
+**What it carries.** The codes of every channel, channel after channel — L (with the row's
+per-index widths), a, b, then alpha — with exactly the counts `acShape` gives the code-3 row
+(§3.2). Each is a µ-law code exactly as a fixed field would hold it (§7.3), so the
+dequantization is unchanged. A channel's codes beyond the ones the encoder kept are the
+exact-zero centre code.
+
+**The coder** is the integer interval coder of Witten, Neal and Cleary (1987) over binary
+decisions, with 32-bit bounds and the underflow rule:
+
+```
+HALF = 2^31; QUARTER = 2^30; THREE_QUARTERS = 3·2^30; TOP = 2^32 − 1
+split(low, high, p0) = low + floor((high − low + 1) · p0 / 4096) − 1
+
+decoder state: low = 0, high = TOP, value = the first 32 stream bits, the first most significant
+  (bits are read in stream order, least significant bit of each byte first)
+decodeBit(p0):
+    s = split(low, high, p0)
+    bit = value > s
+    if bit: low = s + 1 else: high = s
+    loop:
+        if high < HALF:                                  (nothing to subtract)
+        elif low >= HALF:            low −= HALF;    high −= HALF;    value −= HALF
+        elif low >= QUARTER and high < THREE_QUARTERS:
+                                     low −= QUARTER; high −= QUARTER; value −= QUARTER
+        else: break
+        low = 2·low; high = 2·high + 1; value = 2·value + nextBit()
+    return bit
+```
+
+**Models.** A model holds `p0`, the probability of a 0 in units of 1/4096, starting at
+2048, and the number of bits it has coded, `n`, saturating at 3. After coding `bit` it
+moves by `shift = 1 + n` (then `n` increments if below 3): `p0 −= p0 >> shift` for a 1,
+`p0 += (4096 − p0) >> shift` for a 0. A **bypass** bit is decoded at `p0 = 2048` with no
+model.
+
+**One code.** A code `q` of a `B`-bit field has centre `c = 2^(B−1) − 1`. With `group` 0
+for luma, 1 for chroma (a and b share their models) and 2 for alpha, selection index `i`,
+band `= min(floor(log2(i + 1)), 11)`, and `ctx` the number of the channel's previous two
+codes that were significant (0 at each channel's start):
+
+```
+decodeCode(group, i, B):
+    c = 2^(B−1) − 1
+    if c == 0: return 0
+    if not decodeBit(sig[group][band][ctx]): return c       // the zero code
+    negative = decodeBypass()
+    mag = 1
+    for j in 0 .. c − 2:
+        if not decodeBit(mag[group][band][min(j, 3)]): break
+        mag += 1
+    return negative ? c − mag : c + mag
+```
+
+The significance of each code updates `ctx` for the next one. Every path returns a code in
+`0 ..= 2c`, so **every bit string decodes to in-range codes**: the code is total, and the
+length check of §2.6 is its complete validity check. The interval invariant
+`low ≤ value ≤ high` holds for any input bits, not only an encoder's.
+
+**The encoder** (a normative description of what it may emit; any stream the decoder reads
+is valid) codes every code of every channel if that fits the payload, and otherwise cuts:
+at step `k` of 256 each channel keeps its first `ceil(count · k / 256)` codes and zeroes
+the rest, and it bisects `k` between 0 and 256 in eight halvings for a step whose stream
+fits while the step above it does not. It terminates with one more decision bit — `1`
+when `low` is at least a quarter, else `0`, with the pending underflow bits — and drops the
+trailing zero bits, which the decoder's zero fill restores. The reference encoder is
+`rust/src/encode.rs` (`CodedAc::fit`) and `rust/src/bitpack.rs`; the spec vectors pin its
+bytes.
+
+What the stream gives up against fixed fields is **random access** (reading one code means
+decoding the stream before it, at most 3,234 payload bits), **error locality** (a flipped
+bit changes every later code) and **canonical form** (far more byte strings decode than an
+encoder writes). None is part of the contract that a hash which validates decodes.
 
 ---
 
@@ -788,7 +932,9 @@ every coefficient.
 
 Bit depths are constant within a §3.2 row; the tier multiplies the coefficient *count*
 (§3.5), not the precision. Codes 0 and 1 have their own rows, so their bit depths differ
-from the code-2 row that codes 2–4 scale.
+from the code-2 row. Codes 3 and 4 also have their own rows: the opaque widths are the
+code-2 row's, and the alpha field is 5 bits at both (code 3's row bounds its coded
+stream, §3.6).
 
 | Channel | Compact, no-α | Compact, α | Code 1, no-α | Code 1, α | Code-2 base, no-α | Code-2 base, α |
 |---------|---------------|------------|--------------|-----------|-------------------|----------------|
@@ -804,8 +950,16 @@ split, with every guard metric improving (`EXPERIMENTS.md` §4.5; on tune it is
 enough that the 5-bit split wins again for the opaque row —
 at 108 bytes the same swap is +2.0% the *wrong* way.
 
-The alpha rows do not follow the opaque ones. Alpha AC is 3 bits at every tier — 2 bits
-fails the Butteraugli guard at any count — and it takes the largest share of the alpha
+| Channel | Code 3, no-α (bound) | Code 3, α (bound) | Code 4, no-α | Code 4, α |
+|---------|----------------------|-------------------|--------------|-----------|
+| L AC | 5 b (≤ 1248) | 4 b (≤ 864) | 5 b (all 1664) | 4 b (all 1472) |
+| a AC | 4 b (≤ 432) | 3 b (≤ 144) | 4 b (all 576) | 3 b (all 192) |
+| b AC | 4 b (≤ 432) | 3 b (≤ 144) | 4 b (all 576) | 3 b (all 192) |
+| Alpha AC | — | 5 b (≤ 960) | — | 5 b (all 1024) |
+
+The alpha rows do not follow the opaque ones. Alpha AC is 3 bits at codes 0–2 — 2 bits
+fails the Butteraugli guard at any count — and 5 bits at codes 3 and 4, where the 3-bit
+field is what binds (`EXPERIMENTS.md` §13.12). It takes the largest share of the alpha
 budget, because a silhouette is high-frequency and is most of what a cut-out placeholder
 communicates. Chroma correspondingly collapses to 3 coefficients at code 1: chroma spent
 inside a transparent region is composited away. `EXPERIMENTS.md` §11.3.
@@ -887,11 +1041,12 @@ separately.
 ### 9.3 Alpha Channel Encoding
 
 When `hasAlpha = 1`: DC (5 bits), scale (4 bits), and the tier row's alpha AC coefficients
-(3 bits each, µ-law companded with `MU_ALPHA`). The count is the row's own — 16 at the
-compact tier, 28 at the default tier and in the code-2 base — scaled by `4^level` above
-code 2, giving **16 / 28 / 112 / 448 / 1792** for codes 0–4 (§3.2). It is not one constant
-scaled by `4^level`: the compact tier reads its own row, so the sequence starts at 16
-rather than at a scaled 28.
+(the row's width — 3 bits at codes 0–2, 5 at codes 3 and 4 — µ-law companded with
+`MU_ALPHA`). The count is the row's own — 16 at the compact tier, 28 at the default tier
+and in the code-2 base, 60 and 16 in the code-3 and code-4 rows — scaled by `4^level`,
+giving **16 / 28 / 112 / 960 / 1024** for codes 0–4 (§3.2; at code 3 the count is the
+coded stream's bound, §3.6). It is not one constant scaled by `4^level`: every code reads
+its own row.
 
 At the default tier that is 93 bits of alpha (`5 + 4 + 28·3`), funded almost entirely out
 of **chroma** rather than luminance: a/b shrink from 15 coefficients each to 3 (−72 bits)
@@ -949,7 +1104,8 @@ function encode(W, H, rgba, gamut, tier) -> byte[]:   // tier in 0..=MAX_TIER (4
         b_chan[i] = avg_b*(1-a) + a*oklab[i*3+2]
 
     // 5. Select coefficients (§6.2). Counts and bit widths come from the §3.2
-    //    row for this tier — codes 0 and 1 have their own, codes 2–4 scale the code-2 row.
+    //    row for this tier — every code has its own, scaled by 4^level; at code 3
+    //    the row bounds the coded stream (§3.6).
     aspect_byte = clamp(round((log2(W/H) + 4) / 8 * 255), 0, 255)
     (L_K, L_B, C_K, C_B, A_K, A_B) = acShape(tier, hasAlpha)   // §3.2
     (L_sel, _) = selectCoefficients(aspect_byte, tier, L_K)
@@ -1005,6 +1161,14 @@ function encode(W, H, rgba, gamut, tier) -> byte[]:   // tier in 0..=MAX_TIER (4
         writeBits(hash, bitpos, 5, round(31*clamp(A_dc,0,1))); bitpos += 5
         (A_scl_q, A_norm) = fitScale(A_ac, A_scale, MAX_A_ALPHA_SCALE, 4, MU_ALPHA, A_B)
         writeBits(hash, bitpos, 4, A_scl_q); bitpos += 4
+    if AC_CODED[tier]:
+        // Code 3 (§3.6): the same codes, every channel in this order, as one
+        // arithmetic-coded stream filling the rest of the hash. A selection the
+        // grid cannot fill is padded with zero codes up to the row's count.
+        codes = [qAC(L_ac[j],L_norm,L_B,MU_L) for j < L_K] ++ [qAC(a_ac[j],a_norm,C_B,MU_C) for j < C_K]
+              ++ [qAC(b_ac[j],b_norm,C_B,MU_C) for j < C_K] ++ (hasAlpha ? [qAC(A_ac[j],A_norm,A_B,MU_ALPHA) for j < A_K] : [])
+        writeCodedStream(hash, bitpos, 8*length - bitpos, codes)    // §3.6, cuts to fit
+        return hash
     for i in 0 .. L_K-1: writeBits(hash, bitpos, L_B, qAC(L_ac[i],L_norm,L_B,MU_L)); bitpos += L_B
     for i in 0 .. C_K-1: writeBits(hash, bitpos, C_B, qAC(a_ac[i],a_norm,C_B,MU_C)); bitpos += C_B
     for i in 0 .. C_K-1: writeBits(hash, bitpos, C_B, qAC(b_ac[i],b_norm,C_B,MU_C)); bitpos += C_B
@@ -1110,7 +1274,7 @@ function decode(hash, output_gamut = sRGB) -> (w, h, rgba):
 
     // 3. Coefficient selection (mirrors the encoder exactly, §6.2). Counts and
     //    bit widths come from the §3.2 row for this tier: codes 0 and 1 read
-    //    their own rows, tier m ≥ 2 reads the code-2 row scaled by 4^(m−2).
+    //    their own rows, tier m ≥ 2 reads its own row scaled by 4^(m−2).
     (L_K, L_B, C_K, C_B, A_K, A_B) = acShape(tier, hasAlpha)   // §3.2
     (L_sel, _) = selectCoefficients(aspect, tier, L_K)
     (C_sel, _) = selectCoefficients(aspect, tier, C_K)
@@ -1123,16 +1287,32 @@ function decode(hash, output_gamut = sRGB) -> (w, h, rgba):
         A_dc    = readBits(hash, bitpos, 5) / 31.0; bitpos += 5
         A_scale = readBits(hash, bitpos, 4) / 15.0 * MAX_A_ALPHA_SCALE; bitpos += 4
         (A_sel, _) = selectCoefficients(aspect, tier, A_K)
-    L_ac = []
-    for i in 0 .. L_K-1: L_ac.append(muLawDequantize(readBits(hash,bitpos,L_B),L_B,MU_L)*L_scale); bitpos += L_B
-    a_ac = []; for i in 0 .. C_K-1: a_ac.append(muLawDequantize(readBits(hash,bitpos,C_B),C_B,MU_C)*a_scale); bitpos += C_B
-    b_ac = []; for i in 0 .. C_K-1: b_ac.append(muLawDequantize(readBits(hash,bitpos,C_B),C_B,MU_C)*b_scale); bitpos += C_B
-    if hasAlpha:
-        A_ac = []; for i in 0 .. A_K-1: A_ac.append(muLawDequantize(readBits(hash,bitpos,A_B),A_B,MU_ALPHA)*A_scale); bitpos += A_B
+    if AC_CODED[tier]:
+        // Code 3 (§3.6): one coded stream over the rest of the hash, read in
+        // channel order with the counts above; every code it yields is in range.
+        dec = ArithDecoder(hash, bitpos, 8*len(hash))
+        L_ac = [muLawDequantize(decodeCode(0, j, L_B), L_B, MU_L)*L_scale for j < L_K]
+        a_ac = [muLawDequantize(decodeCode(1, j, C_B), C_B, MU_C)*a_scale for j < C_K]
+        b_ac = [muLawDequantize(decodeCode(1, j, C_B), C_B, MU_C)*b_scale for j < C_K]
+        if hasAlpha: A_ac = [muLawDequantize(decodeCode(2, j, A_B), A_B, MU_ALPHA)*A_scale for j < A_K]
+    else:
+        L_ac = []
+        for i in 0 .. L_K-1: L_ac.append(muLawDequantize(readBits(hash,bitpos,L_B),L_B,MU_L)*L_scale); bitpos += L_B
+        a_ac = []; for i in 0 .. C_K-1: a_ac.append(muLawDequantize(readBits(hash,bitpos,C_B),C_B,MU_C)*a_scale); bitpos += C_B
+        b_ac = []; for i in 0 .. C_K-1: b_ac.append(muLawDequantize(readBits(hash,bitpos,C_B),C_B,MU_C)*b_scale); bitpos += C_B
+        if hasAlpha:
+            A_ac = []; for i in 0 .. A_K-1: A_ac.append(muLawDequantize(readBits(hash,bitpos,A_B),A_B,MU_ALPHA)*A_scale); bitpos += A_B
 
-    // 6. Frequency filter for the render raster (§6.4). At the natural size
-    //    this removes nothing; for capped renders it removes frequencies the
-    //    coarser raster cannot represent.
+    // 6. Synthesis window (register entry D3), then the frequency filter for
+    //    the render raster (§6.4). The window weighs each selected coefficient
+    //    by w = w_min + (1 − w_min)·hann(ρ), ρ = sqrt(p_j / p_K) its radial
+    //    position in its own channel's selection, hann(ρ) = (1 + cos(π·ρ)) / 2,
+    //    with w_min = WINDOW_W_MIN[hasAlpha][tier] (1.0, i.e. off, at codes 0–2
+    //    and at code 3 opaque and code 4 alpha; 0.85 at code 3 in alpha mode;
+    //    0.7 at code 4 opaque) and w_exp = 1. Alpha shares the luma window
+    //    shape. At the natural size the filter removes nothing; for capped
+    //    renders it removes frequencies the coarser raster cannot represent.
+    L_ac[j] *= window(L_sel, j); a_ac[j], b_ac[j] *= window(C_sel, j); A_ac[j] *= window(A_sel, j)
     (L_vals, L_scan) = filter (L_ac[j], L_sel[j]) where L_sel[j].cx < w and L_sel[j].cy < h
     (a_vals, C_scan) = filter likewise over C_sel; (b_vals, _) = likewise
     if hasAlpha: (A_vals, A_scan) = likewise over A_sel
@@ -1227,6 +1407,11 @@ MU_ALPHA           = 5       # µ-law parameter, alpha AC
 ANISO_OBLIQUE      = 1.2     # Selection weight: oblique-effect penalty  (§6.2)
 SEL_HV             = 0.15    # Selection weight: horizontal/vertical bias (§6.2)
 SEL_Q              = 12      # Fixed-point shift the selection order is defined on
+
+WINDOW_W_MIN_OPAQUE = (1.0, 1.0, 1.0, 1.0, 0.7)   # Synthesis window floor per tier code, opaque (§11.1)
+WINDOW_W_MIN_ALPHA  = (1.0, 1.0, 1.0, 0.85, 1.0)  # Synthesis window floor per tier code, alpha mode
+WINDOW_W_EXP        = 1                            # Synthesis window exponent, every cell
+AC_CODED           = (no, no, no, yes, no)         # AC payload is the coded stream (§3.6)
 ```
 
 These values were chosen by sweeps on the comparison corpus's **tune** split (synthetic
@@ -1472,7 +1657,42 @@ readBits(hash, bitpos, count):
 
 ---
 
-## 13. Changes to v1 (0.7.1)
+## 13. Changes to v2 (0.8.0) and v1 (0.7.1)
+
+### v2 (0.8.0): codes 3 and 4
+
+Release 0.8.0 introduces wire-format generation **v2** (`version` = 1). It changes codes 3
+and 4 only; at codes 0–2 a v2 hash is the v1 hash with byte 0's `version` field moved from
+0 to 1. Each change passed its own pre-registered rule once on the sealed `holdout3`, and
+their combination was read on tune before landing (`V0.8-DECISIONS.md`, "The v0.8 verdict";
+`EXPERIMENTS.md` §13.15):
+
+- **Entropy-coded AC at code 3 (§3.6; register entry D1).** The fixed-width fields give way
+  to one adaptive binary arithmetic-coded stream, at the same 411 / 388 bytes, which spends
+  the bits it saves on more coefficients: up to three times the code-2 base's counts.
+  6.04% lower mean ΔE00 than the v1 code-3 layout on `holdout3`, Holm-significant, every
+  guard `ok` on intervals (`EXPERIMENTS.md` §13.8). The code is total, so the O(1) length
+  check stays the validity check (§2.6). At code 4 the coder measured 2.80%, under R1's 3%,
+  and at code 2 it was not read; neither changes.
+- **5-bit alpha rows at codes 3 and 4 (§3.2, §7.4; register entry D6).** Alpha-mode codes
+  3 and 4 spend the same bits on fewer, finer alpha coefficients: `A20@5 L18@4 C3@3` at
+  code 3 (as the coded stream's bound, ×3) and `A16@5 L23@4 C3@3` at code 4, in place of
+  the inherited `A28@3 L22@4 C3@3`. 13.50% and 22.69% lower mean ΔE00 on `holdout3`'s alpha
+  pins (`EXPERIMENTS.md` §13.12). Codes 3 and 4 therefore each have a row of their own.
+- **Synthesis window at code 3 alpha and code 4 opaque (§11.1; register entry D3).** A
+  decode change: the decoder tapers each coefficient by its radial position, `w_min` 0.85
+  for an alpha-mode code-3 hash and 0.7 for an opaque code-4 hash, which removes the
+  structure those codes invented over code 2 at no ΔE00 cost (`EXPERIMENTS.md` §13.10).
+  D3 passed at both codes in both modes, but the combination check kept it in these two
+  cells only: beside the code-3 coder the opaque window no longer brings the invented
+  structure under code 2's, and beside code 4's 5-bit alpha row it costs more than δ
+  (`EXPERIMENTS.md` §13.15). No hash byte depends on it.
+
+Everything else in the register was not adopted: embedded tiers (D2), the separable DCT
+(D4), downsampling before the transform (D5), chroma-from-luma (D7, D9) and the code-0
+retune (D8). Every v1 constant at codes 0–2 stands (C1, C2).
+
+### v1 (0.7.1)
 
 Release 0.7.1 introduces wire-format generation **v1**, a clean break with **no backward
 compatibility** with the v0.6 bitstream. The framing changes are:
@@ -1637,7 +1857,9 @@ priority `ρ = sqrt(priority / p_k)`) was implemented and swept. With the v0.6 c
 ranges in place it cost more detail than the residual ringing it suppressed — v0.5's
 visible banding turned out to be chroma quantization noise (Change 5), not luma Gibbs
 ringing. The `p_k` value remains defined (§6.2) should a future revision revisit
-frequency-normalized decoding.
+frequency-normalized decoding. Generation v2 did: the same window is on in two cells of
+codes 3 and 4 (§11.1, the v2 changes above), and off at codes 0–2, where this rejection
+stands.
 
 ---
 
@@ -1654,7 +1876,8 @@ frequency-normalized decoding.
 | **Gamut clip** | Out-of-sRGB OKLAB values are clipped per-channel in linear sRGB (relative-colorimetric, §12.6) — the same mapping a display applies, so saturated wide-gamut solids render at full in-gamut saturation rather than desaturated. |
 | **No progressive decode** | The whole hash must be received before decoding. Never a practical bottleneck at these sizes; embedded/progressive tiers were decided not adopted for v0.8: every prefix one code down fails the guards against the native code it stands for, on tune (`V0.8-DECISIONS.md` D2; `EXPERIMENTS.md` §13.9; §15). |
 | **Codes 3–4 are not a rate–distortion claim** | See below. |
-| **Alpha at codes 3–4 is inherited, and measured short** | Alpha-mode codes 3–4 scale the code-2 alpha row by `4^(level)`, chosen at code 2 (`EXPERIMENTS.md` §11.11). Measured at codes 3–4, its 3-bit alpha field binds: a 5-bit alpha row at the same bytes passes R1 at both codes on `holdout3`'s alpha pins (`V0.8-DECISIONS.md` D6; `EXPERIMENTS.md` §13.12). This release ships the inherited row; adopting the per-code rows is a v0.8 format change. |
+| **Alpha at codes 3–4 is the best measured, not a measured optimum** | Alpha-mode codes 3–4 carry 5-bit alpha rows (§3.2), which passed R1 at both codes on `holdout3`'s alpha pins (`V0.8-DECISIONS.md` D6; `EXPERIMENTS.md` §13.12). Both sit at the edge of the grid D6 measured: no wider alpha field, and at code 3 no larger 5-bit count, was ever run. |
+| **No random access at code 3** | Code 3's AC codes are one arithmetic-coded stream (§3.6): reading one code means decoding the stream before it, and a flipped payload bit changes every later code rather than one field. Validation stays O(1); decoding a code-3 hash was already O(n). |
 | **Metric-validated, not perceptually validated** | Every constant here was chosen and confirmed on image-quality metrics (ΔE00 primary; SSIMULACRA2, Butteraugli, DSSIM as guards). None of those metrics has been validated against human judgement at placeholder fidelity (`V0.8-DECISIONS.md`, "The ceiling on every artifact claim: U19"). |
 
 ### 14.1 What codes 3 and 4 are for
@@ -1673,8 +1896,10 @@ metric. Even uncoded RGB565 pixels edge code 4 on ΔE00 there, 6.570, though not
 SSIMULACRA2 or Butteraugli, and not on the tune split, where code 4 wins (§2).
 Entropy coding recovers a few percent (`EXPERIMENTS.md` §7.13: 1.6% at 32 B, 4.8% at
 108 B, on tune; §13.8: 6.04% at code 3 and 2.80% at code 4, on `holdout3`) — well short
-of that gap at code 4. Its total-code design keeps the O(1) length check that *is* this
-format's validity check (§2.6), at the cost of random access to an AC code.
+of that gap at code 4. Generation v2 adopts it at code 3, where it passed (§3.6); its
+total-code design keeps the O(1) length check that *is* this format's validity check
+(§2.6), at the cost of random access to an AC code. The codec comparison above was
+measured on v1's codes 3–4 and has not been re-run for v2.
 
 They are kept for the operational properties they share with the rest of the format, and
 those are real: no codec dependency, no decoder CVE surface, no container or metadata
@@ -1700,7 +1925,7 @@ is a few hundred bytes and the target is intentionally low-pass.
 | Variable DCT block sizes (2×2…32×32, incl. rectangular) | Per-block adaptive transform size | **N/A** — a single global DCT is correct at this bitrate; the *tier* is our "variable" axis. Per-block side-info is unaffordable here. |
 | Adaptive (spatial) quantization | Per-region quant field from a perceptual heuristic | **Defer** — a per-region quant map is too much side-info for a sub-2 KB payload; possibly justified only at code 4. |
 | **Chroma-from-luma (CfL)** | Predict X/B chroma from Y luma with per-group multipliers | **Built; the predictor works and cannot pay for its own side-info** — `EXPERIMENTS.md` §7.10 implemented it as a signalled per-channel least-squares gain and measured it at every tier. Given away free the prediction helps, and grows with tier: −0.10% ΔE00 at 32 B, −0.45% at code 3 and −0.90% at code 4. What refuses it is the bill for signalling the gains — charged against the AC budget at 32 B the field costs **+2.11%**, more than the prediction returns. This row read "strong v0.8 candidate" until that experiment was run, and is kept as the prediction it scored against; `V0.8-DECISIONS.md` D7 records it as decided, not a v0.8 change. |
-| Gaborish | Small post-decode smoothing convolution | **Re-evaluated: passes at codes 3–4, off until the v0.8 verdict** — the decode-side synthesis window (`window_weights`, a Hann taper, disabled by default). `EXPERIMENTS.md` §12.2–§12.3 measured it at codes 1 and 2 with artifact metrics that did not exist when v0.6 rejected it: it removes up to 73% of the invented structure and costs ΔE00 and SSIMULACRA2 monotonically, failing the guards at every strength. At code 2 the lightest taper is statistically free on ΔE00 and fails on SSIMULACRA2 alone. `V0.8-DECISIONS.md` D3 then read it once on the sealed `holdout3` at codes 3–4, where the format invents most (`EXPERIMENTS.md` §13.10): a light taper brings both codes under code 2's floor of invented structure at no overall ΔE00 cost, with every overall guard `ok`, SSIMULACRA2 included. The alpha stratum pays: at code 3 its ΔE00 is +0.69% with an interval excluding zero, inside the stratum rule's +1.0%, and the alpha and skin strata are `inconclusive` on guards. No stratum fails, so D3 passes at both codes. It is a decode change by tier that the v0.8 verdict lands or declines; the shipped decode keeps it off. |
+| Gaborish | Small post-decode smoothing convolution | **Re-evaluated: on at code 3 alpha and code 4 opaque in v2** — the decode-side synthesis window (`window_weights`, a Hann taper, disabled by default). `EXPERIMENTS.md` §12.2–§12.3 measured it at codes 1 and 2 with artifact metrics that did not exist when v0.6 rejected it: it removes up to 73% of the invented structure and costs ΔE00 and SSIMULACRA2 monotonically, failing the guards at every strength. At code 2 the lightest taper is statistically free on ΔE00 and fails on SSIMULACRA2 alone. `V0.8-DECISIONS.md` D3 then read it once on the sealed `holdout3` at codes 3–4, where the format invents most (`EXPERIMENTS.md` §13.10): a light taper brings both codes under code 2's floor of invented structure at no overall ΔE00 cost, with every overall guard `ok`, SSIMULACRA2 included. The alpha stratum pays: at code 3 its ΔE00 is +0.69% with an interval excluding zero, inside the stratum rule's +1.0%, and the alpha and skin strata are `inconclusive` on guards. No stratum fails, so D3 passes at both codes. Generation v2 ships it at code 3 in alpha mode and code 4 opaque, the two cells the v0.8 combination check kept (§11.1, §13; `EXPERIMENTS.md` §13.15), and off everywhere else. |
 | Edge-preserving filter (EPF) | Adaptive deringing loop filter | **Reject** — a blurred placeholder has few edges to preserve. |
 | DC image + DC predictors | Separate DC plane with spatial predictors | **N/A** — chromahash has a single average-color DC per channel, already chosen by the decode-aware DC search (§10.3). |
 | **Quantization weighting matrices (HVS/CSF)** | Frequency-dependent quant step | **Built as scalefactor bands; below threshold, not adopted** — `EXPERIMENTS.md` §11.9 measured a frequency-shaped scale split on the current corpus: the best arm is −0.14% ΔE00, far under the ≥3% retune rule and unable to pay for signalling it. This row read "evaluate / adopt" until that sweep ran, and is kept as the prediction it scored against. |

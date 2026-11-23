@@ -99,7 +99,7 @@ impl From<Gamut> for CoreGamut {
 /// caller sees the same taxonomy whichever binding it went through.
 #[derive(Debug, uniffi::Error)]
 pub enum ChromaHashError {
-    /// `from_bytes` was given bytes that are not a valid v1 ChromaHash (bad
+    /// `from_bytes` was given bytes that are not a valid v2 ChromaHash (bad
     /// version, tier, reserved bit, or a length that disagrees with the header).
     /// `reason` carries the core's precise message.
     InvalidData { reason: String },
@@ -229,7 +229,7 @@ impl ChromaHash {
     }
 
     /// Reconstruct from raw hash bytes. Throws [`ChromaHashError::InvalidData`] if
-    /// `bytes` is not a valid v1 ChromaHash.
+    /// `bytes` is not a valid v2 ChromaHash.
     #[uniffi::constructor]
     pub fn from_bytes(bytes: Vec<u8>) -> Result<Arc<Self>, ChromaHashError> {
         let inner = CoreHash::from_bytes(&bytes).map_err(|e| ChromaHashError::InvalidData {

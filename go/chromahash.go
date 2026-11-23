@@ -121,7 +121,7 @@ func readHash(handle *C.ChromaHash) ChromaHash {
 	return out
 }
 
-// ErrInvalidHash is returned by FromBytes for bytes that are not a valid v1
+// ErrInvalidHash is returned by FromBytes for bytes that are not a valid v2
 // ChromaHash: an unsupported version, a reserved tier code, a set reserved bit,
 // or a length that disagrees with the self-describing header.
 var ErrInvalidHash = errors.New("chromahash: not a valid ChromaHash")

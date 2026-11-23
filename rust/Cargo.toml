@@ -1,6 +1,6 @@
 [package]
 name = "chromahash"
-version = "0.7.2"
+version = "0.8.0"
 authors = ["Justin Chung <noreply@justinchung.net>"]
 edition = "2024"
 rust-version = "1.85"
@@ -100,6 +100,12 @@ required-features = ["spec-vectors"]
 [[test]]
 name = "accel_levers"
 required-features = ["spec-vectors"]
+
+# The sweep harness's `CHROMAHASH_TUNE` parser carries unit tests: `test = true`
+# makes a plain `cargo test` run them.
+[[example]]
+name = "encode_stdin"
+test = true
 
 [[example]]
 name = "bench_stages"

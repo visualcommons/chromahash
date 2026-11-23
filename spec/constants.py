@@ -24,17 +24,23 @@ MU_L = 5         # Luminance AC
 MU_C = 8         # Chroma a/b AC
 MU_ALPHA = 5     # Alpha AC
 
-# Decode-side synthesis window (EXPERIMENTS.md §12.2): w = w_min +
-# (1-w_min)*hann(rho)^w_exp,
-# applied to the reconstructed AC plane. w_min = 1.0 disables it, which is what
-# v1 ships -- EXPERIMENTS.md §12.2 measured the window's invented structure as
-# entirely luma and withdrew it. They are carried here, at their disabling
-# values, because both decoders declare them and use them in the decode path:
-# a drift would change output, and until now no parity check could see them.
-W_MIN_L = 1.0    # Luma window floor; 1.0 = window off
-W_EXP_L = 1      # Luma window exponent
-W_MIN_C = 1.0    # Chroma window floor; 1.0 = window off
-W_EXP_C = 1      # Chroma window exponent
+# Decode-side synthesis window (§11, EXPERIMENTS.md §12.2, §13.10, §13.15):
+# w = w_min + (1-w_min)*hann(rho)^w_exp, applied to the reconstructed AC plane,
+# one value per alpha mode and tier code, luma and chroma alike. w_min = 1.0
+# disables it. Generation v2 tapers two cells (register entry D3, as the v0.8
+# combination check kept it, spec/V0.8-DECISIONS.md "The v0.8 verdict"): code 3
+# in alpha mode and code 4 opaque. Beside the code-3 coder the opaque window
+# fails D3's own primary, and beside code 4's 5-bit alpha row it costs more
+# than δ. The decoder reads the tier and the alpha flag from the hash, so the
+# window is conditional on both. Codes 0-2 keep it off, as v1 did everywhere.
+WINDOW_W_MIN_OPAQUE = (1.0, 1.0, 1.0, 1.0, 0.7)    # w_min per tier code 0..=4, opaque
+WINDOW_W_MIN_ALPHA = (1.0, 1.0, 1.0, 0.85, 1.0)    # w_min per tier code 0..=4, alpha mode
+WINDOW_W_EXP = 1                                   # w_exp in every cell
+
+# The AC coder per tier code (§3.6, register entry D1): True where the AC
+# payload is the arithmetic-coded stream (code 3), False where it is the
+# fixed-width fields.
+AC_CODED = (False, False, False, True, False)
 
 # =========================================================================
 # Quantization Range Maximums (§7.1, §7.2, §12.1)
@@ -61,15 +67,15 @@ MAX_A_ALPHA_SCALE = 0.5    # Max alpha AC amplitude
 # clipping in linear sRGB (§12.6) — no separate clamp constant is needed.
 
 # =========================================================================
-# Wire Format v1 — Framing (§2, §3)
+# Wire Format v2 — Framing (§2, §3)
 # =========================================================================
-# chromahash ships as release 0.7.2, but the on-wire format carries its own
+# chromahash ships as release 0.8.0, but the on-wire format carries its own
 # generation number, independent of the package semver. This is wire-format
-# generation v1. Every framing parameter is a named constant so the encoder,
+# generation v2. Every framing parameter is a named constant so the encoder,
 # decoder, and this file agree without scattered literals.
 
-FORMAT_VERSION = 0      # 3-bit byte-0 version field; 0 = format v1. A decoder
-#                         MUST reject any version it does not implement.
+FORMAT_VERSION = 1      # 3-bit byte-0 version field; 1 = format v2 (0 was v1).
+#                         A decoder MUST reject any version it does not implement.
 VERSION_BITS = 3        # Width of the byte-0 version field (bits 0..3)
 TIER_BITS = 3           # Width of the byte-0 tier field (bits 3..6)
 ALPHA_FLAG_BIT = 6      # Bit position of the hasAlpha flag within byte 0
@@ -212,11 +218,45 @@ LAYOUT_TC = AcLayout(
     a_bits=3,
 )
 
-# The shipped default layouts (Tunables::DEFAULT in the Rust reference):
-# the default tier has its own table, codes 2..=4 share one base scaled by 4^level.
+# Layout T3: code 3's own row in generation v2, scaled by 16. Code 3 carries its
+# AC codes in the arithmetic-coded stream (§3.6, register entry D1), so this row
+# BOUNDS the codes the stream may carry rather than fixing their fields; the hash
+# keeps the length LAYOUT_B gives (411 / 388 bytes). Opaque: three times
+# LAYOUT_B's counts at its widths. Alpha: three times register entry D6's row
+# A20@5 L18@4 C3@3, at its widths.
+LAYOUT_T3 = AcLayout(
+    l_tiers=((78, 5), (0, 5)),
+    c_count=27,
+    c_bits=4,
+    la_tiers=((54, 4), (0, 4)),
+    ca_count=9,
+    ca_bits=3,
+    a_count=60,
+    a_bits=5,
+)
+
+# Layout T4: code 4's own row in generation v2, scaled by 64. Opaque, LAYOUT_B.
+# Alpha, register entry D6's A16@5 L23@4 C3@3: a 5-bit alpha field at the same
+# 190 bits per base row, so the length is LAYOUT_B's (1623 / 1528 bytes).
+#   alpha = 54 + 9 + 64·(23·4 + 2·3·3 + 16·5) = 12223 bits → 1528 bytes
+LAYOUT_T4 = AcLayout(
+    l_tiers=((26, 5), (0, 5)),
+    c_count=9,
+    c_bits=4,
+    la_tiers=((23, 4), (0, 4)),
+    ca_count=3,
+    ca_bits=3,
+    a_count=16,
+    a_bits=5,
+)
+
+# The shipped default layouts (Tunables::DEFAULT in the Rust reference): codes
+# 0, 1, 3 and 4 each have their own row, and code 2 scales LAYOUT_B by 4.
 DEFAULT_LAYOUT = LAYOUT_T0
 DEFAULT_LAYOUT_UPPER = LAYOUT_B
 DEFAULT_LAYOUT_COMPACT = LAYOUT_TC
+DEFAULT_LAYOUT_T3 = LAYOUT_T3
+DEFAULT_LAYOUT_T4 = LAYOUT_T4
 
 
 def is_valid_tier(tier: int) -> bool:
@@ -234,13 +274,25 @@ def render_level(tier: int) -> int:
 
 
 def tier_layout(tier: int) -> AcLayout:
-    """The shipped layout governing a tier code. Per spec §3.2 (v1).
+    """The shipped layout governing a tier code. Per spec §3.2 (v2).
 
-    Three rows: the compact tier, the default tier, and one base codes 2..=4
-    scale."""
+    Five rows: the compact tier, the default tier, code 2's base, and the rows
+    of codes 3 and 4. At a coded tier (AC_CODED) the row bounds the stream."""
     if tier == COMPACT_TIER:
         return DEFAULT_LAYOUT_COMPACT
-    return DEFAULT_LAYOUT if tier == DEFAULT_TIER else DEFAULT_LAYOUT_UPPER
+    if tier == DEFAULT_TIER:
+        return DEFAULT_LAYOUT
+    if tier == 3:
+        return DEFAULT_LAYOUT_T3
+    return DEFAULT_LAYOUT_T4 if tier == 4 else DEFAULT_LAYOUT_UPPER
+
+
+def length_layout(tier: int) -> AcLayout:
+    """The fixed-width row a tier code's byte length is computed from (§3.5):
+    the tier's own row at codes 0 and 1, and LAYOUT_B at codes 2..=4. Every
+    generation-v2 row at codes 3 and 4 has LAYOUT_B's length, and a coded
+    tier's row only bounds its stream, so this is the length formula's row."""
+    return tier_layout(tier) if tier <= DEFAULT_TIER else LAYOUT_B
 
 # =========================================================================
 # Selection weights (§6.2)

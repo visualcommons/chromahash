@@ -349,6 +349,15 @@ import {
   withheldReason,
 } from "./verify-benchmark-core.ts";
 import {
+  CELLS,
+  COMBINATION_RULE_REV,
+  assertCombinationProvenance,
+  type Cell,
+  comboLabel,
+  parseCombo,
+  readCell,
+} from "./combination-core.ts";
+import {
   deriveWindowVerdict,
   readWindow,
   selectWindows,
@@ -8137,6 +8146,113 @@ console.log(
     "deriveD9Verdict reads a clean result scored at D9's rule as readD9 does",
     JSON.stringify(accepted) === JSON.stringify(under),
     JSON.stringify(accepted.tiers.map((x) => x.overall.rel)),
+  );
+}
+
+{
+  console.log("\nThe v0.8 combination check (combination-core.ts)");
+  check(
+    "parseCombo reads a code-3 or code-4 combination row in canonical order, and refuses a shipped row, another code, a repeat or an out-of-order label",
+    JSON.stringify(parseCombo("t3 D1+D3")) ===
+      JSON.stringify({ k: 3, components: ["D1", "D3"] }) &&
+      JSON.stringify(parseCombo("t4 D6")) ===
+        JSON.stringify({ k: 4, components: ["D6"] }) &&
+      parseCombo("t3 shipped") === undefined &&
+      parseCombo("t2 D3") === undefined &&
+      parseCombo("t3 D1+D1") === undefined &&
+      parseCombo("t3 D3+D1") === undefined &&
+      comboLabel(3, ["D6", "D1"]) === "t3 D1+D6",
+    JSON.stringify([parseCombo("t3 D1+D3"), parseCombo("t3 D3+D1")]),
+  );
+
+  // Six images. Guards equal across rows, so every guard interval is
+  // [0, 0] and ok. D1 is the best single (ΔE00 8); D1+D3 costs 0.5% of it
+  // and invents less than the floor; D1+D6 costs 5%, past δ.
+  const guards = {
+    ssimulacra2: [50, 52, 54, 56, 58, 60],
+    butteraugli: [3, 3, 3, 3, 3, 3],
+    dssim: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+  };
+  const cRow = (label: string, ciede2000: number[], spurious: number[]) => ({
+    label,
+    perImage: { ciede2000, spurious, ...guards },
+  });
+  const tol = { ssimulacra2Drop: 1.0, relativeRise: 0.02 };
+  const flat = (x: number) => [x, x, x, x, x, x];
+  const rows = [
+    cRow("t2 shipped", flat(12), flat(3)),
+    cRow("t3 shipped", flat(10), flat(4)),
+    cRow("t3 D1", flat(8), flat(4)),
+    cRow("t3 D3", flat(9.9), flat(2.5)),
+    cRow("t3 D6", flat(9), flat(4)),
+    cRow("t3 D1+D3", [8.03, 8.05, 8.04, 8.03, 8.05, 8.04], flat(2.5)),
+    cRow("t3 D1+D6", [8.4, 8.4, 8.4, 8.4, 8.4, 8.4], flat(4)),
+    cRow("t3 D3+D6", flat(8.9), flat(2.5)),
+    cRow("t3 D1+D3+D6", [8.4, 8.4, 8.4, 8.4, 8.4, 8.4], flat(2.5)),
+  ];
+  const all = [0, 1, 2, 3, 4, 5];
+  const opaque = readCell(CELLS[0] as Cell, rows, all, tol, 3);
+  const alpha = readCell(CELLS[1] as Cell, rows, all, tol, 3);
+  check(
+    "readCell: S* is the lowest-mean single; a combination within +1.0% of S* with guards not FAIL and spurious ≤ the floor is adopted; one 5% past δ is not, and the cell falls back to its largest passing candidate",
+    opaque.best === "t3 D1" &&
+      opaque.candidates.map((c) => c.arm).join(",") === "t3 D1+D3" &&
+      opaque.candidates[0]?.pass === true &&
+      opaque.adopted === "t3 D1+D3" &&
+      opaque.dropped.length === 0 &&
+      alpha.best === "t3 D1" &&
+      alpha.candidates.map((c) => c.arm).join(",") ===
+        "t3 D1+D3,t3 D1+D6,t3 D1+D3+D6" &&
+      alpha.adopted === "t3 D1+D3" &&
+      alpha.dropped.join(",") === "D6",
+    `${opaque.adopted}; ${alpha.adopted} drops ${alpha.dropped.join(",")}; ${alpha.candidates.map((c) => `${c.arm} U ${c.upperRel.toFixed(2)}% ${c.pass}`).join("; ")}`,
+  );
+
+  // Condition 3: a D3-holding candidate inventing more than the floor fails
+  // even when its ΔE00 is fine, and a cell with no passing candidate keeps S*.
+  const spurRows = rows.map((r) =>
+    r.label === "t3 D1+D3" ? cRow("t3 D1+D3", flat(8), flat(3.5)) : r,
+  );
+  const spur = readCell(CELLS[0] as Cell, spurRows, all, tol, 3);
+  const single = readCell(
+    CELLS[2] as Cell,
+    [cRow("t2 shipped", flat(12), flat(3)), cRow("t4 D3", flat(7), flat(2))],
+    all,
+    tol,
+    3,
+  );
+  check(
+    "readCell: a D3 combination whose mean spurious is above the floor fails condition 3 and the cell keeps S*; a one-component cell adopts its single",
+    spur.candidates[0]?.cond1 === true &&
+      spur.candidates[0]?.cond3 === false &&
+      spur.adopted === "t3 D1" &&
+      spur.dropped.join(",") === "D3" &&
+      single.adopted === "t4 D3" &&
+      single.candidates.length === 0,
+    `${spur.adopted}; ${single.adopted}`,
+  );
+
+  const refused = (p: { rev: string | null; dirty: boolean | null }) => {
+    try {
+      assertCombinationProvenance("v08-combination", p);
+      return "";
+    } catch (e) {
+      return (e as Error).message;
+    }
+  };
+  check(
+    "assertCombinationProvenance accepts only a clean result scored at the combination rule",
+    refused({ rev: COMBINATION_RULE_REV, dirty: false }) === "" &&
+      refused({ rev: COMBINATION_RULE_REV, dirty: true }).includes(
+        "not scored from a clean tree",
+      ) &&
+      refused({ rev: COMBINATION_RULE_REV, dirty: null }).includes(
+        "not scored from a clean tree",
+      ) &&
+      refused({ rev: "4a18ce2".padEnd(40, "0"), dirty: false }).includes(
+        "not at the combination rule",
+      ),
+    refused({ rev: null, dirty: false }),
   );
 }
 

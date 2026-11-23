@@ -92,7 +92,7 @@ pub enum ChromaHashStatus {
     InvalidDimensions = 3,
     /// The core panicked or an allocation failed — caught at the boundary.
     Internal = 4,
-    /// The bytes are not a valid v1 ChromaHash (bad version, tier, reserved bit,
+    /// The bytes are not a valid v2 ChromaHash (bad version, tier, reserved bit,
     /// or the length does not match the self-describing header).
     InvalidData = 5,
 }
@@ -255,7 +255,7 @@ pub unsafe extern "C" fn chromahash_encode_with_quality(
     }
 }
 
-/// Reconstruct a handle from a raw v1 hash of `len` bytes. The header is
+/// Reconstruct a handle from a raw v2 hash of `len` bytes. The header is
 /// self-describing, so `len` may be any tier's byte length; malformed bytes are
 /// rejected with [`ChromaHashStatus::InvalidData`]. On success `*out_hash`
 /// receives a new handle to free with [`chromahash_free`].

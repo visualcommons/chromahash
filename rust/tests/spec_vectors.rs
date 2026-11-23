@@ -51,7 +51,7 @@ fn bytes(v: &Value) -> Vec<u8> {
 }
 
 fn hash_from_bytes(v: &Value) -> ChromaHash {
-    ChromaHash::from_bytes(&bytes(v)).expect("spec-vector hash must be a valid v1 hash")
+    ChromaHash::from_bytes(&bytes(v)).expect("spec-vector hash must be a valid v2 hash")
 }
 
 #[test]

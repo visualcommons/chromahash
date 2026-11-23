@@ -1,6 +1,6 @@
 [package]
 name = "chromahash-c"
-version = "0.7.2"
+version = "0.8.0"
 authors = ["Justin Chung <noreply@justinchung.net>"]
 # Edition 2021 is deliberate, not stale. A Rust edition is a source-language
 # concept (macro hygiene, prelude, the `unsafe` rules for `extern` blocks) and

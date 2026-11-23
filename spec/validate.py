@@ -39,16 +39,17 @@ from constants import (
     MAX_CHROMA_B,
     MAX_L_SCALE,
     MU_ALPHA,
-    W_EXP_C,
-    W_EXP_L,
-    W_MIN_C,
-    W_MIN_L,
+    WINDOW_W_EXP,
+    WINDOW_W_MIN_ALPHA,
+    WINDOW_W_MIN_OPAQUE,
+    AC_CODED,
     MU_C,
     MU_L,
     ANISO_OBLIQUE,
     DEFAULT_LAYOUT,
     SEL_HV,
     tier_layout,
+    length_layout,
     FORMAT_VERSION,
     MAX_TIER,
     DESCRIPTOR_BITS,
@@ -67,6 +68,8 @@ from constants import (
     BASE_LONG_EDGE,
     LAYOUT_B,
     LAYOUT_T0,
+    LAYOUT_T3,
+    LAYOUT_T4,
     LAYOUT_TC,
     L_DC_BITS,
     L_SCALE_BITS,
@@ -421,10 +424,14 @@ def validate_selection():
             w, h = decode_output_size(byte, tier)
             candidates = w * h - 1
             for k in format_ks(tier):
-                if k > candidates:
+                # A coded tier's row only bounds its stream (§3.6), so its K
+                # may exceed an extreme aspect's candidates: the selection is
+                # then every candidate, and the stream codes the rest as zero.
+                # A fixed-width tier's K must always be satisfiable.
+                if k > candidates and not AC_CODED[tier]:
                     satisfied = False
                 coeffs, p_k = select_coefficients(byte, tier, k)
-                if len(coeffs) != k:
+                if len(coeffs) != min(k, candidates):
                     ok = False
                 if (0, 0) in coeffs:
                     ok = False
@@ -585,7 +592,7 @@ def validate_length_formula():
     layout = DEFAULT_LAYOUT  # the default tier; other codes use tier_layout(tier)
 
     # Version / tier descriptor constants are consistent.
-    check(FORMAT_VERSION == 0, f"FORMAT_VERSION = {FORMAT_VERSION} (format v1)")
+    check(FORMAT_VERSION == 1, f"FORMAT_VERSION = {FORMAT_VERSION} (format v2)")
     check(MAX_TIER == 4,
           f"MAX_TIER = {MAX_TIER} (highest tier code, and highest quality)")
     # The codes are ordered by quality: compact is the smallest code as well as
@@ -611,8 +618,8 @@ def validate_length_formula():
     # is not a compact tier at all.
     for has_alpha in (False, True):
         label = "alpha" if has_alpha else "no-alpha"
-        nc = body_len_bytes(tier_layout(COMPACT_TIER), has_alpha, COMPACT_TIER)
-        n0 = body_len_bytes(tier_layout(DEFAULT_TIER), has_alpha, DEFAULT_TIER)
+        nc = body_len_bytes(length_layout(COMPACT_TIER), has_alpha, COMPACT_TIER)
+        n0 = body_len_bytes(length_layout(DEFAULT_TIER), has_alpha, DEFAULT_TIER)
         check(nc == 21, f"compact {label} length = {nc} bytes (= 21)")
         check(nc < n0, f"compact {label} ({nc} B) is smaller than the default ({n0} B)")
 
@@ -653,7 +660,7 @@ def validate_length_formula():
         label = "alpha" if has_alpha else "no-alpha"
         prev = body_len_bytes(layout, has_alpha, DEFAULT_TIER)
         for tier in range(DEFAULT_TIER + 1, MAX_TIER + 1):
-            n = body_len_bytes(tier_layout(tier), has_alpha, tier)
+            n = body_len_bytes(length_layout(tier), has_alpha, tier)
             ratio = n / prev
             check(n > 0 and n > prev,
                   f"{label} code {tier} length {n} bytes > code {tier - 1} ({prev})")
@@ -665,17 +672,19 @@ def validate_length_formula():
     # "the codes are ordered by quality" means on the wire.
     for has_alpha in (False, True):
         label = "alpha" if has_alpha else "no-alpha"
-        lengths = [body_len_bytes(tier_layout(t), has_alpha, t)
+        lengths = [body_len_bytes(length_layout(t), has_alpha, t)
                    for t in range(MAX_TIER + 1)]
         check(all(a < b for a, b in zip(lengths, lengths[1:])),
               f"{label} byte length is strictly increasing in the tier code: {lengths}")
 
-    # Within the codes-2..=4 band the AC payload scales by EXACTLY 4^level and
-    # bit widths stay constant. Codes 0 and 1 are excluded on purpose: each has
-    # its own layout (§3.2), so neither is the code-2 base scaled down.
+    # Within the codes-2..=4 band the length row's AC payload scales by EXACTLY
+    # 4^level and bit widths stay constant. Codes 0 and 1 are excluded on
+    # purpose: each has its own layout (§3.2), so neither is the code-2 base
+    # scaled down. Generation v2 gives codes 3 and 4 rows of their own, checked
+    # against this length below.
     for has_alpha in (False, True):
         label = "alpha" if has_alpha else "no-alpha"
-        upper = tier_layout(DEFAULT_TIER + 1)
+        upper = length_layout(DEFAULT_TIER + 1)
         base = ac_shape(upper, has_alpha, DEFAULT_TIER)
         base_payload = ac_payload_bits(base)
         for tier in range(DEFAULT_TIER + 1, MAX_TIER + 1):
@@ -698,6 +707,32 @@ def validate_length_formula():
                   and shape.l_tiers[0][1] == base.l_tiers[0][1],
                   f"{label} tier {tier} bit widths constant "
                   f"(L={shape.l_tiers[0][1]}, C={shape.c_bits})")
+
+    # Generation v2's own rows at codes 3 and 4. A fixed-width row must fill
+    # exactly the length row's payload, or a hash would not be the length the
+    # descriptor implies; a coded row only bounds its stream, which fills the
+    # length row's payload whatever the row says.
+    check(AC_CODED == (False, False, False, True, False),
+          f"AC_CODED = {AC_CODED}: the coded stream at code 3 alone")
+    for label, row in (("opaque", WINDOW_W_MIN_OPAQUE), ("alpha", WINDOW_W_MIN_ALPHA)):
+        check(len(row) == MAX_TIER + 1
+              and all(0.0 < w <= 1.0 for w in row)
+              and all(w == 1.0 for w in row[:3]),
+              f"WINDOW_W_MIN_{label.upper()} = {row}: one w_min in (0, 1] per "
+              "code, off at codes 0-2")
+    for tier in (3, 4):
+        for has_alpha in (False, True):
+            label = "alpha" if has_alpha else "no-alpha"
+            own = ac_payload_bits(ac_shape(tier_layout(tier), has_alpha, tier))
+            fixed = ac_payload_bits(ac_shape(length_layout(tier), has_alpha, tier))
+            if AC_CODED[tier]:
+                check(own > fixed,
+                      f"{label} code {tier} bound row ({own} bits as fields) "
+                      f"exceeds the {fixed}-bit payload the stream fills")
+            else:
+                check(own == fixed,
+                      f"{label} code {tier} row fills the length row's "
+                      f"{fixed}-bit payload exactly ({own} bits)")
 
 
 # =========================================================================
@@ -760,7 +795,7 @@ def validate_against_vectors():
         raw = e["hash"]
         tier = (raw[0] >> 3) & 0b111
         has_alpha = bool((raw[0] >> ALPHA_FLAG_BIT) & 1)
-        want = body_len_bytes(tier_layout(tier), has_alpha, tier)
+        want = body_len_bytes(length_layout(tier), has_alpha, tier)
         if want != len(raw):
             bad.append((c["name"], want, len(raw)))
     check(not bad,
@@ -979,21 +1014,13 @@ def validate_cross_implementation_constants():
         ("MU_ALPHA", MU_ALPHA,
          r"(?<![A-Za-z_])mu_alpha:\s*([\d.]+)",
          r"^(?:export )?const MU_ALPHA\s*=\s*([\d.]+)"),
-        # The synthesis window, disabled in v1 but declared and read by both
-        # decoders. Rust holds these as Tunables fields, so the Rust patterns
-        # are unanchored and resolve inside DEFAULT's body like the rest.
-        ("W_MIN_L", W_MIN_L,
-         r"(?<![A-Za-z_])w_min_l:\s*([\d.]+)",
-         r"^(?:export )?const W_MIN_L\s*=\s*([\d.]+)"),
-        ("W_EXP_L", W_EXP_L,
-         r"(?<![A-Za-z_])w_exp_l:\s*([\d.]+)",
-         r"^(?:export )?const W_EXP_L\s*=\s*([\d.]+)"),
-        ("W_MIN_C", W_MIN_C,
-         r"(?<![A-Za-z_])w_min_c:\s*([\d.]+)",
-         r"^(?:export )?const W_MIN_C\s*=\s*([\d.]+)"),
-        ("W_EXP_C", W_EXP_C,
-         r"(?<![A-Za-z_])w_exp_c:\s*([\d.]+)",
-         r"^(?:export )?const W_EXP_C\s*=\s*([\d.]+)"),
+        # The synthesis window's exponent, the same in every cell. Rust
+        # holds it as per-cell Tunables arrays, so the Rust pattern reads the
+        # luma entry of DEFAULT's body (`[[1; TIER_CODES]; 2]`); the
+        # per-cell w_min is compared as arrays below.
+        ("WINDOW_W_EXP", WINDOW_W_EXP,
+         r"(?<![A-Za-z_])w_exp_l:\s*\[\[([\d.]+);\s*TIER_CODES\];\s*2\]",
+         r"^(?:export )?const WINDOW_W_EXP\s*=\s*([\d.]+)"),
         ("ANISO_OBLIQUE", ANISO_OBLIQUE,
          r"(?<![A-Za-z_])aniso_oblique:\s*([\d.]+)",
          r"^(?:export )?const ANISO_OBLIQUE\s*=\s*([\d.]+)"),
@@ -1088,11 +1115,68 @@ def validate_cross_implementation_constants():
                 f"{name}: spec {spec_value} == Rust {r} == TypeScript {t}",
             )
 
-        # --- Layouts: the whole AC table, all three rows ---
+        # --- Per-tier arrays: the window's w_min and the AC coder ---
+        #
+        # Generation v2 makes three things depend on the tier code. Each is a
+        # one-line array in all three sources, compared element by element.
+        def _array(src, pattern):
+            m = re.search(pattern, src, re.M)
+            if not m:
+                return None
+            items = [s.strip() for s in m.group(1).split(",") if s.strip()]
+            out = []
+            for s in items:
+                if s in ("true", "false"):
+                    out.append(s == "true")
+                else:
+                    out.append(float(s))
+            return tuple(out)
+
+        # Rust holds the window as one `PerCell` literal, `[opaque, alpha]`,
+        # each row on its own line; TypeScript as two arrays.
+        w_cells = re.search(
+            r"^pub const WINDOW_W_MIN:\s*PerCell<f64>\s*=\s*\[\s*"
+            r"\[([^\]]*)\],\s*//\s*opaque\s*\[([^\]]*)\],\s*//\s*alpha",
+            rust, re.M)
+        for mode, spec_row, group in (
+            ("OPAQUE", WINDOW_W_MIN_OPAQUE, 1),
+            ("ALPHA", WINDOW_W_MIN_ALPHA, 2),
+        ):
+            w_rust = (tuple(float(s) for s in w_cells.group(group).split(",") if s.strip())
+                      if w_cells else None)
+            w_ts = _array(ts, r"^export const WINDOW_W_MIN_" + mode
+                          + r":\s*readonly number\[\]\s*=\s*\[([^\]]*)\]")
+            check(
+                w_rust is not None and w_ts is not None
+                and tuple(float(x) for x in spec_row) == w_rust == w_ts,
+                f"WINDOW_W_MIN_{mode}: spec {spec_row} == Rust {w_rust} == TypeScript {w_ts}",
+            )
+        c_rust = _array(rust, r"^pub const AC_CODER:\s*\[u32;\s*TIER_CODES\]\s*=\s*\[([^\]]*)\]")
+        c_ts = _array(ts, r"^export const AC_CODED:\s*readonly boolean\[\]\s*=\s*\[([^\]]*)\]")
+        check(
+            c_rust is not None and c_ts is not None
+            and tuple(bool(x) for x in c_rust) == tuple(AC_CODED) == c_ts,
+            f"AC_CODED: spec {AC_CODED} == Rust {c_rust} == TypeScript {c_ts}",
+        )
+        # DEFAULT reads the arrays, not literals, and the chroma window takes
+        # the luma one's values: a drift in either would split the decoders.
+        check(
+            re.search(r"(?<![A-Za-z_])w_min_l:\s*WINDOW_W_MIN,", tunables) is not None
+            and re.search(r"(?<![A-Za-z_])w_min_c:\s*WINDOW_W_MIN,", tunables) is not None
+            and re.search(r"(?<![A-Za-z_])w_exp_c:\s*\[\[" + str(WINDOW_W_EXP)
+                          + r";\s*TIER_CODES\];\s*2\]", tunables) is not None
+            and re.search(r"(?<![A-Za-z_])ac_coder:\s*AC_CODER,", tunables) is not None,
+            "Tunables::DEFAULT takes WINDOW_W_MIN (luma and chroma), "
+            "WINDOW_W_EXP and AC_CODER",
+        )
+
+        # --- Layouts: the whole AC table, every row ---
         for name, spec_layout in (
             ("LAYOUT_B", LAYOUT_B),
             ("LAYOUT_T0", LAYOUT_T0),
             ("LAYOUT_TC", LAYOUT_TC),
+            ("LAYOUT_T3", LAYOUT_T3),
+            ("LAYOUT_T4", LAYOUT_T4),
         ):
             want = _spec_layout(spec_layout)
             got_rust = _rust_layout(rust, name)

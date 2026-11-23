@@ -32,7 +32,9 @@
 //! either exact or set at a measured worst case over the whole input domain,
 //! not at whatever the sample happened to reach.
 
-use chromahash::{COMPACT_TIER, ChromaHash, ChromaHashError, Gamut, MAX_TIER, Tunables};
+use chromahash::{
+    COMPACT_TIER, ChromaHash, ChromaHashError, FORMAT_VERSION, Gamut, MAX_TIER, Tunables,
+};
 use proptest::prelude::*;
 
 // Case budgets. Two forces set these, and they pull the same way.
@@ -200,7 +202,7 @@ fn every_header_byte_is_classified_the_same_by_both_validators() {
         let version = b0 & 0b0000_0111;
         let tier = (b0 >> 3) & 0b0000_0111;
         let reserved = (b0 >> 7) & 1;
-        let expected = if version != 0 {
+        let expected = if version != FORMAT_VERSION {
             Some(ChromaHashError::UnsupportedVersion)
         } else if tier > MAX_TIER {
             Some(ChromaHashError::InvalidTier)
@@ -605,7 +607,7 @@ proptest! {
 /// overflows the stream and the fit search runs.
 fn coded_tunables(mode: u32) -> Tunables {
     let mut t = Tunables {
-        ac_coder: mode,
+        ac_coder: [mode; chromahash::TIER_CODES],
         ..Tunables::DEFAULT
     };
     t.layout_upper.l_tiers = [(52, 5), (0, 5)];

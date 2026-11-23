@@ -3813,7 +3813,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 1068 | 802 | 747 | 700 | 190 | 178 | 97 | 93 |
+| all committed sweeps | 1080 | 814 | 759 | 712 | 190 | 178 | 97 | 93 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3834,10 +3834,11 @@ and its holdout3 read (§13.10), and to 983 and then 995 when D5 committed
 its tune sweep and its holdout3 read (§13.11), and to 1018 and then 1021 when D6
 committed its tune sweep and its holdout3 read (§13.12), and to 1049 when D8
 committed its two tune sweeps, every arm at code 0 against the shipped code-0
-layout (§13.13), and to 1068 when D9 committed its tune sweep (§13.14). The
+layout (§13.13), and to 1068 when D9 committed its tune sweep (§13.14), and
+to 1080 when the v0.8 verdict committed its combination sweep (§13.15). The
 row compares every arm with its sweep's
 first row whatever the arm's tier, so it includes comparisons at
-different byte counts that no decision judged: 264 of the 1068 arms, 13 of them
+different byte counts that no decision judged: 276 of the 1080 arms, 13 of them
 D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
 row, and the 2 code-4 rows of its holdout3 read against its code-3 row),
 30 D2's (every row but `t0 interleaved full` of `embedded-tiers-ladder` and
@@ -3851,7 +3852,9 @@ and of its holdout3 read against its code-3 shipped row), 19 D9's (every
 row of `cfl-oracle` but `t0 shipped`, against it: the code-1 to code-4
 rows are other tiers, and every free arm carries its gain field on top of
 its tier's bytes; D9 reads each code's per-image best against that code's
-own shipped arm), the
+own shipped arm), 12 of the v0.8 verdict's (every row of `v08-combination`
+but `t2 shipped`, against it: the combination check reads each cell against
+its own best single), the
 rest from the tier ladders and mixed-tier tables of earlier sweeps. The
 prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
@@ -5419,3 +5422,135 @@ for its signalling. The shipped format keeps no CfL (`cfl_bits` stays 0),
 and the shipped bytes are unchanged. Reopening CfL now needs a
 predictor other than a least-squares gain on co-located luma
 coefficients, which is what this bound covers.
+
+### 13.15 The v0.8 verdict: the adopted entries, combined (2026-11)
+
+Every register entry is decided. Per entry, with its section:
+
+- **D1**, entropy-coded AC: passes R1 at code 3 on `holdout3` (−6.04%),
+  not at code 4 (−2.80%), and code 2 is decided in sample by the two-arm
+  cap (§13.8).
+- **D2**, embedded tiers: not adopted, decided in sample; every prefix fails
+  the guards against the native code it stands for (§13.9).
+- **D3**, the synthesis window: passes R2 at codes 3 and 4 on `holdout3`
+  (§13.10).
+- **D4**, the separable forward DCT: not adopted, decided in sample on the
+  instruction count against `ACCEL_ALL` (1.166×, under 2.0×).
+- **D5**, downsampling before the transform: fails on `holdout3`, the
+  low-light stratum at code 2 (§13.11).
+- **D6**, the alpha allocation: passes R1 at codes 3 and 4 on `holdout3`'s
+  alpha pins (−13.50%, −22.69%; §13.12).
+- **D7** and **D9**, chroma-from-luma: not adopted, decided on tune (§7.10,
+  §13.14).
+- **D8**, the code-0 layout: the shipped layout stays, decided in sample
+  (§13.13).
+- **C1** and **C2**: every shipped constant stands (§13.7).
+
+So three entries passed their rule once on the sealed `holdout3`, each
+alone against the shipped format: D1 at code 3, D3 at codes 3 and 4, and
+D6 at codes 3 and 4. Before the three land as one format, `V0.8-DECISIONS.md`
+("The v0.8 verdict") fixes how their combination is read on tune, committed
+(`1af9626`) before this result. No sealed split is read.
+
+**The rule.** A (code, alpha mode) pair is a cell, which the decoder
+recovers from the hash. In each cell the best single arm `S*` is the one
+of the cell's adopted entries with the lowest tune mean ΔE00. Every
+combination that holds `S*`'s entry is read against it under R2 with
+δ = 1.0%, as the register reads its rules in sample: the upper bound of the
+paired ΔE00 interval at most +1.0% of `S*`'s mean, guards (CI) not `FAIL`,
+D3's own primary (mean spurious detail against shipped code 2 at most 0)
+when it holds D3, and no outcome turning under 20 other seeds. The cell
+adopts the passing combination with the most entries, or `S*` alone.
+
+**Tune (`mise run sweep v08-combination`).** The 63 real tune images: 31
+photographic, 16 alpha and 16 graphics, over white, black and grey, as in
+§13.8. Each single copies its frozen arm's tune string; a combination is the
+union of its entries' strings, D1 with D6 coding the stream with bounds of
+three times the D6 row. A D6 string moves only alpha-mode hashes. Every arm
+against its own code's shipped arm:
+
+| arm | ΔE00 | relative | 95% CI of Δ | guards (CI) |
+|---|---|---|---|---|
+| t2 shipped | 9.858 | — | — | — |
+| t3 shipped | 8.322 | — | — | — |
+| t3 D1 | 7.691 | −7.58% | [−0.816, −0.475] | ok |
+| t3 D3 | 8.321 | −0.01% | [−0.023, +0.027] | inconclusive |
+| t3 D6 | 8.070 | −3.03% | [−0.401, −0.122] | ok |
+| t3 D1+D3 | 7.665 | −7.89% | [−0.830, −0.509] | ok |
+| t3 D1+D6 | 7.426 | −10.76% | [−1.119, −0.696] | ok |
+| t3 D3+D6 | 8.085 | −2.85% | [−0.377, −0.115] | inconclusive |
+| t3 D1+D3+D6 | 7.408 | −10.98% | [−1.123, −0.725] | ok |
+| t4 shipped | 7.246 | — | — | — |
+| t4 D3 | 7.229 | −0.24% | [−0.071, +0.049] | inconclusive |
+| t4 D6 | 6.862 | −5.31% | [−0.582, −0.211] | ok |
+| t4 D3+D6 | 6.866 | −5.25% | [−0.569, −0.213] | ok |
+
+The rule, cell by cell (`mise run stratify v08-combination --combination`).
+Each candidate against its cell's `S*`, over the cell's images: the alpha
+corpus for the alpha cells, the photographic and graphics images for the
+opaque ones.
+
+| cell | n | `S*` | candidate | ΔE00 vs `S*` | upper bound | guards (CI) | spurious vs code 2 | outcome |
+|---|---|---|---|---|---|---|---|---|
+| 3, opaque | 47 | t3 D1 | t3 D1+D3 | −0.61% | −0.22% | ok | +0.157 | fails (spurious) |
+| 3, alpha | 16 | t3 D6 | t3 D1+D6 | −9.07% | −6.22% | ok | — | passes |
+| 3, alpha | 16 | t3 D6 | t3 D3+D6 | +1.26% | +1.53% | FAIL | −4.058 | fails |
+| 3, alpha | 16 | t3 D6 | t3 D1+D3+D6 | −8.41% | −5.72% | ok | −3.836 | passes |
+| 4, alpha | 16 | t4 D6 | t4 D3+D6 | +2.44% | +3.28% | inconclusive | −4.259 | fails (δ) |
+
+(4, opaque) holds D3 alone, so it has no candidate. No outcome turns under
+the 20 other seeds. The cells adopt `t3 D1` (opaque), `t3 D1+D3+D6`
+(alpha), `t4 D3` (opaque) and `t4 D6` (alpha).
+
+The format as it ships, each image scored by the row its own alpha flag
+adopts (read off its code-2 hash length), against its code's shipped arm,
+by corpus and by `holdout3` stratum. The strata are derived from each tune
+image's covariates, as in §13.8; on tune they gate nothing.
+
+| group (tune images) | code 3 | code 4 |
+|---|---|---|
+| overall (63) | −10.63% [−1.104, −0.690], ok | −5.78% [−0.618, −0.238], ok |
+| photographic (31) | −7.24%, ok | −1.00%, ok |
+| alpha corpus (16) | −17.80%, ok | −17.28%, ok |
+| graphics (16) | −8.24%, ok | −0.12%, inconclusive |
+| smartphone (4) | −6.06%, ok | −1.88%, ok |
+| alpha (17) | −17.46%, ok | −16.72%, ok |
+| skin (12) | −6.54%, ok | −1.58%, inconclusive |
+| low-light (10) | −11.01%, ok | +0.72%, inconclusive |
+| extreme-aspect (1) | −15.90%, ok | +3.05%, FAIL |
+
+What the tune result says:
+
+1. **The coder and the 5-bit alpha row compound.** At code 3 in alpha
+   mode, coding the stream with bounds of three times the D6 row is 9.07%
+   better than the D6 row alone and 18.39% better than the shipped code-3
+   row on the alpha corpus. Each alone was 7.67% (D1) and 10.25% (D6) on
+   that corpus.
+2. **The window does not combine with the coder at code 3 opaque.** It
+   still lowers ΔE00 (−0.61% against the coder alone), but the coded arm
+   invents more than code 2 (+0.157 levels over the 47 opaque images), so
+   D3's primary fails in combination and the opaque code 3 ships without
+   it. At code 3 in alpha mode the window keeps D3's primary (−3.836) and
+   stays inside δ, so it ships there.
+3. **The window costs the 5-bit alpha row at code 4.** On the alpha corpus
+   it is +2.44% against D6 alone, with the interval wholly above δ: the
+   alpha stratum, which D3's `holdout3` read already flagged as the one
+   that pays (§13.10), pays more once the alpha field is finer. Alpha-mode
+   code 4 ships without the window; opaque code 4 ships with it.
+4. **The alpha flag reads the same.** Two graphics images are alpha-mode
+   hashes (18 alpha, 45 opaque by the encoder's own flag). Read by the
+   flag rather than by corpus, every candidate's outcome and every cell's
+   adoption are unchanged: code 3 opaque −0.57% with spurious +0.151, code
+   3 alpha `t3 D1+D3+D6` at −8.17% against `t3 D6`, code 4 alpha
+   `t4 D3+D6` at +1.93% (upper bound +3.00%).
+5. **One tune image fails at code 4.** The single extreme-aspect image is
+   +3.05% with a guard `FAIL` under the window. On tune the strata gate
+   nothing, and D3's `holdout3` read failed no stratum at code 4 (§13.10);
+   one image is not a stratum estimate. It is recorded, not acted on.
+
+**The verdict.** v0.8 lands D1 at code 3, D6 at codes 3 and 4 in alpha
+mode, and D3 at code 3 in alpha mode and at code 4 in opaque mode, as
+wire-format generation v2 (`version` = 1) and release 0.8.0, in every
+language (spec `README.md` §13). Every form is conditional on the tier
+code and the alpha flag, both in the hash. U19 bounds every figure here:
+these are metric verdicts.

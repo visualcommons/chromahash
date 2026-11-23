@@ -154,8 +154,10 @@ def select_coefficients(
     last pair in selection order.
 
     The candidate count is ≥ 64·4^level − 1 for every aspect byte (the 16:1
-    extreme), and every per-channel K(tier) the format uses is < that bound, so
-    the selection is always fully satisfied.
+    extreme), and every per-channel K(tier) of a fixed-width tier is < that
+    bound, so its selection is always fully satisfied. A coded tier's row only
+    bounds its stream (§3.6): its K may exceed the candidates at an extreme
+    aspect, and the selection is then every candidate.
     """
     w, h = decode_output_size(aspect_byte, tier)
     a_q12, h_q12 = q12(aniso), q12(hv)

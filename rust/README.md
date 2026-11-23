@@ -17,7 +17,7 @@ zero-dependency.
 
 ```toml
 [dependencies]
-chromahash = "0.7"
+chromahash = "0.8"
 ```
 
 The minimum supported Rust version (MSRV) is **1.85**.

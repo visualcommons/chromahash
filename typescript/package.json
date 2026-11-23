@@ -1,6 +1,6 @@
 {
   "name": "@visualcommons/chromahash",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "description": "Modern, high-quality image placeholder representation (LQIP) for professional photo management at scale",
   "license": "MIT OR Apache-2.0",
   "author": "Justin Chung <noreply@justinchung.net>",

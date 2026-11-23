@@ -4,14 +4,19 @@ import { dirname, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+  type OutputGamut,
   averageColor,
   decode,
   decodeCapped,
   decodeTo,
   isVersionSupported,
-  type OutputGamut,
 } from "./decode.ts";
-import { bodyLenBytes, COMPACT_TIER, DEFAULT_TIER } from "./header.ts";
+import {
+  COMPACT_TIER,
+  DEFAULT_TIER,
+  FORMAT_VERSION,
+  bodyLenBytes,
+} from "./header.ts";
 import { ChromaHash, init } from "./index.ts";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -199,8 +204,9 @@ describe("pure-TS decode matches WASM exactly (sync guard)", () => {
         const len = bodyLenBytes(tier, hasAlpha);
         const hash = new Uint8Array(len);
         for (let j = 0; j < len; j++) hash[j] = next() & 0xff;
-        // version 0, the chosen tier, the chosen alpha flag, reserved bit clear.
-        hash[0] = (tier << 3) | (hasAlpha ? 1 << 6 : 0);
+        // This build's version, the chosen tier, the chosen alpha flag,
+        // reserved bit clear.
+        hash[0] = FORMAT_VERSION | (tier << 3) | (hasAlpha ? 1 << 6 : 0);
         assertExactDecode(hash, `fuzz#${n} (tier ${tier}, alpha ${hasAlpha})`);
       }
     }
@@ -235,32 +241,35 @@ describe("pure-TS decode matches WASM exactly (sync guard)", () => {
 
 describe("pure-TS isVersionSupported", () => {
   it("reads the wire generation from the descriptor byte", () => {
-    // Byte 0 bits 0..3 are the version field. v1 is 0.
-    const v1 = new Uint8Array(32);
-    v1[0] = DEFAULT_TIER << 3;
-    assert.ok(isVersionSupported(v1));
+    // Byte 0 bits 0..3 are the version field. v2 is 1; v1 (0.7.x) was 0.
+    const v2 = new Uint8Array(32);
+    v2[0] = (DEFAULT_TIER << 3) | FORMAT_VERSION;
+    assert.ok(isVersionSupported(v2));
 
-    for (let generation = 1; generation <= 7; generation++) {
-      const future = new Uint8Array(32);
-      future[0] = (DEFAULT_TIER << 3) | generation;
+    for (let generation = 0; generation <= 7; generation++) {
+      if (generation === FORMAT_VERSION) continue;
+      const other = new Uint8Array(32);
+      other[0] = (DEFAULT_TIER << 3) | generation;
       assert.ok(
-        !isVersionSupported(future),
+        !isVersionSupported(other),
         `generation ${generation} must not report as supported`,
       );
     }
   });
 
   it("rejects rather than mis-decoding an unsupported generation", () => {
-    const future = new Uint8Array(32);
-    future[0] = (DEFAULT_TIER << 3) | 1;
-    assert.throws(() => decode(future), /wire-format generation/);
+    for (const generation of [0, FORMAT_VERSION + 1]) {
+      const other = new Uint8Array(32);
+      other[0] = (DEFAULT_TIER << 3) | generation;
+      assert.throws(() => decode(other), /wire-format generation/);
+    }
   });
 
   it("rejects a length that disagrees with the descriptor", () => {
     // A compact-tier descriptor on a 32-byte buffer: the renumbering's own
     // hazard, and exactly what the self-describing length check exists for.
     const mismatched = new Uint8Array(32);
-    mismatched[0] = COMPACT_TIER << 3;
+    mismatched[0] = (COMPACT_TIER << 3) | FORMAT_VERSION;
     assert.throws(() => decode(mismatched), /disagrees with its descriptor/);
   });
 });

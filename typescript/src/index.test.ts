@@ -11,11 +11,11 @@ import {
 } from "../wasm/chromahash_wasm.js";
 import { FORMAT_VERSION } from "./header.ts";
 import {
-  ChromaHash,
   COMPACT_TIER,
+  ChromaHash,
   DEFAULT_TIER,
-  init,
   MAX_TIER,
+  init,
 } from "./index.ts";
 import type { Gamut } from "./index.ts";
 
@@ -215,7 +215,7 @@ describe("fromBytes", () => {
 });
 
 describe("isVersionSupported", () => {
-  it("reports a v1 hash as supported", () => {
+  it("reports a v2 hash as supported", () => {
     const rgba = new Uint8Array(4 * 4 * 4).fill(128);
     const ch = ChromaHash.encode(4, 4, rgba, "sRGB");
     assert.ok(ch.isVersionSupported());
@@ -224,10 +224,14 @@ describe("isVersionSupported", () => {
   it("reports a future wire generation as unsupported", () => {
     const rgba = new Uint8Array(4 * 4 * 4).fill(128);
     const bytes = new Uint8Array(ChromaHash.encode(4, 4, rgba, "sRGB").hash);
-    // Byte 0 bits 0..3 are the version field; 1 is a generation this build
+    // Byte 0 bits 0..3 are the version field; 2 is a generation this build
     // does not implement. fromBytes must refuse it outright rather than
     // decode garbage, which is the whole point of the descriptor byte.
-    bytes[0] = ((bytes[0] ?? 0) & ~0b111) | 1;
+    bytes[0] = ((bytes[0] ?? 0) & ~0b111) | 2;
+    assert.throws(() => ChromaHash.fromBytes(bytes), /wire-format generation/);
+    // And 0, generation v1 (chromahash 0.7.x), which this build no longer
+    // decodes.
+    bytes[0] = (bytes[0] ?? 0) & ~0b111;
     assert.throws(() => ChromaHash.fromBytes(bytes), /wire-format generation/);
   });
 
@@ -268,7 +272,7 @@ describe("malformed headers", () => {
   const cases: [string, (b0: number) => number][] = [
     ["reserved bit set", (b0) => b0 | 0b1000_0000],
     ["reserved tier code", (b0) => (b0 & ~0b0011_1000) | ((MAX_TIER + 1) << 3)],
-    ["unsupported version", (b0) => b0 | 0b0000_0001],
+    ["unsupported version", (b0) => b0 | 0b0000_0010],
   ];
 
   for (const [what, mutate] of cases) {

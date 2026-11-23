@@ -1413,6 +1413,15 @@ const D9_TIER_BASELINES: Record<string, string> = Object.fromEntries(
   ),
 );
 
+/** §13.15's per-row baselines: every v0.8 combination row against its own code's shipped arm. */
+const V08_COMBINATION_BASELINES: Record<string, string> = Object.fromEntries([
+  ...["D1", "D3", "D6", "D1+D3", "D1+D6", "D3+D6", "D1+D3+D6"].map((c) => [
+    `t3 ${c}`,
+    "t3 shipped",
+  ]),
+  ...["D3", "D6", "D3+D6"].map((c) => [`t4 ${c}`, "t4 shipped"]),
+]);
+
 /** §13.9's per-row baselines: every D2 cut against native code k. */
 const D2_CUT_BASELINES: Record<string, string> = Object.fromEntries(
   [1, 2, 3].flatMap((k) =>
@@ -3116,6 +3125,22 @@ const BINDINGS: Binding[] = [
     },
   },
 
+  // §13.15 — the v0.8 combination check on tune: every arm against its own
+  // code's shipped arm (never row 0, another code's).
+  {
+    kind: "rows",
+    section: "13.15",
+    table: 0,
+    sweep: "v08-combination",
+    columns: {
+      ΔE00: "meanCiede",
+      relative: "ciedeDeltaPct",
+      "95% CI of Δ": "diffCi:ciede2000",
+      "guards (CI)": "guardsCiVsBaseline",
+    },
+    rowBaselines: V08_COMBINATION_BASELINES,
+  },
+
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
   {
@@ -3435,6 +3460,9 @@ const EXPECTED_CELLS: Record<string, number> = {
   // arm (45); then the bound's eight cells at each of the five codes.
   "13.14#0": 65,
   "13.14#1": 40,
+  // Every arm's mean (13), and the ten candidate arms' relative, interval
+  // and guards against their own code's shipped arm (30).
+  "13.15#0": 43,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
@@ -3556,6 +3584,10 @@ const UNBOUND_NOTES: Record<string, string> = {
     "stratify output, not a sweep: the same derived tune strata as §13.8's, under the stratum rule against the shipped code-0 layout. Reproduce with `mise run stratify compact-retune --strata` and `mise run stratify compact-retune-graphics --strata`",
   "13.14#2":
     "stratify output, not a sweep: D9's oracle bound (cfl-oracle-core.ts) per corpus and over the same derived tune strata as §13.8's, which gate nothing on tune. Reproduce with `mise run stratify cfl-oracle --cfl-oracle`",
+  "13.15#1":
+    "stratify output, not a sweep: the v0.8 combination rule per cell, each candidate against its cell's best single over the cell's images (combination-core.ts readCell, which selftest:metrics pins). Reproduce with `mise run stratify v08-combination --combination`",
+  "13.15#2":
+    "stratify output, not a sweep: the deployed format, each image by its own alpha flag's adopted row (combination-core.ts deployedRow), per corpus and over the same derived tune strata as §13.8's, which gate nothing on tune. Reproduce with `mise run stratify v08-combination --combination`",
 };
 
 if (values["list-unbound"]) {

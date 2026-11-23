@@ -291,8 +291,9 @@ func TestFromBytesRejectsWrongLength(t *testing.T) {
 		{"one byte short", valid[:len(valid)-1]},
 		{"one byte long", append(append([]byte{}, valid...), 0)},
 		{"empty", []byte{}},
-		{"reserved tier code", append([]byte{(MaxTier + 1) << 3}, valid[1:]...)},
+		{"reserved tier code", append([]byte{valid[0]&^0x38 | (MaxTier+1)<<3}, valid[1:]...)},
 		{"reserved bit set", append([]byte{valid[0] | 0x80}, valid[1:]...)},
+		{"generation v1 (version 0)", append([]byte{valid[0] &^ 0x07}, valid[1:]...)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := FromBytes(tc.bytes); !errors.Is(err, ErrInvalidHash) {

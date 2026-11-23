@@ -54,6 +54,31 @@ mod tests {
         rgba
     }
 
+    /// A colour ramp under an alpha that rises and falls across the image,
+    /// so every alpha-mode channel carries low-frequency AC for a coded
+    /// stream and a window to act on (a 1-px checkerboard leaves them at the
+    /// centre code).
+    fn alpha_ramp(w: u32, h: u32) -> Vec<u8> {
+        let mut rgba = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let t = x * 255 / w.max(1);
+                let tri = if 2 * x < w {
+                    2 * x * 255 / w
+                } else {
+                    (2 * (w - x)) * 255 / w
+                };
+                rgba.extend_from_slice(&[
+                    t as u8,
+                    (255 - t) as u8,
+                    (y * 255 / h.max(1)) as u8,
+                    tri.min(255) as u8,
+                ]);
+            }
+        }
+        rgba
+    }
+
     fn checkerboard_alpha(w: u32, h: u32) -> Vec<u8> {
         let mut rgba = vec![0u8; (w * h * 4) as usize];
         for y in 0..h {
@@ -655,6 +680,37 @@ mod tests {
                     Gamut::Srgb,
                     MAX_TIER,
                 ),
+                // v0.8.0 (generation v2): one byte-exact decode oracle per
+                // cell the v0.8 verdict changed, each a 16:1 source so the
+                // raster stays small while the whole payload is read. Code 3
+                // opaque: the coded stream, no window. Code 3 alpha: the
+                // coded stream with the 5-bit alpha bounds, window 0.85.
+                // Code 4 alpha: the 5-bit alpha row, no window. (Code 4
+                // opaque, window 0.7, is `strip_100x1_t4_decode` above.)
+                (
+                    "strip_100x1_t3_decode",
+                    100,
+                    1,
+                    strip_gradient(100, 1),
+                    Gamut::Srgb,
+                    3,
+                ),
+                (
+                    "alpha_ramp_64x4_t3_decode",
+                    64,
+                    4,
+                    alpha_ramp(64, 4),
+                    Gamut::Srgb,
+                    3,
+                ),
+                (
+                    "alpha_ramp_64x4_t4_decode",
+                    64,
+                    4,
+                    alpha_ramp(64, 4),
+                    Gamut::Srgb,
+                    MAX_TIER,
+                ),
                 // v0.7.2: decode halves of the two alpha gaps added above.
                 (
                     "transparent_4x4_decode",
@@ -852,7 +908,11 @@ mod tests {
 
             let base: Vec<u8> = valid.as_bytes().to_vec();
             let mut bad_version = base.clone();
-            bad_version[0] = (bad_version[0] & !0b111) | 1; // version 1 (unsupported)
+            bad_version[0] = (bad_version[0] & !0b111) | 2; // version 2 (unsupported)
+            // A generation-v1 descriptor (version 0, chromahash 0.7.x): a v2
+            // decoder implements v2 alone, so it rejects it by its version.
+            let mut generation_v1 = base.clone();
+            generation_v1[0] &= !0b111;
             // The first code that is still reserved. The codes are ordered by
             // quality, so `MAX_TIER + 1` is exactly that code.
             let mut bad_tier = base.clone();
@@ -878,6 +938,7 @@ mod tests {
                 ("truncated_by_one", truncated),
                 ("one_byte_too_long", too_long),
                 ("bad_version", bad_version),
+                ("generation_v1", generation_v1),
                 ("bad_tier", bad_tier),
                 ("reserved_bit_set", reserved),
             ];
