@@ -807,6 +807,16 @@ mise run arms --seed-sensitivity synthesis-window-codes34               # §13.1
 mise run sweep synthesis-window-codes34-frozen --split holdout3 --decision D3  # §13.10
 mise run register-verdict D3                                            # §13.10
 
+# Register D5, downsampling before the transform (§13.11): the tune sweep at
+# native resolution, each downsampling arm's ΔE00 and guards against its
+# tier's full-resolution incumbent, overall, per corpus and per stratum, with
+# D5's selection rule and its re-draw under 20 seeds; and the paired
+# instruction count at 1024x1024 code 1 the selection reads its speed from
+mise run sweep downsample-before-dct                                    # §13.11
+mise run downsample-instructions                                        # §13.11
+mise run stratify downsample-before-dct --downsample                    # §13.11
+mise run arms --seed-sensitivity downsample-before-dct                  # §13.11
+
 # Check the tables in this file against the results above
 mise run verify:experiments
 mise run verify:experiments --list-unbound
@@ -3764,7 +3774,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 936 | 706 | 653 | 593 | 174 | 169 | 87 | 87 |
+| all committed sweeps | 983 | 744 | 691 | 639 | 175 | 169 | 88 | 87 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3781,17 +3791,19 @@ sweeps (§13.7), and to 880 and then 883 when D1 committed its tune sweep and
 its holdout3 read (§13.8), and to 898 when D2 committed its tune ladder
 and then 916 when it committed the two `embedded-tiers-identity` results of
 part 1 (§13.9), and to 932 and then 936 when D3 committed its tune sweep
-and its holdout3 read (§13.10). The
+and its holdout3 read (§13.10), and to 983 when D5 committed its tune
+sweep (§13.11). The
 row compares every arm with its sweep's
 first row whatever the arm's tier, so it includes cross-tier comparisons at
-different byte counts that no decision judged: 183 of the 936 arms, 13 of them
+different byte counts that no decision judged: 221 of the 983 arms, 13 of them
 D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
 row, and the 2 code-4 rows of its holdout3 read against its code-3 row),
 30 D2's (every row but `t0 interleaved full` of `embedded-tiers-ladder` and
-of each `embedded-tiers-identity` result, against its code-0 row) and 20
+of each `embedded-tiers-identity` result, against its code-0 row), 20
 D3's (every code-3 and code-4 row of `synthesis-window-codes34` and of its
 holdout3 read against its code-2 row, which D3 reads on spurious detail
-alone), the
+alone) and 38 D5's (every code-1 to code-4 row of `downsample-before-dct`
+against its code-0 incumbent; D5 reads each arm against its own tier's), the
 rest from the tier ladders and mixed-tier tables of earlier sweeps. The
 prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
@@ -4714,3 +4726,175 @@ change in every language, which the v0.8 verdict lands or declines; it
 moves every code-3 and code-4 decode vector and no hash. U19 still bounds
 the claim: spurious detail and SSIMULACRA2 are both metrics no human has
 validated at placeholder fidelity.
+
+### 13.11 D5: downsampling before the transform (2026-11)
+
+Every encode before this section ran the forward DCT over every pixel of
+its input, and every sweep fed it the harness's ≤ 100 px raster, where the
+cost of that sum never showed. Register entry D5 asks whether the encoder
+should resample a large source to a fixed pixel budget first, so that
+encode cost stops growing with the source, at a ΔE00 cost within R2's
++1.0% at every tier. It is a format change: every hash of a source over the
+budget moves, and the resampling kernel would become normative.
+`V0.8-DECISIONS.md` D5 ("The amendment") records the candidates, the
+source sizes, the speed criterion, how the verdict is read and the
+selection rule, all committed (`ba44767`) before this section's first
+result or count.
+
+The candidates are two placements of the exact area average
+(`Tunables::downsample`) at four grid budgets of E² pixels at the source's
+aspect (`downsample_edge` E = 64, 128, 256, 512): **linear** averages the
+premultiplied linear-light RGB and the alpha off the source bytes and runs
+the colour pass on the grid; **oklab** runs the shipped colour pass at full
+resolution and averages the composited OKLAB planes. The incumbent at each
+code is the shipped encoder at the source's native resolution, with the
+byte-identical levers of `PERFORMANCE.md` §12.1 on.
+
+**The speed primary (`mise run downsample-instructions`).** Retired
+user-space instructions per encode at 1024×1024, code 1, on the bounded
+matrix's gradient, incumbent over candidate, the geometric mean of 10
+interleaved A B / B A blocks, recorded at `6d1c062` from a clean tree.
+Both runs agree to the fourth decimal in every pair; the record is
+`results/counts/downsample-instructions.json`. Cycles are recorded beside
+it and judge nothing.
+
+| candidate | vs shipped default | vs `ACCEL_ALL` | candidate's instructions per encode (with `ACCEL_ALL`) |
+|---|---|---|---|
+| linear 64 | 17.27× | 8.18× | 57.0 M |
+| linear 128 | 14.06× | 7.30× | 63.9 M |
+| linear 256 | 8.26× | 5.32× | 87.7 M |
+| linear 512 | 3.18× | 2.65× | 175.9 M |
+| oklab 64 | 5.29× | 1.93× | 241.5 M |
+| oklab 128 | 5.00× | 1.89× | 247.1 M |
+| oklab 256 | 4.12× | 1.78× | 261.6 M |
+| oklab 512 | 2.44× | 1.45× | 322.0 M |
+
+The shipped default retires 1,123.1 M instructions per encode here and
+`ACCEL_ALL` 466.4 M. The oklab placement clears 2.0× against the shipped
+default at every edge and against `ACCEL_ALL` at none: it keeps the
+full-resolution colour pass, which is most of what `ACCEL_ALL` leaves (at
+edges 64 and 128 it even retires more instructions with the levers on than
+without them, 241.5 M and 247.1 M against 212.2 M and 224.6 M; this
+section does not trace why). The linear placement moves the colour pass
+onto the grid and clears 2.0× against both incumbents at every edge.
+
+**Tune (`mise run sweep downsample-before-dct`).** The same 63 images as
+§13.8–§13.10: 31 photographic, 16 alpha and 16 graphics tune images, over
+white, black and grey, with the generated fixtures left out. Every arm
+encodes the source file at its native resolution (600 px to 8,000 px on
+the long edge) and is scored against the usual 512 px reference. Scored at
+`6d1c062` from a clean tree. Every hash is its tier's shipped length,
+checked image by image, and at codes 0–2 the lever-free shipped default
+decodes to the incumbent's pixels on all 63 images. Each arm against its
+own tier's full-resolution incumbent, paired (`mise run stratify
+downsample-before-dct --downsample`):
+
+| arm | ΔE00 | relative | 95% CI of Δ | guards (CI) |
+|---|---|---|---|---|
+| t0 full resolution | 12.301 | — | — | — |
+| t0 downsample=linear downsample_edge=64 | 12.319 | +0.15% | [−0.111, +0.147] | inconclusive |
+| t0 downsample=linear downsample_edge=128 | 12.275 | −0.21% | [−0.125, +0.071] | ok |
+| t0 downsample=linear downsample_edge=256 | 12.275 | −0.21% | [−0.107, +0.050] | ok |
+| t0 downsample=linear downsample_edge=512 | 12.260 | −0.33% | [−0.103, +0.017] | ok |
+| t0 downsample=oklab downsample_edge=64 | 12.301 | −0.00% | [−0.001, +0.001] | ok |
+| t0 downsample=oklab downsample_edge=128 | 12.301 | +0.00% | [+0.000, +0.000] | ok |
+| t0 downsample=oklab downsample_edge=256 | 12.301 | +0.00% | [+0.000, +0.000] | ok |
+| t0 downsample=oklab downsample_edge=512 | 12.301 | +0.00% | [+0.000, +0.000] | ok |
+| t1 full resolution | 11.620 | — | — | — |
+| t1 downsample=linear downsample_edge=64 | 11.639 | +0.17% | [−0.098, +0.142] | inconclusive |
+| t1 downsample=linear downsample_edge=128 | 11.608 | −0.10% | [−0.106, +0.080] | ok |
+| t1 downsample=linear downsample_edge=256 | 11.595 | −0.22% | [−0.101, +0.047] | ok |
+| t1 downsample=linear downsample_edge=512 | 11.593 | −0.24% | [−0.086, +0.029] | ok |
+| t1 downsample=oklab downsample_edge=64 | 11.621 | +0.01% | [−0.000, +0.002] | ok |
+| t1 downsample=oklab downsample_edge=128 | 11.620 | −0.00% | [−0.001, +0.001] | ok |
+| t1 downsample=oklab downsample_edge=256 | 11.620 | −0.00% | [−0.001, +0.000] | ok |
+| t1 downsample=oklab downsample_edge=512 | 11.620 | +0.00% | [+0.000, +0.000] | ok |
+| t2 full resolution | 9.859 | — | — | — |
+| t2 downsample=linear downsample_edge=64 | 9.917 | +0.59% | [−0.049, +0.172] | inconclusive |
+| t2 downsample=linear downsample_edge=128 | 9.869 | +0.10% | [−0.073, +0.094] | inconclusive |
+| t2 downsample=linear downsample_edge=256 | 9.839 | −0.21% | [−0.085, +0.043] | inconclusive |
+| t2 downsample=linear downsample_edge=512 | 9.830 | −0.29% | [−0.080, +0.022] | ok |
+| t2 downsample=oklab downsample_edge=64 | 9.856 | −0.04% | [−0.008, +0.000] | ok |
+| t2 downsample=oklab downsample_edge=128 | 9.860 | +0.00% | [−0.001, +0.002] | ok |
+| t2 downsample=oklab downsample_edge=256 | 9.860 | +0.00% | [−0.001, +0.002] | ok |
+| t2 downsample=oklab downsample_edge=512 | 9.860 | +0.01% | [−0.000, +0.002] | ok |
+| t3 full resolution | 8.311 | — | — | — |
+| t3 downsample=linear downsample_edge=64 | 8.417 | +1.28% | [+0.009, +0.215] | inconclusive |
+| t3 downsample=linear downsample_edge=128 | 8.346 | +0.43% | [−0.037, +0.115] | inconclusive |
+| t3 downsample=linear downsample_edge=256 | 8.309 | −0.01% | [−0.055, +0.057] | ok |
+| t3 downsample=linear downsample_edge=512 | 8.295 | −0.18% | [−0.061, +0.032] | ok |
+| t3 downsample=oklab downsample_edge=64 | 8.313 | +0.03% | [−0.005, +0.010] | inconclusive |
+| t3 downsample=oklab downsample_edge=128 | 8.312 | +0.02% | [−0.002, +0.006] | ok |
+| t3 downsample=oklab downsample_edge=256 | 8.311 | +0.00% | [−0.001, +0.002] | ok |
+| t3 downsample=oklab downsample_edge=512 | 8.311 | +0.00% | [−0.000, +0.001] | ok |
+| t4 full resolution | 7.214 | — | — | — |
+| t4 downsample=linear downsample_edge=64 | 7.431 | +3.01% | [+0.100, +0.360] | FAIL |
+| t4 downsample=linear downsample_edge=128 | 7.292 | +1.08% | [+0.003, +0.164] | inconclusive |
+| t4 downsample=linear downsample_edge=256 | 7.235 | +0.30% | [−0.031, +0.081] | ok |
+| t4 downsample=linear downsample_edge=512 | 7.210 | −0.05% | [−0.043, +0.038] | ok |
+| t4 downsample=oklab downsample_edge=64 | 7.258 | +0.61% | [+0.028, +0.065] | inconclusive |
+| t4 downsample=oklab downsample_edge=128 | 7.218 | +0.06% | [−0.000, +0.009] | ok |
+| t4 downsample=oklab downsample_edge=256 | 7.215 | +0.02% | [−0.000, +0.003] | ok |
+| t4 downsample=oklab downsample_edge=512 | 7.214 | −0.01% | [−0.001, +0.000] | ok |
+
+By corpus, the relative ΔE00 difference of the arm each code's selection
+picks (below) over each part of tune:
+
+| arm | photographic (31) | alpha (16) | graphics (16) |
+|---|---|---|---|
+| t0 downsample=linear downsample_edge=128 | +0.21% | +0.22% | −1.65% |
+| t1 downsample=linear downsample_edge=128 | +0.30% | +0.30% | −1.46% |
+| t2 downsample=linear downsample_edge=128 | +0.36% | +0.47% | −0.86% |
+| t3 downsample=linear downsample_edge=256 | +0.03% | +0.22% | −0.40% |
+| t4 downsample=linear downsample_edge=512 | +0.01% | +0.01% | −0.26% |
+
+Per `holdout3` stratum, from each tune image's own covariates, for the same
+arms: the relative ΔE00 difference and the stratum rule's verdict. On tune
+the strata gate nothing.
+
+| stratum (tune images) | t0 linear 128 | t1 linear 128 | t2 linear 128 | t3 linear 256 | t4 linear 512 |
+|---|---|---|---|---|---|
+| smartphone (4) | +0.04%, inconclusive | −0.09%, inconclusive | −0.41%, inconclusive | −0.76%, inconclusive | −0.74%, ok |
+| graphics (16) | −1.65%, inconclusive | −1.46%, inconclusive | −0.86%, inconclusive | −0.40%, inconclusive | −0.26%, inconclusive |
+| alpha (17) | +0.22%, inconclusive | +0.27%, ok | +0.45%, inconclusive | +0.22%, inconclusive | +0.00%, ok |
+| skin (12) | +0.30%, inconclusive | +0.40%, inconclusive | +0.53%, inconclusive | +0.33%, inconclusive | +0.58%, ok |
+| low-light (10) | +2.00%, inconclusive | +2.21%, inconclusive | +2.44%, inconclusive | +2.21%, inconclusive | +1.51%, inconclusive |
+| extreme aspect (1) | −3.76%, ok | −4.30%, FAIL | −2.22%, ok | +1.30%, FAIL | +0.84%, FAIL |
+
+The one extreme-aspect tune image is a stratum of one, whose guard
+intervals are its points: at codes 1, 3 and 4 a guard moves past its
+tolerance on that image alone.
+
+What the tune result says:
+
+1. **The oklab placement is all but free, and the linear one is not.**
+   Averaging the composited OKLAB planes moves ΔE00 by at most 0.06% at
+   any tier from edge 128 up, every interval within 0.01 ΔE00 of zero, and
+   even edge 64 stays within +0.61% at code 4. The linear placement's
+   intervals are far wider at every edge (about ±0.9% of the incumbent at
+   edge 128, code 1): averaging light and then converting is not
+   converting and then averaging, and the difference depends on the image.
+2. **The linear placement's cost falls with the edge and rises with the
+   tier.** Its interval's upper bound passes +1.0% at edge 64 at every
+   code, at edge 128 at codes 3–4, and at edge 256 at code 4, so it
+   qualifies from edges 128, 128, 128, 256 and 512 at codes 0–4.
+3. **It pays on graphics and costs in the dark.** Every selected linear arm
+   is better on graphics and worse on the low-light stratum, with every
+   low-light interval excluding zero on the losing side at codes 0–3;
+   neither moves the stratum rule on tune.
+
+**Selection (the rule D5 recorded before this run).** Per placement and
+tier, the smallest edge whose tune ΔE00 upper bound is within +1.0% of the
+incumbent with `guards (CI)` not `FAIL`: linear 128, 128, 128, 256 and 512
+at codes 0–4, and oklab 64 at every code. Both placements qualify, and the
+rule chooses on the `ACCEL_ALL` instruction ratio at the code-1 edge:
+linear 128's 7.30× against oklab 64's 1.93×. Linear 128 clears 2.0×
+against both incumbents, so D5 freezes the linear placement's five arms.
+The oklab placement, the cheaper in ΔE00, is not chosen because it fails
+the speed primary against `ACCEL_ALL` at every edge. Under 20 bootstrap
+seeds other than 42 the selection does not change, and `mise run arms
+--seed-sensitivity downsample-before-dct` turns no interval and no Holm
+verdict. Q8's power statement for `holdout3`'s 88 images, from each frozen
+arm's tune spread at power 0.8 and two-sided α = 0.05: σ_rel 3.22%, 3.26%,
+3.41%, 2.72% and 2.31% at codes 0–4, an MDE of 0.96%, 0.97%, 1.02%, 0.81%
+and 0.69%, so δ = 1.0% is about what the read resolves at codes 0–2.
