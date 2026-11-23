@@ -675,6 +675,34 @@ pub struct Tunables {
     /// `encode_adaptive`), an encoder-side decision paid for inside the same
     /// bytes. Any other value reads as `1`. Wire-level; sweep-only.
     pub ac_coder: u32,
+    /// Downsampling before the transform (register entry D5,
+    /// `spec/V0.8-DECISIONS.md`): resample a source of more than
+    /// `downsample_edge²` pixels to a grid of about that many pixels, with
+    /// the source's aspect, before the forward DCT, so the transform's cost
+    /// stops growing with the source's pixel count. A source at or under the
+    /// budget is encoded exactly as shipped, so the knob is conditional on an
+    /// input property the encoder reads off the input.
+    ///
+    /// The kernel is the exact area (box) average: each grid cell is the
+    /// integral mean of the source pixels it covers, with fractional
+    /// coverage at its edges (`encode::area_downsample`). Two placements:
+    ///
+    /// * `0` — off, the shipped full-resolution encode.
+    /// * `1` — **oklab**: the composited OKLAB planes (and the alpha plane)
+    ///   are averaged after the shipped full-resolution colour pass, which is
+    ///   linear ahead of a linear transform, so only the DCT moves to the grid.
+    /// * `2` — **linear**: the linear-light RGB, premultiplied by alpha, and
+    ///   the alpha plane are averaged straight off the source bytes, and the
+    ///   colour pass, the alpha average and the composite run on the grid.
+    ///
+    /// The hash's aspect is always the source's. Every hash of a source over
+    /// the budget changes, so this is a format change; any other value of
+    /// `downsample` reads as off. Sweep-only: `0` here and in every binding.
+    pub downsample: u32,
+    /// Grid budget of [`Tunables::downsample`]: a source is resampled only if
+    /// it has more than `downsample_edge²` pixels, to `round(w·s) × round(h·s)`
+    /// with `s = downsample_edge / sqrt(w·h)`, never enlarging either axis.
+    pub downsample_edge: u32,
 }
 
 impl Tunables {
@@ -785,6 +813,8 @@ impl Tunables {
         trunc_bytes: 0,
         cut_tier: None,
         ac_coder: 0,
+        downsample: 0,
+        downsample_edge: 256,
     };
 }
 

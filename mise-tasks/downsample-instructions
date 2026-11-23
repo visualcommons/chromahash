@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+#MISE description="Paired instruction-count ratio of the full-resolution over the downsampling encode at 1024x1024 code 1, every candidate (register D5)"
+#MISE depends=["build:compare"]
+#
+# Usage: mise run downsample-instructions [--out FILE]
+#
+# Counts retired user-space instructions (and cycles, reported beside them)
+# per encode with perf stat, in 10 interleaved A B / B A blocks per pair, for
+# every D5 candidate (placement x grid edge, tools/comparison/src/downsample-core.ts)
+# against the shipped default and against ACCEL_ALL, and runs the whole
+# measurement twice back to back; the runs must agree within 1%. Needs perf
+# with kernel.perf_event_paranoid <= 2. Writes
+# tools/comparison/results/counts/downsample-instructions.json
+# (spec/V0.8-DECISIONS.md D5, "The speed criterion, amended").
+#
+# The encoder is built exactly as `mise run sweep` builds it, so a count and a
+# sweep running side by side never rebuild the binary under each other.
+set -euo pipefail
+
+cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin
+node tools/comparison/dist/perf/downsample-instructions.js "$@"

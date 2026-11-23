@@ -249,6 +249,7 @@ import {
 } from "./register-verdict-core.ts";
 import {
   ARTIFACT_ZERO_BASE_ALLOWANCE,
+  type Provenance,
   RESULT_SCHEMA,
   type ResultFile,
   shapeProblems,
@@ -269,6 +270,17 @@ import {
   realCorpusOf,
   tierBaselinePairs,
 } from "./stratify-core.ts";
+import {
+  type D5Speed,
+  armLabel,
+  d5Arms,
+  d5Candidates,
+  d5Verdict,
+  deriveD5Verdict,
+  readD5,
+  readD5Speed,
+  selectD5,
+} from "./downsample-core.ts";
 import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
 import {
   deriveWindowVerdict,
@@ -279,6 +291,7 @@ import {
 } from "./window-core.ts";
 import {
   checkIdenticalTo,
+  checkNativeSource,
   decodeDigest,
   expectedLength,
   identityMismatches,
@@ -6706,6 +6719,57 @@ console.log(
     `${valid}|${unknown}|${later}|${chained}`,
   );
 
+  const nativeRefusal = (config: Parameters<typeof checkNativeSource>[0]) => {
+    try {
+      checkNativeSource(config);
+      return "";
+    } catch (e) {
+      return (e as Error).message;
+    }
+  };
+  const nativeArm = { label: "n" };
+  const nativeOk = nativeRefusal({
+    name: "cfg",
+    encodeSource: "native",
+    variants: [nativeArm, { label: "t", capToTier0: false }],
+  });
+  const harnessOk = nativeRefusal({
+    name: "cfg",
+    forceOpaque: true,
+    variants: [
+      { label: "c", capToTier0: true },
+      { label: "v", version: "v0.6" },
+    ],
+  });
+  const nativeOpaque = nativeRefusal({
+    name: "cfg",
+    encodeSource: "native",
+    forceOpaque: true,
+    variants: [nativeArm],
+  });
+  const nativeCap = nativeRefusal({
+    name: "cfg",
+    encodeSource: "native",
+    variants: [nativeArm, { label: "c", capToTier0: true }],
+  });
+  const nativeVersion = nativeRefusal({
+    name: "cfg",
+    encodeSource: "native",
+    variants: [{ label: "v", version: "v0.6" }, nativeArm],
+  });
+  check(
+    'checkNativeSource refuses forceOpaque, capToTier0 and version under encodeSource "native", and passes them on the harness raster (D5)',
+    nativeOk === "" &&
+      harnessOk === "" &&
+      nativeOpaque ===
+        "config cfg: forceOpaque flattens the harness raster, not a native source" &&
+      nativeCap ===
+        'variant "c": encodeSource "native" cannot honour capToTier0 or version, which act on the harness raster' &&
+      nativeVersion ===
+        'variant "v": encodeSource "native" cannot honour capToTier0 or version, which act on the harness raster',
+    `${nativeOk}|${harnessOk}|${nativeOpaque}|${nativeCap}|${nativeVersion}`,
+  );
+
   const ref = {
     label: "t1 native",
     tune: null,
@@ -7375,6 +7439,254 @@ console.log(
       wrongRev.includes("not at D4's freeze") &&
       dirty.includes("clean tree"),
     `${before.outcome} ${passes.outcome} ${failsOut.outcome} ${slow.outcome} ${moved.outcome}`,
+  );
+}
+
+// ─── D5: downsampling before the transform (downsample-core.ts) ─────────────
+{
+  console.log("\nD5's downsampling reading (downsample-core.ts)");
+  const specs = d5Arms(
+    [
+      "t1 full resolution",
+      "t1 shipped default",
+      "t1 downsample=linear downsample_edge=64",
+      "t2 downsample=oklab downsample_edge=128",
+      "t1 downsample=cubic downsample_edge=64",
+    ].map((label) => ({ label })),
+  );
+  check(
+    "d5Arms reads tK downsample=P downsample_edge=E against tK full resolution, and drops an arm whose incumbent is absent, an unknown placement and the identity row",
+    JSON.stringify(specs) ===
+      JSON.stringify([
+        {
+          k: 1,
+          placement: "linear",
+          edge: 64,
+          arm: "t1 downsample=linear downsample_edge=64",
+          incumbent: "t1 full resolution",
+        },
+      ]) &&
+      d5Candidates().length === 8 &&
+      d5Candidates()[0]?.tune === "downsample=linear downsample_edge=64" &&
+      armLabel(3, "oklab", 512) === "t3 downsample=oklab downsample_edge=512",
+    JSON.stringify(specs),
+  );
+
+  // Six images, equal guards everywhere (every guard interval [0, 0], ok).
+  const guards = {
+    ssimulacra2: [50, 52, 54, 56, 58, 60],
+    butteraugli: [3, 3, 3, 3, 3, 3],
+    dssim: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+  };
+  const dRow = (label: string, ciede2000: number[]) => ({
+    label,
+    perImage: { ciede2000, ...guards },
+  });
+  const tol = { ssimulacra2Drop: 1.0, relativeRise: 0.02 };
+  // Incumbent 10 everywhere. Edge 64 costs 0.5% at its point but its upper
+  // bound (one image at +3%, drawn three times of six) is past +1.0%; edge 128 costs 0.3% with every
+  // image within 0.4%; edge 256 is free.
+  const rows = [
+    dRow("t1 full resolution", [10, 10, 10, 10, 10, 10]),
+    dRow(
+      "t1 downsample=linear downsample_edge=64",
+      [10.0, 10.0, 10.0, 10.0, 10.0, 10.3],
+    ),
+    dRow(
+      "t1 downsample=linear downsample_edge=128",
+      [10.02, 10.03, 10.04, 10.03, 10.03, 10.03],
+    ),
+    dRow("t1 downsample=linear downsample_edge=256", [10, 10, 10, 10, 10, 10]),
+  ];
+  const [e64, e128, e256] = d5Arms(rows).map((s) => readD5(s, rows, tol));
+  check(
+    "readD5: condition 1 is the upper bound of ΔE00 A − tK full resolution within +1.0%, so a 0.5% mean whose interval reaches past +1.0% does not qualify and a 0.3% one inside it does",
+    e64 !== undefined &&
+      e128 !== undefined &&
+      e256 !== undefined &&
+      Math.abs(e64.deltaRel - 0.5) < 1e-9 &&
+      e64.upperRel > 1 &&
+      !e64.cond1 &&
+      !e64.qualifies &&
+      Math.abs(e128.deltaRel - 0.3) < 1e-9 &&
+      e128.cond1 &&
+      e128.qualifies &&
+      e128.pass &&
+      e256.upperRel === 0 &&
+      e256.qualifies,
+    `64: ${e64?.deltaRel.toFixed(3)}% U ${e64?.upperRel.toFixed(3)}%; 128: ${e128?.deltaRel.toFixed(3)}% U ${e128?.upperRel.toFixed(3)}%`,
+  );
+
+  // The selection rule: the smallest qualifying edge per placement and tier,
+  // a placement qualifying only with an edge at every tier, the choice on
+  // the ACCEL_ALL ratio at the code-1 edge, and the speed deciding a freeze.
+  const fake = (k: number, placement: "linear" | "oklab", edge: number) =>
+    ({
+      spec: {
+        k,
+        placement,
+        edge,
+        arm: armLabel(k, placement, edge),
+        incumbent: `t${k} full resolution`,
+      },
+      qualifies: true,
+    }) as unknown as Parameters<typeof selectD5>[0][number];
+  const qualified = [
+    ...[0, 1, 2, 3, 4].map((k) => fake(k, "linear", k >= 3 ? 512 : 128)),
+    fake(1, "linear", 256),
+    ...[0, 1, 2, 3, 4].map((k) => fake(k, "oklab", 64)),
+  ];
+  const sp = (id: string, shipped: number, accel: number) =>
+    [
+      id,
+      {
+        candidate: id,
+        pairs: [
+          { label: "shipped", pass: shipped >= 2 },
+          { label: "ACCEL_ALL", pass: accel >= 2 },
+        ],
+        accelRatio: accel,
+        pass: shipped >= 2 && accel >= 2,
+      },
+    ] as unknown as [string, D5Speed];
+  const fast = new Map([sp("linear 128", 9, 5), sp("oklab 64", 3, 1.8)]);
+  const pick = selectD5(qualified, fast);
+  const noOklab = selectD5(
+    qualified.filter((r) => !(r.spec.placement === "oklab" && r.spec.k === 4)),
+    new Map([sp("linear 128", 3, 1.5), sp("oklab 64", 4, 3)]),
+  );
+  const none = selectD5(
+    qualified.filter((r) => r.spec.k !== 2),
+    fast,
+  );
+  check(
+    "selectD5: the smallest qualifying edge per tier, a placement needing every tier, the larger ACCEL_ALL ratio at its code-1 edge chosen, frozen one arm per tier on a passing speed; in sample on a failing speed or no qualifying placement",
+    pick.outcome === "frozen" &&
+      pick.chosen === "linear" &&
+      pick.frozen.map((f) => f.edge).join(",") === "128,128,128,512,512" &&
+      pick.placements[1]?.qualifies === true &&
+      noOklab.chosen === "linear" &&
+      noOklab.placements[1]?.qualifies === false &&
+      noOklab.outcome === "decided in sample: the speed primary fails" &&
+      none.chosen === null &&
+      none.outcome ===
+        "decided in sample: no placement qualifies at every tier",
+    `${pick.outcome} ${pick.chosen} ${pick.frozen.map((f) => f.edge).join(",")} | ${noOklab.outcome} | ${none.outcome}`,
+  );
+
+  // The count record's reading: both pairs, each needing agreeing runs and
+  // 2.0×, and a record at another size refused.
+  const run = (ratio: number) => ({
+    blocks: [],
+    reading: {
+      blocks: 10,
+      ratio: { "instructions:u": ratio, "cycles:u": ratio },
+      min: { "instructions:u": ratio, "cycles:u": ratio },
+      max: { "instructions:u": ratio, "cycles:u": ratio },
+    },
+  });
+  const pair = (candidate: string, label: string, r1: number, r2: number) => ({
+    candidate,
+    label,
+    hashesEqual: false,
+    runs: [run(r1), run(r2)],
+    agree: true,
+    instructionRatio: r1,
+  });
+  const rec = {
+    schema: 1 as const,
+    tool: "downsample-instructions" as const,
+    settings: { fixture: { width: 1024, height: 1024 }, tier: 1 },
+    provenance: { rev: "x", dirty: false } as unknown as Provenance,
+    pairs: [
+      pair("linear 64", "shipped", 12, 12.01),
+      pair("linear 64", "ACCEL_ALL", 6, 6.001),
+      pair("oklab 64", "shipped", 3, 3),
+      pair("oklab 64", "ACCEL_ALL", 1.9, 1.9),
+      pair("oklab 128", "shipped", 3, 3.1),
+      pair("oklab 128", "ACCEL_ALL", 2.5, 2.5),
+    ],
+    agree: true,
+  };
+  const speed = readD5Speed(rec);
+  let wrongSize = "";
+  try {
+    readD5Speed({
+      ...rec,
+      settings: { fixture: { width: 512, height: 512 }, tier: 1 },
+    });
+  } catch (e) {
+    wrongSize = (e as Error).message;
+  }
+  check(
+    "readD5Speed: a candidate passes only with both pairs at 2.0× or more and each pair's two runs within 1%; a record at another size is refused",
+    speed.get("linear 64")?.pass === true &&
+      speed.get("linear 64")?.accelRatio === 6 &&
+      speed.get("oklab 64")?.pass === false &&
+      speed.get("oklab 128")?.pass === false &&
+      speed.get("oklab 128")?.pairs[0]?.agree === false &&
+      wrongSize.includes("1024x1024"),
+    [...speed.values()].map((s) => `${s.candidate} ${s.pass}`).join(", "),
+  );
+
+  // The holdout verdict: every tier's frozen arm read with the stratum rule
+  // and re-read under other seeds; a read missing a tier is refused.
+  const vRows = [0, 1, 2, 3, 4].flatMap((k) => [
+    dRow(`t${k} full resolution`, [10, 10, 10, 10, 10, 10]),
+    dRow(
+      armLabel(k, "linear", 128),
+      [10.02, 10.03, 10.04, 10.03, 10.03, 10.03],
+    ),
+  ]);
+  const arms = [0, 1, 2, 3, 4].map((k) => armLabel(k, "linear", 128));
+  const members = new Map([["skin", [0, 1, 2]]]);
+  const linear64 = speed.get("linear 64") as D5Speed;
+  const v = d5Verdict("r", vRows, arms, members, tol, linear64, 2);
+  const slow = d5Verdict(
+    "r",
+    vRows,
+    arms,
+    members,
+    tol,
+    speed.get("oklab 64") as D5Speed,
+    0,
+  );
+  let refused = "";
+  try {
+    d5Verdict("r", vRows, arms.slice(1), members, tol, linear64, 0);
+  } catch (e) {
+    refused = (e as Error).message;
+  }
+  check(
+    "d5Verdict: all five tiers read with the stratum rule and re-read under the requested seeds pass with a passing speed, fail on a failing one, and a read missing a tier is refused",
+    v.pass &&
+      v.readings.length === 5 &&
+      v.readings.every((r) => r.strata?.length === 1) &&
+      v.seeds.join(",") === "1,2" &&
+      v.turned.length === 0 &&
+      !slow.pass &&
+      refused.includes("one per tier"),
+    `pass ${v.pass} slow ${slow.pass} refused ${refused.slice(0, 40)}`,
+  );
+
+  // The committed read: the register's D5 verdict, re-derived.
+  const shipped = deriveD5Verdict(0);
+  const failing = shipped.readings.flatMap((r) =>
+    (r.strata ?? [])
+      .filter((s) => s.verdict === "FAIL")
+      .map((s) => `t${r.spec.k} ${s.stratum}`),
+  );
+  check(
+    "D5's committed read: every tier passes conditions 1 and 2 and the speed passes (7.300× against ACCEL_ALL at linear 128), but code 2's low-light stratum fails the stratum rule, so D5 fails",
+    !shipped.pass &&
+      shipped.speed.pass &&
+      shipped.speed.accelRatio.toFixed(3) === "7.300" &&
+      shipped.readings.length === 5 &&
+      shipped.readings.every((r) => r.cond1 && r.guardsOk) &&
+      shipped.readings.map((r) => r.pass).join(",") ===
+        "true,true,false,true,true" &&
+      failing.join(",") === "t2 low-light",
+    `pass ${shipped.pass}; tiers ${shipped.readings.map((r) => r.pass).join(",")}; failing ${failing.join(",")}`,
   );
 }
 

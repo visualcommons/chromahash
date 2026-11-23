@@ -214,6 +214,13 @@ The DCT projection *is* the anti-aliased lowpass: computing only the K lowest
 frequencies over all source pixels is a proper inner product — no resampling
 kernel to standardize, no aliasing pathway. Cost is O(K·w·h), documented; apps
 MAY pre-downscale for speed at the price of bit-exactness vs full-res encodes.
+Register entry D5 measured the reversal and it fails (`V0.8-DECISIONS.md` D5,
+`EXPERIMENTS.md` §13.11): an exact area average of linear light onto a grid of
+128² to 512² pixels before the transform is 7.3× cheaper in instructions than
+the fastest byte-identical encoder at 1024×1024, but it costs the photographs
+at every tier and fails the stratum rule on low-light pins at code 2. Averaging
+the OKLAB planes instead was all but free on tune and saves too little, since
+the full-resolution colour pass stays.
 
 ## Signal path
 
@@ -230,8 +237,11 @@ CSS/ecosystem presence; no evidence it wins at 32 B.
 ### Averaging and DCT in OKLAB (not linear light)
 The DC is the perceptual average — arguably the right *target* for a
 placeholder — rather than the physical (linear-light) average a downscaler
-would produce. Untested empirically (would need a Rust-side averaging knob);
-recorded as future work. The perceptual-average argument stands on its own for
+would produce. Untested empirically for the DC itself (would need a Rust-side
+averaging knob); recorded as future work. D5's linear placement is the nearest
+measurement: averaging linear light over grid cells before the OKLAB conversion,
+which leaves the DCT in OKLAB, cost the photographs and most of all the
+low-light ones (`EXPERIMENTS.md` §13.11). The perceptual-average argument stands on its own for
 a format whose output is judged by eyes, not by radiometry.
 
 ### Global separable cosine transform

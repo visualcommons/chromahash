@@ -83,6 +83,8 @@ export const FREEZE_REVS: Record<string, string> = {
   D1: "e3b2eb63eb08ff98a32cd980d9163cb1d0685490",
   // D3 froze its code-3 and code-4 window arms at #134's freeze commit.
   D3: "40bf6f2f927d1f4d6446d5a40bab1781455e73f5",
+  // D5 froze its five linear arms, one per tier, at #136's freeze commit.
+  D5: "fd781e3adf9fcf37336ba4d73f0510464a4c59e3",
 };
 
 /** [result, arm, baseline]: one judged comparison, as the freeze names it. */

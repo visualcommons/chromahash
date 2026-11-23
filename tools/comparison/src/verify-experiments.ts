@@ -1394,6 +1394,39 @@ const D3_FROZEN_BASELINES: Record<string, string> = {
   "code 4: `t4 w_min 0.7 exp 1`": "t4 shipped (no window)",
 };
 
+/** §13.11's per-row baselines: every D5 arm against its tier's full-resolution incumbent. */
+const D5_TIER_BASELINES: Record<string, string> = Object.fromEntries(
+  [0, 1, 2, 3, 4].flatMap((k) =>
+    ["linear", "oklab"].flatMap((p) =>
+      [64, 128, 256, 512].map((e) => [
+        `t${k} downsample=${p} downsample_edge=${e}`,
+        `t${k} full resolution`,
+      ]),
+    ),
+  ),
+);
+
+/** §13.11's holdout3 rows: D5's five frozen arms, by doc label. */
+const D5_FROZEN_ARMS: readonly (readonly [number, number])[] = [
+  [0, 128],
+  [1, 128],
+  [2, 128],
+  [3, 256],
+  [4, 512],
+];
+const D5_FROZEN_ROWS: Record<string, string> = Object.fromEntries(
+  D5_FROZEN_ARMS.map(([k, e]) => [
+    `code ${k}: \`t${k} downsample=linear downsample_edge=${e}\``,
+    `t${k} downsample=linear downsample_edge=${e}`,
+  ]),
+);
+const D5_FROZEN_BASELINES: Record<string, string> = Object.fromEntries(
+  D5_FROZEN_ARMS.map(([k, e]) => [
+    `code ${k}: \`t${k} downsample=linear downsample_edge=${e}\``,
+    `t${k} full resolution`,
+  ]),
+);
+
 /** §13.8's holdout3 rows: D1's two frozen comparisons, by doc label. */
 const D1_FROZEN_ROWS: Record<string, string> = {
   "code 3: `t3 coded x3` vs `t3 shipped`": "t3 coded x3",
@@ -2787,6 +2820,72 @@ const BINDINGS: Binding[] = [
     rowBaselines: D3_FROZEN_BASELINES,
   },
 
+  // §13.11 — register D5 on tune: every downsampling arm against its own
+  // tier's full-resolution incumbent, then the selected arms per corpus.
+  {
+    kind: "rows",
+    section: "13.11",
+    table: 1,
+    sweep: "downsample-before-dct",
+    columns: {
+      ΔE00: "meanCiede",
+      relative: "ciedeDeltaPct",
+      "95% CI of Δ": "diffCi:ciede2000",
+      "guards (CI)": "guardsCiVsBaseline",
+    },
+    rowBaselines: D5_TIER_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "13.11",
+    table: 2,
+    sweep: "downsample-before-dct",
+    columns: {
+      "photographic (31)": "ciedeDeltaPct",
+      "alpha (16)": "ciedeDeltaPct",
+      "graphics (16)": "ciedeDeltaPct",
+    },
+    subsets: {
+      "photographic (31)": (n) => inCorpus(n, "photo"),
+      "alpha (16)": (n) => inCorpus(n, "alpha"),
+      "graphics (16)": (n) => inCorpus(n, "graphic"),
+    },
+    rowBaselines: D5_TIER_BASELINES,
+  },
+  // §13.11 — D5's one holdout3 read, at the freeze: each frozen arm against
+  // its tier's full-resolution incumbent, then per holdout3 stratum.
+  {
+    kind: "rows",
+    section: "13.11",
+    table: 4,
+    sweep: "downsample-before-dct-frozen-holdout3",
+    columns: {
+      ΔE00: "diff:ciede2000",
+      "95% CI of Δ": "diffCi:ciede2000",
+      relative: "ciedeDeltaPct",
+      "guards (CI)": "guardsCiVsBaseline",
+    },
+    aliases: D5_FROZEN_ROWS,
+    rowBaselines: D5_FROZEN_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "13.11",
+    table: 5,
+    sweep: "downsample-before-dct-frozen-holdout3",
+    columns: Object.fromEntries(
+      D1_STRATUM_COLUMNS.map(([header]) => [header, "ciedeDeltaPct"]),
+    ),
+    subsets: Object.fromEntries(
+      D1_STRATUM_COLUMNS.map(([header, stratum]) => [
+        header,
+        (n: string) => holdout3StrataOf(n).includes(stratum),
+      ]),
+    ),
+    aliases: D5_FROZEN_ROWS,
+    rowBaselines: D5_FROZEN_BASELINES,
+  },
+
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
   {
@@ -3075,6 +3174,16 @@ const EXPECTED_CELLS: Record<string, number> = {
   // of the six strata (12).
   "13.10#4": 16,
   "13.10#5": 12,
+  // §13.11, register D5 on tune: every row's ΔE00 (45) and the 40
+  // downsampling arms' relative, interval and guards against their tier's
+  // incumbent (120); the five selected arms per corpus (15).
+  "13.11#1": 165,
+  "13.11#2": 15,
+  // D5's holdout3 read: the five frozen arms' ΔE00 difference, interval,
+  // relative and guards (20); then their relative differences in each of the
+  // six strata (30).
+  "13.11#4": 20,
+  "13.11#5": 30,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
@@ -3186,6 +3295,10 @@ const UNBOUND_NOTES: Record<string, string> = {
     "stratify output, not a sweep: a tune image's holdout3 strata are derived from covariates measured on its cached fixture (corpus-covariates.ts measureFile), which a run with no corpus download cannot do. Reproduce with `mise run stratify entropy-coded-ac --strata`",
   "13.9#4":
     "stratify output, not a sweep: the same derived tune strata as §13.8's, under D2's stratum rule (embedded-core.ts). Reproduce with `mise run stratify embedded-tiers-ladder --embedded`",
+  "13.11#0":
+    "a count record, not a sweep: retired instructions per encode from perf stat (results/counts/downsample-instructions.json), which downsample-core.ts readD5Speed reads and selftest:metrics pins. Reproduce with `mise run downsample-instructions`",
+  "13.11#3":
+    "stratify output, not a sweep: the same derived tune strata as §13.8's, under the stratum rule against each tier's full-resolution incumbent (downsample-core.ts). Reproduce with `mise run stratify downsample-before-dct --downsample`",
   "13.10#3":
     "stratify output, not a sweep: the same derived tune strata as §13.8's, under the stratum rule against each tier's shipped arm, with spurious against code 2 beside it (window-core.ts). Reproduce with `mise run stratify synthesis-window-codes34 --window`",
 };

@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import path from "node:path";
 import { rgbaToDataUri } from "../image-loader.ts";
 import { computeAllMetrics } from "../metrics.ts";
@@ -52,6 +52,38 @@ export function encodeViaRust(
     env: rustEnv(tier, tune),
   });
   return new Uint8Array(output);
+}
+
+/**
+ * {@link encodeViaRust} as a child process the caller awaits, with no
+ * timeout: a full-resolution source at the top tiers takes minutes with the
+ * direct-sum transform, and several run at once (`sweep.ts`, `encodeSource`).
+ */
+export function encodeViaRustAsync(
+  binary: string,
+  w: number,
+  h: number,
+  rgba: Uint8Array,
+  gamut: string,
+  tier: number,
+  tune?: string,
+): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(binary, ["encode", String(w), String(h), gamut], {
+      env: rustEnv(tier, tune),
+    });
+    const out: Buffer[] = [];
+    const err: Buffer[] = [];
+    child.stdout.on("data", (d: Buffer) => out.push(d));
+    child.stderr.on("data", (d: Buffer) => err.push(d));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve(new Uint8Array(Buffer.concat(out)));
+      else reject(new Error(`encode ${w}x${h}: ${Buffer.concat(err)}`));
+    });
+    child.stdin.on("error", reject);
+    child.stdin.end(rgba);
+  });
 }
 
 /**

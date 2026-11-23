@@ -926,6 +926,61 @@ const REGISTER: Claim[] = [
     transform: abs,
   },
 
+  // D5's freeze quotes each frozen arm's tune relative ΔE00 (§13.11 table
+  // 1), and its verdict the code-2 low-light stratum that fails it (table 5).
+  ...(
+    [
+      [
+        0,
+        128,
+        /code 0: `t0 downsample=linear downsample_edge=128` \(tune ΔE00\s+−([\d.]+)%/,
+      ],
+      [
+        1,
+        128,
+        /code 1: `t1 downsample=linear downsample_edge=128` \(tune −([\d.]+)%/,
+      ],
+      [
+        3,
+        256,
+        /code 3: `t3 downsample=linear downsample_edge=256` \(tune −([\d.]+)%/,
+      ],
+      [
+        4,
+        512,
+        /code 4: `t4 downsample=linear downsample_edge=512` \(tune −([\d.]+)%/,
+      ],
+    ] as const
+  ).map(([k, e, pattern]) => ({
+    file: "spec/V0.8-DECISIONS.md",
+    what: `D5: the code-${k} frozen arm's tune ΔE00`,
+    pattern,
+    section: "13.11",
+    table: 1,
+    row: `t${k} downsample=linear downsample_edge=${e}`,
+    column: "relative",
+    transform: abs,
+  })),
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D5: the code-2 frozen arm's tune ΔE00",
+    pattern:
+      /code 2: `t2 downsample=linear downsample_edge=128` \(tune \+([\d.]+)%/,
+    section: "13.11",
+    table: 1,
+    row: "t2 downsample=linear downsample_edge=128",
+    column: "relative",
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D5: the code-2 low-light stratum that fails the stratum rule",
+    pattern: /`t2 downsample=linear downsample_edge=128` costs \+([\d.]+)%/,
+    section: "13.11",
+    table: 5,
+    row: "code 2: `t2 downsample=linear downsample_edge=128`",
+    column: "low-light (12)",
+  },
+
   // D3's verdict quotes its two holdout3 readings (§13.10 table 4).
   {
     file: "spec/V0.8-DECISIONS.md",
