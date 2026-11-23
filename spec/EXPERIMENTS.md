@@ -70,7 +70,7 @@ tune and validated on holdout, per the pre-registered rule in `RATIONALE.md`.
 > format actually moved by.
 >
 > Everything else these experiments introduce — `refine_*`, the header field
-> widths, `cfl_*`, `synth_*`, `interleave`, `trunc_bytes`, `ac_coder` — still
+> widths, `cfl_*`, `synth_*`, `interleave`, `trunc_bytes`, `cut_tier`, `ac_coder` — still
 > defaults to the shipped behaviour and remains sweep-only.
 >
 > §1–§6 are the byte-budget study (round 1). §7 builds and measures every item
@@ -782,6 +782,17 @@ mise run stratify entropy-coded-ac --strata                             # §13.8
 mise run sweep entropy-coded-ac-frozen --split holdout3 --decision D1   # §13.8
 mise run register-verdict D1                                            # §13.8
 mise run stratify entropy-coded-ac-frozen-holdout3 --strata             # §13.8
+
+# Register D2, embedded tiers (§13.9): the tune ladder, each cut against
+# native code k with the same run's tier gap as its margin, overall, per
+# stratum, with D2's selection rule and its re-draw under 20 seeds. No cut
+# qualified, so D2 read no holdout3
+mise run sweep embedded-tiers-ladder                                    # §13.9
+mise run stratify embedded-tiers-ladder --embedded                      # §13.9
+mise run arms --seed-sensitivity embedded-tiers-ladder                  # §13.9
+# and part 1 on the generated fixtures and tune2, which the ladder leaves out
+mise run sweep embedded-tiers-identity                                  # §13.9
+mise run sweep embedded-tiers-identity --split tune2                    # §13.9
 
 # Check the tables in this file against the results above
 mise run verify:experiments
@@ -3739,7 +3750,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 883 | 658 | 605 | 544 | 170 | 169 | 86 | 84 |
+| all committed sweeps | 916 | 686 | 633 | 573 | 174 | 169 | 87 | 87 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3753,11 +3764,15 @@ against its incumbent:
 when the 2026-09 re-measure committed the §6 sweeps no table had bound, and
 to 864 when the register's confirmations committed their three holdout2
 sweeps (§13.7), and to 880 and then 883 when D1 committed its tune sweep and
-its holdout3 read (§13.8). The row compares every arm with its sweep's
+its holdout3 read (§13.8), and to 898 when D2 committed its tune ladder
+and then 916 when it committed the two `embedded-tiers-identity` results of
+part 1 (§13.9). The row compares every arm with its sweep's
 first row whatever the arm's tier, so it includes cross-tier comparisons at
-different byte counts that no decision judged: 133 of the 883 arms, 13 of them
+different byte counts that no decision judged: 163 of the 916 arms, 13 of them
 D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
-row, and the 2 code-4 rows of its holdout3 read against its code-3 row), the
+row, and the 2 code-4 rows of its holdout3 read against its code-3 row) and
+30 D2's (every row but `t0 interleaved full` of `embedded-tiers-ladder` and
+of each `embedded-tiers-identity` result, against its code-0 row), the
 rest from the tier ladders and mixed-tier tables of earlier sweeps. The
 prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
@@ -4323,3 +4338,145 @@ code-4 result is a statement about this harness as much as the format: a
 D-entry that measures code 4 at its own raster would have to change the
 encoder input the harness has always used, which no register entry has done.
 
+### 13.9 D2: embedded tiers (2026-11)
+
+§7.11 found the first 32 B of an interleaved code-2 hash about 4% worse in
+ΔE00 than a native code-1 encode, on the photographic tune split only, with
+the code-1 incumbent and no measured margin. Register entry D2 asks whether
+a prefix one code down is a placeholder the format can define: the AC codes
+merged by frequency priority (`Tunables::interleave`, which since #133 also
+merges alpha's AC codes as a fourth channel), and a code-`(k+1)` hash read
+from only its first `L(k)` bytes (`Tunables::cut_tier = k`, rendered at code
+`k`'s natural size). `V0.8-DECISIONS.md` D2 records the order, the prefix
+design (a header left as written, `from_bytes` unchanged, an explicit O(1)
+prefix mode), how its primary metric is read, and its selection rule, all
+committed before this result.
+
+**Tune (`mise run sweep embedded-tiers-ladder`).** The same 63 images as
+§13.8: 31 photographic, 16 alpha and 16 graphics tune images, over white,
+black and grey, with the generated fixtures left out. Every hash is its
+tier's shipped length, checked image by image; the Bytes of a cut are the
+whole hash's. Part 1 holds on every image: each of the five interleaved
+full-length arms decoded to its native arm's pixels, byte for byte, on all
+63 images (`identicalTo`, recorded in the result's `settings.identity`), and
+`rust/tests/spec_vectors.rs` asserts the same on every encode vector at codes
+0–4. The ladder leaves out the generated fixtures and tune2, so
+`embedded-tiers-identity` (native codes 0–4 and the same five `identicalTo`
+arms, no cut, no `realOnly`) checks them too: every interleaved arm matched
+on all 106 tune images, the 43 generated fixtures included, and on all 39
+tune2 images. Its two results judge nothing. Each cut is read against native code `k`; `relative` is the difference
+of means over native `k`'s mean, and the interval and guards are paired.
+
+| arm | ΔE00 | relative | 95% CI of Δ | guards (CI) |
+|---|---|---|---|---|
+| t0 native | 12.286 | — | — | — |
+| t1 native | 11.608 | — | — | — |
+| t2 native | 9.858 | — | — | — |
+| t3 native | 8.322 | — | — | — |
+| t4 native | 7.246 | — | — | — |
+| t2 interleaved cut 1 | 12.117 | +4.38% | [+0.378, +0.645] | FAIL |
+| t3 interleaved cut 2 | 10.139 | +2.84% | [+0.166, +0.392] | FAIL |
+| t4 interleaved cut 3 | 8.620 | +3.58% | [+0.122, +0.540] | FAIL |
+| t2 seq cut 1 | 13.834 | +19.17% | [+1.425, +3.085] | FAIL |
+| t3 seq cut 2 | 12.789 | +29.73% | [+1.969, +3.959] | FAIL |
+| t4 seq cut 3 | 11.884 | +42.80% | [+2.544, +4.641] | FAIL |
+
+The margin of each cut, the same run's step from native `k−1` to native `k`,
+read the same way (native `k−1` against native `k`):
+
+| step | ΔE00 | relative | SSIM2 | Butteraugli |
+|---|---|---|---|---|
+| k = 1: t0 native vs t1 native | +0.678 | +5.84% | −28.7 | +3.01 |
+| k = 2: t1 native vs t2 native | +1.750 | +17.75% | −113.9 | +7.14 |
+| k = 3: t2 native vs t3 native | +1.536 | +18.46% | −111.3 | +4.16 |
+
+And the guards the interleaved cuts fail, against native `k`:
+
+| arm | SSIM2 | SSIM2 95% CI | Butteraugli | Butteraugli 95% CI |
+|---|---|---|---|---|
+| t2 interleaved cut 1 | −33.1 | [−41.667, −24.980] | +3.54 | [+2.760, +4.333] |
+| t3 interleaved cut 2 | −39.7 | [−49.899, −30.191] | +2.19 | [+1.644, +2.806] |
+| t4 interleaved cut 3 | −34.0 | [−60.124, −17.080] | +1.70 | [+1.251, +2.219] |
+
+By corpus, each cut's relative difference over each part of tune:
+
+| arm | photographic (31) | alpha (16) | graphics (16) |
+|---|---|---|---|
+| t2 interleaved cut 1 | +4.16% | +4.70% | +4.47% |
+| t3 interleaved cut 2 | +2.97% | +2.78% | +2.67% |
+| t4 interleaved cut 3 | +6.26% | −1.89% | +5.22% |
+| t2 seq cut 1 | +9.59% | +48.51% | +3.09% |
+| t3 seq cut 2 | +16.05% | +72.84% | +6.74% |
+| t4 seq cut 3 | +28.53% | +88.35% | +13.69% |
+
+Per `holdout3` stratum, from each tune image's own covariates
+(`mise run stratify embedded-tiers-ladder --embedded`), the interleaved cuts'
+relative difference and the stratum rule's verdict with D2's margin; on tune
+the strata gate nothing:
+
+| stratum (tune images) | t2 interleaved cut 1 | t3 interleaved cut 2 | t4 interleaved cut 3 |
+|---|---|---|---|
+| smartphone (4) | +3.64%, FAIL | +3.72%, FAIL | +4.12%, FAIL |
+| graphics (16) | +4.47%, FAIL | +2.67%, FAIL | +5.22%, FAIL |
+| alpha (17) | +4.43%, FAIL | +2.37%, FAIL | −1.72%, inconclusive |
+| skin (12) | +2.86%, FAIL | +1.20%, FAIL | +2.61%, FAIL |
+| low-light (10) | +2.61%, FAIL | +1.59%, FAIL | +11.53%, FAIL |
+| extreme aspect (1) | +11.13%, FAIL | +5.78%, FAIL | +12.96%, FAIL |
+
+Every stratum `FAIL` above is a guard `FAIL`. Only one also fails the ΔE00
+test: cut 1 on the one extreme-aspect image, +11.13% against that image's
+own step of +6.04%.
+
+What the tune result says:
+
+1. **On ΔE00 every interleaved cut is well inside one tier step.** Cut 1
+   costs +4.38% against a +5.84% step, with an upper bound of +0.645 against
+   a gap of +0.678; cuts 2 and 3 cost +2.84% and +3.58% against steps of
+   +17.75% and +18.46%. Condition 1 alone would hold at all three, by a
+   wide margin at the upper two.
+2. **Every interleaved cut fails condition 2, decisively.** Against native
+   code `k` its SSIMULACRA2 falls by 33 to 40 points, with every interval
+   wholly below the 1.0-point tolerance, and its Butteraugli rises by 7.5–10.4%,
+   every interval wholly above the 2% tolerance. DSSIM stays within it. At
+   cut 1 the guard cost exceeds the whole tier step it is allowed in ΔE00
+   (SSIM2 −33.1 against the step's −28.7, Butteraugli +3.54 against +3.01);
+   at cuts 2 and 3 it is about a third of a step on SSIMULACRA2.
+3. **Why the interleaved prefix trades luma for colour.** The merge weights
+   every channel equally by frequency, while each native layout spends most
+   of its bits on luma. Native code 1 is L28@4 C15@3: 28 luma and 15 of
+   each chroma coefficient. Code 2's widths are L@5 and C@4, so until its
+   36 chroma codes run out every priority costs 5 + 4 + 4 = 13 bits, and
+   the 202 payload bits of an opaque 32 B cut hold about 15 coefficients of each
+   channel: half native code 1's luma, at a finer step, and as much chroma.
+   ΔE00, a colour difference, rewards that; SSIMULACRA2 and Butteraugli,
+   which weight structure, do not. This is the layouts' arithmetic, not a
+   measurement of the order's per-channel counts, and no arm here tests a
+   luma-weighted merge.
+4. **Interleaving is what makes a prefix usable at all.** The
+   channel-sequential cuts cost +19–43% in ΔE00, past every tier step, and
+   on alpha images +49–88%, because the sequential order writes alpha's AC
+   codes last and a cut drops them. The interleaved cut keeps alpha's lowest
+   frequencies, and the alpha corpus then fares like the others.
+
+**Selection (the rule D2 recorded before this run).** No cut qualifies: each
+interleaved cut's mean Δ is below its tier gap, but its tune
+`guards (CI)` against native `k` is `FAIL`, and a holdout cannot rescue a
+candidate that fails where it was chosen. So nothing is frozen, `holdout3`
+is not read for D2 and stays unread by it, and D2 is decided in sample.
+Under 20 bootstrap seeds other than 42 the selection does not change, and
+`mise run arms --seed-sensitivity embedded-tiers-ladder` turns no interval
+and no Holm verdict.
+
+**The verdict: D2 does not pass.** Embedded tiers are not adopted. Part 1
+holds (the interleaved order is a pure permutation that decodes to the
+shipped pixels on every non-sealed image and every encode vector at codes
+0–4),
+but it carries no benefit on its own, and every prefix fails R2's guards
+against the native code it stands for. Two readings go beyond the verdict.
+The prefix fails on guards a native lower tier also fails against the
+tier above it (the step tables above), so with R2's tolerances any prefix
+whose cost is real fails, whatever its ΔE00; a criterion that allows a
+tier step in ΔE00 and none in the guards is what Q1 chose, and this entry
+is the case it bites. And a merge weighted toward luma, as the native
+layouts are, is the untested design point 3 names; it would be a new
+register entry, with its own criteria, and could not reuse this tune run.

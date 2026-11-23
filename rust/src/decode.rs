@@ -154,6 +154,21 @@ fn synthesize_detail(
     (ext, l_ac)
 }
 
+/// The bytes a progressive decode reads of a `len`-byte hash: the shorter of
+/// [`Tunables::trunc_bytes`] and the length a code-[`Tunables::cut_tier`]
+/// hash of the same alpha mode has, and never more than `len`. With neither
+/// set it is `len`, the whole hash.
+fn cut_bytes(t: &Tunables, has_alpha: bool, len: usize) -> usize {
+    let mut cut = len;
+    if t.trunc_bytes > 0 {
+        cut = cut.min(t.trunc_bytes);
+    }
+    if let Some(k) = t.cut_tier {
+        cut = cut.min(crate::constants::body_len_bytes(t, has_alpha, k));
+    }
+    cut
+}
+
 /// Render a ChromaHash at the given pixel dimensions, into the given output
 /// gamut (sRGB / Display P3 / Adobe RGB). Per spec §11 (v0.6).
 ///
@@ -273,12 +288,9 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     let c_split = band_split_index(c_count, t.band_split);
 
     // A truncated (progressive) decode treats every code past the delivered
-    // bytes as the exact-zero centre code.
-    let limit_bits = if t.trunc_bytes > 0 {
-        t.trunc_bytes.min(hash.len()) * 8
-    } else {
-        hash.len() * 8
-    };
+    // bytes as the exact-zero centre code. `cut_tier` names the cut as the
+    // length a code-k hash of this alpha mode has (register entry D2).
+    let limit_bits = cut_bytes(t, has_alpha, hash.len()) * 8;
     let read_code = |bitpos: usize, bits: u32| -> u32 {
         if bitpos + bits as usize <= limit_bits {
             read_bits(hash, bitpos, bits)
@@ -327,16 +339,35 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
                 .map(|i| models.decode(&mut dec, &mut hist, 2, i, shape.alpha_ac_bits))
                 .collect(),
         );
-    } else if t.interleave && !has_alpha {
-        for (ch, i) in crate::dct::interleaved_order(&l_sel, &c_sel, l_count, c_count) {
-            let bits = if ch == 0 { l_bits_at[i] } else { c_bits };
+    } else if t.interleave {
+        // Register D2: every channel merged by frequency priority, alpha's AC
+        // codes included as a fourth channel in alpha mode.
+        let alpha_count = if has_alpha { shape.alpha_ac_count } else { 0 };
+        let alpha_sel = order.take(alpha_count);
+        let mut raw = vec![(1u32 << (shape.alpha_ac_bits - 1)) - 1; alpha_count];
+        let channels = [
+            (&l_sel, l_count),
+            (&c_sel, c_count),
+            (&c_sel, c_count),
+            (&alpha_sel, alpha_count),
+        ];
+        for (ch, i) in crate::dct::interleaved_order(&channels) {
+            let bits = match ch {
+                0 => l_bits_at[i],
+                3 => shape.alpha_ac_bits,
+                _ => c_bits,
+            };
             let q = read_code(bitpos, bits);
             bitpos += bits as usize;
             match ch {
                 0 => l_raw[i] = q,
                 1 => a_raw[i] = q,
-                _ => b_raw[i] = q,
+                2 => b_raw[i] = q,
+                _ => raw[i] = q,
             }
+        }
+        if has_alpha {
+            alpha_raw = Some(raw);
         }
     } else {
         for i in 0..l_count {
@@ -386,7 +417,9 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
         for k in 0..shape.alpha_ac_count {
             let q = match &alpha_raw {
                 Some(raw) => raw[k],
-                None => read_bits(hash, bitpos, shape.alpha_ac_bits),
+                // The sequential order writes alpha's codes last, so a cut
+                // drops them first.
+                None => read_code(bitpos, shape.alpha_ac_bits),
             };
             bitpos += shape.alpha_ac_bits as usize;
             aac.push(
@@ -580,11 +613,22 @@ fn render_flat(
     }
 }
 
+/// The raster a decode renders at before any cap: the header tier's natural
+/// size, or, for register entry D2's cut ([`Tunables::cut_tier`] below the
+/// header's tier), the natural size of the code the cut stands for, since the
+/// prefix carries a code-k placeholder. A byte cut (`trunc_bytes`) keeps the
+/// header tier's size, as every result measured with it did.
+fn natural_size(hash: &[u8], t: &Tunables) -> (u32, u32) {
+    let (tier, _has_alpha, aspect) = read_header_fields(hash, t);
+    // A cut at or above the header's own code is no cut.
+    let shown = t.cut_tier.map_or(tier, |k| k.min(tier));
+    decode_output_size(aspect, shown)
+}
+
 /// Decode a ChromaHash into RGBA pixel data in the given output gamut, with
 /// explicit tunables. Returns (width, height, rgba_pixels).
 pub fn decode_to_with(hash: &[u8], t: &Tunables, output: Gamut) -> (u32, u32, Vec<u8>) {
-    let (tier, _has_alpha, aspect) = read_header_fields(hash, t);
-    let (w, h) = decode_output_size(aspect, tier);
+    let (w, h) = natural_size(hash, t);
     let rgba = render_at_size(hash, w as usize, h as usize, t, output);
     (w, h, rgba)
 }
@@ -615,8 +659,7 @@ pub fn decode_capped_to_with(
     t: &Tunables,
     output: Gamut,
 ) -> (u32, u32, Vec<u8>) {
-    let (tier, _has_alpha, aspect) = read_header_fields(hash, t);
-    let (nat_w, nat_h) = decode_output_size(aspect, tier);
+    let (nat_w, nat_h) = natural_size(hash, t);
     let w = nat_w.min(max_w);
     let h = nat_h.min(max_h);
     let rgba = render_at_size(hash, w as usize, h as usize, t, output);
@@ -1240,6 +1283,228 @@ mod tests {
         assert_eq!(
             decode_to_with(&hash, &t, Gamut::Srgb),
             decode_to_with(&hash, &d, Gamut::Srgb)
+        );
+    }
+
+    /// A noisy `w`×`h` image, opaque or with a varying alpha, so every
+    /// channel's high-frequency codes are non-zero.
+    fn noisy_image(w: usize, h: usize, alpha: bool) -> Vec<u8> {
+        let mut s = 0x2545_f491u32;
+        let mut rgba = Vec::with_capacity(w * h * 4);
+        for y in 0..h {
+            for x in 0..w {
+                s = s.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let n = (s >> 26) as usize;
+                let a = if alpha {
+                    ((x * 255 / w + 3 * n) % 256) as u8
+                } else {
+                    255
+                };
+                rgba.extend_from_slice(&[
+                    (x * 255 / w + n) as u8,
+                    (y * 255 / h + 2 * n) as u8,
+                    (s >> 20) as u8,
+                    a,
+                ]);
+            }
+        }
+        rgba
+    }
+
+    #[test]
+    fn cut_tier_cuts_at_the_lower_codes_length_in_each_alpha_mode() {
+        // D2's cut is the length a code-k hash of the same alpha mode has,
+        // which is not one byte count across the two modes at code 2.
+        let d = Tunables::DEFAULT;
+        assert_ne!(
+            crate::constants::body_len_bytes(&d, false, 2),
+            crate::constants::body_len_bytes(&d, true, 2),
+            "premise: the two modes' code-2 lengths differ"
+        );
+        for alpha in [false, true] {
+            for interleave in [false, true] {
+                let base = Tunables { interleave, ..d };
+                let rgba = noisy_image(12, 9, alpha);
+                let hash = crate::encode::encode_with(12, 9, &rgba, Gamut::Srgb, &base, 3);
+                let full = decode_to_with(&hash, &base, Gamut::Srgb);
+                for k in 0..3u8 {
+                    let len = crate::constants::body_len_bytes(&base, alpha, k);
+                    let by_tier = Tunables {
+                        cut_tier: Some(k),
+                        ..base
+                    };
+                    let by_bytes = Tunables {
+                        trunc_bytes: len,
+                        ..base
+                    };
+                    // The cut renders at code k's natural size, which a byte
+                    // cut, keeping the header's code-3 size, reaches capped.
+                    let cut = decode_to_with(&hash, &by_tier, Gamut::Srgb);
+                    let (kw, kh) = decode_output_size(hash[1], k);
+                    assert_eq!((cut.0, cut.1), (kw, kh), "code-{k} raster");
+                    let full_at_k = decode_capped_to_with(&hash, kw, kh, &base, Gamut::Srgb);
+                    assert_ne!(cut, full_at_k, "premise: a code-{k} cut drops codes");
+                    assert_eq!(
+                        cut,
+                        decode_capped_to_with(&hash, kw, kh, &by_bytes, Gamut::Srgb),
+                        "alpha {alpha} interleave {interleave} cut at code {k} ({len} B)"
+                    );
+                    // With both set, the shorter cut applies, either way round.
+                    let both = Tunables {
+                        trunc_bytes: len + 7,
+                        ..by_tier
+                    };
+                    assert_eq!(decode_to_with(&hash, &both, Gamut::Srgb), cut);
+                    let both = Tunables {
+                        trunc_bytes: len - 7,
+                        ..by_tier
+                    };
+                    let shorter = Tunables {
+                        trunc_bytes: len - 7,
+                        ..base
+                    };
+                    assert_eq!(
+                        decode_to_with(&hash, &both, Gamut::Srgb),
+                        decode_capped_to_with(&hash, kw, kh, &shorter, Gamut::Srgb)
+                    );
+                }
+                // A cut at the hash's own code, or above it, is no cut.
+                for k in [3u8, 4] {
+                    let t = Tunables {
+                        cut_tier: Some(k),
+                        ..base
+                    };
+                    assert_eq!(decode_to_with(&hash, &t, Gamut::Srgb), full);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_interleaved_order_reads_alpha_codes_at_alpha_width() {
+        // At the shipped widths alpha's AC codes and the chroma codes are both
+        // 3 bits in alpha mode, so a decoder that read alpha at the chroma
+        // width would round-trip by coincidence. With 4-bit alpha codes the
+        // interleaved hash must still decode to the sequential one's pixels.
+        let mut wide = Tunables::DEFAULT;
+        wide.layout_upper.a_bits = 4;
+        let il = Tunables {
+            interleave: true,
+            ..wide
+        };
+        let shape = ac_shape(&wide, true, 2);
+        assert_ne!(shape.alpha_ac_bits, shape.c_bits, "premise: widths differ");
+        let rgba = noisy_image(12, 9, true);
+        let seq = crate::encode::encode_with(12, 9, &rgba, Gamut::Srgb, &wide, 2);
+        let mixed = crate::encode::encode_with(12, 9, &rgba, Gamut::Srgb, &il, 2);
+        assert_ne!(seq, mixed, "premise: the order differs");
+        assert_eq!(
+            decode_to_with(&mixed, &il, Gamut::Srgb),
+            decode_to_with(&seq, &wide, Gamut::Srgb)
+        );
+    }
+
+    #[test]
+    fn a_sequential_cut_drops_the_alpha_codes_it_does_not_reach() {
+        // The channel-sequential order writes alpha's AC codes last, so a cut
+        // before them must read every one as the exact-zero centre, as it
+        // does every L, a and b code past it.
+        let d = Tunables::DEFAULT;
+        let rgba = noisy_image(12, 9, true);
+        let hash = crate::encode::encode_with(12, 9, &rgba, Gamut::Srgb, &d, 1).into_vec();
+        let shape = ac_shape(&d, true, 1);
+        let alpha_start = prefix_bits(&d) as usize
+            + (d.alpha_dc_bits + d.alpha_scale_bits) as usize
+            + shape
+                .l_tiers
+                .iter()
+                .map(|&(n, b)| n * b as usize)
+                .sum::<usize>()
+            + 2 * shape.c_count * shape.c_bits as usize;
+        let cut = alpha_start.div_ceil(8);
+        let mut want = hash.clone();
+        for k in 0..shape.alpha_ac_count {
+            let pos = alpha_start + k * shape.alpha_ac_bits as usize;
+            if pos + shape.alpha_ac_bits as usize > cut * 8 {
+                set_field(
+                    &mut want,
+                    pos,
+                    shape.alpha_ac_bits,
+                    center(shape.alpha_ac_bits),
+                );
+            }
+        }
+        assert_ne!(want, hash, "premise: the cut drops alpha codes");
+        let t = Tunables {
+            trunc_bytes: cut,
+            ..d
+        };
+        assert_eq!(
+            decode_to_with(&hash, &t, Gamut::Srgb),
+            decode_to_with(&want, &d, Gamut::Srgb)
+        );
+    }
+
+    #[test]
+    fn an_interleaved_cut_reads_every_code_past_it_as_zero_in_alpha_mode() {
+        // In the merged order a cut lands among the channels' codes; every
+        // code ending past it, alpha's included, reads as the centre.
+        let il = Tunables {
+            interleave: true,
+            ..Tunables::DEFAULT
+        };
+        let rgba = noisy_image(12, 9, true);
+        let hash = crate::encode::encode_with(12, 9, &rgba, Gamut::Srgb, &il, 2).into_vec();
+        let shape = ac_shape(&il, true, 2);
+        let order = SelectionOrder::new(hash[1], 2, il.aniso_oblique, il.sel_hv);
+        let l_sel = order.take(shape.l_count());
+        let c_sel = order.take(shape.c_count);
+        let alpha_sel = order.take(shape.alpha_ac_count);
+        let channels = [
+            (&l_sel, shape.l_count()),
+            (&c_sel, shape.c_count),
+            (&c_sel, shape.c_count),
+            (&alpha_sel, shape.alpha_ac_count),
+        ];
+        let mut l_bits = Vec::new();
+        for &(count, bits) in &shape.l_tiers {
+            l_bits.extend(std::iter::repeat_n(bits, count));
+        }
+        let mut pos = prefix_bits(&il) as usize + (il.alpha_dc_bits + il.alpha_scale_bits) as usize;
+        let mut fields = Vec::new();
+        for (ch, i) in crate::dct::interleaved_order(&channels) {
+            let bits = match ch {
+                0 => l_bits[i],
+                3 => shape.alpha_ac_bits,
+                _ => shape.c_bits,
+            };
+            fields.push((ch, pos, bits));
+            pos += bits as usize;
+        }
+        let cut = crate::constants::body_len_bytes(&il, true, 1);
+        let mut want = hash.clone();
+        let mut dropped = [0usize; 4];
+        for &(ch, pos, bits) in &fields {
+            if pos + bits as usize > cut * 8 {
+                set_field(&mut want, pos, bits, center(bits));
+                dropped[ch as usize] += 1;
+            }
+        }
+        // Code 2's few chroma codes all sit early in the merge; the cut lands
+        // among luma's and alpha's, and keeps some of alpha's.
+        let alpha_kept = shape.alpha_ac_count - dropped[3];
+        assert!(
+            dropped[0] > 0 && dropped[3] > 0 && alpha_kept > 0,
+            "premise: the cut splits luma and alpha ({dropped:?}, {alpha_kept} alpha kept)"
+        );
+        let t = Tunables {
+            cut_tier: Some(1),
+            ..il
+        };
+        let (kw, kh) = decode_output_size(hash[1], 1);
+        assert_eq!(
+            decode_to_with(&hash, &t, Gamut::Srgb),
+            decode_capped_to_with(&want, kw, kh, &il, Gamut::Srgb)
         );
     }
 

@@ -179,9 +179,10 @@ bounds what byte-embedded/progressive tiers could preserve. Embedding requires
 interleaving AC across channels by priority: a structural wire change. v0.7
 built it as a sweep-only knob — the first 32 B of an interleaved code-2 hash
 score +4.15% ΔE00 against a native code-1 encode, on tune (`EXPERIMENTS.md`
-§7.11) — and `V0.8-DECISIONS.md` D2 registers it as an open entry, with that
-tune figure as its only evidence. Adopting it would reorder the payload of
-every hash 0.7.1 and 0.7.2 published.
+§7.11) — and `V0.8-DECISIONS.md` D2 decided it not adopted, in sample: every
+prefix one code down stays inside one tier step in ΔE00 but fails the
+SSIMULACRA2 and Butteraugli guards against the native code it stands for
+(`EXPERIMENTS.md` §13.9). So tiers stay independent.
 
 ### No entropy coding
 At the default tier, fixed-width fields buy O(1) validation (deterministic length
@@ -453,7 +454,7 @@ encoding.
 | DC prediction | **N/A:** one global DC. |
 | Directional intra prediction | **N/A:** no blocks. |
 | Entropy coding (ANS/CABAC) | **Rejected at the default tier; passes R1 at code 3 and not at codes 2 and 4** (`V0.8-DECISIONS.md` D1, decided; adoption at code 3 is the v0.8 verdict's to make; see Architecture). |
-| Progressive / embedded refinement | **Built as a sweep-only knob in v0.7; open (`V0.8-DECISIONS.md` D2).** A 32 B interleaved prefix of a code-2 hash is +4.15% ΔE00 against native code 1 (`EXPERIMENTS.md` §7.11, tune); capped decode bounds the value from above (code 2 rendered at code-1 size, −20% ΔE00 against native code 1, pre-2026-08 corpus, not run on the current one). |
+| Progressive / embedded refinement | **Built as a sweep-only knob in v0.7; not adopted (`V0.8-DECISIONS.md` D2, `EXPERIMENTS.md` §13.9: every prefix fails the guards).** A 32 B interleaved prefix of a code-2 hash is +4.15% ΔE00 against native code 1 (`EXPERIMENTS.md` §7.11, tune); capped decode bounds the value from above (code 2 rendered at code-1 size, −20% ΔE00 against native code 1, pre-2026-08 corpus, not run on the current one). |
 | XYB color space | **Rejected** in favor of OKLAB (see Signal path). |
 | Wavelets (JPEG2000) | **Rejected at the default tier;** reopen at code 4 only if codes 3–4 survive their positioning question. |
 | Gaussian-splat / learned bases | **Rejected:** training dependency, no zero-dep decode. |
@@ -553,7 +554,8 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
    from above — a code-2 hash rendered at code-1 size scored −20% ΔE00 against
    native code 1 — but that was measured on the pre-2026-08 corpus and has not
    been run on the current one (`EXPERIMENTS.md` §6). `V0.8-DECISIONS.md` D2
-   registers it and is open.
+   decided it not adopted: every prefix one code down fails the SSIMULACRA2
+   and Butteraugli guards against the native code (`EXPERIMENTS.md` §13.9).
 6. **Scalefactor bands / quant matrices** — real but small. The current figure
    is −0.14% ΔE00 for the best arm at code 1 (32 B), on tune
    (`EXPERIMENTS.md` §11.9). The −0.52% this item used to quote is a different

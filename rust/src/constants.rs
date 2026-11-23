@@ -631,16 +631,30 @@ pub struct Tunables {
     /// Amplitude of the synthesized detail, as a fraction of the RMS of the
     /// highest-frequency quarter of the coded luma AC set. 0 disables.
     pub synth_gain: f64,
-    /// Embedded/progressive AC order: write the AC codes of all three channels
-    /// merged by frequency priority instead of channel-sequentially, so a
-    /// truncated payload still carries the lowest frequencies of every channel.
-    /// This is the structural prerequisite for a tier-t hash being a usable
-    /// prefix of a tier-t+1 one.
+    /// Embedded/progressive AC order (register entry D2): write the AC codes
+    /// of every channel merged by frequency priority instead of
+    /// channel-sequentially, so a truncated payload still carries the lowest
+    /// frequencies of every channel. In alpha mode the alpha AC codes join the
+    /// merge as a fourth channel. It is a pure permutation of the fixed-width
+    /// fields: the length, the prefix and every code are unchanged, and the
+    /// full-length decode is the shipped one. This is the structural
+    /// prerequisite for a tier-t hash being a usable prefix of a tier-t+1 one.
+    /// It applies to the fixed-width fields only; with [`Tunables::ac_coder`]
+    /// on, the coded stream keeps its own order.
     pub interleave: bool,
     /// Decode only the first `trunc_bytes` bytes, treating every AC code that
     /// falls past them as the exact-zero centre code (0 = decode it all).
     /// Measurement-only: it is how a progressive decoder would behave.
     pub trunc_bytes: usize,
+    /// Decode only the prefix a code-`k` hash of the same alpha mode would
+    /// occupy ([`body_len_bytes`] under these tunables), as [`Self::trunc_bytes`]
+    /// does for a byte count. This is register entry D2's cut: the code-`k`
+    /// length taken from a longer hash, which differs between the opaque and
+    /// the alpha mode, so a sweep over both cannot name it as one byte count.
+    /// `None` (the default) decodes it all; a cut at or past the hash's own
+    /// length is no cut. When both are set, the shorter cut applies.
+    /// Measurement-only.
+    pub cut_tier: Option<u8>,
     /// AC payload coding (register entry D1, `spec/V0.8-DECISIONS.md`).
     /// `0` is the shipped fixed-width fields. `1` codes every AC code, in the
     /// channel-sequential order, as one adaptive binary arithmetic-coded
@@ -769,6 +783,7 @@ impl Tunables {
         synth_gain: 0.0,
         interleave: false,
         trunc_bytes: 0,
+        cut_tier: None,
         ac_coder: 0,
     };
 }

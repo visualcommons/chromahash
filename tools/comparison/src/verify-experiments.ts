@@ -1344,6 +1344,29 @@ const D1_TIER_BASELINES: Record<string, string> = Object.fromEntries(
   ),
 );
 
+/** §13.9's per-row baselines: every D2 cut against native code k. */
+const D2_CUT_BASELINES: Record<string, string> = Object.fromEntries(
+  [1, 2, 3].flatMap((k) =>
+    ["interleaved", "seq"].map((order) => [
+      `t${k + 1} ${order} cut ${k}`,
+      `t${k} native`,
+    ]),
+  ),
+);
+/** §13.9's margin rows: native k-1 against native k, by doc label. */
+const D2_STEP_ROWS: Record<string, string> = Object.fromEntries(
+  [1, 2, 3].map((k) => [
+    `k = ${k}: t${k - 1} native vs t${k} native`,
+    `t${k - 1} native`,
+  ]),
+);
+const D2_STEP_BASELINES: Record<string, string> = Object.fromEntries(
+  [1, 2, 3].map((k) => [
+    `k = ${k}: t${k - 1} native vs t${k} native`,
+    `t${k} native`,
+  ]),
+);
+
 /** §13.8's holdout3 rows: D1's two frozen comparisons, by doc label. */
 const D1_FROZEN_ROWS: Record<string, string> = {
   "code 3: `t3 coded x3` vs `t3 shipped`": "t3 coded x3",
@@ -2586,6 +2609,67 @@ const BINDINGS: Binding[] = [
     rowBaselines: D1_FROZEN_BASELINES,
   },
 
+  // §13.9 — register D2 on tune. Every cut is read against native code k
+  // (D2_CUT_BASELINES), its margin is native k-1 against native k, and the
+  // guards it fails are bound beside it.
+  {
+    kind: "rows",
+    section: "13.9",
+    table: 0,
+    sweep: "embedded-tiers-ladder",
+    columns: {
+      ΔE00: "meanCiede",
+      relative: "ciedeDeltaPct",
+      "95% CI of Δ": "diffCi:ciede2000",
+      "guards (CI)": "guardsCiVsBaseline",
+    },
+    rowBaselines: D2_CUT_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "13.9",
+    table: 1,
+    sweep: "embedded-tiers-ladder",
+    columns: {
+      ΔE00: "diff:ciede2000",
+      relative: "ciedeDeltaPct",
+      SSIM2: "diff:ssimulacra2",
+      Butteraugli: "diff:butteraugli",
+    },
+    aliases: D2_STEP_ROWS,
+    rowBaselines: D2_STEP_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "13.9",
+    table: 2,
+    sweep: "embedded-tiers-ladder",
+    columns: {
+      SSIM2: "diff:ssimulacra2",
+      "SSIM2 95% CI": "diffCi:ssimulacra2",
+      Butteraugli: "diff:butteraugli",
+      "Butteraugli 95% CI": "diffCi:butteraugli",
+    },
+    rowBaselines: D2_CUT_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "13.9",
+    table: 3,
+    sweep: "embedded-tiers-ladder",
+    columns: {
+      "photographic (31)": "ciedeDeltaPct",
+      "alpha (16)": "ciedeDeltaPct",
+      "graphics (16)": "ciedeDeltaPct",
+    },
+    subsets: {
+      "photographic (31)": (n) => inCorpus(n, "photo"),
+      "alpha (16)": (n) => inCorpus(n, "alpha"),
+      "graphics (16)": (n) => inCorpus(n, "graphic"),
+    },
+    rowBaselines: D2_CUT_BASELINES,
+  },
+
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
   {
@@ -2852,6 +2936,14 @@ const EXPECTED_CELLS: Record<string, number> = {
   // relative differences in each of the six strata (12).
   "13.8#3": 10,
   "13.8#4": 12,
+  // §13.9, register D2 on tune: every arm's ΔE00 (11) and the six cuts'
+  // relative, interval and guards (18); the three tier steps' ΔE00,
+  // relative, SSIM2 and Butteraugli (12); the interleaved cuts' SSIM2 and
+  // Butteraugli with their intervals (12); the six cuts per corpus (18).
+  "13.9#0": 29,
+  "13.9#1": 12,
+  "13.9#2": 12,
+  "13.9#3": 18,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
@@ -2961,6 +3053,8 @@ const UNBOUND_NOTES: Record<string, string> = {
     "stratify output, not a sweep: bin means over per-image scores joined to natural-images.ts's covariates. Reproduce with `mise run stratify artifact-ladder-common-grid --metric spurious --by detail`",
   "13.8#2":
     "stratify output, not a sweep: a tune image's holdout3 strata are derived from covariates measured on its cached fixture (corpus-covariates.ts measureFile), which a run with no corpus download cannot do. Reproduce with `mise run stratify entropy-coded-ac --strata`",
+  "13.9#4":
+    "stratify output, not a sweep: the same derived tune strata as §13.8's, under D2's stratum rule (embedded-core.ts). Reproduce with `mise run stratify embedded-tiers-ladder --embedded`",
 };
 
 if (values["list-unbound"]) {
