@@ -672,7 +672,11 @@ run = [
 # verify:benchmark decides pass, skip and fail by (`verify-benchmark-core.ts`)
 # and the perf driver's absent/broken probe classification that feeds them
 # (`perf/availability.ts`): the gate's own run only ever exercises the one state
-# the committed baseline is in. Pure computation plus a few `node -e` spawns: no
+# the committed baseline is in. It also pins benchmark:counts
+# (`perf/counts-core.ts`): its ratio arithmetic, the A B / B A block pairing,
+# the refusal on an unavailable counter and on runs from different CPUs, and the
+# committed counts schema, which has no wall-clock field and which every record
+# under results/counts/ab/ must match. Pure computation plus a few `node -e` spawns: no
 # iqa-cli, no corpus, no network.
 [tasks."selftest:metrics"]
 description = "Self-check the locally-computed metrics (ringing, spurious detail, deficit, aspect), stratify's joins, the sweeps' inference (Holm, interval guards, correlation thresholds), and verify:benchmark's pass/skip/fail rules"

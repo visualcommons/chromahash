@@ -58,7 +58,7 @@ import {
   summarize,
 } from "./counts-core.ts";
 import { type Content, makeFixture } from "./matrix.ts";
-import { ROOT, type Target, allTargets } from "./targets.ts";
+import { type Target, allTargets } from "./targets.ts";
 
 const DEFAULT_ITERATIONS: Record<Op, number> = { encode: 20, decode: 200 };
 const DEFAULT_BLOCKS = 10;
