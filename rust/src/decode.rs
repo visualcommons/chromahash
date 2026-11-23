@@ -517,11 +517,12 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     stage!("gamma_lut");
     let mut rgba_out = vec![0u8; w * h * 4];
 
-    // The flat-table loop lives in its own never-inlined function. With both
-    // loops in this one, the shipped loop below rendered a tier-4 decode ~12%
-    // slower than it did before `accel_flat_cos` existed — the second loop
-    // changed what the compiler inlined into the first — and the shipped loop
-    // is the reference every decode lever is timed against.
+    // The flat-table loop, which `Tunables::DEFAULT` selects, lives in its
+    // own never-inlined function. With both loops in this one, the loop below
+    // rendered a tier-4 decode ~12% slower than it did before `accel_flat_cos`
+    // existed — the second loop changed what the compiler inlined into the
+    // first — and the loop below is the reference `accel_flat_cos=0` compares
+    // the shipped loop against.
     if t.accel_flat_cos {
         render_flat(
             &mut rgba_out,
