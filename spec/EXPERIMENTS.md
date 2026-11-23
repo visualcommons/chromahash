@@ -5425,11 +5425,30 @@ coefficients, which is what this bound covers.
 
 ### 13.15 The v0.8 verdict: the adopted entries, combined (2026-11)
 
-Three register entries passed their rule once on the sealed `holdout3`,
-each alone against the shipped format: D1, the entropy coder at code 3
-(§13.8); D3, the synthesis window at codes 3 and 4 (§13.10); and D6, the
-5-bit alpha rows at codes 3 and 4 (§13.12). Every other entry is decided
-not adopted. Before the three land as one format, `V0.8-DECISIONS.md`
+Every register entry is decided. Per entry, with its section:
+
+- **D1**, entropy-coded AC: passes R1 at code 3 on `holdout3` (−6.04%),
+  not at code 4 (−2.80%), and code 2 is decided in sample by the two-arm
+  cap (§13.8).
+- **D2**, embedded tiers: not adopted, decided in sample; every prefix fails
+  the guards against the native code it stands for (§13.9).
+- **D3**, the synthesis window: passes R2 at codes 3 and 4 on `holdout3`
+  (§13.10).
+- **D4**, the separable forward DCT: not adopted, decided in sample on the
+  instruction count against `ACCEL_ALL` (1.166×, under 2.0×).
+- **D5**, downsampling before the transform: fails on `holdout3`, the
+  low-light stratum at code 2 (§13.11).
+- **D6**, the alpha allocation: passes R1 at codes 3 and 4 on `holdout3`'s
+  alpha pins (−13.50%, −22.69%; §13.12).
+- **D7** and **D9**, chroma-from-luma: not adopted, decided on tune (§7.10,
+  §13.14).
+- **D8**, the code-0 layout: the shipped layout stays, decided in sample
+  (§13.13).
+- **C1** and **C2**: every shipped constant stands (§13.7).
+
+So three entries passed their rule once on the sealed `holdout3`, each
+alone against the shipped format: D1 at code 3, D3 at codes 3 and 4, and
+D6 at codes 3 and 4. Before the three land as one format, `V0.8-DECISIONS.md`
 ("The v0.8 verdict") fixes how their combination is read on tune, committed
 (`1af9626`) before this result. No sealed split is read.
 
