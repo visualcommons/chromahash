@@ -473,7 +473,7 @@ encoding.
 
 | Technique | Verdict for v1 |
 |---|---|
-| Chroma-from-luma (AVIF CfL, JXL) | **Built in v0.7; does not pay for itself.** The predictor works, but the gain field that signals it costs more than it returns (future work item 1; `V0.8-DECISIONS.md` D7). This row read "Roadmap v0.8" until it was measured. |
+| Chroma-from-luma (AVIF CfL, JXL) | **Built in v0.7; does not pay for itself.** The predictor works, but the gain field that signals it costs more than it returns, and no adaptive or conditional form can pay either (future work item 1; `V0.8-DECISIONS.md` D7 and D9). This row read "Roadmap v0.8" until it was measured. |
 | Adaptive/spatial quantization (JXL quant maps) | **Rejected:** needs per-region signaling; nothing to signal at 32 B. |
 | Frequency-weighted quant matrices (JPEG/JXL) | **= the scalefactor-band experiment** (one mechanism, two framings): −0.14% at code 1 on the current corpus (`EXPERIMENTS.md` §11.9); −0.20% (code 1) / −0.52% (code 2) on the pre-2026-08 corpus — direction real, below threshold. |
 | DC prediction | **N/A:** one global DC. |
@@ -542,6 +542,12 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
    agree. Listed here as "the largest expected v0.8 win" until it was run, and
    kept struck through rather than deleted so the prediction can be read against
    the outcome. `V0.8-DECISIONS.md` D7 records it as decided: not a v0.8 change.
+   D9 then asked whether a cheaper signalling could rescue it, an adaptive
+   per-image flag or a form active only on a class the decoder recovers from
+   the hash. It answered on an oracle bound that lets every image pick CfL
+   on or off and its gain for free (`EXPERIMENTS.md` §13.14). That bound is
+   under R1's 3% at every code, overall and in every recoverable class, so
+   no such form can pass, and D9 is decided without a holdout read.
 2. ~~**Alpha-mode default-tier layout**~~ — **resolved in v0.7** (`EXPERIMENTS.md`
    §11.3). It got its own corpus and sweep, and the answer was not the
    arithmetic's `L 22 @ 4, a/b 14 @ 3`. The binding constraint was not the
