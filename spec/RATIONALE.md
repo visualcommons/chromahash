@@ -309,10 +309,14 @@ is still open.
 §13.10). Codes 3–4 invent more structure than code 2, and the window was
 read there once on the sealed `holdout3`, under R2 with spurious detail as
 the primary. A light taper (`w_min 0.85` at code 3, `w_min 0.7` at code 4)
-brings both codes under code 2's floor, costs no ΔE00 (code 4 is better),
-and keeps every guard `ok` on intervals, SSIMULACRA2 included: at these
-codes the SSIMULACRA2 cost that decided code 2 does not appear. D3 passes at
-both codes. Applied by tier it is a decode change that moves the code-3
+brings both codes under code 2's floor, costs no ΔE00 overall (−0.20% at
+code 3, −1.07% at code 4), and keeps every overall guard `ok` on intervals,
+SSIMULACRA2 included: at these codes the SSIMULACRA2 cost that decided
+code 2 does not appear. Alpha pays where the rest gains: at code 3 the
+alpha stratum's ΔE00 is +0.69% with its interval excluding zero
+([+0.026, +0.080], a lower bound of +0.35%), inside the stratum rule's +1.0%, and the alpha and skin
+strata are `inconclusive` on guards; at code 4 alpha is +0.49% (lower
+bound −0.03%). No stratum fails, so D3 passes at both codes. Applied by tier it is a decode change that moves the code-3
 and code-4 decode vectors and no hash; the v0.8 verdict lands it or
 declines it, and until then the shipped decode keeps the window off.
 
