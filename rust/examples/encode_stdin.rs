@@ -241,6 +241,20 @@ fn tunables_from_env() -> Tunables {
                 t.cut_tier = Some(k as u8);
             }
             "ac_coder" => t.ac_coder = parse_u32(),
+            "downsample" => {
+                t.downsample = match value {
+                    "off" | "0" => 0,
+                    "oklab" | "1" => 1,
+                    "linear" | "2" => 2,
+                    _ => {
+                        eprintln!(
+                            "CHROMAHASH_TUNE: downsample={value} is not off, oklab or linear"
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "downsample_edge" => t.downsample_edge = parse_u32(),
             "alpha_dc_bits" => t.alpha_dc_bits = parse_u32(),
             "alpha_scale_bits" => t.alpha_scale_bits = parse_u32(),
             "alpha_ac_count" => {

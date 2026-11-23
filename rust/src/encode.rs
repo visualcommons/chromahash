@@ -203,6 +203,171 @@ pub(crate) use stage;
 /// A multiple of every SIMD lane count `simd/` uses (1, 2 and 4).
 const FUSED_TILE: usize = 1024;
 
+/// The grid register entry D5's downsampling resamples a `w × h` source to
+/// (`Tunables::downsample_edge`), or `None` when the source has at most
+/// `edge²` pixels and is encoded at its own resolution. The grid keeps the
+/// source's aspect at a pixel count of about `edge²`: each axis is scaled by
+/// `s = edge / sqrt(w·h)` and rounded half away from zero, then held to
+/// `1..=` its source length, so no axis is ever enlarged. A zero edge is no
+/// budget and means no downsampling, and so does a grid that rounds back to
+/// the source's own size.
+pub(crate) fn downsample_dims(w: usize, h: usize, edge: u32) -> Option<(usize, usize)> {
+    let budget = u64::from(edge) * u64::from(edge);
+    if edge == 0 || (w as u64) * (h as u64) <= budget {
+        return None;
+    }
+    let s = f64::from(edge) / ((w as f64) * (h as f64)).sqrt();
+    let axis = |n: usize| (round_half_away_from_zero(n as f64 * s) as usize).clamp(1, n);
+    // Just over the budget both axes can round back to the source's: the
+    // identity resample, which is no grid.
+    Some((axis(w), axis(h))).filter(|&g| g != (w, h))
+}
+
+/// The area kernel's weights along one axis of `n` source pixels resampled to
+/// `m <= n` cells. In units of `1/(n·m)` of the axis, source pixel `x` spans
+/// `[x·m, (x+1)·m)` and cell `i` spans `[i·n, (i+1)·n)`, so every overlap is
+/// an exact integer. Entry `x` is `(i, first, second)`: the pixel overlaps
+/// cell `i` by `first` and cell `i + 1` by `second` (zero when it lies in one
+/// cell; with `m <= n` a pixel never spans more than two). Every cell's
+/// overlaps sum to `n`.
+pub(crate) fn area_spans(n: usize, m: usize) -> Vec<(usize, u64, u64)> {
+    debug_assert!(m >= 1 && m <= n);
+    let (n64, m64) = (n as u64, m as u64);
+    (0..n as u64)
+        .map(|x| {
+            let start = x * m64;
+            let end = start + m64;
+            let cell = start / n64;
+            let boundary = (cell + 1) * n64;
+            if end <= boundary {
+                (cell as usize, m64, 0)
+            } else {
+                (cell as usize, boundary - start, end - boundary)
+            }
+        })
+        .collect()
+}
+
+/// The exact area average of a `w × h` plane on the `dw × dh` grid: each cell
+/// is the integral mean of the source pixels it covers, weighted by their
+/// fractional coverage ([`area_spans`]). The sum runs a row at a time, each
+/// row into its cells along `x` in pixel order, then each row's cells into
+/// the grid along `y` in row order, and every cell is divided by its total
+/// weight `w·h` last; that order is the kernel's floating-point definition.
+pub(crate) fn area_downsample(plane: &[f64], w: usize, h: usize, dw: usize, dh: usize) -> Vec<f64> {
+    let xs = area_spans(w, dw);
+    let ys = area_spans(h, dh);
+    let mut out = vec![0.0f64; dw * dh];
+    let mut row = vec![0.0f64; dw];
+    for (y, &(cy, fy, sy)) in ys.iter().enumerate() {
+        row.fill(0.0);
+        let src = &plane[y * w..(y + 1) * w];
+        for (&v, &(cx, fx, sx)) in src.iter().zip(xs.iter()) {
+            row[cx] += fx as f64 * v;
+            if sx > 0 {
+                row[cx + 1] += sx as f64 * v;
+            }
+        }
+        accumulate_row(&mut out, &row, dw, cy, fy, sy);
+    }
+    let total = (w as f64) * (h as f64);
+    for v in &mut out {
+        *v /= total;
+    }
+    out
+}
+
+/// Add one source row's cells into grid rows `cy` (weight `fy`) and `cy + 1`
+/// (weight `sy`, skipped when zero).
+fn accumulate_row(out: &mut [f64], row: &[f64], dw: usize, cy: usize, fy: u64, sy: u64) {
+    let (f, s) = (fy as f64, sy as f64);
+    for (o, &r) in out[cy * dw..(cy + 1) * dw].iter_mut().zip(row) {
+        *o += f * r;
+    }
+    if sy > 0 {
+        for (o, &r) in out[(cy + 1) * dw..(cy + 2) * dw].iter_mut().zip(row) {
+            *o += s * r;
+        }
+    }
+}
+
+/// Register entry D5's **linear** placement (`Tunables::downsample = 2`):
+/// the area average of the source's linear-light RGB, premultiplied by alpha,
+/// and of its alpha, straight off the bytes, on the `dw × dh` grid. Fills the
+/// four grid planes the shipped colour pass reads: each cell's colour is its
+/// premultiplied sum over its alpha sum (zero where the cell is fully
+/// transparent, where the composite gives it no weight), and its alpha the
+/// area mean of `α/255`. The alpha sums are exact integers, so an opaque cell
+/// is exactly `1.0` and the hash's alpha mode is the source's.
+#[allow(clippy::too_many_arguments)]
+fn area_downsample_linear(
+    rgba: &[u8],
+    w: usize,
+    h: usize,
+    dw: usize,
+    dh: usize,
+    eotf_lut: &[f64; 256],
+    lin: [&mut [f64]; 3],
+    alpha_out: &mut [f64],
+) {
+    let xs = area_spans(w, dw);
+    let ys = area_spans(h, dh);
+    let cells = dw * dh;
+    let mut sums = [
+        vec![0.0f64; cells],
+        vec![0.0f64; cells],
+        vec![0.0f64; cells],
+    ];
+    let mut alpha_sum = vec![0u64; cells];
+    let mut rows = [vec![0.0f64; dw], vec![0.0f64; dw], vec![0.0f64; dw]];
+    let mut alpha_row = vec![0u64; dw];
+    for (y, &(cy, fy, sy)) in ys.iter().enumerate() {
+        for r in &mut rows {
+            r.fill(0.0);
+        }
+        alpha_row.fill(0);
+        let src = &rgba[y * w * 4..(y + 1) * w * 4];
+        for (px, &(cx, fx, sx)) in src.chunks_exact(4).zip(xs.iter()) {
+            let a = u64::from(px[3]);
+            let af = a as f64;
+            for c in 0..3 {
+                let p = af * eotf_lut[px[c] as usize];
+                rows[c][cx] += fx as f64 * p;
+                if sx > 0 {
+                    rows[c][cx + 1] += sx as f64 * p;
+                }
+            }
+            alpha_row[cx] += fx * a;
+            if sx > 0 {
+                alpha_row[cx + 1] += sx * a;
+            }
+        }
+        for c in 0..3 {
+            accumulate_row(&mut sums[c], &rows[c], dw, cy, fy, sy);
+        }
+        for (i, &a) in alpha_row.iter().enumerate() {
+            alpha_sum[cy * dw + i] += fy * a;
+            if sy > 0 {
+                alpha_sum[(cy + 1) * dw + i] += sy * a;
+            }
+        }
+    }
+    let full = 255.0 * (w as f64) * (h as f64);
+    let [lr, lg, lb] = lin;
+    for i in 0..cells {
+        let a = alpha_sum[i] as f64;
+        alpha_out[i] = a / full;
+        let (r, g, b) = if alpha_sum[i] > 0 {
+            (sums[0][i] / a, sums[1][i] / a, sums[2][i] / a)
+        } else {
+            (0.0, 0.0, 0.0)
+        };
+        lr[i] = r;
+        lg[i] = g;
+        lb[i] = b;
+    }
+}
+
 /// Signal-path front half of the encoder (spec §10 steps 1–7): color
 /// conversion, alpha handling, coefficient selection, and the forward DCT.
 /// Shared by [`encode_with`] and the sweep-only coefficient dump.
@@ -220,7 +385,20 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
 
     let w = w as usize;
     let h = h as usize;
-    let pixel_count = w * h;
+
+    // Register entry D5 (`Tunables::downsample`, off in the shipped
+    // encoder): the grid a source over the budget is resampled to. The
+    // linear placement resamples before the colour pass, so the pass runs on
+    // the grid; the oklab placement resamples the composited planes after it.
+    // The hash's aspect is the source's either way (step 5).
+    let grid = match t.downsample {
+        1 | 2 => downsample_dims(w, h, t.downsample_edge),
+        _ => None,
+    };
+    let linear_grid = grid.filter(|_| t.downsample == 2);
+    let oklab_grid = grid.filter(|_| t.downsample == 1);
+    let (pw, ph) = linear_grid.unwrap_or((w, h));
+    let pixel_count = pw * ph;
 
     // 1. Precompute EOTF LUT (256 entries, eliminates per-pixel portable_pow)
     let eotf_lut = build_eotf_lut(gamut);
@@ -243,13 +421,27 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     // 512×512 encode by more than 10% while this was being written. The fused
     // path (`accel_fused_pixels`) allocates none of the four; the alpha plane
     // is rebuilt below only when the image has alpha to transform.
-    let fused = t.accel_fused_pixels;
+    // The fused pass reads the source bytes, so the linear placement, whose
+    // colour pass reads the grid planes instead, takes the unfused path.
+    let fused = t.accel_fused_pixels && linear_grid.is_none();
     let unfused = if fused { 0 } else { pixel_count };
     let mut lin_r = vec![0.0f64; unfused];
     let mut lin_g = vec![0.0f64; unfused];
     let mut lin_b = vec![0.0f64; unfused];
     let mut alpha_pixels = vec![0.0f64; unfused];
-    if !fused {
+    if let Some((dw, dh)) = linear_grid {
+        area_downsample_linear(
+            rgba,
+            w,
+            h,
+            dw,
+            dh,
+            &eotf_lut,
+            [&mut lin_r, &mut lin_g, &mut lin_b],
+            &mut alpha_pixels,
+        );
+        stage!("downsample");
+    } else if !fused {
         // Sliced to `pixel_count` for the reason given at `alpha_average`.
         let (r, g, b) = (
             &mut lin_r[..pixel_count],
@@ -349,7 +541,7 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     let mut a_chan = vec![0.0f64; pixel_count];
     let mut b_chan = vec![0.0f64; pixel_count];
 
-    if t.accel_fused_pixels {
+    if fused {
         // The fused path kept no alpha buffer: re-derive each pixel's alpha
         // with the identical expression, and build the buffer only for an
         // image whose alpha plane the forward DCT below will transform.
@@ -374,6 +566,21 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
         }
     }
     stage!("composite");
+
+    // D5's oklab placement: the composited planes, and the alpha plane when
+    // the forward DCT below transforms it, move to the grid here. The
+    // composite is linear in each pixel, so this is the area average of
+    // exactly the planes the full-resolution transform would read.
+    let (gw, gh) = oklab_grid.unwrap_or((pw, ph));
+    if let Some((dw, dh)) = oklab_grid {
+        l_chan = area_downsample(&l_chan, pw, ph, dw, dh);
+        a_chan = area_downsample(&a_chan, pw, ph, dw, dh);
+        b_chan = area_downsample(&b_chan, pw, ph, dw, dh);
+        if has_alpha {
+            alpha_pixels = area_downsample(&alpha_pixels, pw, ph, dw, dh);
+        }
+        stage!("downsample");
+    }
 
     // 5. Select coefficients (top-K isotropic frequencies, scaled to the tier)
     // The aspect field may be narrower than a byte; encoder and decoder must
@@ -415,8 +622,8 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
         .max()
         .unwrap_or(0);
     stage!("selection");
-    let cos_x = precompute_cos_table(w, (max_cx + 1).min(w.max(1)));
-    let cos_y = precompute_cos_table(h, (max_cy + 1).min(h.max(1)));
+    let cos_x = precompute_cos_table(gw, (max_cx + 1).min(gw.max(1)));
+    let cos_y = precompute_cos_table(gh, (max_cy + 1).min(gh.max(1)));
     stage!("cos_tables");
 
     // 7. DCT encode each channel (frequency clamp to source dims built in).
@@ -434,11 +641,11 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     } else {
         dct_encode_selected
     };
-    let l = forward(&l_chan, w, h, &l_sel.coeffs, &cos_x, &cos_y);
-    let a = forward(&a_chan, w, h, &c_sel.coeffs, &cos_x, &cos_y);
-    let b = forward(&b_chan, w, h, &c_sel.coeffs, &cos_x, &cos_y);
+    let l = forward(&l_chan, gw, gh, &l_sel.coeffs, &cos_x, &cos_y);
+    let a = forward(&a_chan, gw, gh, &c_sel.coeffs, &cos_x, &cos_y);
+    let b = forward(&b_chan, gw, gh, &c_sel.coeffs, &cos_x, &cos_y);
     let alpha = if has_alpha {
-        forward(&alpha_pixels, w, h, &alpha_sel.coeffs, &cos_x, &cos_y)
+        forward(&alpha_pixels, gw, gh, &alpha_sel.coeffs, &cos_x, &cos_y)
     } else {
         (0.0, vec![], 0.0)
     };
@@ -454,8 +661,8 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
         a,
         b,
         alpha,
-        w,
-        h,
+        w: gw,
+        h: gh,
         l_chan,
         a_chan,
         b_chan,
@@ -3755,5 +3962,241 @@ mod tests {
             encode_with(11, 9, &rgba, Gamut::Srgb, &shared(base), 1),
             encode_with(11, 9, &rgba, Gamut::Srgb, &shared(no_scale), 1)
         );
+    }
+
+    // ── Register D5: downsampling before the transform (`downsample`) ────
+
+    fn downsampled(placement: u32, edge: u32) -> Tunables {
+        Tunables {
+            downsample: placement,
+            downsample_edge: edge,
+            ..Tunables::DEFAULT
+        }
+    }
+
+    #[test]
+    fn downsampling_is_off_in_the_shipped_encoder() {
+        let shipped = std::hint::black_box(&Tunables::DEFAULT);
+        assert_eq!(
+            shipped.downsample, 0,
+            "downsample must stay off: it moves every hash of a large source"
+        );
+    }
+
+    #[test]
+    fn the_grid_keeps_the_aspect_at_the_budget_and_never_enlarges() {
+        // At or under the budget there is no grid; a zero edge is no budget.
+        assert_eq!(downsample_dims(100, 100, 100), None);
+        assert_eq!(downsample_dims(256, 256, 256), None);
+        assert_eq!(downsample_dims(5000, 4000, 0), None);
+        // One pixel over the budget resamples.
+        assert_eq!(downsample_dims(101, 100, 100), Some((100, 100)));
+        assert_eq!(downsample_dims(1024, 1024, 256), Some((256, 256)));
+        // The aspect is kept: s = 256 / sqrt(4000·1000) = 0.128.
+        assert_eq!(downsample_dims(4000, 1000, 256), Some((512, 128)));
+        assert_eq!(downsample_dims(1000, 4000, 256), Some((128, 512)));
+        // A rounded-away short axis is held to one pixel, and no axis grows.
+        assert_eq!(downsample_dims(1, 100_000, 16), Some((1, 5060)));
+        let (w, h) = downsample_dims(3, 5000, 64).unwrap();
+        assert!(w <= 3 && h <= 5000 && w >= 1, "{w}x{h}");
+    }
+
+    #[test]
+    fn area_spans_are_exact_integer_overlaps_summing_to_the_source_length() {
+        // 3 pixels to 2 cells: the middle pixel is split 1:1.
+        assert_eq!(area_spans(3, 2), vec![(0, 2, 0), (0, 1, 1), (1, 2, 0)]);
+        // An integer factor puts each pixel in one cell, whole.
+        assert_eq!(
+            area_spans(4, 2),
+            vec![(0, 2, 0), (0, 2, 0), (1, 2, 0), (1, 2, 0)]
+        );
+        // No resampling is the identity.
+        assert_eq!(area_spans(3, 3), vec![(0, 3, 0), (1, 3, 0), (2, 3, 0)]);
+        for (n, m) in [(7, 3), (1000, 256), (5000, 1), (97, 96)] {
+            let mut per_cell = vec![0u64; m];
+            for (cell, first, second) in area_spans(n, m) {
+                per_cell[cell] += first;
+                if second > 0 {
+                    per_cell[cell + 1] += second;
+                }
+            }
+            assert!(
+                per_cell.iter().all(|&s| s == n as u64),
+                "{n}->{m}: {per_cell:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_area_average_weights_each_pixel_by_its_coverage() {
+        // [0, 3, 6] to 2 cells: (2·0 + 1·3)/3 and (1·3 + 2·6)/3.
+        assert_eq!(
+            area_downsample(&[0.0, 3.0, 6.0], 3, 1, 2, 1),
+            vec![1.0, 5.0]
+        );
+        // Separable: a 2×2 block mean, then a fractional one along y.
+        let plane = [1.0, 2.0, 3.0, 4.0];
+        assert_eq!(area_downsample(&plane, 2, 2, 1, 1), vec![2.5]);
+        let column = [0.0, 3.0, 6.0];
+        assert_eq!(area_downsample(&column, 1, 3, 1, 2), vec![1.0, 5.0]);
+        // A constant plane stays constant, cell by cell.
+        let flat = vec![0.3; 37 * 23];
+        for v in area_downsample(&flat, 37, 23, 11, 7) {
+            assert!((v - 0.3).abs() < 1e-15, "{v}");
+        }
+    }
+
+    #[test]
+    fn the_linear_placement_averages_premultiplied_light() {
+        // An opaque red pixel beside a transparent green one: the cell is
+        // red at half alpha. An unpremultiplied mean would be (0.5, 0.5, 0).
+        let rgba = [255, 0, 0, 255, 0, 255, 0, 0];
+        let lut = build_eotf_lut(Gamut::Srgb);
+        let (mut r, mut g, mut b, mut a) = ([9.0], [9.0], [9.0], [9.0]);
+        area_downsample_linear(&rgba, 2, 1, 1, 1, &lut, [&mut r, &mut g, &mut b], &mut a);
+        assert_eq!((r[0], g[0], b[0], a[0]), (1.0, 0.0, 0.0, 0.5));
+        // A fully transparent cell has no colour and no alpha.
+        let clear = [255, 255, 255, 0, 10, 20, 30, 0];
+        area_downsample_linear(&clear, 2, 1, 1, 1, &lut, [&mut r, &mut g, &mut b], &mut a);
+        assert_eq!((r[0], g[0], b[0], a[0]), (0.0, 0.0, 0.0, 0.0));
+        // An opaque cell's alpha is exactly 1, at any coverage.
+        let opaque = solid(7, 5, 10, 200, 90, 255);
+        let mut planes = [vec![0.0; 6], vec![0.0; 6], vec![0.0; 6]];
+        let mut alpha = vec![0.0; 6];
+        let [pr, pg, pb] = &mut planes;
+        area_downsample_linear(&opaque, 7, 5, 3, 2, &lut, [pr, pg, pb], &mut alpha);
+        assert!(alpha.iter().all(|&x| x == 1.0), "{alpha:?}");
+        assert!(planes[1].iter().all(|&x| (x - lut[200]).abs() < 1e-15));
+    }
+
+    /// An opaque image constant on every 2×2 block, and the image of its
+    /// blocks: the area average of the first on the half-size grid is the
+    /// second exactly, in linear light and in OKLAB alike.
+    fn blocky(w: u32, h: u32, seed: u32) -> (Vec<u8>, Vec<u8>) {
+        let small = lever_image(w, h, false, seed);
+        let (w, h) = (w as usize, h as usize);
+        let mut big = vec![0u8; w * h * 16];
+        for y in 0..2 * h {
+            for x in 0..2 * w {
+                let s = ((y / 2) * w + x / 2) * 4;
+                let d = (y * 2 * w + x) * 4;
+                big[d..d + 4].copy_from_slice(&small[s..s + 4]);
+            }
+        }
+        (big, small)
+    }
+
+    #[test]
+    fn a_downsampled_encode_is_the_encode_of_the_grid() {
+        // s = 10 / sqrt(24·16) ≈ 0.510, so the grid is exactly half size.
+        assert_eq!(downsample_dims(24, 16, 10), Some((12, 8)));
+        let (big, small) = blocky(12, 8, 7);
+        let mut resolved = 0;
+        for tier in 0..=MAX_TIER {
+            let grid = encode_with(12, 8, &small, Gamut::Srgb, &Tunables::DEFAULT, tier);
+            for placement in [1, 2] {
+                let got = encode_with(24, 16, &big, Gamut::Srgb, &downsampled(placement, 10), tier);
+                assert_eq!(got, grid, "placement {placement} tier {tier}");
+            }
+            let full = encode_with(24, 16, &big, Gamut::Srgb, &Tunables::DEFAULT, tier);
+            resolved += usize::from(full != grid);
+        }
+        // Premise: the full-resolution encode is not the grid's at the tiers
+        // whose frequencies reach past the grid's, so the equality above is
+        // the resampling's doing, not the input's.
+        assert!(resolved >= 2, "{resolved} tiers see the resolution");
+    }
+
+    #[test]
+    fn a_source_within_the_budget_encodes_as_shipped() {
+        for alpha in [false, true] {
+            let rgba = lever_image(20, 15, alpha, 3);
+            for tier in [0, 1, 4] {
+                let shipped = encode_with(20, 15, &rgba, Gamut::Srgb, &Tunables::DEFAULT, tier);
+                // 300 pixels: a budget of 18² = 324 holds them; 17² = 289
+                // does not, but its grid rounds back to 20×15, the identity.
+                assert_eq!(downsample_dims(20, 15, 17), None);
+                for edge in [17, 18] {
+                    for placement in [0, 1, 2, 3] {
+                        let t = downsampled(placement, edge);
+                        assert_eq!(encode_with(20, 15, &rgba, Gamut::Srgb, &t, tier), shipped);
+                    }
+                }
+                // 12² = 144 resamples, except when the knob is off (0) or
+                // names no placement (3).
+                for placement in [0, 3] {
+                    let t = downsampled(placement, 12);
+                    assert_eq!(encode_with(20, 15, &rgba, Gamut::Srgb, &t, tier), shipped);
+                }
+                // At code 4 every placement's resample shows in the hash (at
+                // code 0 a 14×10 grid can still give the shipped codes).
+                for placement in [1, 2].into_iter().filter(|_| tier == 4) {
+                    let t = downsampled(placement, 12);
+                    assert_ne!(
+                        encode_with(20, 15, &rgba, Gamut::Srgb, &t, tier),
+                        shipped,
+                        "placement {placement} tier {tier} alpha {alpha} resamples over the budget"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_downsampled_hash_keeps_the_shipped_length_alpha_mode_and_aspect() {
+        for alpha in [false, true] {
+            let rgba = lever_image(61, 23, alpha, 11);
+            for tier in 0..=MAX_TIER {
+                let shipped = encode_with(61, 23, &rgba, Gamut::Srgb, &Tunables::DEFAULT, tier);
+                let (sw, sh, _) = crate::decode::decode_with(&shipped, &Tunables::DEFAULT);
+                for placement in [1, 2] {
+                    let t = downsampled(placement, 12);
+                    let got = encode_with(61, 23, &rgba, Gamut::Srgb, &t, tier);
+                    assert_eq!(got.len(), shipped.len(), "tier {tier} alpha {alpha}");
+                    assert!(crate::ChromaHash::from_bytes(&got).is_ok());
+                    let (w, h, px) = crate::decode::decode_with(&got, &Tunables::DEFAULT);
+                    assert_eq!((w, h), (sw, sh), "the aspect is the source's");
+                    assert_eq!(px.len(), (w * h * 4) as usize);
+                    let has_alpha = px.chunks_exact(4).any(|p| p[3] < 255);
+                    assert_eq!(has_alpha, alpha, "placement {placement} tier {tier}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_encoder_lever_is_byte_identical_under_downsampling() {
+        for alpha in [false, true] {
+            // Over two fused-pass tiles, so the fused path has work to skip.
+            let rgba = lever_image(53, 41, alpha, 21);
+            for placement in [1, 2] {
+                for tier in [0, 1, 3] {
+                    let base = downsampled(placement, 20);
+                    let want = encode_with(53, 41, &rgba, Gamut::Srgb, &base, tier);
+                    for lever in ENCODE_LEVERS {
+                        let mut t = base;
+                        lever(&mut t);
+                        assert_eq!(
+                            encode_with(53, 41, &rgba, Gamut::Srgb, &t, tier),
+                            want,
+                            "placement {placement} tier {tier} alpha {alpha}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_two_placements_differ_only_where_the_colour_pass_is_nonlinear() {
+        // A flat colour is the same in either placement; texture is not.
+        let flat = solid(40, 30, 30, 140, 220, 255);
+        let noisy = lever_image(40, 30, false, 5);
+        for tier in [1, 3] {
+            let at =
+                |rgba: &[u8], p| encode_with(40, 30, rgba, Gamut::Srgb, &downsampled(p, 16), tier);
+            assert_eq!(at(&flat, 1), at(&flat, 2), "tier {tier}");
+            assert_ne!(at(&noisy, 1), at(&noisy, 2), "tier {tier}");
+        }
     }
 }
