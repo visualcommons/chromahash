@@ -3518,7 +3518,7 @@ for (const order of ["full first", "bounded first"] as const) {
   const r0 = roundOrder(bounded, 0).map((c) => c.id);
   const r1 = roundOrder(bounded, 1).map((c) => c.id);
   const base = "encode/Rust/t1/512x512/gradient";
-  const arm = `${base}/accel_quant_table`;
+  const arm = `${base}/accel_quant_table=0`;
   const unit = bounded.unitOf.get(base);
   const unitIdx = r0
     .map((id, i) => (bounded.unitOf.get(id) === unit ? i : -1))
@@ -3537,7 +3537,7 @@ for (const order of ["full first", "bounded first"] as const) {
       bounded.pairs.some(
         (p) =>
           p.base === `${base}/refine_passes=1` &&
-          p.arm === `${base}/refine_passes=1 accel_sse_early_exit`,
+          p.arm === `${base}/refine_passes=1 accel_sse_early_exit=0`,
       ) &&
       contiguous &&
       r1.join() === [...r0].reverse().join() &&

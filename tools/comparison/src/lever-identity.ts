@@ -3,10 +3,11 @@
  * on the whole fixture corpus, not only on the spec vectors.
  *
  * `rust/tests/accel_levers.rs` proves identity on the shipped test vectors,
- * and `rd:gate` on its 64 photographs. Turning the levers on by default is a
- * claim about every input, so this widens the evidence to every fixture image
- * the harness has fetched. It encodes each one with every lever off and all
- * seven on (`ACCEL_ALL`, the arm PERFORMANCE.md times) at three sizes:
+ * and `rd:gate` on its 64 photographs. Turning the levers on by default (#142)
+ * is a claim about every input, so this widens the evidence to every fixture
+ * image the harness has fetched. It encodes each one with every lever off
+ * (`ACCEL_NONE`, the unaccelerated reference) and all seven on (`ACCEL_ALL`,
+ * the shipped defaults written out) at three sizes:
  *
  * - 100 px, at every tier code;
  * - 512 px, at every tier code;
@@ -19,10 +20,11 @@
  *
  * A comparison that could never report a difference would print the same
  * "0 differ", so every 100 px and 512 px pair also runs a negative control:
- * the same image encoded with `CONTROL`, a luma companding change that alters
- * the quantized AC codes of any image with luma detail. It reaches the binary
- * through the same `CHROMAHASH_TUNE` path as `ACCEL_ALL`, so it also shows the
- * tune string is not silently dropped. Where a control hash differs from the
+ * the same image encoded with `CONTROL` over the levers-off reference, a luma
+ * companding change that alters the quantized AC codes of any image with luma
+ * detail. It reaches the binary through the same `CHROMAHASH_TUNE` path as
+ * `ACCEL_ALL`, so it also shows the tune string is not silently dropped. Where
+ * a control hash differs from the
  * levers-off hash, its decoded pixels are compared with the levers-off pixels
  * too. The run fails unless at least one control encode and one control decode
  * are reported as differing, so a "0 differ" record shows the comparison could
@@ -43,7 +45,7 @@ import { readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { partitionSealed } from "./corpus.js";
-import { ACCEL_ALL } from "./perf/matrix.js";
+import { ACCEL_ALL, ACCEL_NONE } from "./perf/matrix.js";
 import { captureProvenance, fileSha256, repoRelative } from "./results.js";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
@@ -123,25 +125,25 @@ for (const d of DIRS) {
       const where = `${d}/${f} ${info.width}x${info.height}`;
       const args = ["encode", String(info.width), String(info.height), "srgb"];
       for (const tier of tiers) {
-        const off = run(args, data, "", tier);
+        const off = run(args, data, ACCEL_NONE, tier);
         const on = run(args, data, ACCEL_ALL, tier);
         encodePairs++;
         if (!off.equals(on)) {
           diffs.push(`${where} t${tier}: hash differs`);
           continue;
         }
-        const pixelsOff = run(["decode"], off, "", tier);
+        const pixelsOff = run(["decode"], off, ACCEL_NONE, tier);
         const pixelsOn = run(["decode"], off, ACCEL_ALL, tier);
         decodePairs++;
         if (!pixelsOff.equals(pixelsOn)) {
           diffs.push(`${where} t${tier}: decode differs`);
         }
         if (size === 0) continue;
-        const control = run(args, data, CONTROL, tier);
+        const control = run(args, data, `${ACCEL_NONE} ${CONTROL}`, tier);
         controlPairs++;
         if (!control.equals(off)) {
           controlEncodesDiffering++;
-          if (!run(["decode"], control, "", tier).equals(pixelsOff)) {
+          if (!run(["decode"], control, ACCEL_NONE, tier).equals(pixelsOff)) {
             controlDecodesDiffering++;
           }
         }
@@ -153,6 +155,7 @@ for (const d of DIRS) {
 
 const result = {
   levers: ACCEL_ALL,
+  reference: ACCEL_NONE,
   images: corpus.length,
   encodePairs,
   decodePairs,
