@@ -5133,7 +5133,12 @@ stratum rule (`mise run register-verdict D6`):
    outcome turns, overall or in any stratum.
 
 **D6 passes R1 at codes 3 and 4.** Both effects are larger out of sample
-than on tune, and both are well past the MDE Q8 computed. The shipped
-bytes are unchanged: adopting a 5-bit alpha row at codes 3 and 4 is a
+than on tune, and both are well past the MDE Q8 computed. They are the
+best rows measured, not a bracketed optimum. Both use 5-bit alpha fields,
+the widest in the grid, so no wider-precision row was run. At code 3,
+`A20@5` is also the grid's largest 5-bit count, and the tune gain was
+still rising with count there (−8.81%, −10.08%, −10.25% for `A12@5`,
+`A16@5` and `A20@5`). At code 4 the 5-bit counts peak inside the grid.
+The shipped bytes are unchanged: adopting a 5-bit alpha row at codes 3 and 4 is a
 format change, and a per-code row ends the single base row that codes 2–4
 share, which the v0.8 verdict lands in every language or declines.
