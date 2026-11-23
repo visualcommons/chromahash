@@ -1,6 +1,6 @@
 {
   "name": "@visualcommons/chromahash-comparison",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "private": true,
   "description": "Visual comparison tool for ChromaHash LQIP format",
   "type": "module",

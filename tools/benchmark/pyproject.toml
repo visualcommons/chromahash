@@ -1,6 +1,6 @@
 [project]
 name = "chromahash-benchmark"
-version = "0.7.2"
+version = "0.8.0"
 requires-python = ">=3.12"
 dependencies = ["matplotlib"]
 

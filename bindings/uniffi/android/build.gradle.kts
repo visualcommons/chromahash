@@ -15,7 +15,7 @@ plugins {
 // Maven coordinate group. This is the GitHub-verified Sonatype Central namespace
 // and is INDEPENDENT of the Kotlin/Android package `io.chromahash.ffi`.
 group = "io.github.visualcommons"
-version = "0.7.2" // tracks the chromahash core crate version
+version = "0.8.0" // tracks the chromahash core crate version
 
 android {
     namespace = "io.chromahash.ffi"

@@ -1,6 +1,6 @@
 [package]
 name = "chromahash"
-version = "0.7.2"
+version = "0.8.0"
 authors = ["Justin Chung <noreply@justinchung.net>"]
 edition = "2024"
 rust-version = "1.85"

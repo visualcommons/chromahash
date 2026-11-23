@@ -1,6 +1,6 @@
 [project]
 name = "chromahash"
-version = "0.7.2"
+version = "0.8.0"
 description = "Modern, high-quality image placeholder representation (LQIP) for professional photo management at scale"
 readme = "README.md"
 authors = [{ name = "Justin Chung", email = "noreply@justinchung.net" }]

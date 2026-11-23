@@ -10,7 +10,7 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>ChromaHash</RootNamespace>
     <AssemblyName>ChromaHash</AssemblyName>
-    <Version>0.7.2</Version>
+    <Version>0.8.0</Version>
     <Description>Modern, high-quality image placeholder representation (LQIP) for professional photo management at scale</Description>
     <Authors>Justin Chung</Authors>
     <PackageLicenseExpression>MIT OR Apache-2.0</PackageLicenseExpression>
