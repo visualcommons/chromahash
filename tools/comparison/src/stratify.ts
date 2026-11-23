@@ -34,7 +34,12 @@ import {
   readD6,
   selectD6,
 } from "./alpha-tiers-core.ts";
-import { compareArms, guardVerdictOnIntervals, statFor } from "./arms-core.ts";
+import {
+  type PairableRow,
+  compareArms,
+  guardVerdictOnIntervals,
+  statFor,
+} from "./arms-core.ts";
 import {
   type Bound,
   D9_BAR,
@@ -46,9 +51,12 @@ import { measureFile } from "./corpus-covariates.ts";
 import { holdout3Strata } from "./corpus.ts";
 import {
   CELLS,
+  type AlphaMode,
+  assertCombinationProvenance,
   COMBINATION_FLOOR,
   COMBINATION_SEEDS,
   comboLabel,
+  deployedRow,
   parseCombo,
   readCell,
 } from "./combination-core.ts";
@@ -394,6 +402,7 @@ async function printCombination(name: string): Promise<void> {
     );
     process.exit(1);
   }
+  assertCombinationProvenance(name, file.provenance);
   const strataOf = await measuredStrata(file.imageNames);
   const members = strataMembers(file.imageNames, strataOf);
   const corpora = new Map<string, number[]>();
@@ -417,6 +426,7 @@ async function printCombination(name: string): Promise<void> {
     console.log(`  ${s}: ${idx.length} images`);
   }
   const adopted: string[] = [];
+  const adoptedBy = new Map<string, string>();
   for (const cell of CELLS) {
     const r = readCell(cell, file.rows, cellIdx(cell.mode), tol);
     console.log(
@@ -437,21 +447,20 @@ async function printCombination(name: string): Promise<void> {
       `  adopted: ${r.adopted}${r.dropped.length > 0 ? `; interaction drops ${r.dropped.join(", ")}` : ""}`,
     );
     adopted.push(`t${cell.k} ${cell.mode}: ${r.adopted}`);
+    adoptedBy.set(`${cell.k} ${cell.mode}`, r.adopted);
   }
   console.log(`\nThe combination: ${adopted.join("; ")}`);
   console.log(
     "\nEvery row against its code's shipped row (reported, gating nothing):",
   );
-  for (const r of file.rows) {
-    const p = parseCombo(r.label);
-    if (!p) continue;
-    const shipped = file.rows.find((x) => x.label.trim() === `t${p.k} shipped`);
-    if (!shipped) continue;
+  const report = (r: PairableRow, k: number): void => {
+    const shipped = file.rows.find((x) => x.label.trim() === `t${k} shipped`);
+    if (!shipped) return;
     const [cmp] = compareArms([shipped, r]);
     const d = statFor(cmp, "ciede2000");
-    if (!d) continue;
+    if (!d) return;
     console.log(
-      `\n${comboLabel(p.k, p.components)} vs t${p.k} shipped\n  ${"overall".padEnd(17)} n ${String(d.pairs).padStart(3)}  ΔE00 ${iv(d)} = ${pct(d.meanDelta, d.baseMean)}  guards (CI) ${guardVerdictOnIntervals(cmp, tol, undefined)}`,
+      `\n${r.label} vs t${k} shipped\n  ${"overall".padEnd(17)} n ${String(d.pairs).padStart(3)}  ΔE00 ${iv(d)} = ${pct(d.meanDelta, d.baseMean)}  guards (CI) ${guardVerdictOnIntervals(cmp, tol, undefined)}`,
     );
     const rule = stratumRule(
       r,
@@ -465,6 +474,28 @@ async function printCombination(name: string): Promise<void> {
         `  ${s.stratum.padEnd(17)} n ${String(s.n).padStart(3)}  ΔE00 ${iv(s.deltaE)} = ${pct(s.deltaE.meanDelta, s.deltaE.baseMean)}  guards (CI) ${s.guards}  ${s.verdict}`,
       );
     }
+  };
+  for (const r of file.rows) {
+    const p = parseCombo(r.label);
+    if (p) report({ ...r, label: comboLabel(p.k, p.components) }, p.k);
+  }
+  // The format as it ships: each image by the row its own alpha flag adopts.
+  console.log(
+    "\nThe deployed format, each image by its own alpha flag's adopted row (reported, gating nothing):",
+  );
+  for (const k of [3, 4] as const) {
+    const pick = (mode: AlphaMode): string => {
+      const a = adoptedBy.get(`${k} ${mode}`);
+      if (!a) throw new Error(`no adopted row for t${k} ${mode}`);
+      return a;
+    };
+    report(
+      deployedRow(file.rows, k, {
+        opaque: pick("opaque"),
+        alpha: pick("alpha"),
+      }),
+      k,
+    );
   }
 }
 

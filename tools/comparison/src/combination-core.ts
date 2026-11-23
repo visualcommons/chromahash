@@ -48,6 +48,29 @@ export const COMBINATION_FLOOR = "t2 shipped";
 /** Condition 4's seed count. */
 export const COMBINATION_SEEDS = 20;
 
+/**
+ * The commit that recorded the rule (#140), at which the tune result was
+ * scored. A result scored anywhere else, or from a dirty tree, is refused.
+ */
+export const COMBINATION_RULE_REV = "1af9626f886012e9b2f18c7080fec5086cd42eb9";
+
+/** Refuse a combination result not scored at the rule from a clean tree. */
+export function assertCombinationProvenance(
+  name: string,
+  p: { rev: string | null; dirty: boolean | null },
+): void {
+  if (p.dirty !== false) {
+    throw new Error(
+      `${name} was not scored from a clean tree (rev ${p.rev}, dirty ${p.dirty}); refusing to read the combination from it`,
+    );
+  }
+  if (p.rev !== COMBINATION_RULE_REV) {
+    throw new Error(
+      `${name} was scored at ${p.rev}, not at the combination rule ${COMBINATION_RULE_REV}; refusing to read the combination from it`,
+    );
+  }
+}
+
 /** An adopted entry, in the order a row label lists it. */
 export type Component = "D1" | "D3" | "D6";
 const COMPONENT_ORDER: readonly Component[] = ["D1", "D3", "D6"];
@@ -91,6 +114,39 @@ export function parseCombo(
   if (new Set(parts).size !== parts.length) return undefined;
   if (comboLabel(Number(m[1]), parts) !== label.trim()) return undefined;
   return { k: Number(m[1]) as 3 | 4, components: parts };
+}
+
+/** The code-2 hash length of an alpha-mode image, which the flag shortens. */
+export const CODE2_ALPHA_BYTES = 103;
+
+/**
+ * The format as deployed at code `k`: each image scored by the row its own
+ * alpha flag adopts, which the decoder recovers from the hash. The flag is
+ * read off the image's `t2 shipped` hash length. Reported, gating nothing.
+ */
+export function deployedRow(
+  rows: readonly PairableRow[],
+  k: 3 | 4,
+  adopted: Readonly<Record<AlphaMode, string>>,
+): PairableRow {
+  const bytes = row(rows, COMBINATION_FLOOR).perImage.bytes;
+  if (!bytes) throw new Error(`${COMBINATION_FLOOR} carries no hash lengths`);
+  const byMode = {
+    opaque: row(rows, adopted.opaque),
+    alpha: row(rows, adopted.alpha),
+  };
+  const perImage: PairableRow["perImage"] = {};
+  for (const key of Object.keys(
+    byMode.opaque.perImage,
+  ) as (keyof PairableRow["perImage"])[]) {
+    const o = byMode.opaque.perImage[key];
+    const a = byMode.alpha.perImage[key];
+    if (!o || !a) continue;
+    perImage[key] = bytes.map(
+      (b, i) => (b === CODE2_ALPHA_BYTES ? a[i] : o[i]) ?? null,
+    );
+  }
+  return { label: `t${k} deployed`, perImage };
 }
 
 /** One candidate's reading against `S*`, over one cell's images. */

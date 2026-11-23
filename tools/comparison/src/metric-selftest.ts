@@ -350,6 +350,8 @@ import {
 } from "./verify-benchmark-core.ts";
 import {
   CELLS,
+  COMBINATION_RULE_REV,
+  assertCombinationProvenance,
   type Cell,
   comboLabel,
   parseCombo,
@@ -8228,6 +8230,29 @@ console.log(
       single.adopted === "t4 D3" &&
       single.candidates.length === 0,
     `${spur.adopted}; ${single.adopted}`,
+  );
+
+  const refused = (p: { rev: string | null; dirty: boolean | null }) => {
+    try {
+      assertCombinationProvenance("v08-combination", p);
+      return "";
+    } catch (e) {
+      return (e as Error).message;
+    }
+  };
+  check(
+    "assertCombinationProvenance accepts only a clean result scored at the combination rule",
+    refused({ rev: COMBINATION_RULE_REV, dirty: false }) === "" &&
+      refused({ rev: COMBINATION_RULE_REV, dirty: true }).includes(
+        "not scored from a clean tree",
+      ) &&
+      refused({ rev: COMBINATION_RULE_REV, dirty: null }).includes(
+        "not scored from a clean tree",
+      ) &&
+      refused({ rev: "4a18ce2".padEnd(40, "0"), dirty: false }).includes(
+        "not at the combination rule",
+      ),
+    refused({ rev: null, dirty: false }),
   );
 }
 
