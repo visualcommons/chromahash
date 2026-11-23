@@ -846,6 +846,16 @@ mise run stratify compact-retune --strata                               # §13.1
 mise run stratify compact-retune-graphics --strata                      # §13.13
 mise run arms --seed-sensitivity compact-retune                         # §13.13
 
+# Register D9, chroma-from-luma in an adaptive or conditional form (§13.14):
+# the tune sweep, every code's shipped arm and three free CfL arms, then the
+# per-image oracle bound overall, per recoverable class, per corpus and per
+# stratum, the rule applied to it, and the seed re-draw of the free arms. D9
+# is decided on the bound, so it has no holdout3 read
+mise run sweep cfl-oracle                                               # §13.14
+mise run stratify cfl-oracle --cfl-oracle                               # §13.14
+mise run register-verdict D9                                            # §13.14
+mise run arms --seed-sensitivity cfl-oracle                             # §13.14
+
 # Check the tables in this file against the results above
 mise run verify:experiments
 mise run verify:experiments --list-unbound
@@ -3803,7 +3813,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 1049 | 786 | 731 | 681 | 190 | 178 | 97 | 93 |
+| all committed sweeps | 1068 | 802 | 747 | 700 | 190 | 178 | 97 | 93 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3824,10 +3834,10 @@ and its holdout3 read (§13.10), and to 983 and then 995 when D5 committed
 its tune sweep and its holdout3 read (§13.11), and to 1018 and then 1021 when D6
 committed its tune sweep and its holdout3 read (§13.12), and to 1049 when D8
 committed its two tune sweeps, every arm at code 0 against the shipped code-0
-layout (§13.13). The
+layout (§13.13), and to 1068 when D9 committed its tune sweep (§13.14). The
 row compares every arm with its sweep's
-first row whatever the arm's tier, so it includes cross-tier comparisons at
-different byte counts that no decision judged: 245 of the 1049 arms, 13 of them
+first row whatever the arm's tier, so it includes comparisons at
+different byte counts that no decision judged: 264 of the 1068 arms, 13 of them
 D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
 row, and the 2 code-4 rows of its holdout3 read against its code-3 row),
 30 D2's (every row but `t0 interleaved full` of `embedded-tiers-ladder` and
@@ -3837,7 +3847,11 @@ holdout3 read against its code-2 row, which D3 reads on spurious detail
 alone) and 48 D5's (every code-1 to code-4 row of `downsample-before-dct`
 and of its holdout3 read against its code-0 incumbent; D5 reads each arm
 against its own tier's), 14 D6's (every code-4 row of `alpha-tiers34`
-and of its holdout3 read against its code-3 shipped row), the
+and of its holdout3 read against its code-3 shipped row), 19 D9's (every
+row of `cfl-oracle` but `t0 shipped`, against it: the code-1 to code-4
+rows are other tiers, and every free arm carries its gain field on top of
+its tier's bytes; D9 reads each code's per-image best against that code's
+own shipped arm), the
 rest from the tier ladders and mixed-tier tables of earlier sweeps. The
 prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
@@ -5273,3 +5287,135 @@ reappear on tune, where the two are a tie (+0.09%); it was read on the
 split that chose the candidate, and it was below R1's 3% there too. The
 shipped bytes are unchanged, and C1's ThumbHash admission of the compact
 tier, which this entry did not re-read, stands as §13.7 records it.
+
+### 13.14 D9: chroma-from-luma, adaptive or conditional (2026-11)
+
+Register entry D7 decided that a signalled per-channel chroma-from-luma
+gain never pays (§7.10), and named a cheaper way to signal the gains as the
+only open route. D9 is that route: a predictor the encoder switches on per
+image and signals (adaptive), or one active only on a class the decoder
+recovers from the hash (conditional). Before any such form is built,
+`V0.8-DECISIONS.md` D9 fixes an upper bound on all of them, and the rule
+that reads it, committed (`00c4498`) before this result.
+
+**The bound.** At each code, each image takes the lowest ΔE00 among the
+tier's shipped arm and three free CfL arms, after scoring and with no bit
+spent on the choice. The free arms carry their least-squares gain field on
+top of the tier's bytes, so their hashes are 1–3 B longer, and they differ
+only in the gain's precision and clamp. A deployed form has to decide
+before scoring and pay for its flag and its gains inside the tier's bytes,
+so it cannot beat this bound. Taking the minimum of four noisy scores per
+image overstates any real choice, which only makes the bound looser. Code
+k is decided on the bound if the bound is not at least 3.0% lower,
+overall and in each class a conditional form could switch on: the alpha
+flag (alpha against opaque) and the aspect byte (extreme aspect). A form
+that activates per image on anything else the hash carries, such as the
+DC colour, is covered by the overall bound. Its mean is never below the
+mean of per-image minima.
+
+**Tune (`mise run sweep cfl-oracle`).** The 63 real tune images: 31
+photographic, 16 alpha and 16 graphics, over white, black and grey, as in
+§13.8. Each free arm is read against its own code's shipped arm. Its
+hash is larger, so this table measures what the prediction is worth, not
+what it would cost.
+
+| arm | ΔE00 | relative | 95% CI of Δ | guards (CI) |
+|---|---|---|---|---|
+| t0 shipped | 12.286 | — | — | — |
+| t0 free cfl_bits=5 cfl_range=0.5 | 12.284 | −0.02% | [−0.017, +0.011] | ok |
+| t0 free cfl_bits=8 cfl_range=0.25 | 12.281 | −0.04% | [−0.017, +0.006] | ok |
+| t0 free cfl_bits=10 cfl_range=1.0 | 12.288 | +0.01% | [−0.012, +0.014] | ok |
+| t1 shipped | 11.608 | — | — | — |
+| t1 free cfl_bits=5 cfl_range=0.5 | 11.595 | −0.11% | [−0.030, +0.003] | ok |
+| t1 free cfl_bits=8 cfl_range=0.25 | 11.594 | −0.12% | [−0.032, +0.002] | ok |
+| t1 free cfl_bits=10 cfl_range=1.0 | 11.597 | −0.10% | [−0.028, +0.004] | ok |
+| t2 shipped | 9.858 | — | — | — |
+| t2 free cfl_bits=5 cfl_range=0.5 | 9.847 | −0.11% | [−0.021, −0.001] | ok |
+| t2 free cfl_bits=8 cfl_range=0.25 | 9.846 | −0.12% | [−0.020, −0.005] | ok |
+| t2 free cfl_bits=10 cfl_range=1.0 | 9.843 | −0.16% | [−0.024, −0.007] | ok |
+| t3 shipped | 8.322 | — | — | — |
+| t3 free cfl_bits=5 cfl_range=0.5 | 8.287 | −0.43% | [−0.054, −0.020] | ok |
+| t3 free cfl_bits=8 cfl_range=0.25 | 8.289 | −0.40% | [−0.050, −0.018] | ok |
+| t3 free cfl_bits=10 cfl_range=1.0 | 8.284 | −0.46% | [−0.058, −0.022] | ok |
+| t4 shipped | 7.246 | — | — | — |
+| t4 free cfl_bits=5 cfl_range=0.5 | 7.167 | −1.09% | [−0.123, −0.044] | ok |
+| t4 free cfl_bits=8 cfl_range=0.25 | 7.170 | −1.05% | [−0.115, −0.045] | ok |
+| t4 free cfl_bits=10 cfl_range=1.0 | 7.162 | −1.15% | [−0.129, −0.047] | ok |
+
+The bound by code (`mise run register-verdict D9`). `shipped` and
+`oracle` are the mean ΔE00 of the shipped arm and of the per-image minima.
+`bound` is their relative difference over all 63 images, and the next
+three columns give it within each class the decoder recovers from the hash:
+the 18 images the encoder put in alpha mode (read off the run's own code-2
+hash lengths), the 45 opaque ones, and the one image at an aspect of 3:1 or
+more. `CfL lower` counts the images on which a free arm scores below the
+shipped arm.
+
+| code | shipped | oracle | bound | alpha flag (18) | opaque (45) | extreme aspect (1) | CfL lower | outcome |
+|---|---|---|---|---|---|---|---|---|
+| code 0 | 12.286 | 12.267 | −0.15% | −0.02% | −0.21% | 0.00% | 33 of 63 | decided on the bound |
+| code 1 | 11.608 | 11.573 | −0.31% | −0.11% | −0.39% | 0.00% | 36 of 63 | decided on the bound |
+| code 2 | 9.858 | 9.835 | −0.23% | −0.19% | −0.25% | 0.00% | 42 of 63 | decided on the bound |
+| code 3 | 8.322 | 8.275 | −0.56% | −0.29% | −0.69% | 0.00% | 43 of 63 | decided on the bound |
+| code 4 | 7.246 | 7.154 | −1.27% | −0.66% | −1.56% | 0.00% | 43 of 63 | decided on the bound |
+
+The same bound by corpus and by `holdout3` stratum
+(`mise run stratify cfl-oracle --cfl-oracle`). The strata are derived from
+each tune image's own covariates, as in §13.8. On tune they are reported
+and gate nothing. The `alpha` stratum (17) is measured on the 512 px
+scoring reference and rounded to the pins' four places, while the alpha
+flag (18 above) is the encoder's own decision on its input, so the two
+counts differ by one.
+
+| group (tune images) | code 0 | code 1 | code 2 | code 3 | code 4 |
+|---|---|---|---|---|---|
+| photographic (31) | −0.22% | −0.39% | −0.18% | −0.54% | −1.13% |
+| alpha corpus (16) | −0.01% | −0.09% | −0.15% | −0.25% | −0.59% |
+| graphics (16) | −0.18% | −0.39% | −0.46% | −1.00% | −2.40% |
+| smartphone (4) | −0.65% | −0.57% | −0.33% | −0.43% | −1.16% |
+| alpha (17) | −0.02% | −0.10% | −0.17% | −0.29% | −0.67% |
+| skin (12) | −0.20% | −0.65% | −0.25% | −1.05% | −2.09% |
+| low-light (10) | −0.39% | −0.12% | −0.24% | −0.66% | −2.14% |
+| extreme-aspect (1) | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |
+
+What the tune result says:
+
+1. **The predictor works, and it grows with the tier, as §7.10 found.**
+   Every free arm at codes 2–4 has a paired interval wholly below zero,
+   and every guard is `ok`. The gain is −0.04% to +0.01% at code 0 and
+   −1.05% to −1.15% at code 4. The three gain quantisations agree to within
+   0.10 points at every code, which reproduces §7.10's finding that gain
+   precision is not what limits CfL.
+2. **The best any per-image choice could do is −1.27%, at code 4.** At
+   codes 0–3 the bound is −0.15% to −0.56%. A free arm is lower on 33 to
+   43 of the 63 images, but each time by little, so letting every image
+   pick its own predictor and gain, for free, adds only 0.07 to 0.19
+   points to the best single free arm at each code.
+3. **No recoverable class reaches the bar either.** The largest class
+   bound is the opaque images at code 4, −1.56%. Alpha-mode images gain
+   least (−0.66% at code 4), which fits alpha mode's smaller chroma
+   allocation. The one extreme-aspect image never gains:
+   no free arm scores below the shipped arm on it at any code. A
+   conditional form on the alpha flag, the aspect or the tier code
+   therefore cannot pass anywhere.
+4. **No stratum hides a gain the size of the bar.** The largest stratum
+   bounds are at code 4: graphics −2.40%, low-light −2.14% and skin
+   −2.09%. Graphics is not a class the decoder can recover from the hash,
+   and an adaptive flag scoped to it would be judged overall, where the
+   bound is −1.27%. The photographs, D7's corpus, reach −1.13%.
+5. **The seed moves nothing.** The bound is a mean of per-image minima,
+   so no bootstrap seed moves it. Under 20 seeds other than 42,
+   `mise run arms --seed-sensitivity cfl-oracle` turns no interval and no
+   Holm verdict of the 19 arms.
+
+**The rule (recorded before this run).** The bound is under 3.0% at every
+code 0–4, overall and in every recoverable class the tune split holds, so
+every code is decided on the bound. No deployable arm is registered or
+built, and `holdout3` is not read for D9 and stays unread by it.
+
+**The verdict: D9 does not pass at any code.** No adaptive or conditional
+chroma-from-luma predictor can clear R1's 3% on tune, even before it pays
+for its signalling. The shipped format keeps no CfL (`cfl_bits` stays 0),
+and the shipped bytes are unchanged. Reopening CfL now needs a
+predictor other than a least-squares gain on co-located luma
+coefficients, which is what this bound covers.

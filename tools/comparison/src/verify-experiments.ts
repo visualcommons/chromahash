@@ -79,6 +79,7 @@ import {
   statFor,
   summarizeInference,
 } from "./arms-core.ts";
+import { d9Cells, readD9 } from "./cfl-oracle-core.ts";
 import { inCorpus } from "./corpus.ts";
 import {
   type DocTable,
@@ -520,13 +521,26 @@ interface RegisterBinding extends CommonBinding {
   columns: Partial<Record<string, "pHolm" | "guards">>;
 }
 
+/**
+ * Register entry D9's oracle bound (§13.14), whose rows are codes and whose
+ * cells `cfl-oracle-core.ts` `d9Cells` derives from the committed
+ * `cfl-oracle` result: each code's shipped and oracle means, the bound
+ * overall and per recoverable class, and the outcome D9's rule gives.
+ */
+interface OracleBinding extends CommonBinding {
+  kind: "oracle";
+  sweep: string;
+  columns: Partial<Record<string, string>>;
+}
+
 type Binding =
   | RowBinding
   | ColumnBinding
   | RatioBinding
   | SummaryBinding
   | MdeBinding
-  | RegisterBinding;
+  | RegisterBinding
+  | OracleBinding;
 
 /** The label of a summary table's row that sums every committed sweep. */
 const ALL_SWEEPS = "all committed sweeps";
@@ -672,6 +686,47 @@ function checkRegisterTable(
           : judged.atFloor
             ? `≤ ${judged.pHolm.toFixed(4)}`
             : judged.pHolm;
+      compare(
+        {
+          section: b.section,
+          table: table.index,
+          row: label,
+          column: header,
+          fix: { line: table.line, rowIndex, colIndex: i },
+        },
+        row[i] ?? "",
+        measured,
+        failures,
+        stats,
+      );
+    }
+  }
+  return null;
+}
+
+function checkOracleTable(
+  b: OracleBinding,
+  table: DocTable,
+  failures: Failure[],
+  stats: Stats,
+): string | null {
+  const file = readResult(resultsDir, b.sweep);
+  if (!file) return missingResult(b.sweep);
+  let byCode: Map<string, Record<string, number | string>>;
+  try {
+    byCode = d9Cells(readD9(file));
+  } catch (e) {
+    return (e as Error).message;
+  }
+  for (const [rowIndex, row] of table.rows.entries()) {
+    const label = (row[0] ?? "").replace(/[*`]/g, "").trim();
+    const cellsOf = byCode.get(label);
+    if (!cellsOf) return `${b.sweep} holds no row "${label}"`;
+    for (const [i, header] of table.header.entries()) {
+      const key = b.columns[header];
+      if (!key) continue;
+      const measured = cellsOf[key];
+      if (measured === undefined) return `no ${key} cell for "${label}"`;
       compare(
         {
           section: b.section,
@@ -1328,6 +1383,16 @@ const ALPHA_SUBSETS: Record<string, ImageSubset> = {
  * §13.8's per-row baselines: every D1 arm against its own tier's shipped arm,
  * the first arm of that tier in `entropy-coded-ac`.
  */
+const D9_TIER_BASELINES: Record<string, string> = Object.fromEntries(
+  [0, 1, 2, 3, 4].flatMap((k) =>
+    [
+      "cfl_bits=5 cfl_range=0.5",
+      "cfl_bits=8 cfl_range=0.25",
+      "cfl_bits=10 cfl_range=1.0",
+    ].map((gain) => [`t${k} free ${gain}`, `t${k} shipped`]),
+  ),
+);
+
 const D1_TIER_BASELINES: Record<string, string> = Object.fromEntries(
   [
     [
@@ -3014,6 +3079,39 @@ const BINDINGS: Binding[] = [
     }),
   ),
 
+  // §13.14 — register D9 on tune: each code's free CfL arms against its own
+  // shipped arm (never row 0, another code's), then the oracle bound D9's
+  // rule reads, by code, as `cfl-oracle-core.ts` derives it.
+  {
+    kind: "rows",
+    section: "13.14",
+    table: 0,
+    sweep: "cfl-oracle",
+    columns: {
+      ΔE00: "meanCiede",
+      relative: "ciedeDeltaPct",
+      "95% CI of Δ": "diffCi:ciede2000",
+      "guards (CI)": "guardsCiVsBaseline",
+    },
+    rowBaselines: D9_TIER_BASELINES,
+  },
+  {
+    kind: "oracle",
+    section: "13.14",
+    table: 1,
+    sweep: "cfl-oracle",
+    columns: {
+      shipped: "shipped",
+      oracle: "oracle",
+      bound: "bound",
+      "alpha flag (18)": "alpha",
+      "opaque (45)": "opaque",
+      "extreme aspect (1)": "extreme-aspect",
+      "CfL lower": "cflLower",
+      outcome: "outcome",
+    },
+  },
+
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
   {
@@ -3105,7 +3203,8 @@ function coverageOf(b: Binding, table: DocTable): Coverage {
     b.kind === "rows" ||
     b.kind === "summary" ||
     b.kind === "mde" ||
-    b.kind === "register"
+    b.kind === "register" ||
+    b.kind === "oracle"
   ) {
     const labelCol = b.kind === "rows" ? (b.labelColumn ?? 0) : 0;
     const covered: string[] = [];
@@ -3327,6 +3426,11 @@ const EXPECTED_CELLS: Record<string, number> = {
   // photographs and then on the graphics.
   "13.13#0": 71,
   "13.13#1": 71,
+  // §13.14, register D9 on tune: every arm's ΔE00 (20) and the 15 free
+  // arms' relative, interval and guards against their own code's shipped
+  // arm (45); then the bound's eight cells at each of the five codes.
+  "13.14#0": 65,
+  "13.14#1": 40,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
@@ -3446,6 +3550,8 @@ const UNBOUND_NOTES: Record<string, string> = {
     "stratify output, not a sweep: the same derived tune strata as §13.8's, under the stratum rule against each tier's shipped arm, with spurious against code 2 beside it (window-core.ts). Reproduce with `mise run stratify synthesis-window-codes34 --window`",
   "13.13#2":
     "stratify output, not a sweep: the same derived tune strata as §13.8's, under the stratum rule against the shipped code-0 layout. Reproduce with `mise run stratify compact-retune --strata` and `mise run stratify compact-retune-graphics --strata`",
+  "13.14#2":
+    "stratify output, not a sweep: D9's oracle bound (cfl-oracle-core.ts) per corpus and over the same derived tune strata as §13.8's, which gate nothing on tune. Reproduce with `mise run stratify cfl-oracle --cfl-oracle`",
 };
 
 if (values["list-unbound"]) {
@@ -3524,7 +3630,9 @@ for (const binding of BINDINGS) {
             ? checkMdeTable(binding, table, failures, stats)
             : binding.kind === "register"
               ? checkRegisterTable(binding, table, failures, stats)
-              : checkColumnTable(binding, table, failures, stats);
+              : binding.kind === "oracle"
+                ? checkOracleTable(binding, table, failures, stats)
+                : checkColumnTable(binding, table, failures, stats);
   if (problem) {
     skipped.push(`§${binding.section} table ${binding.table ?? 0}: ${problem}`);
     skippedTables.add(key);
