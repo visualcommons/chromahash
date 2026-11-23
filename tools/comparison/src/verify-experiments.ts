@@ -79,6 +79,7 @@ import {
   statFor,
   summarizeInference,
 } from "./arms-core.ts";
+import { inCorpus } from "./corpus.ts";
 import {
   type DocTable,
   cells,
@@ -91,7 +92,11 @@ import { tableRegisterProblems } from "./experiments-register.ts";
 import { type SpreadData, mdeTableCells, readSpread } from "./mde-core.ts";
 // A result from another iqa-cli is a different instrument, not a reproduction.
 import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
-import { type EntryVerdict, deriveVerdict } from "./register-verdict-core.ts";
+import {
+  type EntryVerdict,
+  deriveVerdict,
+  holdout3StrataOf,
+} from "./register-verdict-core.ts";
 import {
   type PerImageKey,
   RESULTS_DIR,
@@ -314,6 +319,13 @@ export type Metric =
   | "bytes"
   | "guardsOk"
   | "guardsCi"
+  /**
+   * `guardsCi` against the binding's baseline for the row (`baseline`,
+   * `baselines` or `rowBaselines`) rather than against sweep row 0. A config
+   * that spans tiers judges each arm against its own tier's incumbent (§13.8),
+   * and row 0 is another tier's.
+   */
+  | "guardsCiVsBaseline"
   | "ci"
   | "winN"
   /**
@@ -754,6 +766,14 @@ function measure(
     if (paired[1] === "diff") return stat.meanDelta;
     if (paired[1] === "pHolm") return stat.pHolm;
     return `[${signed(stat.ci[0])}, ${signed(stat.ci[1])}]`;
+  }
+  if (metric === "guardsCiVsBaseline") {
+    if (!baseline || baseline === row || !sweep.guardTolerances) return null;
+    return guardVerdictOnIntervals(
+      comparisonsFor(sweep, baseline).get(row),
+      sweep.guardTolerances,
+      sweep.artifactGuardRise ?? undefined,
+    );
   }
   return measureOne(metric, row, baseline);
 }
@@ -1303,6 +1323,45 @@ const ALPHA_SUBSETS: Record<string, ImageSubset> = {
   "more-opaque half (8)": transparencyHalf(false),
   "more-transparent half (8)": transparencyHalf(true),
 };
+
+/**
+ * §13.8's per-row baselines: every D1 arm against its own tier's shipped arm,
+ * the first arm of that tier in `entropy-coded-ac`.
+ */
+const D1_TIER_BASELINES: Record<string, string> = Object.fromEntries(
+  [
+    [
+      "t2",
+      ["coded x1.25", "coded x1.5", "coded x2", "adaptive x1.5", "adaptive x2"],
+    ],
+    [
+      "t3",
+      ["coded x1.5", "coded x2", "coded x2.5", "coded x3", "adaptive x2.5"],
+    ],
+    ["t4", ["coded x2", "coded x3", "coded x4", "adaptive x3"]],
+  ].flatMap(([tier, arms]) =>
+    (arms as string[]).map((arm) => [`${tier} ${arm}`, `${tier} shipped`]),
+  ),
+);
+
+/** §13.8's holdout3 rows: D1's two frozen comparisons, by doc label. */
+const D1_FROZEN_ROWS: Record<string, string> = {
+  "code 3: `t3 coded x3` vs `t3 shipped`": "t3 coded x3",
+  "code 4: `t4 coded x4` vs `t4 shipped`": "t4 coded x4",
+};
+const D1_FROZEN_BASELINES: Record<string, string> = {
+  "code 3: `t3 coded x3` vs `t3 shipped`": "t3 shipped",
+  "code 4: `t4 coded x4` vs `t4 shipped`": "t4 shipped",
+};
+/** §13.8's holdout3 stratum columns: header, and the stratum a pin records. */
+const D1_STRATUM_COLUMNS: readonly (readonly [string, string])[] = [
+  ["smartphone (17)", "smartphone"],
+  ["graphics (16)", "graphics"],
+  ["alpha (24)", "alpha"],
+  ["skin (17)", "skin"],
+  ["low-light (12)", "low-light"],
+  ["extreme aspect (16)", "extreme-aspect"],
+];
 
 /** §11.12's photographic rows, shared by its tune and holdout bindings. */
 const V07_PHOTO_ALIASES: Record<string, string> = {
@@ -2452,6 +2511,81 @@ const BINDINGS: Binding[] = [
     },
   },
 
+  // §13.8 — register D1 on tune. One config spans codes 2-4, so every arm is
+  // read against its own tier's shipped arm, never row 0 (another tier's).
+  {
+    kind: "rows",
+    section: "13.8",
+    table: 0,
+    sweep: "entropy-coded-ac",
+    columns: {
+      ΔE00: "meanCiede",
+      relative: "ciedeDeltaPct",
+      "95% CI of Δ": "diffCi:ciede2000",
+      "guards (CI)": "guardsCiVsBaseline",
+    },
+    rowBaselines: D1_TIER_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "13.8",
+    table: 1,
+    sweep: "entropy-coded-ac",
+    columns: {
+      "photographic (31)": "ciedeDeltaPct",
+      "alpha (16)": "ciedeDeltaPct",
+      "graphics (16)": "ciedeDeltaPct",
+    },
+    subsets: {
+      "photographic (31)": (n) => inCorpus(n, "photo"),
+      "alpha (16)": (n) => inCorpus(n, "alpha"),
+      "graphics (16)": (n) => inCorpus(n, "graphic"),
+    },
+    rowBaselines: D1_TIER_BASELINES,
+  },
+  // §13.8 — D1's one holdout3 read, at the freeze: the two frozen
+  // comparisons overall (the entry-family Holm and the named-baseline guards
+  // come from the `register` binding beside it), then per holdout3 stratum,
+  // read off each pin's recorded strata.
+  {
+    kind: "rows",
+    section: "13.8",
+    table: 3,
+    sweep: "entropy-coded-ac-frozen-holdout3",
+    columns: {
+      ΔE00: "diff:ciede2000",
+      "95% CI of Δ": "diffCi:ciede2000",
+      relative: "ciedeDeltaPct",
+    },
+    aliases: D1_FROZEN_ROWS,
+    rowBaselines: D1_FROZEN_BASELINES,
+  },
+  {
+    kind: "register",
+    section: "13.8",
+    table: 3,
+    entry: "D1",
+    columns: { "p Holm": "pHolm", "guards (CI)": "guards" },
+    rows: D1_FROZEN_ROWS,
+  },
+  {
+    kind: "rows",
+    section: "13.8",
+    table: 4,
+    sweep: "entropy-coded-ac-frozen-holdout3",
+    columns: Object.fromEntries(
+      D1_STRATUM_COLUMNS.map(([header]) => [header, "ciedeDeltaPct"]),
+    ),
+    subsets: Object.fromEntries(
+      D1_STRATUM_COLUMNS.map(([header, stratum]) => [
+        header,
+        (n: string) => holdout3StrataOf(n).includes(stratum),
+      ]),
+    ),
+    aliases: D1_FROZEN_ROWS,
+    rowBaselines: D1_FROZEN_BASELINES,
+  },
+
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
   {
@@ -2708,6 +2842,16 @@ const EXPECTED_CELLS: Record<string, number> = {
   "13.7#1": 10,
   "13.7#2": 15,
   "13.7#3": 5,
+  // §13.8, register D1 on tune: every arm's ΔE00 (17), and the 14 coded or
+  // adaptive arms' relative, interval and guards (42); then those 14 arms'
+  // relative differences per corpus (42).
+  "13.8#0": 59,
+  "13.8#1": 42,
+  // D1's holdout3 read: the two frozen comparisons' ΔE00, interval and
+  // relative (6) with their entry-family Holm and guards (4); then their
+  // relative differences in each of the six strata (12).
+  "13.8#3": 10,
+  "13.8#4": 12,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
@@ -2815,6 +2959,8 @@ const UNBOUND_NOTES: Record<string, string> = {
   "11.0#0": "a two-row scoring demonstration on one synthetic fixture",
   "13.3#0":
     "stratify output, not a sweep: bin means over per-image scores joined to natural-images.ts's covariates. Reproduce with `mise run stratify artifact-ladder-common-grid --metric spurious --by detail`",
+  "13.8#2":
+    "stratify output, not a sweep: a tune image's holdout3 strata are derived from covariates measured on its cached fixture (corpus-covariates.ts measureFile), which a run with no corpus download cannot do. Reproduce with `mise run stratify entropy-coded-ac --strata`",
 };
 
 if (values["list-unbound"]) {

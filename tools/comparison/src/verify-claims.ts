@@ -714,7 +714,7 @@ const REGISTER: Claim[] = [
   {
     file: "spec/README.md",
     what: "entropy coding's ΔE00 headroom at 108 B, in §14.1",
-    pattern: /at 32 B, ([\d.]+)%\nat 108 B, on tune/,
+    pattern: /at 32 B, ([\d.]+)% at\n108 B, on tune/,
     section: "9.5",
     row: "Entropy-coding headroom at 108 B",
     column: "Wikimedia",
@@ -786,15 +786,6 @@ const REGISTER: Claim[] = [
   },
   {
     file: "spec/RATIONALE.md",
-    what: "entropy coding's ΔE00 headroom at 108 B, in future work",
-    pattern: /measured only up to code 2, at −([\d.]+)%/,
-    section: "9.5",
-    row: "Entropy-coding headroom at 108 B",
-    column: "Wikimedia",
-    transform: abs,
-  },
-  {
-    file: "spec/RATIONALE.md",
     what: "AVIF's ΔE00 lead over code 4 at ~1.6 kB",
     pattern: /AVIF by ([\d.]+)% on ΔE00/,
     section: "11.14",
@@ -853,6 +844,125 @@ const REGISTER: Claim[] = [
     row: "first 32 B, interleaved",
     column: "vs native tier 0 (11.481)",
   },
+
+  // ── Register D1's freeze (#132) ──────────────────────────────────────────
+  // The entry quotes the three tune selections its rule made (§13.8 table 0)
+  // by hand; the ranking that froze two of them turns on these figures.
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D1: the code-2 selection's tune gain",
+    pattern: /`t2 adaptive x2` \(−([\d.]+)%\)/,
+    section: "13.8",
+    table: 0,
+    row: "t2 adaptive x2",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D1: the code-3 selection's tune gain",
+    pattern: /`t3 coded x3` \(−([\d.]+)%\)/,
+    section: "13.8",
+    table: 0,
+    row: "t3 coded x3",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D1: the code-4 selection's tune gain",
+    pattern: /`t4 coded x4`\s+\(−([\d.]+)%\)/,
+    section: "13.8",
+    table: 0,
+    row: "t4 coded x4",
+    column: "relative",
+    transform: abs,
+  },
+
+  // D1's verdict quotes its two holdout3 readings (§13.8 table 3).
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D1: the code-3 holdout3 gain",
+    pattern: /`t3 coded x3` is ([\d.]+)% better than the shipped code-3/,
+    section: "13.8",
+    table: 3,
+    row: "code 3: `t3 coded x3` vs `t3 shipped`",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D1: the code-4 holdout3 gain",
+    pattern: /`t4 coded x4`\s+is ([\d.]+)% better, under R1's 3%/,
+    section: "13.8",
+    table: 3,
+    row: "code 4: `t4 coded x4` vs `t4 shipped`",
+    column: "relative",
+    transform: abs,
+  },
+  // The README and RATIONALE.md quote the same two readings where they
+  // record D1's verdict.
+  ...(
+    [
+      [
+        "spec/RATIONALE.md",
+        "no entropy coding",
+        3,
+        /passes R1 at code 3 \(−([\d.]+)% ΔE00 on\nthe sealed/,
+      ],
+      [
+        "spec/RATIONALE.md",
+        "future work's code 3–4 positioning",
+        3,
+        /recovers ([\d.]+)% at code 3/,
+      ],
+      [
+        "spec/RATIONALE.md",
+        "future work's code 3–4 positioning",
+        4,
+        /recovers [\d.]+% at code 3 and ([\d.]+)% at code 4/,
+      ],
+      [
+        "spec/RATIONALE.md",
+        "future work's entropy-coded AC",
+        3,
+        /passes R1 at code 3 \(−([\d.]+)%\n {3}ΔE00 on/,
+      ],
+      [
+        "spec/README.md",
+        "the JPEG XL table",
+        3,
+        /\*\*−([\d.]+)%\*\* at code 3, Holm/,
+      ],
+      [
+        "spec/README.md",
+        "the JPEG XL table",
+        4,
+        /\*\*−([\d.]+)%\*\* at code 4, under R1/,
+      ],
+      ["spec/README.md", "§14.1", 3, /§13\.8: ([\d.]+)% at code 3/],
+      [
+        "spec/README.md",
+        "§14.1",
+        4,
+        /§13\.8: [\d.]+% at code 3 and ([\d.]+)% at code 4/,
+      ],
+    ] as const
+  ).map(
+    ([file, where, code, pattern]): Claim => ({
+      file,
+      what: `D1: the code-${code} holdout3 gain, in ${where}`,
+      pattern,
+      section: "13.8",
+      table: 3,
+      row:
+        code === 3
+          ? "code 3: `t3 coded x3` vs `t3 shipped`"
+          : "code 4: `t4 coded x4` vs `t4 shipped`",
+      column: "relative",
+      transform: abs,
+    }),
+  ),
 
   // ── Register D8's prior evidence (#131) ──────────────────────────────────
   // The code-0 retune entry quotes the tune plateau's top two (§11.10) and

@@ -65,6 +65,11 @@ import {
   parseSplit,
   splitFor,
 } from "./corpus.ts";
+import {
+  type ExpectBytes,
+  expectedLength,
+  realOnlyInputs,
+} from "./sweep-core.ts";
 import { gamutToSrgbReference } from "./gamut.ts";
 import { DEFAULT_TIER } from "./rd/lineup.ts";
 import { generateFixtures } from "./generate-fixtures.ts";
@@ -186,6 +191,15 @@ interface SweepConfig {
    */
   corpus?: CorpusSet;
   /**
+   * Score real content only: drop the generated capability fixtures
+   * (`corpus.ts` `tierFor`), which `corpus: "all"` otherwise includes on
+   * the tune split. A sweep over every real corpus at once — photographic,
+   * alpha and graphics — sets this, so its means are not partly a
+   * capability demonstration. The sealed splits hold no generated fixture,
+   * so there it changes nothing.
+   */
+  realOnly?: boolean;
+  /**
    * Legacy alias for `corpus: "photo"`. Kept so every config written before
    * the other corpora existed keeps its exact meaning; prefer `corpus`.
    */
@@ -239,8 +253,15 @@ interface SweepConfig {
    * silently change size and the table stops being the comparison it claims to
    * be. Declaring the budget turns that from a silent wrong answer into a
    * failed run.
+   *
+   * A config that spans tiers declares it per tier instead: a map from the
+   * tier code to the byte length of an opaque hash and of an alpha-mode one
+   * at that tier, checked image by image against the hash's own alpha flag.
+   * Every arm's tier must then be in the map. That is the only form that
+   * holds a mixed corpus to a budget: an alpha image's hash is shorter, so
+   * a mean over the corpus is neither length.
    */
-  expectBytes?: number;
+  expectBytes?: ExpectBytes;
   /**
    * Composite every input over the scoring backdrop and force alpha to opaque
    * before encoding, so the same pictures are measured in the format's *opaque*
@@ -541,6 +562,7 @@ async function scoreVariant(
   variant: SweepVariant,
   inputs: ImageInput[],
   versionBinaries: Map<string, string>,
+  expect?: SweepConfig["expectBytes"],
 ): Promise<SweepRow> {
   const tier = variant.tier ?? DEFAULT_TIER;
   // A tag variant runs its own binary; hashes are not portable across format
@@ -567,6 +589,12 @@ async function scoreVariant(
     const { smallWidth: w, smallHeight: h, smallRgba: rgba } = input;
     const gamut = input.gamut ?? "srgb";
     const hash = encodeViaRust(cli, w, h, rgba, gamut, tier, variant.tune);
+    const want = expectedLength(expect, tier, hash);
+    if (want !== null && hash.length !== want) {
+      throw new Error(
+        `${variant.label}: ${path.basename(input.filePath)} encodes to ${hash.length} B at tier ${tier}, not the ${want} B expectBytes declares for its alpha mode`,
+      );
+    }
     bytesSum += hash.length;
     bytes.push(hash.length);
 
@@ -827,6 +855,9 @@ async function main(): Promise<void> {
       inCorpus(path.parse(i.filePath).name, corpus),
     );
   }
+  if (config.realOnly) {
+    inputs = realOnlyInputs(inputs, (i) => path.parse(i.filePath).name);
+  }
   if (maxImages !== null) {
     inputs = inputs.slice(0, maxImages);
   }
@@ -875,7 +906,12 @@ async function main(): Promise<void> {
   const rows: SweepRow[] = [];
   for (const variant of config.variants) {
     const started = performance.now();
-    const row = await scoreVariant(variant, inputs, versionBinaries);
+    const row = await scoreVariant(
+      variant,
+      inputs,
+      versionBinaries,
+      config.expectBytes,
+    );
     rows.push(row);
     console.log(
       `  ${variant.label.padEnd(28)} ΔE00 ${row.meanCiede?.toFixed(3) ?? "N/A"} (${((performance.now() - started) / 1000).toFixed(0)}s)`,
@@ -884,7 +920,7 @@ async function main(): Promise<void> {
   const comparisons = applyGuards(rows, config);
 
   const expectBytes = config.expectBytes;
-  if (expectBytes !== undefined) {
+  if (typeof expectBytes === "number") {
     const off = rows.filter((r) => Math.abs(r.bytes - expectBytes) > 0.5);
     if (off.length > 0) {
       const detail = off
@@ -915,6 +951,7 @@ async function main(): Promise<void> {
       artifactGridEdge: config.artifactGridEdge ?? null,
       forceOpaque: config.forceOpaque ?? false,
       expectBytes: config.expectBytes ?? null,
+      realOnly: config.realOnly ?? false,
       ...(holdout2 !== null ? { holdout2 } : {}),
       ...(holdout3 !== null ? { holdout3 } : {}),
       guardTolerances: {

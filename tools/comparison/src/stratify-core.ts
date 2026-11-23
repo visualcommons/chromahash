@@ -7,8 +7,11 @@
  * scope — it parses argv, reads a sweep off disk and prints — so importing it to
  * check any of this would run it. These are the parts that can be wrong without
  * throwing, and §13.3 is read off them, so they are asserted in
- * `metric-selftest.ts` against fixtures with known answers.
+ * `metric-selftest.ts` against fixtures with known answers. `--strata`'s
+ * tier pairing and real-corpus placement are here for the same reason.
  */
+
+import { type CorpusSet, inCorpus } from "./corpus.ts";
 
 /**
  * Pearson correlation. Reported alongside the binned table rather than instead
@@ -92,4 +95,39 @@ export function alignmentError(rows: readonly AlignableRow[]): string | null {
     }
   }
   return null;
+}
+
+/**
+ * `--strata`'s pairing: each row that is not the first of its tier, with the
+ * index of the first row of its tier, which is the arm it is read against.
+ * A config that spans tiers is read at equal bytes this way, never against a
+ * row of another tier.
+ */
+export function tierBaselinePairs(
+  rows: readonly { tier?: number | null }[],
+): [arm: number, base: number][] {
+  const pairs: [number, number][] = [];
+  for (const [i, row] of rows.entries()) {
+    const base = rows.findIndex((r) => r.tier === row.tier);
+    if (base !== i) pairs.push([i, base]);
+  }
+  return pairs;
+}
+
+/** The real corpora; each image of a `realOnly` sweep is in exactly one. */
+const REAL_CORPORA: readonly Exclude<CorpusSet, "all">[] = [
+  "photo",
+  "alpha",
+  "graphic",
+];
+
+/**
+ * The real corpus `corpus.ts` `inCorpus` places an image in, or null for one
+ * in none (a generated fixture), so `--strata`'s tune table cannot drift from
+ * the corpus definition the per-corpus tables beside it are filtered by.
+ */
+export function realCorpusOf(
+  imageName: string,
+): Exclude<CorpusSet, "all"> | null {
+  return REAL_CORPORA.find((set) => inCorpus(imageName, set)) ?? null;
 }

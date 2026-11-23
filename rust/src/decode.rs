@@ -1,16 +1,16 @@
 use crate::aspect::decode_output_size;
-use crate::bitpack::read_bits;
+use crate::bitpack::{AcHistory, AcModels, ArithDecoder, read_bits};
 use crate::color::{oklab_to_linear_output, oklab_to_linear_srgb};
 use crate::constants::{
-    ALPHA_FLAG_BIT, Gamut, TIER_BITS, Tunables, VERSION_BITS, ac_shape, prefix_bits,
+    ALPHA_FLAG_BIT, Gamut, TIER_BITS, Tunables, VERSION_BITS, ac_shape, prefix_bits, shipped_fields,
 };
 use crate::dct::{
     SelectionOrder, dct_decode_pixel_flat, dct_decode_pixel_separable, precompute_cos_table,
     precompute_cos_table_flat, window_weights,
 };
 use crate::encode::{
-    band_split_index, dequantize_aspect, dequantize_c_dc, dequantize_cfl_gain, dequantize_l_dc,
-    dequantize_scale, stage,
+    band_split_index, dequantize_alpha_scale, dequantize_aspect, dequantize_c_dc,
+    dequantize_cfl_gain, dequantize_l_dc, dequantize_scale, stage,
 };
 use crate::math_utils::{clamp01, round_half_away_from_zero};
 use crate::mulaw::compand_dequantize;
@@ -169,6 +169,34 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     //    (bits 16..54). Per spec §3.1 (v1).
     let (tier, has_alpha, aspect) = read_header_fields(hash, t);
 
+    // Register D1's adaptive mode: the first payload bit picks the coded
+    // stream (1) or the shipped fixed fields (0) in the bits after it. Drop
+    // the bit and decode the rest in the mode it names; the last bit reads 0.
+    if t.ac_coder == 2 {
+        let start = prefix_bits(t) as usize
+            + if has_alpha {
+                (t.alpha_dc_bits + t.alpha_scale_bits) as usize
+            } else {
+                0
+            };
+        // A validated hash always holds the flag (every hash is longer than
+        // its prefix); like every other field read here, it is not checked.
+        let bit = |i: usize| (hash[i / 8] >> (i % 8)) & 1;
+        let mut inner = vec![0u8; hash.len()];
+        for i in 0..start {
+            inner[i / 8] |= bit(i) << (i % 8);
+        }
+        for i in start + 1..hash.len() * 8 {
+            inner[(i - 1) / 8] |= bit(i) << ((i - 1) % 8);
+        }
+        let mode = if bit(start) == 1 {
+            Tunables { ac_coder: 1, ..*t }
+        } else {
+            shipped_fields(t)
+        };
+        return render_at_size(&inner, w, h, &mode, output);
+    }
+
     let mut bitpos = 8usize + t.aspect_bits as usize;
     let l_dc_q = read_bits(hash, bitpos, t.l_dc_bits);
     bitpos += t.l_dc_bits as usize;
@@ -233,9 +261,7 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
         let adc = read_bits(hash, bitpos, t.alpha_dc_bits) as f64
             / ((1u32 << t.alpha_dc_bits) - 1) as f64;
         bitpos += t.alpha_dc_bits as usize;
-        let ascl = read_bits(hash, bitpos, t.alpha_scale_bits) as f64
-            / ((1u32 << t.alpha_scale_bits) - 1) as f64
-            * t.max_alpha_scale;
+        let ascl = dequantize_alpha_scale(read_bits(hash, bitpos, t.alpha_scale_bits), t);
         bitpos += t.alpha_scale_bits as usize;
         (adc, ascl)
     } else {
@@ -277,7 +303,31 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
             }
         }
     }
-    if t.interleave && !has_alpha {
+    // Register D1: with the coder on, every AC code (alpha's included) comes
+    // from one arithmetic-coded stream over the rest of the hash. The decoder
+    // is total, so any bytes of the validated length decode.
+    let mut alpha_raw: Option<Vec<u32>> = None;
+    if t.ac_coder != 0 {
+        let mut dec = ArithDecoder::new(hash, bitpos, hash.len() * 8);
+        let mut models = AcModels::new();
+        let mut hist = AcHistory::default();
+        for (i, slot) in l_raw.iter_mut().enumerate() {
+            *slot = models.decode(&mut dec, &mut hist, 0, i, l_bits_at[i]);
+        }
+        for raw in [&mut a_raw, &mut b_raw] {
+            let mut hist = AcHistory::default();
+            for (i, slot) in raw.iter_mut().enumerate() {
+                *slot = models.decode(&mut dec, &mut hist, 1, i, c_bits);
+            }
+        }
+        let mut hist = AcHistory::default();
+        let count = if has_alpha { shape.alpha_ac_count } else { 0 };
+        alpha_raw = Some(
+            (0..count)
+                .map(|i| models.decode(&mut dec, &mut hist, 2, i, shape.alpha_ac_bits))
+                .collect(),
+        );
+    } else if t.interleave && !has_alpha {
         for (ch, i) in crate::dct::interleaved_order(&l_sel, &c_sel, l_count, c_count) {
             let bits = if ch == 0 { l_bits_at[i] } else { c_bits };
             let q = read_code(bitpos, bits);
@@ -333,8 +383,11 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     let (alpha_ac, alpha_sel) = if has_alpha {
         let sel = order.take(shape.alpha_ac_count);
         let mut aac = Vec::with_capacity(shape.alpha_ac_count);
-        for _ in 0..shape.alpha_ac_count {
-            let q = read_bits(hash, bitpos, shape.alpha_ac_bits);
+        for k in 0..shape.alpha_ac_count {
+            let q = match &alpha_raw {
+                Some(raw) => raw[k],
+                None => read_bits(hash, bitpos, shape.alpha_ac_bits),
+            };
             bitpos += shape.alpha_ac_bits as usize;
             aac.push(
                 compand_dequantize(

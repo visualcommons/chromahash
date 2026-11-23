@@ -242,7 +242,14 @@ import {
   normalQuantile,
   studentTQuantile,
 } from "./stats.ts";
-import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
+import {
+  alignmentError,
+  equalCountBins,
+  pearson,
+  realCorpusOf,
+  tierBaselinePairs,
+} from "./stratify-core.ts";
+import { expectedLength, realOnlyInputs } from "./sweep-core.ts";
 import {
   type Binding,
   CROSS_RUN_TOLERANCE,
@@ -5307,8 +5314,9 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
   );
 
   // The shipped register's D-entries (#131): each has exactly one status
-  // line, `open`, with `Criteria approved` dated and tied to a commit, the
-  // register table agrees with it, and the real gate refuses each one.
+  // line, with `Criteria approved` dated and tied to a commit, the register
+  // table agrees with it, and the real gate opens holdout3 for exactly the
+  // entries it records as `frozen` (D1 froze in #132), refusing the rest.
   const dEntries = ["D1", "D2", "D3", "D4", "D5", "D6", "D8", "D9"];
   const tableStatus = (id: string): string | undefined => {
     const row = registerText.split("\n").find((l) => l.startsWith(`| ${id} |`));
@@ -5323,18 +5331,19 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
     // A date, then the commit that records the approval: a SHA, or the
     // squash commit of a numbered change.
     const approved =
-      /- \*\*Status:\*\* open\. Criteria approved: 2026-\d\d-\d\d at /.test(
+      /- \*\*Status:\*\* (open|frozen|decided)\. Criteria approved: 2026-\d\d-\d\d at /.test(
         section,
       ) && /2026-11-22[^.]*?at the commit of\s+#\d+\b/.test(section);
+    const status = "status" in found ? found.status : undefined;
     const refusal = thrown(() => openHoldout3(id));
+    const gate =
+      status === "frozen"
+        ? refusal === ""
+        : refusal.includes(`"${id}" as "${status}"`);
     check(
-      `the shipped register records ${id} as open with its criteria approved, its table row agrees, and the holdout3 gate refuses it`,
-      "status" in found &&
-        found.status === "open" &&
-        tableStatus(id) === "open" &&
-        approved &&
-        refusal.includes(`"${id}" as "open"`),
-      `${"status" in found ? found.status : found.error}; table ${tableStatus(id)}; approved ${approved}; ${refusal}`,
+      `the shipped register records ${id} with one status and its criteria approved, its table row agrees, and the holdout3 gate opens only if it is frozen`,
+      status !== undefined && tableStatus(id) === status && approved && gate,
+      `${status ?? ("error" in found ? found.error : "")}; table ${tableStatus(id)}; approved ${approved}; ${refusal || "opens"}`,
     );
   }
 
@@ -6250,6 +6259,13 @@ console.log(
       guards: ["ok", "ok", "inconclusive", "ok"],
       pHolm: [0.0008, 0.0008, 0.5927, 0.0008],
     },
+    // D1's holdout3 read (#132): code 3 passes R1 and the stratum rule,
+    // code 4 is under R1's 3%. Both p sit at the resampling floor, ×2.
+    D1: {
+      pass: [true, false],
+      guards: ["ok", "ok"],
+      pHolm: [0.0004, 0.0004],
+    },
   } as const;
   for (const [id, want] of Object.entries(recorded)) {
     let v: ReturnType<typeof deriveVerdict> | undefined;
@@ -6468,6 +6484,78 @@ console.log(
     pinned
       ? `${pinned.label}: ${holdout3StrataOf(pinned.label).join(",")}`
       : "no pin",
+  );
+}
+
+{
+  console.log(
+    "\nsweep's per-tier expectBytes, realOnly, and stratify --strata",
+  );
+  const perTier = {
+    "3": { opaque: 411, alpha: 388 },
+    "4": { opaque: 1623, alpha: 1528 },
+  };
+  // Byte 0 bit 6 is the alpha flag; the other bits must not be read.
+  const opaqueHash = Uint8Array.of(0b1011_1111);
+  const alphaHash = Uint8Array.of(0b0100_0000);
+  let unnamed = "";
+  try {
+    expectedLength(perTier, 2, opaqueHash);
+  } catch (e) {
+    unnamed = (e as Error).message;
+  }
+  check(
+    "expectedLength: the per-tier map's length for the hash's own alpha mode, read off byte 0 bit 6 alone",
+    expectedLength(perTier, 3, opaqueHash) === 411 &&
+      expectedLength(perTier, 3, alphaHash) === 388 &&
+      expectedLength(perTier, 4, opaqueHash) === 1623 &&
+      expectedLength(perTier, 4, alphaHash) === 1528,
+    `${expectedLength(perTier, 3, opaqueHash)}/${expectedLength(perTier, 3, alphaHash)} ${expectedLength(perTier, 4, opaqueHash)}/${expectedLength(perTier, 4, alphaHash)}`,
+  );
+  check(
+    "expectedLength: no per-image length for an unset or single-mean expectBytes, and a throw for a tier the map does not name",
+    expectedLength(undefined, 3, alphaHash) === null &&
+      expectedLength(32, 3, alphaHash) === null &&
+      unnamed === "expectBytes names no length for tier 2",
+    unnamed || "no throw",
+  );
+
+  const names = [
+    "kodak01",
+    "cutout-3d-star-greek",
+    "graphic-chart",
+    "alpha-gradient",
+    "solid-blue",
+    "sealed3-graphic-logo",
+    "sealed3-cutout-cat",
+  ];
+  const kept = realOnlyInputs(names, (n) => n);
+  check(
+    "realOnlyInputs drops the generated fixtures and keeps every real corpus, sealed ones included",
+    kept.join(",") ===
+      "kodak01,cutout-3d-star-greek,graphic-chart,sealed3-graphic-logo,sealed3-cutout-cat",
+    kept.join(","),
+  );
+  const corpora = names.map((n) => realCorpusOf(n) ?? "none").join(",");
+  check(
+    "realCorpusOf places an image by corpus.ts's prefixes, a sealed one by the prefix after its seal, and a generated fixture in none",
+    corpora === "photo,alpha,graphic,none,none,graphic,alpha",
+    corpora,
+  );
+
+  const pairs = tierBaselinePairs([
+    { tier: 2 },
+    { tier: 2 },
+    { tier: 3 },
+    { tier: 3 },
+    { tier: 4 },
+    { tier: 3 },
+    { tier: 4 },
+  ]);
+  check(
+    "tierBaselinePairs reads every arm against the first arm of its own tier, never across tiers",
+    JSON.stringify(pairs) === "[[1,0],[3,2],[5,2],[6,4]]",
+    JSON.stringify(pairs),
   );
 }
 

@@ -230,6 +230,7 @@ fn tunables_from_env() -> Tunables {
             "synth_gain" => t.synth_gain = parse_f64(),
             "interleave" => t.interleave = value == "1" || value == "true",
             "trunc_bytes" => t.trunc_bytes = parse_u32() as usize,
+            "ac_coder" => t.ac_coder = parse_u32(),
             "alpha_dc_bits" => t.alpha_dc_bits = parse_u32(),
             "alpha_scale_bits" => t.alpha_scale_bits = parse_u32(),
             "alpha_ac_count" => {

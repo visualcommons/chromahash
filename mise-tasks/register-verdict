@@ -2,7 +2,7 @@
 #MISE description="Apply a frozen register entry's judged comparisons to its committed holdout results"
 #MISE depends=["build:compare"]
 #
-# Usage: mise run register-verdict C1|C2
+# Usage: mise run register-verdict C1|C2|D1
 #
 # spec/V0.8-DECISIONS.md names, at each freeze, every comparison the entry
 # judges and the baseline it is judged against. This prints R1's conditions 1-3

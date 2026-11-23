@@ -1,0 +1,88 @@
+{
+  "name": "entropy-coded-ac",
+  "description": "Register entry D1 (spec/V0.8-DECISIONS.md, #132): the AC payload coded by an adaptive binary arithmetic coder (Tunables::ac_coder) at codes 2, 3 and 4, each tier decided separately against its own shipped arm, which is the first arm of that tier. Every hash is the shipped byte length of its tier and alpha mode (expectBytes, checked per image), so every comparison is at equal bytes. A coded arm's layout only bounds the codes its stream may carry: 'xM' scales the shipped upper-tier counts by M in both alpha modes at the shipped widths (opaque L26@5 C9@4, alpha L22@4 C3@3 A28@3, counts rounded half up), and the encoder zeroes the highest-index codes until the stream fits. 'adaptive' arms (ac_coder=2) signal per image, in the first payload bit, whether the coded stream or the shipped fixed fields follow, as the encoder's own decision. Corpus all with realOnly: the photographic, alpha and graphics tune images, so the holdout3 read covers every stratum. Cross-tier rows of the printed tables (a code-3 arm against the code-2 incumbent) are at different byte counts and are not judged: D1's selection rule reads each arm against its own tier's shipped arm (mise run arms --baseline, stratify --strata).",
+  "corpus": "all",
+  "realOnly": true,
+  "backdrops": "white-black-grey",
+  "alphaFidelity": true,
+  "expectBytes": {
+    "2": { "opaque": 108, "alpha": 103 },
+    "3": { "opaque": 411, "alpha": 388 },
+    "4": { "opaque": 1623, "alpha": 1528 }
+  },
+  "variants": [
+    { "label": "t2 shipped", "tier": 2 },
+    {
+      "label": "t2 coded x1.25",
+      "tier": 2,
+      "tune": "ac_coder=1 l1_up=33:5 c_up=11:4 la1_up=28:4 ca_up=4:3 a_up=35:3"
+    },
+    {
+      "label": "t2 coded x1.5",
+      "tier": 2,
+      "tune": "ac_coder=1 l1_up=39:5 c_up=14:4 la1_up=33:4 ca_up=5:3 a_up=42:3"
+    },
+    {
+      "label": "t2 coded x2",
+      "tier": 2,
+      "tune": "ac_coder=1 l1_up=52:5 c_up=18:4 la1_up=44:4 ca_up=6:3 a_up=56:3"
+    },
+    {
+      "label": "t2 adaptive x1.5",
+      "tier": 2,
+      "tune": "ac_coder=2 l1_up=39:5 c_up=14:4 la1_up=33:4 ca_up=5:3 a_up=42:3"
+    },
+    {
+      "label": "t2 adaptive x2",
+      "tier": 2,
+      "tune": "ac_coder=2 l1_up=52:5 c_up=18:4 la1_up=44:4 ca_up=6:3 a_up=56:3"
+    },
+    { "label": "t3 shipped", "tier": 3 },
+    {
+      "label": "t3 coded x1.5",
+      "tier": 3,
+      "tune": "ac_coder=1 l1_up=39:5 c_up=14:4 la1_up=33:4 ca_up=5:3 a_up=42:3"
+    },
+    {
+      "label": "t3 coded x2",
+      "tier": 3,
+      "tune": "ac_coder=1 l1_up=52:5 c_up=18:4 la1_up=44:4 ca_up=6:3 a_up=56:3"
+    },
+    {
+      "label": "t3 coded x2.5",
+      "tier": 3,
+      "tune": "ac_coder=1 l1_up=65:5 c_up=23:4 la1_up=55:4 ca_up=8:3 a_up=70:3"
+    },
+    {
+      "label": "t3 coded x3",
+      "tier": 3,
+      "tune": "ac_coder=1 l1_up=78:5 c_up=27:4 la1_up=66:4 ca_up=9:3 a_up=84:3"
+    },
+    {
+      "label": "t3 adaptive x2.5",
+      "tier": 3,
+      "tune": "ac_coder=2 l1_up=65:5 c_up=23:4 la1_up=55:4 ca_up=8:3 a_up=70:3"
+    },
+    { "label": "t4 shipped", "tier": 4 },
+    {
+      "label": "t4 coded x2",
+      "tier": 4,
+      "tune": "ac_coder=1 l1_up=52:5 c_up=18:4 la1_up=44:4 ca_up=6:3 a_up=56:3"
+    },
+    {
+      "label": "t4 coded x3",
+      "tier": 4,
+      "tune": "ac_coder=1 l1_up=78:5 c_up=27:4 la1_up=66:4 ca_up=9:3 a_up=84:3"
+    },
+    {
+      "label": "t4 coded x4",
+      "tier": 4,
+      "tune": "ac_coder=1 l1_up=104:5 c_up=36:4 la1_up=88:4 ca_up=12:3 a_up=112:3"
+    },
+    {
+      "label": "t4 adaptive x3",
+      "tier": 4,
+      "tune": "ac_coder=2 l1_up=78:5 c_up=27:4 la1_up=66:4 ca_up=9:3 a_up=84:3"
+    }
+  ]
+}

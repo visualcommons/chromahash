@@ -70,8 +70,8 @@ tune and validated on holdout, per the pre-registered rule in `RATIONALE.md`.
 > format actually moved by.
 >
 > Everything else these experiments introduce — `refine_*`, the header field
-> widths, `cfl_*`, `synth_*`, `interleave`, `trunc_bytes` — still defaults to
-> the shipped behaviour and remains sweep-only.
+> widths, `cfl_*`, `synth_*`, `interleave`, `trunc_bytes`, `ac_coder` — still
+> defaults to the shipped behaviour and remains sweep-only.
 >
 > §1–§6 are the byte-budget study (round 1). §7 builds and measures every item
 > §5 listed as untried. §8 is the recipe that survived, and its parameters. §9
@@ -639,7 +639,7 @@ decoder must understand.
 | # | Idea | Sizing |
 |---|---|---|
 | U10 | **A compact tier below 32 B** (tier codes 4–7 were reserved at the time). | Measured (§4.3): a 21 B layout beats ThumbHash on all four metrics, on holdout (−6.7% ΔE00). The highest-value structural gap. |
-| U11 | **Entropy-coded AC with a per-index context model.** | Measured (§4.9): −22.3% of the AC payload in sample, 8.7% out of sample (§7.13). Costs the O(1) length check. |
+| U11 | **Entropy-coded AC with a per-index context model.** | Measured (§4.9): −22.3% of the AC payload in sample, 8.7% out of sample (§7.13). That per-index-table design costs the O(1) length check; register entry D1's table-free total code keeps it, and passes R1 at code 3 only (§13.8). |
 | U12 | **Decoder-side detail synthesis** — deterministic, hash-seeded high-frequency texture added at render time. | Untested, and the only idea here that attacks the format's actual weakness: it loses SSIMULACRA2/DSSIM to WebP and lqip-modern at every budget above ~84 B while winning ΔE00. Costs zero bytes. Risk: it fabricates detail, which some callers will consider a bug rather than a feature. |
 | U13 | **Per-image signaled selection.** | Measured (§4.10): +9 energy points, but only pays alongside U11. |
 | U14 | **Chroma-from-luma.** | Measured (§4.8): does not pay at tier 0. Reopen at tier 2–3 only. |
@@ -770,6 +770,18 @@ mise run sweep alpha-tier1 --split holdout2 --decision C2               # §13.7
 mise run register-verdict C1                                            # §13.7
 mise run register-verdict C2                                            # §13.7
 mise run arms --seed-sensitivity c1-confirm-photo-holdout2 v07-holdout-alpha-holdout2 alpha-tier1-holdout2
+
+# Register D1, entropy-coded AC at codes 2-4 (§13.8): the tune sweep, each
+# arm against its own tier's shipped arm, and the tune strata
+mise run sweep entropy-coded-ac                                         # §13.8
+mise run arms entropy-coded-ac --baseline "t3 shipped"                  # §13.8
+mise run stratify entropy-coded-ac --strata                             # §13.8
+# Its one holdout3 read, at the freeze commit e3b2eb6; a second read for D1
+# refuses, so this line cannot run again as written. Then its verdict,
+# re-derived from the committed result (re-scores nothing)
+mise run sweep entropy-coded-ac-frozen --split holdout3 --decision D1   # §13.8
+mise run register-verdict D1                                            # §13.8
+mise run stratify entropy-coded-ac-frozen-holdout3 --strata             # §13.8
 
 # Check the tables in this file against the results above
 mise run verify:experiments
@@ -3077,8 +3089,11 @@ What is still not measured, and is now the honest list for v0.8:
   them once on the sealed alpha half of `holdout2` (#93, §11.12).
 * **Smartphone-source photographs** — sensor noise, motion blur, heavy JPEG
   history. Both photographic corpora are professional captures.
-* **Entropy-coded AC** (−1.6% at 32 B, −4.8% at 108 B), which remains refused
-  on the fail-fast O(1) length check rather than on its quality (§7.13).
+* **Entropy-coded AC** (−1.6% at 32 B, −4.8% at 108 B, §7.13), refused here
+  on the fail-fast O(1) length check rather than on its quality. Register
+  entry D1 has since built a total code that keeps the check, and decided it
+  at codes 2–4 on `holdout3`: it passes R1 at code 3 and not at codes 2 and 4
+  (§13.8).
 
 ### 11.14 Cross-format positioning, re-measured against the shipped constants
 
@@ -3724,7 +3739,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 864 | 639 | 586 | 525 | 170 | 169 | 86 | 84 |
+| all committed sweeps | 883 | 658 | 605 | 544 | 170 | 169 | 86 | 84 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3737,7 +3752,14 @@ against its incumbent:
 (The first row sums every committed result, so it grew from 504 arms to 839
 when the 2026-09 re-measure committed the §6 sweeps no table had bound, and
 to 864 when the register's confirmations committed their three holdout2
-sweeps (§13.7). The prose below counts the 839 of the re-measure. The
+sweeps (§13.7), and to 880 and then 883 when D1 committed its tune sweep and
+its holdout3 read (§13.8). The row compares every arm with its sweep's
+first row whatever the arm's tier, so it includes cross-tier comparisons at
+different byte counts that no decision judged: 133 of the 883 arms, 13 of them
+D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
+row, and the 2 code-4 rows of its holdout3 read against its code-3 row), the
+rest from the tier ladders and mixed-tier tables of earlier sweeps. The
+prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
 #102 then turned the one EXIF-rotated tune photograph upright and re-ran every
 tune result that scores it, which moved the first row and the
@@ -4121,4 +4143,183 @@ sample, and are the baseline the register's open format entries are
 measured against: D1–D6, and D8 and D9, which the register's 2026-11-22
 approval added. None of those reads `holdout2`: each reads `holdout3` once,
 overall and per stratum (`V0.8-DECISIONS.md`, "The stratum rule").
+
+### 13.8 D1: entropy-coded AC at codes 2–4 (2026-11)
+
+§7.13 priced an entropy coder at codes 1 and 2 with a coder written in
+TypeScript, against the best fixed-field layout rather than the shipped one,
+and nothing had measured codes 3 and 4, where `RATIONALE.md` expects the
+trade to pay most. Register entry D1 asks the question in the format itself.
+`Tunables::ac_coder` (#132) codes every AC code as one adaptive binary
+arithmetic-coded stream with no table, in a hash of exactly the shipped
+length; the arm's layout bounds how many codes the stream may carry, and the
+encoder zeroes the highest-index codes until it fits. `ac_coder = 2` is the
+adaptive form: a payload bit says, per image, whether the coded stream or the
+shipped fixed fields follow, as the encoder's own decision.
+`V0.8-DECISIONS.md` D1 records the coder, the validity design that keeps
+"a hash that validates is guaranteed to decode" (a total code, so
+`from_bytes` is unchanged), and the selection rule, all committed before the
+first result.
+
+The coder's whole case is the bits it frees. A high-index AC code is usually
+the centre code, which the coder sends in a small fraction of a bit, so the
+shipped codes take less than the fixed fields' payload, and the more so the
+higher the tier. Those bits are spent on more coefficients at the shipped
+widths: an `×M` arm bounds `M` times the shipped counts, so a `×2` bound at
+code 2 carries up to 208 L and 72 C codes where the fixed fields carry 104
+and 36, and the fit search zeroes the tail of whatever does not fit.
+
+**Tune (`mise run sweep entropy-coded-ac`).** 63 images: the 31
+photographic, 16 alpha and 16 graphics tune images, composited over white,
+black and grey, with the generated fixtures left out (`realOnly`). Every
+hash is its tier's shipped length, checked image by image. Each arm is read
+against its own tier's shipped arm, at equal bytes; `relative` is the
+difference of means over that arm's mean, and the interval and guards are
+paired (`mise run arms entropy-coded-ac --baseline "t3 shipped"`, and so on).
+
+| arm | ΔE00 | relative | 95% CI of Δ | guards (CI) |
+|---|---|---|---|---|
+| t2 shipped | 9.858 | — | — | — |
+| t2 coded x1.25 | 9.663 | −1.99% | [−0.240, −0.153] | ok |
+| t2 coded x1.5 | 9.556 | −3.06% | [−0.384, −0.226] | ok |
+| t2 coded x2 | 9.490 | −3.74% | [−0.502, −0.257] | ok |
+| t2 adaptive x1.5 | 9.557 | −3.06% | [−0.382, −0.227] | ok |
+| t2 adaptive x2 | 9.488 | −3.76% | [−0.504, −0.260] | ok |
+| t3 shipped | 8.322 | — | — | — |
+| t3 coded x1.5 | 7.971 | −4.22% | [−0.453, −0.265] | ok |
+| t3 coded x2 | 7.802 | −6.25% | [−0.685, −0.385] | ok |
+| t3 coded x2.5 | 7.721 | −7.22% | [−0.784, −0.449] | ok |
+| t3 coded x3 | 7.691 | −7.58% | [−0.816, −0.475] | ok |
+| t3 adaptive x2.5 | 7.721 | −7.22% | [−0.784, −0.449] | ok |
+| t4 shipped | 7.246 | — | — | — |
+| t4 coded x2 | 6.932 | −4.34% | [−0.425, −0.218] | ok |
+| t4 coded x3 | 6.847 | −5.51% | [−0.544, −0.277] | ok |
+| t4 coded x4 | 6.815 | −5.95% | [−0.593, −0.296] | ok |
+| t4 adaptive x3 | 6.847 | −5.51% | [−0.544, −0.277] | ok |
+
+By corpus, the same relative differences over each part of tune:
+
+| arm | photographic (31) | alpha (16) | graphics (16) |
+|---|---|---|---|
+| t2 coded x1.25 | −2.07% | −2.23% | −1.54% |
+| t2 coded x1.5 | −3.11% | −3.51% | −2.46% |
+| t2 coded x2 | −4.21% | −4.09% | −2.37% |
+| t2 adaptive x1.5 | −3.20% | −3.35% | −2.41% |
+| t2 adaptive x2 | −4.31% | −3.94% | −2.42% |
+| t3 coded x1.5 | −4.41% | −3.32% | −4.94% |
+| t3 coded x2 | −6.57% | −5.16% | −6.97% |
+| t3 coded x2.5 | −7.05% | −7.03% | −7.78% |
+| t3 coded x3 | −7.24% | −7.67% | −8.12% |
+| t3 adaptive x2.5 | −7.05% | −7.03% | −7.78% |
+| t4 coded x2 | −4.20% | −4.52% | −4.37% |
+| t4 coded x3 | −4.86% | −6.91% | −4.96% |
+| t4 coded x4 | −5.02% | −7.78% | −5.39% |
+| t4 adaptive x3 | −4.86% | −6.91% | −4.96% |
+
+And by `holdout3` stratum, for the arm each tier's selection rule picks
+(below), with the strata derived from each tune image's own covariates the
+way the holdout3 pins' were (`mise run stratify entropy-coded-ac --strata`).
+On tune the strata are reported and gate nothing; the cell is the relative
+difference and the stratum rule's verdict.
+
+| stratum (tune images) | t2 adaptive x2 | t3 coded x3 | t4 coded x4 |
+|---|---|---|---|
+| smartphone (4) | −1.91%, ok | −6.06%, ok | −3.43%, inconclusive |
+| graphics (16) | −2.42%, ok | −8.12%, ok | −5.39%, ok |
+| alpha (17) | −4.28%, ok | −7.63%, ok | −7.57%, ok |
+| skin (12) | −3.23%, ok | −6.46%, ok | −5.19%, ok |
+| low-light (10) | −5.77%, ok | −11.01%, ok | −6.60%, ok |
+| extreme aspect (1) | −8.86%, ok | −15.90%, ok | −1.01%, ok |
+
+What the tune result says:
+
+1. **Every coded arm beats its tier's shipped arm, with every guard `ok` on
+   intervals, at every tier.** The gain grows with the bound and flattens:
+   at code 3 from −4.22% (×1.5) to −7.58% (×3), at code 4 from −4.34% (×2)
+   to −5.95% (×4), and at code 2 from −1.99% (×1.25) to −3.74% (×2). No
+   stratum fails the stratum rule's tests for any selected arm.
+2. **Code 4 flattens earlier than code 3, and part of that is the
+   harness.** An isotropic ball of K luma coefficients on a 3:2 image reaches
+   a horizontal index of about √(6K/π): about 98 for the ×3 bound's 4,992
+   and 113 for the ×4 bound's 6,656. Every sweep here is scored through the
+   ≤ 100 px encoder input and its capped decode, where an index of 100 or
+   more is clamped to zero at encode and dropped at decode, so part of the
+   ×4 bound is spent on coefficients this harness cannot show. The code-4
+   figures say what the coder buys on what the harness can see. They are
+   not an estimate for a full-resolution encode rendered at 256 px, which
+   nothing here measures.
+3. **The adaptive arms change almost nothing.** At codes 3 and 4 the encoder
+   never chose the fixed fields, so each adaptive arm is its coded twin to
+   the last digit. At code 2 it chose them on a few images, and moved the
+   mean by 0.02 percentage points at most. Where the coded stream gains
+   least, on graphics at code 2 (−2.37% against −4.21% on photographs for
+   `×2`), the per-image choice does not rescue it.
+4. **The graphics corpus gains least at code 2 and most at code 3**
+   (−2.37% for `t2 coded x2`, −8.12% for `t3 coded x3`). Nothing here
+   measures why.
+
+**Selection (the rule D1 recorded before this run).** Per tier, the coded or
+adaptive arm with the lowest tune ΔE00 whose `guards (CI)` against the
+tier's shipped arm is not `FAIL`: `t2 adaptive x2` (−3.76%), `t3 coded x3`
+(−7.58%) and `t4 coded x4` (−5.95%). All three clear Q13's 3%, so none is
+decided in sample. The register's cap of two holdout arms per entry then
+freezes the two with the largest relative tune gain, codes 3 and 4, and
+code 2 is decided not adopted for want of a holdout read: a −3.76% tune
+estimate is the one most at risk of shrinking below 3% out of sample, and
+reopening it takes a new entry. Q8's power statement for the frozen pair on
+`holdout3`'s 88 images (48 photographic, 24 alpha, 16 graphics), at Holm
+family m = 2, from each comparison's tune spread (σ_rel 8.44% and 8.27%):
+an MDE of 2.77% at code 3 and 2.72% at code 4, so R1's 3% is resolved.
+
+**The holdout3 read.** D1 froze at `e3b2eb6`, and read `holdout3` once from a
+clean tree at that commit: `mise run sweep entropy-coded-ac-frozen --split
+holdout3 --decision D1`, over all 88 pins (48 photographic, 24 alpha, 16
+graphics), with exactly the four frozen rows. The result is committed as
+`entropy-coded-ac-frozen-holdout3.json`, and `mise run register-verdict D1`
+re-derives every row below from it.
+
+| comparison (arm vs its tier's shipped arm, equal bytes) | ΔE00 | 95% CI of Δ | relative | p Holm | guards (CI) |
+|---|---|---|---|---|---|
+| code 3: `t3 coded x3` vs `t3 shipped` | −0.429 | [−0.491, −0.369] | −6.04% | ≤ 0.0004 | ok |
+| code 4: `t4 coded x4` vs `t4 shipped` | −0.179 | [−0.231, −0.131] | −2.80% | ≤ 0.0004 | ok |
+
+Per stratum, the relative difference over each stratum's pins (a pin may sit
+in several):
+
+| comparison | smartphone (17) | graphics (16) | alpha (24) | skin (17) | low-light (12) | extreme aspect (16) |
+|---|---|---|---|---|---|---|
+| code 3: `t3 coded x3` vs `t3 shipped` | −6.16% | −5.28% | −6.92% | −5.80% | −5.34% | −6.55% |
+| code 4: `t4 coded x4` vs `t4 shipped` | −2.06% | −2.65% | −3.43% | −3.56% | −1.34% | −2.28% |
+
+The shipped incumbents score 7.090 at code 3 and 6.397 at code 4. Under R1
+and the stratum rule (`mise run register-verdict D1`):
+
+1. **Code 3 passes.** `t3 coded x3` is 6.04% better than the shipped code-3
+   layout, at a Holm p at the resampling floor, with every guard `ok` on its
+   paired interval. Its interval, −0.491 to −0.369, lies wholly beyond the
+   3% line at −0.213, so the data exclude a gain under 3%. No stratum fails
+   the stratum rule: every one improves, and the one whose guards are
+   `inconclusive` (low-light, 12 pins) has a ΔE00 interval wholly on the
+   improving side. Under 20 other bootstrap seeds no outcome turns. The tune
+   estimate was −7.58%, so it shrank by about a fifth out of sample, and the
+   median moves with the mean (6.257 against 6.706).
+2. **Code 4 fails R1's first condition.** `t4 coded x4` is 2.80% better,
+   significant after Holm with every guard `ok`, but below the 3% bar; its
+   interval, −0.231 to −0.131, spans about −3.6% to −2.0% of the incumbent,
+   so the data do not exclude a 3% gain either. The tune estimate was
+   −5.95%, and it halved. The medians are level (6.088 against 6.092), so
+   the mean's gain is not a shift of the typical image. §13.8's tune finding 2 is the
+   likely part of the reason, and nothing here separates it from shrinkage:
+   this harness scores code 4 through a ≤ 100 px input, where a ×4 bound
+   spends bits on coefficients it cannot show.
+3. **Code 2 was decided without a read** (the two-arm cap, above), and this
+   read shows no code-2 result.
+
+Two readings go beyond the verdict. The coder's gain does not depend on the
+content in the way an adaptive or conditional rule would need to exploit: at
+code 3 every stratum improves by 5.3–6.9%, graphics and alpha included, and
+the adaptive arms on tune never preferred the fixed fields there. And the
+code-4 result is a statement about this harness as much as the format: a
+D-entry that measures code 4 at its own raster would have to change the
+encoder input the harness has always used, which no register entry has done.
 

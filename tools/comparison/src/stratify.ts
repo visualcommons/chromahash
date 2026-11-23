@@ -23,16 +23,37 @@
  *                                 [--bins 3]
  */
 
+import fs from "node:fs/promises";
+import { glob } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { compareArms, guardVerdictOnIntervals, statFor } from "./arms-core.ts";
+import { holdout3Strata } from "./corpus.ts";
+import { measureFile } from "./corpus-covariates.ts";
 import { CURATED_IMAGES } from "./natural-images.ts";
-import { RESULTS_DIR, readResult, summarize } from "./results.ts";
+import {
+  holdout3StrataOf,
+  strataMembers,
+  stratumRule,
+} from "./register-verdict-core.ts";
+import {
+  type GuardTolerances,
+  RESULTS_DIR,
+  readResult,
+  summarize,
+} from "./results.ts";
 import {
   type CorrelationInference,
   correlationInference,
   holm,
 } from "./stats.ts";
-import { alignmentError, equalCountBins, pearson } from "./stratify-core.ts";
+import {
+  alignmentError,
+  equalCountBins,
+  pearson,
+  realCorpusOf,
+  tierBaselinePairs,
+} from "./stratify-core.ts";
 
 /** The three covariates `natural-images.ts` records, parsed out of `notes`. */
 interface Covariates {
@@ -121,13 +142,110 @@ const { values, positionals } = parseArgs({
     metric: { type: "string", default: "spurious" },
     by: { type: "string", default: "detail" },
     bins: { type: "string", default: "3" },
+    strata: { type: "boolean", default: false },
   },
 });
 
 const sweepName = positionals[0];
 if (!sweepName) {
-  console.error("usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N]");
+  console.error(
+    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata",
+  );
   process.exit(2);
+}
+if (values.strata) {
+  await printStrata(sweepName);
+  process.exit(0);
+}
+
+/**
+ * `--strata`: every arm against the first arm of its own tier (the tier's
+ * incumbent, so a config that spans tiers is read at equal bytes), overall
+ * and in each holdout3 stratum (`corpus.ts` `HOLDOUT3_STRATA`), under the
+ * stratum rule's tests (`register-verdict-core.ts` `stratumRule`).
+ *
+ * A holdout3 result reads each image's strata off its pin. Any other split
+ * has no pinned strata, so they are derived the way the pins' were: each
+ * image's covariates are measured on its cached fixture
+ * (`corpus-covariates.ts` `measureFile`), rounded to the pins' four places,
+ * and placed by `holdout3Strata`. On tune this is reporting: the stratum rule
+ * gates only a holdout3 read.
+ */
+async function printStrata(name: string): Promise<void> {
+  const file = readResult(RESULTS_DIR, name);
+  if (!file) {
+    console.error(`no committed result ${name} — run the sweep`);
+    process.exit(1);
+  }
+  const strataOf =
+    file.split === "holdout3"
+      ? holdout3StrataOf
+      : await measuredStrata(file.imageNames);
+  const members = strataMembers(file.imageNames, strataOf);
+  const tol = file.settings.guardTolerances as GuardTolerances;
+  const rise = (file.settings.artifactGuardRise as number | null) ?? undefined;
+  const sign = (x: number, d: number) => `${x >= 0 ? "+" : ""}${x.toFixed(d)}`;
+  console.log(
+    `${name} (${file.split}, ${file.imageNames.length} images): each arm against the first arm of its tier, overall and per stratum`,
+  );
+  for (const [s, idx] of members) console.log(`  ${s}: ${idx.length} images`);
+  for (const [ai, bi] of tierBaselinePairs(file.rows)) {
+    const row = file.rows[ai];
+    const base = file.rows[bi];
+    if (!row || !base) continue;
+    const [cmp] = compareArms([base, row], 0);
+    const d = statFor(cmp, "ciede2000");
+    if (!d) continue;
+    console.log(
+      `\n${row.label} vs ${base.label}\n  ${"overall".padEnd(15)} n ${String(file.imageNames.length).padStart(3)}  ΔE00 ${sign(d.meanDelta, 3)} [${sign(d.ci[0], 3)}, ${sign(d.ci[1], 3)}] = ${sign((100 * d.meanDelta) / d.baseMean, 2)}%  guards (CI) ${guardVerdictOnIntervals(cmp, tol, rise)}`,
+    );
+    for (const s of stratumRule(row, base, members, tol, rise).strata) {
+      console.log(
+        `  ${s.stratum.padEnd(15)} n ${String(s.n).padStart(3)}  ΔE00 ${sign(s.deltaE.meanDelta, 3)} [${sign(s.deltaE.ci[0], 3)}, ${sign(s.deltaE.ci[1], 3)}] = ${sign((100 * s.deltaE.meanDelta) / s.deltaE.baseMean, 2)}%  guards (CI) ${s.guards}  ${s.verdict}`,
+      );
+    }
+  }
+}
+
+/** Each image's holdout3 strata, measured off its cached fixture. */
+async function measuredStrata(
+  names: readonly string[],
+): Promise<(name: string) => readonly string[]> {
+  const files = new Map<string, string>();
+  for await (const f of glob(
+    path.join(import.meta.dirname, "../fixtures/**/*.{png,jpg}"),
+  )) {
+    files.set(path.basename(f).replace(/\.[^.]+$/, ""), f);
+  }
+  const round4 = (x: number) => Math.round(x * 1e4) / 1e4;
+  const out = new Map<string, readonly string[]>();
+  for (const name of names) {
+    const f = files.get(name);
+    if (!f) {
+      console.error(`${name}: no cached fixture to measure — run the sweep`);
+      process.exit(1);
+    }
+    const c = await measureFile(await fs.readFile(f));
+    const corpus = realCorpusOf(name);
+    if (corpus === null) {
+      console.error(`${name}: in no real corpus, so it has no strata`);
+      process.exit(1);
+    }
+    out.set(
+      name,
+      holdout3Strata({
+        corpus,
+        width: c.width,
+        height: c.height,
+        nonOpaqueFraction: round4(c.alpha?.nonOpaqueFraction ?? 0),
+        phone: c.phone,
+        meanL: round4(c.meanL),
+        lowKey: round4(c.lowKey),
+        skin: round4(c.skin),
+      }),
+    );
+  }
+  return (name) => out.get(name) ?? [];
 }
 
 const metric = values.metric as MetricName;
