@@ -829,6 +829,12 @@ mise run register-verdict D5                                            # §13.1
 mise run sweep alpha-tiers34                                            # §13.12
 mise run stratify alpha-tiers34 --alpha-tiers                           # §13.12
 mise run arms --seed-sensitivity alpha-tiers34                          # §13.12
+# Its one holdout3 read, at the freeze commit eec3495; a second read for D6
+# refuses, so this line cannot run again as written. Then its verdict,
+# re-derived from the committed result (re-scores nothing)
+mise run sweep alpha-tiers34-frozen --split holdout3 --decision D6      # §13.12
+mise run register-verdict D6                                            # §13.12
+mise run stratify alpha-tiers34-frozen-holdout3 --alpha-tiers           # §13.12
 
 # Check the tables in this file against the results above
 mise run verify:experiments
@@ -3787,7 +3793,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 1018 | 776 | 723 | 671 | 175 | 172 | 88 | 87 |
+| all committed sweeps | 1021 | 779 | 726 | 674 | 175 | 172 | 88 | 87 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3805,11 +3811,11 @@ its holdout3 read (§13.8), and to 898 when D2 committed its tune ladder
 and then 916 when it committed the two `embedded-tiers-identity` results of
 part 1 (§13.9), and to 932 and then 936 when D3 committed its tune sweep
 and its holdout3 read (§13.10), and to 983 and then 995 when D5 committed
-its tune sweep and its holdout3 read (§13.11), and to 1018 when D6
-committed its tune sweep (§13.12). The
+its tune sweep and its holdout3 read (§13.11), and to 1018 and then 1021 when D6
+committed its tune sweep and its holdout3 read (§13.12). The
 row compares every arm with its sweep's
 first row whatever the arm's tier, so it includes cross-tier comparisons at
-different byte counts that no decision judged: 243 of the 1018 arms, 13 of them
+different byte counts that no decision judged: 245 of the 1021 arms, 13 of them
 D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
 row, and the 2 code-4 rows of its holdout3 read against its code-3 row),
 30 D2's (every row but `t0 interleaved full` of `embedded-tiers-ladder` and
@@ -3818,8 +3824,8 @@ D3's (every code-3 and code-4 row of `synthesis-window-codes34` and of its
 holdout3 read against its code-2 row, which D3 reads on spurious detail
 alone) and 48 D5's (every code-1 to code-4 row of `downsample-before-dct`
 and of its holdout3 read against its code-0 incumbent; D5 reads each arm
-against its own tier's), 12 D6's (every code-4 row of `alpha-tiers34`
-against its code-3 shipped row), the
+against its own tier's), 14 D6's (every code-4 row of `alpha-tiers34`
+and of its holdout3 read against its code-3 shipped row), the
 rest from the tier ladders and mixed-tier tables of earlier sweeps. The
 prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
@@ -5088,3 +5094,46 @@ statement for the pair on `holdout3`'s 24 alpha pins at m = 2, from each
 comparison's tune spread (σ_rel 7.65% and 8.96%): an MDE of 4.81% at
 code 3 and 5.64% at code 4. Neither resolves R1's 3%; both are about half
 the tune estimate.
+
+**The holdout3 read.** D6 froze at `eec3495`, and read `holdout3`'s alpha
+part once from a clean tree at that commit: `mise run sweep
+alpha-tiers34-frozen --split holdout3 --decision D6`, over its 24 alpha
+pins, with exactly the four frozen rows. The result is committed as
+`alpha-tiers34-frozen-holdout3.json`, and `mise run register-verdict D6`
+re-derives every row below from it.
+
+| comparison (row vs its code's shipped row, equal bytes) | ΔE00 | 95% CI of Δ | relative | p Holm | guards (CI) |
+|---|---|---|---|---|---|
+| code 3: `t3 A20@5 L18@4 C3@3` | −0.992 | [−1.314, −0.664] | −13.50% | ≤ 0.0004 | ok |
+| code 4: `t4 A16@5 L23@4 C3@3` | −1.526 | [−1.827, −1.237] | −22.69% | ≤ 0.0004 | ok |
+
+Per stratum, the relative difference over each stratum's pins (a pin may
+sit in several; every pin is in `alpha`, so that column is the overall
+row), and over each opacity half:
+
+| comparison | smartphone (1) | extreme aspect (3) | mostly-opaque (11) | mostly-transparent (13) |
+|---|---|---|---|---|
+| code 3: `t3 A20@5 L18@4 C3@3` | −9.25% | −3.66% | −11.48% | −16.10% |
+| code 4: `t4 A16@5 L23@4 C3@3` | −15.69% | −10.69% | −19.19% | −27.13% |
+
+The shipped rows score 7.347 at code 3 and 6.725 at code 4 (medians 7.420
+and 6.739, against 7.155 and 5.440 for the frozen rows). Under R1 and the
+stratum rule (`mise run register-verdict D6`):
+
+1. **Both rows pass R1.** Each is past 3% (−13.50% and −22.69%), each is
+   Holm-significant with its p at the resampling floor, and every guard is
+   `ok` on its paired interval, SSIMULACRA2, Butteraugli and DSSIM alike.
+2. **No stratum fails.** Every stratum and both opacity halves are `ok`,
+   except the three extreme-aspect pins, whose guards are `inconclusive`
+   at both codes (n = 3); their ΔE00 intervals are nowhere near the
+   rule's +1.0%. The mostly-opaque half gains less than the
+   mostly-transparent one, as on tune, but out of sample by −11.48% and
+   −19.19%, more than on tune.
+3. **Condition 4 holds.** Under 20 bootstrap seeds other than 42 no
+   outcome turns, overall or in any stratum.
+
+**D6 passes R1 at codes 3 and 4.** Both effects are larger out of sample
+than on tune, and both are well past the MDE Q8 computed. The shipped
+bytes are unchanged: adopting a 5-bit alpha row at codes 3 and 4 is a
+format change, and a per-code row ends the single base row that codes 2–4
+share, which the v0.8 verdict lands in every language or declines.
