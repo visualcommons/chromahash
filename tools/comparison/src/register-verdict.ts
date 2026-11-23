@@ -7,16 +7,19 @@
  * Re-scores nothing.
  *
  * Usage:
- *   node dist/register-verdict.js C1|C2|D1|D3|D4|D5|D6 [--seeds N]
+ *   node dist/register-verdict.js C1|C2|D1|D3|D4|D5|D6|D9 [--seeds N]
  *
- * D4 rests on counts rather than intervals (`dct-identity-core.ts`), so
- * `--seeds` does not apply to it.
+ * D4 rests on counts rather than intervals (`dct-identity-core.ts`), and D9
+ * on its tune oracle bound, a mean of per-image minima
+ * (`cfl-oracle-core.ts`), so `--seeds` applies to neither.
  */
 
 import { parseArgs } from "node:util";
+import { D9_BAR, deriveD9Verdict } from "./cfl-oracle-core.ts";
 import { SPEED_THRESHOLD, deriveD4Verdict } from "./dct-identity-core.ts";
 import { D5_FROZEN, deriveD5Verdict } from "./downsample-core.ts";
 import { FREEZE_REVS, FROZEN, deriveVerdict } from "./register-verdict-core.ts";
+import { RESULTS_DIR, readResult } from "./results.ts";
 import { BOOTSTRAP_SEED } from "./stats.ts";
 import { WINDOW_FROZEN, deriveWindowVerdict } from "./window-core.ts";
 
@@ -30,13 +33,17 @@ function main(): void {
   });
   const id = positionals[0] ?? "";
   const seedCount = Number(values.seeds);
+  if (id === "D9") {
+    printD9Verdict();
+    return;
+  }
   const known =
     id === "D4" ||
     (id === "D5" && D5_FROZEN !== null) ||
     (FROZEN[id] ?? WINDOW_FROZEN[id]) !== undefined;
   if (!known || !Number.isInteger(seedCount) || seedCount < 0) {
     console.error(
-      `usage: register-verdict ${[...Object.keys(FROZEN), "D4", ...(D5_FROZEN ? ["D5"] : []), ...Object.keys(WINDOW_FROZEN)].join("|")} [--seeds N]`,
+      `usage: register-verdict ${[...Object.keys(FROZEN), "D4", ...(D5_FROZEN ? ["D5"] : []), ...Object.keys(WINDOW_FROZEN), "D9"].join("|")} [--seeds N]`,
     );
     process.exit(2);
   }
@@ -193,6 +200,47 @@ function printD5Verdict(seedCount: number): void {
     );
   }
   console.log(`  outcome: D5 ${v.pass ? "passes" : "fails"}`);
+}
+
+/**
+ * D9, chroma-from-luma in an adaptive or conditional form, is decided on tune
+ * by its oracle bound (`cfl-oracle-core.ts`): at each code, the mean of each
+ * image's best of the shipped arm and the free CfL arms against the shipped
+ * mean, overall and in each class the decoder recovers from the hash. The
+ * bound is a mean of per-image minima, so no bootstrap seed moves it and
+ * `--seeds` does not apply. The result must be clean and scored at the commit
+ * that fixed D9's rule (`deriveD9Verdict` refuses it otherwise).
+ */
+function printD9Verdict(): void {
+  const file = readResult(RESULTS_DIR, "cfl-oracle");
+  if (!file) {
+    console.error("no committed result cfl-oracle — run the sweep");
+    process.exit(1);
+  }
+  const rev = file.provenance.rev ?? "";
+  const v = deriveD9Verdict(file);
+  console.log(
+    `D9: the oracle bound on ${file.split} (${file.imageNames.length} images, results at ${rev.slice(0, 7)}, clean); a code is decided on the bound when it is under ${D9_BAR.toFixed(1)}% lower overall and in every recoverable class`,
+  );
+  for (const t of v.tiers) {
+    console.log(
+      `  code ${t.k}: ${t.decided ? "decided on the bound" : "the bound reaches 3%"}`,
+    );
+    for (const b of [t.overall, ...t.classes]) {
+      console.log(
+        `    ${b.group.padEnd(15)} n ${String(b.n).padStart(2)}  shipped ${b.shippedMean.toFixed(3)}  oracle ${b.oracleMean.toFixed(3)}  bound ${signed(b.rel, 2)}%  CfL lower on ${b.cflLower}  ${b.reaches ? "reaches 3%" : "under 3%"}`,
+      );
+    }
+  }
+  if (v.missing.length > 0) {
+    console.log(`  codes not in the result: ${v.missing.join(", ")}`);
+  }
+  console.log(
+    "  Condition 4: the bound is a mean of per-image minima, which no bootstrap seed moves",
+  );
+  console.log(
+    `  outcome: ${v.decided ? "D9 is decided on the bound at every code; holdout3 is not read for D9" : "not decided on the bound alone: D9 registers deployable arms where the bound reaches 3%"}`,
+  );
 }
 
 /**

@@ -176,6 +176,16 @@ import {
   readD5Speed,
   selectD5,
 } from "./downsample-core.ts";
+import {
+  CODE2_BYTES,
+  D9_RULE_REV,
+  boundOver,
+  d9Cells,
+  deriveD9Verdict,
+  oracleTiers,
+  readD9,
+  recoverableClasses,
+} from "./cfl-oracle-core.ts";
 import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
 import {
   type TableRegisterInput,
@@ -7897,6 +7907,236 @@ console.log(
         "decided in sample: no candidate's guards (CI) avoid FAIL" &&
       noneEligible.frozen.length === 0,
     noneEligible.tiers[0]?.outcome ?? "",
+  );
+}
+
+{
+  console.log("\nD9's oracle bound (cfl-oracle-core.ts)");
+  const tiers = oracleTiers(
+    [
+      "t0 shipped",
+      "t0 free cfl_bits=5",
+      "t1 shipped",
+      "t2 shipped",
+      "t2 free a",
+      "t2 free b",
+    ].map((label) => ({ label })),
+  );
+  check(
+    "oracleTiers groups each code's free arms under its shipped arm, and drops a code with none",
+    JSON.stringify(tiers) ===
+      JSON.stringify([
+        { k: 0, shipped: "t0 shipped", free: ["t0 free cfl_bits=5"] },
+        { k: 2, shipped: "t2 shipped", free: ["t2 free a", "t2 free b"] },
+      ]),
+    JSON.stringify(tiers),
+  );
+  let orphan = "";
+  try {
+    oracleTiers([{ label: "t3 free a" }]);
+  } catch (e) {
+    orphan = (e as Error).message;
+  }
+  check(
+    "oracleTiers refuses a free arm with no shipped arm of its code",
+    orphan.includes('no "t3 shipped" arm'),
+    orphan,
+  );
+
+  // Per image, the lowest of the three: 9, 10, 9.5, 10, so the bound is
+  // 9.625 against 10, −3.75%, with a free arm lower on two images.
+  const t = { k: 0, shipped: "s", free: ["f1", "f2"] };
+  const row = (label: string, ciede2000: number[]) => ({
+    label,
+    perImage: { ciede2000 },
+  });
+  const rows = [
+    row("s", [10, 10, 10, 10]),
+    row("f1", [9, 11, 10, 10]),
+    row("f2", [10, 10.5, 9.5, 10]),
+  ];
+  const b = boundOver(t, rows, [0, 1, 2, 3], "overall");
+  check(
+    "boundOver takes each image's lowest ΔE00 among the shipped and free arms, against the shipped mean",
+    b.n === 4 &&
+      b.shippedMean === 10 &&
+      Math.abs(b.oracleMean - 9.625) < 1e-12 &&
+      Math.abs(b.rel + 3.75) < 1e-12 &&
+      b.cflLower === 2 &&
+      b.reaches,
+    JSON.stringify(b),
+  );
+  const sub = boundOver(t, rows, [1, 3], "sub");
+  check(
+    "boundOver over a group reads only its images, and a bound under 3% does not reach",
+    sub.n === 2 && sub.rel === 0 && sub.cflLower === 0 && !sub.reaches,
+    JSON.stringify(sub),
+  );
+  let unscored = "";
+  try {
+    boundOver(t, [...rows.slice(0, 2), row("f2", [10, 10, 10])], [3], "x");
+  } catch (e) {
+    unscored = (e as Error).message;
+  }
+  check(
+    "boundOver refuses an image an arm did not score rather than dropping it",
+    unscored.includes("f2: no ΔE00 for image 3"),
+    unscored,
+  );
+
+  // Pinned names: one photograph, one alpha cut-out, and the first pin of
+  // any corpus at an aspect of 3:1 or more.
+  const aspectOf = (p: { width: number; height: number }) =>
+    Math.max(p.width, p.height) / Math.min(p.width, p.height);
+  const photo = CURATED_IMAGES.find((p) => aspectOf(p) < 3)?.label ?? "";
+  const cutout = ALPHA_IMAGES.find((p) => aspectOf(p) < 3)?.label ?? "";
+  const wide =
+    [...CURATED_IMAGES, ...ALPHA_IMAGES, ...GRAPHIC_IMAGES].find(
+      (p) => aspectOf(p) >= 3,
+    )?.label ?? "";
+  const names = [photo, cutout, wide, photo];
+  const flagRows = (code2: number[]) => [
+    { label: "t2 shipped", perImage: { bytes: code2 } },
+  ];
+  const classes = recoverableClasses(
+    names,
+    flagRows([
+      CODE2_BYTES.opaque,
+      CODE2_BYTES.alpha,
+      CODE2_BYTES.opaque,
+      CODE2_BYTES.opaque,
+    ]),
+  );
+  check(
+    "recoverableClasses reads the alpha flag off the code-2 length and extreme aspect off the pinned dimensions",
+    wide !== "" &&
+      JSON.stringify([...classes]) ===
+        JSON.stringify([
+          ["alpha", [1]],
+          ["opaque", [0, 2, 3]],
+          ["extreme-aspect", [2]],
+        ]),
+    JSON.stringify([...classes]),
+  );
+  let oddLength = "";
+  try {
+    recoverableClasses([photo], flagRows([107]));
+  } catch (e) {
+    oddLength = (e as Error).message;
+  }
+  check(
+    "recoverableClasses refuses a code-2 length that is neither mode's",
+    oddLength.includes("neither alpha mode"),
+    oddLength,
+  );
+
+  // Codes 0–4 share one shape: image 1 is the alpha one. A free arm 10%
+  // lower on it alone is −2.5% overall and −10% in the alpha class, so the
+  // class reaches the bar and the code is not decided on the bound.
+  const ladder = (free: number[], codes: readonly number[]) =>
+    codes.flatMap((k) => [
+      {
+        label: `t${k} shipped`,
+        perImage: {
+          ciede2000: [10, 10, 10, 10],
+          bytes:
+            k === 2
+              ? [
+                  CODE2_BYTES.opaque,
+                  CODE2_BYTES.alpha,
+                  CODE2_BYTES.opaque,
+                  CODE2_BYTES.opaque,
+                ]
+              : [32, 32, 32, 32],
+        },
+      },
+      { label: `t${k} free a`, perImage: { ciede2000: free } },
+    ]);
+  const all = [0, 1, 2, 3, 4];
+  const inClass = readD9({
+    imageNames: names,
+    rows: ladder([10, 9, 10.4, 10], all),
+  });
+  const t0 = inClass.tiers[0];
+  check(
+    "readD9: a bound under 3% overall that reaches it in a recoverable class does not decide the code",
+    t0 !== undefined &&
+      !t0.overall.reaches &&
+      Math.abs(t0.overall.rel + 2.5) < 1e-12 &&
+      t0.classes.find((c) => c.group === "alpha")?.reaches === true &&
+      !t0.decided &&
+      !inClass.decided,
+    JSON.stringify(t0),
+  );
+  const under = readD9({
+    imageNames: names,
+    rows: ladder([10, 9.9, 10.4, 10], all),
+  });
+  check(
+    "readD9: under 3% overall and in every class at every code 0-4 decides D9 on the bound",
+    under.tiers.length === 5 &&
+      under.tiers.every((x) => x.decided) &&
+      under.missing.length === 0 &&
+      under.decided,
+    JSON.stringify(under.tiers.map((x) => x.overall.rel)),
+  );
+  const partial = readD9({
+    imageNames: names,
+    rows: ladder([10, 9.9, 10.4, 10], [0, 1, 2, 3]),
+  });
+  check(
+    "readD9: a result missing a code does not decide D9",
+    JSON.stringify(partial.missing) === "[4]" && !partial.decided,
+    JSON.stringify(partial.missing),
+  );
+  const cells = d9Cells(under).get("code 2");
+  check(
+    "d9Cells states each code's means, bound, classes, CfL-lower count and outcome",
+    cells !== undefined &&
+      cells.shipped === 10 &&
+      cells.cflLower === "1 of 4" &&
+      cells.outcome === "decided on the bound" &&
+      typeof cells.alpha === "number" &&
+      Math.abs(cells.alpha + 1) < 1e-9 &&
+      typeof cells["extreme-aspect"] === "number",
+    JSON.stringify(cells),
+  );
+  // deriveD9Verdict refuses a dirty result and one scored at any rev other
+  // than D9's rule, matched by equality so a fresh clone without the rule's
+  // commit object still reads the committed result.
+  const thrown = (f: () => unknown): string => {
+    try {
+      f();
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    return "";
+  };
+  const d9Rows = ladder([10, 9.9, 10.4, 10], all);
+  const at = (rev: string | null, dirty: boolean | null) => ({
+    name: "cfl-oracle",
+    provenance: { rev, dirty },
+    imageNames: names,
+    rows: d9Rows,
+  });
+  const dirtyMsg = thrown(() => deriveD9Verdict(at(D9_RULE_REV, true)));
+  const unaskedMsg = thrown(() => deriveD9Verdict(at(D9_RULE_REV, null)));
+  const otherRev = "4a18ce2".padEnd(40, "0");
+  const revMsg = thrown(() => deriveD9Verdict(at(otherRev, false)));
+  const nullRevMsg = thrown(() => deriveD9Verdict(at(null, false)));
+  check(
+    "deriveD9Verdict refuses a dirty or unknown-tree result and one not scored at D9's rule",
+    dirtyMsg.includes("not scored from a clean tree") &&
+      unaskedMsg.includes("not scored from a clean tree") &&
+      revMsg.includes(`not at D9's rule ${D9_RULE_REV}`) &&
+      nullRevMsg.includes(`not at D9's rule ${D9_RULE_REV}`),
+    JSON.stringify([dirtyMsg, unaskedMsg, revMsg, nullRevMsg]),
+  );
+  const accepted = deriveD9Verdict(at(D9_RULE_REV, false));
+  check(
+    "deriveD9Verdict reads a clean result scored at D9's rule as readD9 does",
+    JSON.stringify(accepted) === JSON.stringify(under),
+    JSON.stringify(accepted.tiers.map((x) => x.overall.rel)),
   );
 }
 

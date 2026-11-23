@@ -1255,6 +1255,45 @@ const REGISTER: Claim[] = [
     transform: abs,
   },
 
+  // ── Register D9's verdict (#139) ─────────────────────────────────────────
+  // The status line quotes the oracle bound at every code (§13.14 table 1),
+  // the largest recoverable class (the opaque images at code 4) and the
+  // largest stratum (graphics at code 4, table 2).
+  ...([0, 1, 2, 3, 4] as const).map(
+    (k): Claim => ({
+      file: "spec/V0.8-DECISIONS.md",
+      what: `D9: the oracle bound at code ${k}`,
+      pattern: new RegExp(
+        `three free CfL arms is[\\s\\S]*?−([\\d.]+)% at code ${k}\\b`,
+      ),
+      section: "13.14",
+      table: 1,
+      row: `code ${k}`,
+      column: "bound",
+      transform: abs,
+    }),
+  ),
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D9: the largest recoverable class bound",
+    pattern: /the largest is −([\d.]+)%, the opaque images at code 4/,
+    section: "13.14",
+    table: 1,
+    row: "code 4",
+    column: "opaque (45)",
+    transform: abs,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D9: the largest stratum bound",
+    pattern: /largest graphics −([\d.]+)% at code 4/,
+    section: "13.14",
+    table: 2,
+    row: "graphics (16)",
+    column: "code 4",
+    transform: abs,
+  },
+
   // ── The holdout2 confirmations (register C1, C2) ─────────────────────────
   // #120 read the sealed splits once and recorded the outcome in §13.7: the
   // old holdout's −3.72% replicates in direction at about three-fifths of its

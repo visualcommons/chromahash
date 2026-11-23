@@ -35,6 +35,13 @@ import {
   selectD6,
 } from "./alpha-tiers-core.ts";
 import { compareArms, guardVerdictOnIntervals, statFor } from "./arms-core.ts";
+import {
+  type Bound,
+  D9_BAR,
+  boundOver,
+  oracleTiers,
+  readD9,
+} from "./cfl-oracle-core.ts";
 import { measureFile } from "./corpus-covariates.ts";
 import { holdout3Strata } from "./corpus.ts";
 import { COUNTS_DIR } from "./dct-identity-core.ts";
@@ -175,13 +182,14 @@ const { values, positionals } = parseArgs({
     window: { type: "boolean", default: false },
     downsample: { type: "boolean", default: false },
     "alpha-tiers": { type: "boolean", default: false },
+    "cfl-oracle": { type: "boolean", default: false },
   },
 });
 
 const sweepName = positionals[0];
 if (!sweepName) {
   console.error(
-    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata | stratify <sweep> --embedded | stratify <sweep> --window | stratify <sweep> --downsample | stratify <sweep> --alpha-tiers",
+    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata | stratify <sweep> --embedded | stratify <sweep> --window | stratify <sweep> --downsample | stratify <sweep> --alpha-tiers | stratify <sweep> --cfl-oracle",
   );
   process.exit(2);
 }
@@ -203,6 +211,10 @@ if (values.downsample) {
 }
 if (values["alpha-tiers"]) {
   await printAlphaTiers(sweepName);
+  process.exit(0);
+}
+if (values["cfl-oracle"]) {
+  await printCflOracle(sweepName);
   process.exit(0);
 }
 
@@ -499,6 +511,66 @@ async function printAlphaTiers(name: string): Promise<void> {
   );
   console.log(
     `  under ${seeds.length} seeds other than ${BOOTSTRAP_SEED}, the selection changes at ${turned.length}${turned.length > 0 ? ` (seeds ${turned.join(", ")})` : ""}`,
+  );
+}
+
+/**
+ * `--cfl-oracle`: register entry D9's oracle bound (`cfl-oracle-core.ts`).
+ * At each code, the mean of each image's lowest ΔE00 among the shipped arm
+ * and the free CfL arms, against the shipped mean: overall and in each class
+ * the decoder recovers from the hash, which the rule reads; then per corpus
+ * and in each holdout3 stratum, the strata found as `--strata` finds them,
+ * which on tune gate nothing. Then D9's rule.
+ */
+async function printCflOracle(name: string): Promise<void> {
+  const file = readResult(RESULTS_DIR, name);
+  if (!file) {
+    console.error(`no committed result ${name} — run the sweep`);
+    process.exit(1);
+  }
+  const strataOf =
+    file.split === "holdout3"
+      ? holdout3StrataOf
+      : await measuredStrata(file.imageNames);
+  const members = strataMembers(file.imageNames, strataOf);
+  const corpora = new Map<string, number[]>();
+  for (const [i, n] of file.imageNames.entries()) {
+    const c = `corpus ${realCorpusOf(n) ?? "other"}`;
+    corpora.set(c, [...(corpora.get(c) ?? []), i]);
+  }
+  const reading = readD9(file);
+  const sign = (x: number, d: number) => `${x >= 0 ? "+" : ""}${x.toFixed(d)}`;
+  console.log(
+    `${name} (${file.split}, ${file.imageNames.length} images): at each code, the mean of each image's lowest ΔE00 among the shipped arm and the free CfL arms, against the shipped mean; D9's bar is ${D9_BAR.toFixed(1)}% lower`,
+  );
+  for (const [s, idx] of members) console.log(`  ${s}: ${idx.length} images`);
+  const line = (b: Bound, gates: boolean) =>
+    console.log(
+      `  ${b.group.padEnd(18)} n ${String(b.n).padStart(3)}  shipped ${b.shippedMean.toFixed(3)}  oracle ${b.oracleMean.toFixed(3)}  bound ${sign(b.rel, 2)}%  CfL lower on ${b.cflLower}${gates ? `  ${b.reaches ? "reaches 3%" : "under 3%"}` : ""}`,
+    );
+  const tiers = oracleTiers(file.rows);
+  for (const t of reading.tiers) {
+    const tier = tiers.find((x) => x.k === t.k);
+    if (!tier) continue;
+    console.log(
+      `\ncode ${t.k}: ${tier.shipped} against the per-image best of it and ${tier.free.length} free arms`,
+    );
+    line(t.overall, true);
+    for (const b of t.classes) line(b, true);
+    for (const [c, idx] of corpora)
+      line(boundOver(tier, file.rows, idx, c), false);
+    for (const [s, idx] of members)
+      line(boundOver(tier, file.rows, idx, s), false);
+    console.log(
+      `  ${t.decided ? "decided on the bound: under 3% overall and in every recoverable class" : "the bound reaches 3%: D9 registers deployable arms at this code"}`,
+    );
+  }
+  const missing =
+    reading.missing.length > 0
+      ? ` (codes ${reading.missing.join(", ")} not in the result)`
+      : "";
+  console.log(
+    `\nD9's rule: ${reading.decided ? "decided on the bound at every code; holdout3 is not read for D9" : `not decided on the bound alone${missing}`}`,
   );
 }
 
