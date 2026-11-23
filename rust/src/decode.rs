@@ -893,9 +893,15 @@ mod tests {
             |t| t.accel_gamma_lut_cache = true,
             |t| t.accel_flat_cos = true,
         ];
-        let d = Tunables::DEFAULT;
+        // Held to the unaccelerated reference: both levers off, whatever
+        // `Tunables::DEFAULT` turns on. The defaults themselves are an arm.
+        let d = Tunables {
+            accel_gamma_lut_cache: false,
+            accel_flat_cos: false,
+            ..Tunables::DEFAULT
+        };
         let mut all = d;
-        let mut arms = Vec::new();
+        let mut arms = vec![Tunables::DEFAULT];
         for set in levers {
             let mut t = d;
             set(&mut t);
@@ -932,6 +938,10 @@ mod tests {
             accel_gamma_lut_cache: true,
             ..Tunables::DEFAULT
         };
+        let reference = Tunables {
+            accel_gamma_lut_cache: false,
+            ..Tunables::DEFAULT
+        };
         for (rgba, w, h) in [
             (gradient_image(9, 7), 9, 7),
             (checkerboard_alpha(8, 8), 8, 8),
@@ -940,7 +950,7 @@ mod tests {
             let hash = crate::ChromaHash::encode(w, h, &rgba, Gamut::Srgb);
             assert_eq!(
                 average_color_with(hash.as_bytes(), &t),
-                average_color_with(hash.as_bytes(), &Tunables::DEFAULT)
+                average_color_with(hash.as_bytes(), &reference)
             );
         }
     }
