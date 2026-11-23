@@ -97,7 +97,6 @@ import {
   d6Arms,
   d6Members,
   selectionKey as d6SelectionKey,
-  opacityMembers,
   readD6,
   selectD6,
 } from "./alpha-tiers-core.ts";
@@ -262,8 +261,10 @@ import {
 import { allTargets } from "./perf/targets.ts";
 import {
   deriveVerdict,
+  entryMembers,
   guardsAtSeed,
   holdout3StrataOf,
+  opacityMembers,
   strataMembers,
   stratumRule,
 } from "./register-verdict-core.ts";
@@ -7760,6 +7761,22 @@ console.log(
           ["mostly-transparent", [1]],
         ]),
     `${JSON.stringify([...halves])} | ${JSON.stringify([...both])} | pins ${[...pinned].map(([s, i]) => `${s} ${i.length}`).join(", ")}`,
+  );
+  // On holdout3's alpha pins (their recorded strata and fractions, no image
+  // read), D6's stratum rule reads the pinned strata and both opacity halves;
+  // every other entry reads the pinned strata alone.
+  const sealedAlpha = ALPHA_IMAGES.filter((s) => s.holdout3).map(
+    (s) => s.label,
+  );
+  const d6Strata = [...entryMembers("D6", sealedAlpha).keys()];
+  const d1Strata = [...entryMembers("D1", sealedAlpha).keys()];
+  check(
+    "entryMembers: D6's holdout3 strata are the pinned ones then mostly-opaque and mostly-transparent; D1's are the pinned ones alone",
+    sealedAlpha.length === 24 &&
+      d1Strata.includes("alpha") &&
+      JSON.stringify(d6Strata) ===
+        JSON.stringify([...d1Strata, "mostly-opaque", "mostly-transparent"]),
+    `${d6Strata.join(", ")} | ${d1Strata.join(", ")}`,
   );
 
   // Six images, the incumbent 10 everywhere. At code 3, A is 4% better with

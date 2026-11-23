@@ -28,7 +28,6 @@
  * stratum rule beside the pinned strata.
  */
 
-import { ALPHA_IMAGES } from "./alpha-images.ts";
 import {
   type GuardVerdict,
   type PairableRow,
@@ -39,6 +38,7 @@ import {
 } from "./arms-core.ts";
 import {
   type StratumReading,
+  opacityMembers,
   strataMembers,
   stratumRule,
 } from "./register-verdict-core.ts";
@@ -53,13 +53,6 @@ export const D6_SWEEP = "alpha-tiers34";
 export const D6_SHIPPED_ROW = "A28@3 L22@4 C3@3 (shipped)";
 /** R1's condition 1, and Q13's in-sample bar: at least 3.0% lower mean ΔE00. */
 export const D6_R1_GAIN = -3;
-/** The non-opaque fraction the opacity strata are cut at. */
-export const D6_OPACITY_CUT = 0.5;
-/** The opacity strata's names, in report order. */
-export const D6_OPACITY_STRATA = [
-  "mostly-opaque",
-  "mostly-transparent",
-] as const;
 
 export const incumbentLabel = (k: number): string => `t${k} ${D6_SHIPPED_ROW}`;
 
@@ -94,34 +87,9 @@ export function d6Arms(rows: readonly { label: string }[]): D6Spec[] {
 }
 
 /**
- * An alpha image's non-opaque fraction, off its pin, or undefined for a name
- * no alpha pin carries.
- */
-export function pinnedNonOpaque(name: string): number | undefined {
-  return ALPHA_IMAGES.find((s) => s.label === name)?.nonOpaqueFraction;
-}
-
-/**
- * The opacity strata's image indices into `imageNames`: `mostly-opaque`
- * below {@link D6_OPACITY_CUT}, `mostly-transparent` at or above it. A name
- * with no alpha pin is in neither, and an empty half is left out.
- */
-export function opacityMembers(
-  imageNames: readonly string[],
-  nonOpaqueOf: (name: string) => number | undefined = pinnedNonOpaque,
-): Map<string, number[]> {
-  const halves: [string, number[]][] = D6_OPACITY_STRATA.map((s) => [s, []]);
-  for (const [i, name] of imageNames.entries()) {
-    const f = nonOpaqueOf(name);
-    if (f === undefined) continue;
-    halves[f < D6_OPACITY_CUT ? 0 : 1]?.[1].push(i);
-  }
-  return new Map(halves.filter(([, idx]) => idx.length > 0));
-}
-
-/**
  * D6's strata: the ones the stratum rule names, found by `strataOf`, then
- * the two opacity halves.
+ * the two opacity halves (`register-verdict-core.ts` `opacityMembers`, which
+ * `register-verdict D6` reads on holdout3 through `entryMembers`).
  */
 export function d6Members(
   imageNames: readonly string[],

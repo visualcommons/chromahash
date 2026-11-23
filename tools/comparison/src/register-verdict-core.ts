@@ -324,6 +324,56 @@ export function strataMembers(
   return members;
 }
 
+/** The non-opaque fraction D6's opacity strata are cut at. */
+export const OPACITY_CUT = 0.5;
+/** D6's opacity strata, in report order. */
+export const OPACITY_STRATA = ["mostly-opaque", "mostly-transparent"] as const;
+
+/**
+ * An alpha image's non-opaque fraction, off its pin, or undefined for a name
+ * no alpha pin carries.
+ */
+export function pinnedNonOpaque(name: string): number | undefined {
+  return ALPHA_IMAGES.find((s) => s.label === name)?.nonOpaqueFraction;
+}
+
+/**
+ * D6's opacity strata (`spec/V0.8-DECISIONS.md` D6, "The opacity strata"):
+ * the image indices into `imageNames` of `mostly-opaque`, below
+ * {@link OPACITY_CUT}, and `mostly-transparent`, at or above it. A name with
+ * no alpha pin is in neither, and an empty half is left out.
+ */
+export function opacityMembers(
+  imageNames: readonly string[],
+  nonOpaqueOf: (name: string) => number | undefined = pinnedNonOpaque,
+): Map<string, number[]> {
+  const halves: [string, number[]][] = OPACITY_STRATA.map((s) => [s, []]);
+  for (const [i, name] of imageNames.entries()) {
+    const f = nonOpaqueOf(name);
+    if (f === undefined) continue;
+    halves[f < OPACITY_CUT ? 0 : 1]?.[1].push(i);
+  }
+  return new Map(halves.filter(([, idx]) => idx.length > 0));
+}
+
+/**
+ * The entries whose stratum rule also reads the opacity strata, after the
+ * pinned ones: D6, whose question is the alpha row (`RATIONALE.md` future
+ * work item 14).
+ */
+export const OPACITY_ENTRIES: ReadonlySet<string> = new Set(["D6"]);
+
+/** The strata an entry's holdout3 read is judged in. */
+export function entryMembers(
+  id: string,
+  imageNames: readonly string[],
+): Map<string, number[]> {
+  const members = strataMembers(imageNames);
+  return OPACITY_ENTRIES.has(id)
+    ? new Map([...members, ...opacityMembers(imageNames)])
+    : members;
+}
+
 /**
  * The row restricted to the images at `idx`, in that order: every per-image
  * series indexed by `idx`, so a stratum's members pair image by image across
@@ -433,7 +483,7 @@ export function deriveVerdict(
     const baseRow = file.rows[bi];
     if (!armRow || !baseRow) throw new Error(`rows missing in ${name}`);
     const members =
-      file.split === "holdout3" ? strataMembers(file.imageNames) : undefined;
+      file.split === "holdout3" ? entryMembers(id, file.imageNames) : undefined;
     return {
       result: name,
       arm: arm.trim(),
