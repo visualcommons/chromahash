@@ -309,15 +309,23 @@ export interface Holdout3Read {
  * Every committed result that read holdout3. A result file is a holdout3
  * reading when its `split` is `holdout3`; one that says so but records no
  * decision is reported as decision `""`, so it still counts against the seal.
+ * The count records under `counts/` (D4's `dct-identity`, which are not
+ * sweeps and so do not sit beside them) are read too, named `counts/<file>`.
  */
 export function holdout3Reads(
   resultsDir: string = RESULTS_DIR,
 ): Holdout3Read[] {
-  let files: string[];
-  try {
-    files = readdirSync(resultsDir).filter((f) => f.endsWith(".json"));
-  } catch {
-    return [];
+  const files: string[] = [];
+  for (const sub of ["", "counts"]) {
+    try {
+      files.push(
+        ...readdirSync(path.join(resultsDir, sub))
+          .filter((f) => f.endsWith(".json"))
+          .map((f) => (sub === "" ? f : `${sub}/${f}`)),
+      );
+    } catch {
+      if (sub === "") return [];
+    }
   }
   const reads: Holdout3Read[] = [];
   for (const f of files.sort()) {

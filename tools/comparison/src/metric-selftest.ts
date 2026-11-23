@@ -94,6 +94,26 @@ import {
   alphaImagesToFetch,
 } from "./alpha-images.ts";
 import { compareArms, guardVerdictOnIntervals } from "./arms-core.ts";
+import {
+  type IdentityRecord,
+  type InstructionRecord,
+  type Observation,
+  deriveD4Verdict,
+  readIdentity,
+  readSpeed,
+  tallyCells,
+  tallyStrata,
+  totalsOf,
+} from "./dct-identity-core.ts";
+import {
+  type ProcessCounts,
+  block as countBlock,
+  geomean,
+  pairReading,
+  parsePerfStat,
+  perIteration,
+  runsAgree,
+} from "./perf/count.ts";
 import { aspectFidelity, log2ToPct } from "./aspect.ts";
 import {
   type CommonsFacts,
@@ -5294,6 +5314,22 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
       .join(",") === "d1-sweep-holdout3.json:sweep:D1",
     JSON.stringify(holdout3Reads(results)),
   );
+  // D4's count records sit under counts/, not beside the sweeps; a holdout3
+  // read there still counts against the seal.
+  mkdirSync(path.join(results, "counts"));
+  read("counts/d4-identity-holdout3.json", "dct-identity", "holdout3", "D4");
+  read("counts/d4-identity.json", "dct-identity", "open", "");
+  check(
+    "holdout3Reads also sees a count record's holdout3 read under counts/, and assertHoldout3Unread refuses a second one",
+    holdout3Reads(results)
+      .map((r) => `${r.file}:${r.tool}:${r.decision}`)
+      .join(",") ===
+      "counts/d4-identity-holdout3.json:dct-identity:D4,d1-sweep-holdout3.json:sweep:D1" &&
+      thrown(() =>
+        assertHoldout3Unread("D4", "dct-identity", results),
+      ).includes("already been read by dct-identity"),
+    JSON.stringify(holdout3Reads(results)),
+  );
   const existing = path.join(results, "d1-sweep-holdout3.json");
   check(
     "a committed holdout3 result file is never overwritten either",
@@ -7037,6 +7073,272 @@ console.log(
       v.turned.length === 0 &&
       refused,
     `${vr?.spec.arm} pass ${vr?.pass} seeds ${v.seeds.join(",")} turned ${v.turned.length} refused ${refused}`,
+  );
+}
+
+// ─── D4: the paired instruction counts and the byte-identity count ──────────
+{
+  console.log("\nD4 counts (perf/count.ts, dct-identity-core.ts):");
+  const thrown = (f: () => unknown): string => {
+    try {
+      f();
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    return "";
+  };
+  const perf =
+    "286560789,,instructions:u,53026471,100.00,,\n206391986,,cycles:u,53026471,100.00,,\n";
+  const parsed = parsePerfStat(perf);
+  check(
+    "parsePerfStat reads each event's count from perf stat -x, output",
+    parsed["instructions:u"] === 286560789 && parsed["cycles:u"] === 206391986,
+    JSON.stringify(parsed),
+  );
+  check(
+    "parsePerfStat refuses a multiplexed count, a missing one and <not counted>",
+    thrown(() =>
+      parsePerfStat(perf.replace("53026471,100.00", "53026471,62.50")),
+    ).includes("multiplexed") &&
+      thrown(() => parsePerfStat(perf.split("\n")[0] ?? "")).includes(
+        "reported no cycles:u",
+      ) &&
+      thrown(() =>
+        parsePerfStat(perf.replace("206391986,,", "<not counted>,,")),
+      ).includes("counted no cycles:u"),
+    "",
+  );
+  const c = (i: number, y: number): ProcessCounts => ({
+    "instructions:u": i,
+    "cycles:u": y,
+  });
+  const per = perIteration(c(100, 50), c(2100, 1050), 20);
+  check(
+    "perIteration cancels the short process: (long − short) / iterations, and refuses a long process that counted no more",
+    per["instructions:u"] === 100 &&
+      per["cycles:u"] === 50 &&
+      thrown(() => perIteration(c(100, 50), c(100, 60), 20)).includes(
+        "counted no more instructions:u",
+      ),
+    JSON.stringify(per),
+  );
+  // Ratios 2, 8, 4, 4 (A over B): geometric mean 4, range 2–8.
+  const blocks = [
+    countBlock(0, c(200, 100), c(100, 100)),
+    countBlock(1, c(800, 100), c(100, 100)),
+    countBlock(2, c(400, 100), c(100, 100)),
+    countBlock(3, c(400, 100), c(100, 100)),
+  ];
+  const reading = pairReading(blocks);
+  check(
+    "pairReading is the geometric mean of the per-block A/B ratios, with their range, over A B / B A blocks",
+    Math.abs(reading.ratio["instructions:u"] - 4) < 1e-12 &&
+      reading.min["instructions:u"] === 2 &&
+      reading.max["instructions:u"] === 8 &&
+      reading.ratio["cycles:u"] === 1 &&
+      blocks.map((b) => b.order).join(" ") === "AB BA AB BA" &&
+      Math.abs(geomean([1, 4, 16]) - 4) < 1e-12,
+    JSON.stringify(reading.ratio),
+  );
+  check(
+    "pairReading refuses an odd block count and blocks out of A B / B A order",
+    thrown(() => pairReading(blocks.slice(0, 3))).includes("complete") &&
+      thrown(() => pairReading([blocks[1], blocks[0]] as never)).includes(
+        "out of A B / B A order",
+      ),
+    "",
+  );
+  check(
+    "runsAgree holds within 1% (r1 / r2 − 1), either way round, and not beyond",
+    runsAgree(3.0, 3.029) &&
+      runsAgree(3.029, 3.0) &&
+      !runsAgree(3.0, 3.04) &&
+      !runsAgree(3.04, 3.0),
+    "",
+  );
+
+  // The identity tally: two images, one differing encode at 512 px t2, the
+  // control seen once.
+  const ob = (
+    image: string,
+    size: Observation["size"],
+    tier: number,
+    differs: boolean,
+    control: boolean | null,
+    strata: string[] = [],
+  ): Observation => ({
+    image,
+    corpus: "photo",
+    split: "tune",
+    strata,
+    size,
+    tier,
+    differs,
+    controlDiffers: control,
+  });
+  const obs = [
+    ob("a", "harness", 1, false, true, ["skin"]),
+    ob("a", "512", 2, true, false, ["skin"]),
+    ob("b", "harness", 1, false, false, ["skin", "alpha"]),
+    ob("b", "full", 0, false, null, ["skin", "alpha"]),
+  ];
+  const cells = tallyCells(obs);
+  const totals = totalsOf(cells);
+  check(
+    "tallyCells counts encodes, differing hashes and control encodes per corpus, split, size and tier, in size then tier order",
+    cells
+      .map(
+        (x) =>
+          `${x.size}/t${x.tier}:${x.encodes}/${x.differing}/${x.controlEncodes}/${x.controlDiffering}`,
+      )
+      .join(" ") === "harness/t1:2/0/2/1 512/t2:1/1/1/0 full/t0:1/0/0/0" &&
+      totals.encodes === 4 &&
+      totals.differing === 1 &&
+      totals.controlEncodes === 3 &&
+      totals.controlDiffering === 1,
+    cells.map((x) => `${x.size}/t${x.tier}`).join(" "),
+  );
+  const strata = tallyStrata(obs, ["smartphone", "alpha", "skin"]);
+  check(
+    "tallyStrata counts images and encodes per stratum in the given order, and leaves out a stratum no image is in",
+    strata
+      .map((s) => `${s.stratum}:${s.images}/${s.encodes}/${s.differing}`)
+      .join(" ") === "alpha:1/2/0 skin:2/4/1",
+    JSON.stringify(strata),
+  );
+
+  // The verdict, from records in a scratch counts directory.
+  const prov = (rev: string, dirty = false) => ({
+    rev,
+    dirty,
+    dirtyPaths: [],
+    iqaCli: "unused",
+    config: "x",
+    configSha256: "",
+    binaries: {},
+    node: "v0",
+    corpus: [],
+  });
+  const pair = (label: string, r1: number, r2: number) => ({
+    label,
+    hashesEqual: true,
+    agree: runsAgree(r1, r2),
+    instructionRatio: r1,
+    runs: [r1, r2].map((r) => ({
+      reading: {
+        ratio: { "instructions:u": r, "cycles:u": r },
+        min: { "instructions:u": r - 0.1 },
+        max: { "instructions:u": r + 0.1 },
+      },
+    })),
+  });
+  const instr = (shipped: number, accel: number, accel2 = accel) =>
+    ({
+      tool: "dct-instructions",
+      provenance: prov("aaa"),
+      pairs: [
+        pair("shipped", shipped, shipped),
+        pair("ACCEL_ALL", accel, accel2),
+      ],
+      fasterIncumbent: "ACCEL_ALL",
+      agree: true,
+    }) as InstructionRecord;
+  const ident = (
+    split: "open" | "holdout3",
+    differing: number,
+    controlDiffering: number,
+    rev = "aaa",
+    dirty = false,
+  ) =>
+    ({
+      schema: 1,
+      tool: "dct-identity",
+      name: "x",
+      split,
+      settings: {
+        candidate: "dct_separable=1",
+        control: "mu_l=3",
+        sizes: [],
+        controlSizes: [],
+        ...(split === "holdout3"
+          ? {
+              holdout3: {
+                split: "holdout3",
+                decision: "D4",
+                register: "r",
+                registerSha256: "",
+              },
+            }
+          : {}),
+      },
+      provenance: prov(rev, dirty),
+      images: [],
+      cells: [],
+      strata: [{ stratum: "skin", images: 1, encodes: 13, differing }],
+      ...(split === "open"
+        ? {
+            vectors: {
+              vectors: 1,
+              encodes: 5,
+              differing: 0,
+              expectedMismatches: [],
+              diffs: [],
+            },
+          }
+        : {}),
+      totals: {
+        encodes: 13,
+        differing,
+        controlEncodes: 10,
+        controlDiffering,
+      },
+      diffs: [],
+    }) as unknown as IdentityRecord;
+  check(
+    "readSpeed passes only with both pairs at 2.0× or more and both pairs' runs within 1%",
+    readSpeed(instr(2.9, 2.0)).pass &&
+      !readSpeed(instr(2.9, 1.99)).pass &&
+      !readSpeed(instr(2.9, 2.5, 2.6)).pass,
+    "",
+  );
+  check(
+    "readIdentity passes only with no differing hash and the negative control seen",
+    readIdentity(ident("open", 0, 3)).pass &&
+      !readIdentity(ident("open", 1, 3)).pass &&
+      !readIdentity(ident("open", 0, 0)).pass,
+    "",
+  );
+  const dir = mkdtempSync(path.join(tmpdir(), "d4-verdict-"));
+  const put = (name: string, body: unknown) =>
+    writeFileSync(path.join(dir, `${name}.json`), JSON.stringify(body));
+  put("dct-instructions", instr(2.9, 2.2));
+  put("dct-identity", ident("open", 0, 3));
+  const before = deriveD4Verdict(dir);
+  put("dct-identity-holdout3", ident("holdout3", 0, 2, "fff"));
+  const passes = deriveD4Verdict(dir, "fff");
+  const wrongRev = thrown(() => deriveD4Verdict(dir, "eee"));
+  put("dct-identity-holdout3", ident("holdout3", 2, 2, "fff"));
+  const failsOut = deriveD4Verdict(dir, "fff");
+  put("dct-identity-holdout3", ident("holdout3", 0, 2, "fff", true));
+  const dirty = thrown(() => deriveD4Verdict(dir, "fff"));
+  put("dct-instructions", instr(1.8, 2.2));
+  const slow = deriveD4Verdict(dir, "fff");
+  put("dct-instructions", instr(2.9, 2.2));
+  put("dct-identity", ident("open", 1, 3));
+  const moved = deriveD4Verdict(dir, "fff");
+  rmSync(dir, { recursive: true, force: true });
+  check(
+    "deriveD4Verdict: qualifies with holdout3 unread before the freeze; passes on a zero holdout3 count at the freeze rev; fails on holdout3 on a differing hash; fails in sample on a slow pair or a differing open hash; refuses a read at another rev or from a dirty tree",
+    before.qualifies &&
+      before.outcome === null &&
+      passes.outcome === "passes" &&
+      passes.holdout3?.strata.length === 1 &&
+      failsOut.outcome === "fails on holdout3" &&
+      slow.outcome === "fails in sample" &&
+      moved.outcome === "fails in sample" &&
+      wrongRev.includes("not at D4's freeze") &&
+      dirty.includes("clean tree"),
+    `${before.outcome} ${passes.outcome} ${failsOut.outcome} ${slow.outcome} ${moved.outcome}`,
   );
 }
 

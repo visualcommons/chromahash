@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#MISE description="Count the hashes the separable forward DCT changes, per corpus, split, size and tier (register D4)"
+#MISE depends=["build:compare"]
+#
+# Usage: mise run dct-identity [--split holdout3 --decision D4] [--jobs N]
+#
+# Encodes every unsealed fixture image with dct_separable off and on, at the
+# harness's encoder input and 512 px for tier codes 0-4 and at full
+# resolution for codes 0-2, plus every encode vector at codes 0-4, and counts
+# the hashes that differ. A negative control (mu_l=3) must change at least one
+# hash. With --split holdout3 --decision D4 it is D4's one holdout3 read,
+# through the register gate. Writes tools/comparison/results/counts/
+# (spec/V0.8-DECISIONS.md D4, "Byte identity, as measured").
+#
+# A file task rather than an inline one, because mise appends an inline task's
+# arguments instead of passing them as "$@".
+set -euo pipefail
+
+cargo build --manifest-path rust/Cargo.toml --release --example encode_stdin
+node tools/comparison/dist/dct-identity.js "$@"

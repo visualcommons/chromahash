@@ -7,10 +7,14 @@
  * Re-scores nothing.
  *
  * Usage:
- *   node dist/register-verdict.js C1|C2|D1|D3 [--seeds N]
+ *   node dist/register-verdict.js C1|C2|D1|D3|D4 [--seeds N]
+ *
+ * D4 rests on counts rather than intervals (`dct-identity-core.ts`), so
+ * `--seeds` does not apply to it.
  */
 
 import { parseArgs } from "node:util";
+import { SPEED_THRESHOLD, deriveD4Verdict } from "./dct-identity-core.ts";
 import { FREEZE_REVS, FROZEN, deriveVerdict } from "./register-verdict-core.ts";
 import { BOOTSTRAP_SEED } from "./stats.ts";
 import { WINDOW_FROZEN, deriveWindowVerdict } from "./window-core.ts";
@@ -25,12 +29,16 @@ function main(): void {
   });
   const id = positionals[0] ?? "";
   const seedCount = Number(values.seeds);
-  const known = (FROZEN[id] ?? WINDOW_FROZEN[id]) !== undefined;
+  const known = id === "D4" || (FROZEN[id] ?? WINDOW_FROZEN[id]) !== undefined;
   if (!known || !Number.isInteger(seedCount) || seedCount < 0) {
     console.error(
-      `usage: register-verdict ${[...Object.keys(FROZEN), ...Object.keys(WINDOW_FROZEN)].join("|")} [--seeds N]`,
+      `usage: register-verdict ${[...Object.keys(FROZEN), "D4", ...Object.keys(WINDOW_FROZEN)].join("|")} [--seeds N]`,
     );
     process.exit(2);
+  }
+  if (id === "D4") {
+    printD4Verdict();
+    return;
   }
   if (WINDOW_FROZEN[id]) {
     printWindowVerdict(id, seedCount);
@@ -130,6 +138,49 @@ function printWindowVerdict(id: string, seedCount: number): void {
       `  Condition 4: under ${v.seeds.length} seeds other than ${BOOTSTRAP_SEED}, ${v.turned.length} outcome(s) turn (overall or in a stratum)`,
     );
   }
+}
+
+/**
+ * D4, the separable forward DCT, rests on counts (`dct-identity-core.ts`):
+ * the paired instruction ratio against both incumbents, the open-split and
+ * vector identity count that selects it, and, once frozen, the holdout3
+ * identity count. Identical hashes decode to identical pixels, so R2's
+ * ΔE00, guard and seed conditions and the stratum rule hold exactly on a
+ * zero count; there is no interval to re-draw. Before the freeze this
+ * prints the selection alone.
+ */
+function printD4Verdict(): void {
+  const rev = FREEZE_REVS.D4;
+  const v = deriveD4Verdict(undefined, rev);
+  const yes = (b: boolean): string => (b ? "yes" : "no");
+  console.log(
+    `D4: R2 with a speed primary in retired instructions; counts, not intervals${rev ? ` (holdout3 read at ${rev.slice(0, 7)}, clean)` : ""}`,
+  );
+  for (const p of v.speed.pairs) {
+    console.log(
+      `  speed vs ${p.label}: ${p.ratio.toFixed(3)}× instructions (blocks ${p.min.toFixed(3)}–${p.max.toFixed(3)}; runs ${p.runRatios.map((r) => r.toFixed(4)).join(" / ")}, agree within 1% ${yes(p.agree)})  ≥ ${SPEED_THRESHOLD.toFixed(1)}× ${yes(p.pass)}`,
+    );
+  }
+  console.log(`  faster incumbent: ${v.speed.fasterIncumbent}`);
+  const o = v.open;
+  console.log(
+    `  open splits and vectors: ${o.encodes} encode pairs, ${o.differing} image and ${o.vectorsDiffering} vector hashes differ, ${o.expectedMismatches} vectors off their expected hash, control seen ${yes(o.controlSeen)}`,
+  );
+  console.log(`  qualifies (selection on tune): ${yes(v.qualifies)}`);
+  if (v.holdout3) {
+    const h = v.holdout3;
+    console.log(
+      `  holdout3: ${h.encodes} encode pairs, ${h.differing} differ, control seen ${yes(h.controlSeen)}`,
+    );
+    for (const s of h.strata) {
+      console.log(
+        `    ${s.stratum.padEnd(15)} ${String(s.images).padStart(2)} images  ${String(s.encodes).padStart(4)} encodes  ${s.differing} differ`,
+      );
+    }
+  }
+  console.log(
+    `  outcome: ${v.outcome ?? "qualifies; holdout3 not yet read (freeze first)"}`,
+  );
 }
 
 main();
