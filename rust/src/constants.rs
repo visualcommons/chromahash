@@ -905,7 +905,7 @@ impl Tunables {
         accel_gamma_lut_cache: true,
         accel_flat_cos: true,
         accel_sse_early_exit: true,
-        accel_fused_pixels: false,
+        accel_fused_pixels: true,
         accel_word_bitpack: false,
         refine_passes: 0,
         refine_delta: 1,
