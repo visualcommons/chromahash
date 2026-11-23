@@ -816,6 +816,11 @@ mise run sweep downsample-before-dct                                    # §13.1
 mise run downsample-instructions                                        # §13.11
 mise run stratify downsample-before-dct --downsample                    # §13.11
 mise run arms --seed-sensitivity downsample-before-dct                  # §13.11
+# Its one holdout3 read, at the freeze commit fd781e3; a second read for D5
+# refuses, so this line cannot run again as written. Then its verdict,
+# re-derived from the committed result and count (re-scores nothing)
+mise run sweep downsample-before-dct-frozen --split holdout3 --decision D5  # §13.11
+mise run register-verdict D5                                            # §13.11
 
 # Check the tables in this file against the results above
 mise run verify:experiments
@@ -3774,7 +3779,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 983 | 744 | 691 | 639 | 175 | 169 | 88 | 87 |
+| all committed sweeps | 995 | 754 | 701 | 651 | 175 | 169 | 88 | 87 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3791,19 +3796,20 @@ sweeps (§13.7), and to 880 and then 883 when D1 committed its tune sweep and
 its holdout3 read (§13.8), and to 898 when D2 committed its tune ladder
 and then 916 when it committed the two `embedded-tiers-identity` results of
 part 1 (§13.9), and to 932 and then 936 when D3 committed its tune sweep
-and its holdout3 read (§13.10), and to 983 when D5 committed its tune
-sweep (§13.11). The
+and its holdout3 read (§13.10), and to 983 and then 995 when D5 committed
+its tune sweep and its holdout3 read (§13.11). The
 row compares every arm with its sweep's
 first row whatever the arm's tier, so it includes cross-tier comparisons at
-different byte counts that no decision judged: 221 of the 983 arms, 13 of them
+different byte counts that no decision judged: 231 of the 995 arms, 13 of them
 D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
 row, and the 2 code-4 rows of its holdout3 read against its code-3 row),
 30 D2's (every row but `t0 interleaved full` of `embedded-tiers-ladder` and
 of each `embedded-tiers-identity` result, against its code-0 row), 20
 D3's (every code-3 and code-4 row of `synthesis-window-codes34` and of its
 holdout3 read against its code-2 row, which D3 reads on spurious detail
-alone) and 38 D5's (every code-1 to code-4 row of `downsample-before-dct`
-against its code-0 incumbent; D5 reads each arm against its own tier's), the
+alone) and 48 D5's (every code-1 to code-4 row of `downsample-before-dct`
+and of its holdout3 read against its code-0 incumbent; D5 reads each arm
+against its own tier's), the
 rest from the tier ladders and mixed-tier tables of earlier sweeps. The
 prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
@@ -4898,3 +4904,61 @@ verdict. Q8's power statement for `holdout3`'s 88 images, from each frozen
 arm's tune spread at power 0.8 and two-sided α = 0.05: σ_rel 3.22%, 3.26%,
 3.41%, 2.72% and 2.31% at codes 0–4, an MDE of 0.96%, 0.97%, 1.02%, 0.81%
 and 0.69%, so δ = 1.0% is about what the read resolves at codes 0–2.
+
+**The holdout3 read.** D5 froze at `fd781e3`, and read `holdout3` once from
+a clean tree at that commit: `mise run sweep downsample-before-dct-frozen
+--split holdout3 --decision D5`, over all 88 pins (48 photographic, 24
+alpha, 16 graphics) at their native resolution, with exactly the 13 frozen
+rows. At codes 0–2 the lever-free shipped default decoded to the
+incumbent's pixels on every pin. The result is committed as
+`downsample-before-dct-frozen-holdout3.json`, and `mise run
+register-verdict D5` re-derives every row below from it, each frozen arm
+against its tier's full-resolution incumbent:
+
+| frozen arm | ΔE00 | 95% CI of Δ | relative | guards (CI) |
+|---|---|---|---|---|
+| code 0: `t0 downsample=linear downsample_edge=128` | −0.018 | [−0.095, +0.046] | −0.16% | ok |
+| code 1: `t1 downsample=linear downsample_edge=128` | −0.034 | [−0.111, +0.028] | −0.33% | ok |
+| code 2: `t2 downsample=linear downsample_edge=128` | −0.013 | [−0.080, +0.044] | −0.16% | ok |
+| code 3: `t3 downsample=linear downsample_edge=256` | −0.002 | [−0.046, +0.038] | −0.03% | ok |
+| code 4: `t4 downsample=linear downsample_edge=512` | −0.010 | [−0.036, +0.016] | −0.15% | ok |
+
+Per stratum, the relative ΔE00 difference over each stratum's pins (a pin
+may sit in several):
+
+| frozen arm | smartphone (17) | graphics (16) | alpha (24) | skin (17) | low-light (12) | extreme aspect (16) |
+|---|---|---|---|---|---|---|
+| code 0: `t0 downsample=linear downsample_edge=128` | +0.82% | −4.87% | −0.05% | +0.97% | +1.31% | −1.24% |
+| code 1: `t1 downsample=linear downsample_edge=128` | +1.04% | −5.62% | −0.14% | +0.53% | +1.57% | −1.51% |
+| code 2: `t2 downsample=linear downsample_edge=128` | +1.44% | −5.59% | −0.28% | +1.22% | +2.88% | −1.11% |
+| code 3: `t3 downsample=linear downsample_edge=256` | +1.28% | −4.43% | −0.01% | +0.96% | +2.40% | −0.46% |
+| code 4: `t4 downsample=linear downsample_edge=512` | +0.72% | −2.73% | −0.01% | +0.46% | +1.23% | +0.00% |
+
+Under R2 with the speed primary and the stratum rule (`mise run
+register-verdict D5`):
+
+1. **Conditions 1–3 hold at every tier.** Every arm's ΔE00 interval has
+   its upper bound under the +1.0% margin (+0.41%, +0.27%, +0.52%, +0.53%
+   and +0.25% of the incumbent at codes 0–4), every guard is `ok` on its
+   paired interval, and the speed at the code-1 edge is 14.06× against the
+   shipped default and 7.30× against `ACCEL_ALL`.
+2. **The stratum rule fails code 2.** On the 12 low-light pins the code-2
+   arm costs +2.88%, and the lower bound of its interval is +1.50%, above
+   the rule's +1.0%. Every other stratum at every tier is `ok` or
+   `inconclusive`; low-light's lower bound is the next nearest at code 3
+   (+0.91%).
+3. **Condition 4 holds.** Under 20 bootstrap seeds other than 42 no
+   outcome turns, overall or in any stratum.
+
+**D5 fails**, because all five tiers must pass. What the read shows
+beyond the verdict is that the overall means hide a trade between the
+corpora. Per corpus the photographs pay at every tier (+0.91%, +0.89%,
++1.36%, +1.18% and +0.50% at codes 0–4, every interval excluding zero on
+the losing side), the graphics gain 2.7% to 5.6%, and the alpha cut-outs
+do not move; the photographs' cost concentrates where the tune result put
+it, in low light, and in the smartphone and skin pins, which are
+photographs too. That is a fixed setting that helps one stratum and hurts
+another, which the adaptive/conditional rule judges as it stands. The
+oklab placement, which the tune result found all but free, was not read:
+the selection chose on speed, and against `ACCEL_ALL` it does not reach
+2.0× at any edge. The shipped encoder is unchanged.

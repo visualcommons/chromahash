@@ -1406,6 +1406,27 @@ const D5_TIER_BASELINES: Record<string, string> = Object.fromEntries(
   ),
 );
 
+/** §13.11's holdout3 rows: D5's five frozen arms, by doc label. */
+const D5_FROZEN_ARMS: readonly (readonly [number, number])[] = [
+  [0, 128],
+  [1, 128],
+  [2, 128],
+  [3, 256],
+  [4, 512],
+];
+const D5_FROZEN_ROWS: Record<string, string> = Object.fromEntries(
+  D5_FROZEN_ARMS.map(([k, e]) => [
+    `code ${k}: \`t${k} downsample=linear downsample_edge=${e}\``,
+    `t${k} downsample=linear downsample_edge=${e}`,
+  ]),
+);
+const D5_FROZEN_BASELINES: Record<string, string> = Object.fromEntries(
+  D5_FROZEN_ARMS.map(([k, e]) => [
+    `code ${k}: \`t${k} downsample=linear downsample_edge=${e}\``,
+    `t${k} full resolution`,
+  ]),
+);
+
 /** §13.8's holdout3 rows: D1's two frozen comparisons, by doc label. */
 const D1_FROZEN_ROWS: Record<string, string> = {
   "code 3: `t3 coded x3` vs `t3 shipped`": "t3 coded x3",
@@ -2831,6 +2852,39 @@ const BINDINGS: Binding[] = [
     },
     rowBaselines: D5_TIER_BASELINES,
   },
+  // §13.11 — D5's one holdout3 read, at the freeze: each frozen arm against
+  // its tier's full-resolution incumbent, then per holdout3 stratum.
+  {
+    kind: "rows",
+    section: "13.11",
+    table: 4,
+    sweep: "downsample-before-dct-frozen-holdout3",
+    columns: {
+      ΔE00: "diff:ciede2000",
+      "95% CI of Δ": "diffCi:ciede2000",
+      relative: "ciedeDeltaPct",
+      "guards (CI)": "guardsCiVsBaseline",
+    },
+    aliases: D5_FROZEN_ROWS,
+    rowBaselines: D5_FROZEN_BASELINES,
+  },
+  {
+    kind: "rows",
+    section: "13.11",
+    table: 5,
+    sweep: "downsample-before-dct-frozen-holdout3",
+    columns: Object.fromEntries(
+      D1_STRATUM_COLUMNS.map(([header]) => [header, "ciedeDeltaPct"]),
+    ),
+    subsets: Object.fromEntries(
+      D1_STRATUM_COLUMNS.map(([header, stratum]) => [
+        header,
+        (n: string) => holdout3StrataOf(n).includes(stratum),
+      ]),
+    ),
+    aliases: D5_FROZEN_ROWS,
+    rowBaselines: D5_FROZEN_BASELINES,
+  },
 
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
@@ -3125,6 +3179,11 @@ const EXPECTED_CELLS: Record<string, number> = {
   // incumbent (120); the five selected arms per corpus (15).
   "13.11#1": 165,
   "13.11#2": 15,
+  // D5's holdout3 read: the five frozen arms' ΔE00 difference, interval,
+  // relative and guards (20); then their relative differences in each of the
+  // six strata (30).
+  "13.11#4": 20,
+  "13.11#5": 30,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
