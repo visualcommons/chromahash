@@ -25,8 +25,9 @@
  * relative margin `(G_k − mean Δ_k) / mean(native k)`.
  *
  * It calls the same `compareArms`, interval guards and bootstrap the sweeps
- * use and changes no statistic. `register-verdict`, `stratify --embedded`,
- * `verify:experiments` and `selftest:metrics` all read D2 through here.
+ * use and changes no statistic. `stratify --embedded` and `selftest:metrics`
+ * read D2 through here; `register-verdict` and `verify:experiments` do not
+ * import it.
  */
 
 import {
