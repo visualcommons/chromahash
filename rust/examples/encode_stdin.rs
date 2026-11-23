@@ -146,10 +146,15 @@ fn split_layout_scope(key: &str) -> (&str, LayoutScope) {
 /// Each match arm below mirrors one field of `chromahash::Tunables`; keep this
 /// parser in sync with that struct (see `rust/src/constants.rs`).
 fn tunables_from_env() -> Tunables {
+    match std::env::var("CHROMAHASH_TUNE") {
+        Ok(spec) => tunables_from_spec(&spec),
+        Err(_) => Tunables::DEFAULT,
+    }
+}
+
+/// Parse a `CHROMAHASH_TUNE` value on top of `Tunables::DEFAULT`.
+fn tunables_from_spec(spec: &str) -> Tunables {
     let mut t = Tunables::DEFAULT;
-    let Ok(spec) = std::env::var("CHROMAHASH_TUNE") else {
-        return t;
-    };
     for pair in spec.split_whitespace() {
         let Some((key, value)) = pair.split_once('=') else {
             eprintln!("CHROMAHASH_TUNE: malformed pair '{pair}'");
@@ -353,6 +358,22 @@ fn tunables_from_env() -> Tunables {
 /// and the alpha-mode indices it writes, or `None` for any other key. An
 /// out-of-range code, or a cell suffix on `ac_coder`, aborts.
 fn per_tier_key(key: &str) -> Option<(&str, usize, &'static [usize])> {
+    let parsed = parse_per_tier_key(key)?;
+    match parsed {
+        Ok(found) => Some(found),
+        Err(()) => {
+            eprintln!(
+                "CHROMAHASH_TUNE: {key} names no tier code (0..={MAX_TIER}), or a cell on a per-tier knob"
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+/// [`per_tier_key`] without the exit: `None` for a key that is not per-tier,
+/// `Some(Err(()))` for one it must abort on.
+#[allow(clippy::type_complexity)]
+fn parse_per_tier_key(key: &str) -> Option<Result<(&str, usize, &'static [usize]), ()>> {
     let (name, code) = key.split_once('.')?;
     if !matches!(
         name,
@@ -369,13 +390,8 @@ fn per_tier_key(key: &str) -> Option<(&str, usize, &'static [usize])> {
     };
     let cell_on_coder = name == "ac_coder" && modes.len() == 1;
     match digits.parse::<usize>() {
-        Ok(n) if n < TIER_CODES && !cell_on_coder => Some((name, n, modes)),
-        _ => {
-            eprintln!(
-                "CHROMAHASH_TUNE: {key} names no tier code (0..={MAX_TIER}), or a cell on a per-tier knob"
-            );
-            std::process::exit(1);
-        }
+        Ok(n) if n < TIER_CODES && !cell_on_coder => Some(Ok((name, n, modes))),
+        _ => Some(Err(())),
     }
 }
 
@@ -865,5 +881,92 @@ fn main() {
                 .expect("failed to write checksum");
         }
         _ => usage(),
+    }
+}
+
+// The sweep harness drives generation v2's per-code knobs through this
+// parser, so a key that lands on the wrong code, cell or row would corrupt a
+// sweep silently. Run by `cargo test` (`test = true` in `rust/Cargo.toml`).
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_code_suffix_writes_that_code_in_both_cells() {
+        let t = tunables_from_spec("w_min_l.3=0.85 w_exp_c.1=2");
+        let d = Tunables::DEFAULT;
+        for m in 0..2 {
+            for code in 0..TIER_CODES {
+                let want_l = if code == 3 { 0.85 } else { d.w_min_l[m][code] };
+                assert_eq!(t.w_min_l[m][code], want_l, "cell {m} code {code}");
+                let want_c = if code == 1 { 2 } else { d.w_exp_c[m][code] };
+                assert_eq!(t.w_exp_c[m][code], want_c, "cell {m} code {code}");
+            }
+        }
+        assert_eq!(t.w_exp_l, d.w_exp_l);
+        assert_eq!(t.w_min_c, d.w_min_c);
+    }
+
+    #[test]
+    fn a_cell_suffix_writes_one_alpha_mode() {
+        let t = tunables_from_spec("w_min_c.4a=0.5 w_exp_l.2o=3");
+        let d = Tunables::DEFAULT;
+        for code in 0..TIER_CODES {
+            // Cell 1 is the alpha mode, cell 0 the opaque one.
+            assert_eq!(t.w_min_c[0][code], d.w_min_c[0][code]);
+            let want = if code == 4 { 0.5 } else { d.w_min_c[1][code] };
+            assert_eq!(t.w_min_c[1][code], want, "code {code}");
+            assert_eq!(t.w_exp_l[1][code], d.w_exp_l[1][code]);
+            let want = if code == 2 { 3 } else { d.w_exp_l[0][code] };
+            assert_eq!(t.w_exp_l[0][code], want, "code {code}");
+        }
+    }
+
+    #[test]
+    fn the_coder_takes_a_code_suffix_only() {
+        let t = tunables_from_spec("ac_coder.2=2 ac_coder.3=0");
+        let mut want = Tunables::DEFAULT.ac_coder;
+        want[2] = 2;
+        want[3] = 0;
+        assert_eq!(t.ac_coder, want);
+        // A cell suffix on the coder, or a code past the last, must abort.
+        for key in [
+            "ac_coder.3a",
+            "ac_coder.3o",
+            "w_min_l.5",
+            "w_exp_c.9a",
+            "w_min_l.x",
+        ] {
+            assert_eq!(parse_per_tier_key(key), Some(Err(())), "{key}");
+        }
+        // Any other dotted key is not a per-tier knob at all.
+        assert_eq!(parse_per_tier_key("mu_l.3"), None);
+        assert_eq!(parse_per_tier_key("w_min_l"), None);
+        assert_eq!(
+            parse_per_tier_key("ac_coder.4"),
+            Some(Ok(("ac_coder", 4, &[0usize, 1][..])))
+        );
+    }
+
+    #[test]
+    fn a_code_scope_writes_that_codes_row_only() {
+        let d = Tunables::DEFAULT;
+        for (suffix, code) in [("c2", 2), ("c3", 3), ("c4", 4)] {
+            let t = tunables_from_spec(&format!("l1_{suffix}=40:6"));
+            let rows = [
+                (0, t.layout, d.layout),
+                (1, t.layout_compact, d.layout_compact),
+                (2, t.layout_upper, d.layout_upper),
+                (3, t.layout_t3, d.layout_t3),
+                (4, t.layout_t4, d.layout_t4),
+            ];
+            for (row, got, base) in rows {
+                let mut want = base;
+                if row == code {
+                    want.l_tiers[0] = (40, 6);
+                }
+                assert_eq!(got, want, "{suffix} row {row}");
+            }
+        }
     }
 }
