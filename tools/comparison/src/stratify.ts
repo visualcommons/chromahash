@@ -40,6 +40,7 @@ import {
 import { CURATED_IMAGES } from "./natural-images.ts";
 import {
   holdout3StrataOf,
+  otherSeeds,
   strataMembers,
   stratumRule,
 } from "./register-verdict-core.ts";
@@ -227,10 +228,7 @@ async function printEmbedded(name: string): Promise<void> {
     // (the means are seed-free; the guard intervals are not).
     const key = (p: ReturnType<typeof selectCuts>) =>
       `${list(p.frozen)}|${list(p.notQualified)}|${list(p.capped)}`;
-    const seeds: number[] = [];
-    for (let s = 1; seeds.length < 20; s++) {
-      if (s !== BOOTSTRAP_SEED) seeds.push(s);
-    }
+    const seeds = otherSeeds(20);
     const turned = seeds.filter(
       (seed) =>
         key(
@@ -305,10 +303,7 @@ async function printWindow(name: string): Promise<void> {
     console.log(
       `\nD3's selection rule: frozen ${pick.frozen.map((r) => r.spec.arm).join(", ") || "none"}; codes decided in sample (no qualifying arm) ${pick.decidedInSample.join(", ") || "none"}`,
     );
-    const seeds: number[] = [];
-    for (let s = 1; seeds.length < 20; s++) {
-      if (s !== BOOTSTRAP_SEED) seeds.push(s);
-    }
+    const seeds = otherSeeds(20);
     const turned = seeds.filter(
       (seed) =>
         key(

@@ -322,7 +322,15 @@ export function strataMembers(
   return members;
 }
 
-const subset = (row: PairableRow, idx: readonly number[]): PairableRow => {
+/**
+ * The row restricted to the images at `idx`, in that order: every per-image
+ * series indexed by `idx`, so a stratum's members pair image by image across
+ * rows the same way the full rows do.
+ */
+export const subsetRow = (
+  row: PairableRow,
+  idx: readonly number[],
+): PairableRow => {
   const perImage: PerImage = {};
   for (const [key, series] of Object.entries(row.perImage) as [
     keyof PerImage,
@@ -332,6 +340,18 @@ const subset = (row: PairableRow, idx: readonly number[]): PairableRow => {
   }
   return { label: row.label, perImage };
 };
+
+/**
+ * The first `count` seeds from 1 upward other than {@link BOOTSTRAP_SEED}, so
+ * every one is an alternative draw: condition 4's seeds.
+ */
+export function otherSeeds(count: number): number[] {
+  const seeds: number[] = [];
+  for (let s = 1; seeds.length < count; s++) {
+    if (s !== BOOTSTRAP_SEED) seeds.push(s);
+  }
+  return seeds;
+}
 
 /**
  * The stratum rule for one arm against its incumbent: in each stratum, the
@@ -352,7 +372,7 @@ export function stratumRule(
   const strata: StratumReading[] = [];
   for (const [stratum, idx] of members) {
     const [cmp] = compareArms(
-      [subset(base, idx), subset(arm, idx)],
+      [subsetRow(base, idx), subsetRow(arm, idx)],
       0,
       BOOTSTRAP_RESAMPLES,
       seed,
@@ -455,10 +475,7 @@ export function deriveVerdict(
     };
   });
 
-  const seeds: number[] = [];
-  for (let s = 1; seeds.length < seedCount; s++) {
-    if (s !== BOOTSTRAP_SEED) seeds.push(s);
-  }
+  const seeds = otherSeeds(seedCount);
   const turned: EntryVerdict["turned"] = [];
   for (const seed of seeds) {
     const ps = comparisons.map((l) => {

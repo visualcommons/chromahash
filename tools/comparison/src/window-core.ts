@@ -41,10 +41,12 @@ import {
   RESULTS_DIR,
   type StratumReading,
   load,
+  otherSeeds,
   strataMembers,
   stratumRule,
+  subsetRow,
 } from "./register-verdict-core.ts";
-import type { GuardTolerances, PerImage } from "./results.ts";
+import type { GuardTolerances } from "./results.ts";
 import { BOOTSTRAP_RESAMPLES, BOOTSTRAP_SEED } from "./stats.ts";
 
 /** R2's default non-inferiority margin δ, as a fraction of `I`'s mean. */
@@ -120,17 +122,6 @@ export interface WindowStratum extends StratumReading {
   spurious: PairedStat | undefined;
 }
 
-const subset = (row: PairableRow, idx: readonly number[]): PairableRow => {
-  const perImage: PerImage = {};
-  for (const [key, series] of Object.entries(row.perImage) as [
-    keyof PerImage,
-    (number | null)[] | undefined,
-  ][]) {
-    if (series) perImage[key] = idx.map((i) => series[i] ?? null);
-  }
-  return { label: row.label, perImage };
-};
-
 /** The primary's and conditions 1–2's quantities, at `seed`. */
 export function windowStat(
   arm: PairableRow,
@@ -181,7 +172,7 @@ export function readWindow(
     strata = rule.strata.map((st) => {
       const idx = members.get(st.stratum) ?? [];
       const [c] = compareArms(
-        [subset(floor, idx), subset(arm, idx)],
+        [subsetRow(floor, idx), subsetRow(arm, idx)],
         0,
         BOOTSTRAP_RESAMPLES,
         seed,
@@ -246,10 +237,7 @@ export function windowVerdict(
     );
   }
   const readings = specs.map((s) => readWindow(s, rows, tol, members));
-  const seeds: number[] = [];
-  for (let s = 1; seeds.length < seedCount; s++) {
-    if (s !== BOOTSTRAP_SEED) seeds.push(s);
-  }
+  const seeds = otherSeeds(seedCount);
   const turned: WindowVerdict["turned"] = [];
   for (const seed of seeds) {
     for (const [i, spec] of specs.entries()) {
