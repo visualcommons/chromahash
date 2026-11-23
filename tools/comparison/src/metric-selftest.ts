@@ -208,6 +208,7 @@ import {
   orientedSize,
 } from "./image-loader.ts";
 import {
+  MDE_EXCLUDED,
   PHOTO_HOLDOUT2_CANDIDATES,
   mdeCell,
   readSpread,
@@ -7831,6 +7832,23 @@ console.log(
       d6SelectionKey(pick) ===
         "t3 A23@4 L20@4 C3@3 true | t4 A23@4 L20@4 C3@3 false",
     `${pick.tiers.map((t) => `${t.k}: ${t.pick?.spec.arm} ${t.outcome}`).join("; ")}`,
+  );
+  // §13.6's spread leaves D6's own tune sweep out, though it is an alpha
+  // tune result at the incumbent's bytes.
+  const committedSpread = readSpread(
+    path.join(import.meta.dirname, "..", "results"),
+  );
+  check(
+    "readSpread leaves alpha-tiers34 out of §13.6's population (MDE_EXCLUDED), so a register entry's tune sweep moves no earlier power statement",
+    MDE_EXCLUDED["alpha-tiers34"] !== undefined &&
+      committedSpread.comparisons.alpha.length > 0 &&
+      !committedSpread.comparisons.alpha.some(
+        (c) => c.result === "alpha-tiers34",
+      ) &&
+      !committedSpread.incumbents.alpha.some(
+        (c) => c.result === "alpha-tiers34",
+      ),
+    `${committedSpread.comparisons.alpha.length} alpha comparisons`,
   );
   const noneEligible = selectD6(
     readings.filter((r) => r.spec.k === 4 || !r.eligible),
