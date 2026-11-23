@@ -291,6 +291,7 @@ import {
 } from "./window-core.ts";
 import {
   checkIdenticalTo,
+  checkNativeSource,
   decodeDigest,
   expectedLength,
   identityMismatches,
@@ -6716,6 +6717,57 @@ console.log(
       chained ===
         'variant "j" is identicalTo "i", which is no earlier scored variant of cfg',
     `${valid}|${unknown}|${later}|${chained}`,
+  );
+
+  const nativeRefusal = (config: Parameters<typeof checkNativeSource>[0]) => {
+    try {
+      checkNativeSource(config);
+      return "";
+    } catch (e) {
+      return (e as Error).message;
+    }
+  };
+  const nativeArm = { label: "n" };
+  const nativeOk = nativeRefusal({
+    name: "cfg",
+    encodeSource: "native",
+    variants: [nativeArm, { label: "t", capToTier0: false }],
+  });
+  const harnessOk = nativeRefusal({
+    name: "cfg",
+    forceOpaque: true,
+    variants: [
+      { label: "c", capToTier0: true },
+      { label: "v", version: "v0.6" },
+    ],
+  });
+  const nativeOpaque = nativeRefusal({
+    name: "cfg",
+    encodeSource: "native",
+    forceOpaque: true,
+    variants: [nativeArm],
+  });
+  const nativeCap = nativeRefusal({
+    name: "cfg",
+    encodeSource: "native",
+    variants: [nativeArm, { label: "c", capToTier0: true }],
+  });
+  const nativeVersion = nativeRefusal({
+    name: "cfg",
+    encodeSource: "native",
+    variants: [{ label: "v", version: "v0.6" }, nativeArm],
+  });
+  check(
+    'checkNativeSource refuses forceOpaque, capToTier0 and version under encodeSource "native", and passes them on the harness raster (D5)',
+    nativeOk === "" &&
+      harnessOk === "" &&
+      nativeOpaque ===
+        "config cfg: forceOpaque flattens the harness raster, not a native source" &&
+      nativeCap ===
+        'variant "c": encodeSource "native" cannot honour capToTier0 or version, which act on the harness raster' &&
+      nativeVersion ===
+        'variant "v": encodeSource "native" cannot honour capToTier0 or version, which act on the harness raster',
+    `${nativeOk}|${harnessOk}|${nativeOpaque}|${nativeCap}|${nativeVersion}`,
   );
 
   const ref = {

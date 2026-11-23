@@ -94,6 +94,37 @@ export function checkIdenticalTo(
   }
 }
 
+/**
+ * Refuses a native-source config (`encodeSource: "native"`) that asks for
+ * something only the harness raster has: `forceOpaque` flattens that raster,
+ * and an arm's `capToTier0` or `version` acts on it. Any other config passes.
+ * Run before the corpus loads, so a refused config fails before any encode.
+ */
+export function checkNativeSource(config: {
+  name: string;
+  encodeSource?: "harness" | "native";
+  forceOpaque?: boolean;
+  variants: readonly {
+    label: string;
+    capToTier0?: boolean;
+    version?: string;
+  }[];
+}): void {
+  if (config.encodeSource !== "native") return;
+  if (config.forceOpaque) {
+    throw new Error(
+      `config ${config.name}: forceOpaque flattens the harness raster, not a native source`,
+    );
+  }
+  for (const v of config.variants) {
+    if (v.capToTier0 || v.version) {
+      throw new Error(
+        `variant "${v.label}": encodeSource "native" cannot honour capToTier0 or version, which act on the harness raster`,
+      );
+    }
+  }
+}
+
 /** What an identity arm keeps of its own: its spec and its encoded lengths. */
 export interface IdentityArm {
   label: string;

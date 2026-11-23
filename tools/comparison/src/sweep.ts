@@ -69,6 +69,7 @@ import {
 import {
   type ExpectBytes,
   checkIdenticalTo,
+  checkNativeSource,
   decodeDigest,
   expectedLength,
   identityRow,
@@ -602,13 +603,6 @@ async function encodeNative(
   variants: readonly SweepVariant[],
   inputs: readonly ImageInput[],
 ): Promise<Uint8Array[][]> {
-  for (const v of variants) {
-    if (v.capToTier0 || v.version) {
-      throw new Error(
-        `variant "${v.label}": encodeSource "native" cannot honour capToTier0 or version, which act on the harness raster`,
-      );
-    }
-  }
   const started = performance.now();
   let done = 0;
   const perImage = await mapConcurrent(inputs, defaultJobs(), async (input) => {
@@ -918,6 +912,7 @@ async function main(): Promise<void> {
   if (!config.variants?.length) {
     throw new Error(`config ${config.name} declares no variants`);
   }
+  checkNativeSource(config);
   // Without `artifacts` every artifact score is null, `roseNoMoreThan` passes on
   // null, and the declared guard would gate nothing while looking like it did.
   if (config.artifactGuardRise !== undefined && !config.artifacts) {
@@ -975,11 +970,6 @@ async function main(): Promise<void> {
   if (inputs.length === 0) {
     throw new Error(
       `config ${config.name} selects no image on the ${split} split of the ${corpus} corpus`,
-    );
-  }
-  if (config.forceOpaque && config.encodeSource === "native") {
-    throw new Error(
-      `config ${config.name}: forceOpaque flattens the harness raster, not a native source`,
     );
   }
   if (config.forceOpaque) {
