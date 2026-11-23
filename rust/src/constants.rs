@@ -33,7 +33,7 @@ pub const ALPHA_FLAG_BIT: u32 = 6;
 /// Bit position of the reserved flag within byte 0 (MUST be 0 in v1).
 pub const RESERVED_FLAG_BIT: u32 = 7;
 
-/// Highest valid tier code the v1 format defines (spec §2.5). Tier codes are
+/// Highest valid tier code the format defines (spec §2.5). Tier codes are
 /// `0..=MAX_TIER`, ordered by quality; codes `5..=7` remain reserved.
 pub const MAX_TIER: u8 = 4;
 
@@ -485,7 +485,7 @@ impl QuantTable {
     };
 }
 
-/// All v1 format parameters. The shipped format uses [`Tunables::DEFAULT`];
+/// All format parameters. The shipped format uses [`Tunables::DEFAULT`];
 /// the comparison harness can override these while sweeping the corpus to lock
 /// the final constants, via the `CHROMAHASH_TUNE` env parser in the
 /// `rust/examples/encode_stdin.rs` example binary.
@@ -806,7 +806,13 @@ pub struct Tunables {
 }
 
 impl Tunables {
-    /// The v1 format constants, locked by the 2026-08 corpus sweep and
+    /// The v2 format constants. Generation v2 (0.8.0) is the v1 constants
+    /// below with codes 3 and 4 changed by the v0.8 verdict
+    /// (`spec/V0.8-DECISIONS.md`): their own rows ([`LAYOUT_T3`],
+    /// [`LAYOUT_T4`]), the coded stream at code 3 ([`AC_CODER`]) and the
+    /// synthesis window in two cells ([`WINDOW_W_MIN`]).
+    ///
+    /// The v1 constants were locked by the 2026-08 corpus sweep and
     /// re-verified on the 2026-09 Wikimedia re-source (tools/comparison,
     /// 39 curated photographs from Wikimedia Commons + Kodak24 over a
     /// tune/holdout split; spec/EXPERIMENTS.md §9.5). Nothing here moved
@@ -817,7 +823,7 @@ impl Tunables {
     /// the old range wasted two bits); chroma DC ranges sized to the
     /// display-output gamut hull (sRGB ∪ P3 ∪ Adobe); µ_C=8 exploits the finer
     /// chroma scale near zero; out-of-gamut chroma is clipped per-channel at
-    /// decode (relative-colorimetric, §12.6); the synthesis window is DISABLED
+    /// decode (relative-colorimetric, §12.6); the synthesis window is DISABLED at codes 0–2
     /// (w_min=1.0) — with fine chroma scales it costs more detail than the
     /// banding it suppresses. (v0.5's visible striping was attributed to chroma
     /// quantization noise rather than luma ringing. That was about v0.5's

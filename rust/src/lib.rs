@@ -129,13 +129,13 @@ use constants::{
 };
 
 // Tuning interface for the comparison harness: not part of the public API.
-// `Tunables::DEFAULT` is the v1 default-tier format; overrides exist solely so the
+// `Tunables::DEFAULT` is the shipped (generation v2) format; overrides exist solely so the
 // corpus sweep (tools/comparison) can explore constants before they are
 // locked into the spec.
 #[doc(hidden)]
 pub use constants::{
-    AcLayout, Companding, LAYOUT_A, LAYOUT_B, LAYOUT_C, LAYOUT_D, LAYOUT_T0, LAYOUT_T3, LAYOUT_T4,
-    LAYOUT_TC, QuantTable, TIER_CODES, Tunables,
+    AC_CODER, AcLayout, Companding, LAYOUT_A, LAYOUT_B, LAYOUT_C, LAYOUT_D, LAYOUT_T0, LAYOUT_T3,
+    LAYOUT_T4, LAYOUT_TC, PerCell, QuantTable, TIER_CODES, Tunables, WINDOW_W_MIN,
 };
 #[doc(hidden)]
 pub use encode::{CoeffDump, encode_debug_coefficients};
@@ -246,7 +246,7 @@ impl ChromaHash {
     /// [`decode`](Self::decode) without error. This is the cheap, robust
     /// "is this a usable hash?" check — there is no separate checksum (a
     /// structurally valid hash that was corrupted into another valid hash simply
-    /// decodes to a different image). Per spec §2 (v1).
+    /// decodes to a different image). Per spec §2.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ChromaHashError> {
         // Need at least the fixed descriptor + aspect + DC/scale prefix.
         if bytes.len() < (PREFIX_BITS as usize).div_ceil(8) {
