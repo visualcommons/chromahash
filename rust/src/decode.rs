@@ -620,10 +620,8 @@ fn render_flat(
 /// header tier's size, as every result measured with it did.
 fn natural_size(hash: &[u8], t: &Tunables) -> (u32, u32) {
     let (tier, _has_alpha, aspect) = read_header_fields(hash, t);
-    let shown = match t.cut_tier {
-        Some(k) if k < tier => k,
-        _ => tier,
-    };
+    // A cut at or above the header's own code is no cut.
+    let shown = t.cut_tier.map_or(tier, |k| k.min(tier));
     decode_output_size(aspect, shown)
 }
 
@@ -1380,6 +1378,30 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn the_interleaved_order_reads_alpha_codes_at_alpha_width() {
+        // At the shipped widths alpha's AC codes and the chroma codes are both
+        // 3 bits in alpha mode, so a decoder that read alpha at the chroma
+        // width would round-trip by coincidence. With 4-bit alpha codes the
+        // interleaved hash must still decode to the sequential one's pixels.
+        let mut wide = Tunables::DEFAULT;
+        wide.layout_upper.a_bits = 4;
+        let il = Tunables {
+            interleave: true,
+            ..wide
+        };
+        let shape = ac_shape(&wide, true, 2);
+        assert_ne!(shape.alpha_ac_bits, shape.c_bits, "premise: widths differ");
+        let rgba = noisy_image(12, 9, true);
+        let seq = crate::encode::encode_with(12, 9, &rgba, Gamut::Srgb, &wide, 2);
+        let mixed = crate::encode::encode_with(12, 9, &rgba, Gamut::Srgb, &il, 2);
+        assert_ne!(seq, mixed, "premise: the order differs");
+        assert_eq!(
+            decode_to_with(&mixed, &il, Gamut::Srgb),
+            decode_to_with(&seq, &wide, Gamut::Srgb)
+        );
     }
 
     #[test]
