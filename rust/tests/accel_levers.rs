@@ -107,7 +107,7 @@ fn the_shipped_defaults_set_each_lever_as_listed() {
         );
     }
     assert!(d.accel_quant_table);
-    assert!(!d.accel_dct_lanes);
+    assert!(d.accel_dct_lanes);
     assert!(!d.accel_gamma_lut_cache);
     assert!(!d.accel_flat_cos);
     assert!(!d.accel_sse_early_exit);

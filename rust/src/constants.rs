@@ -901,7 +901,7 @@ impl Tunables {
         scale_fit: 2,
         dct_separable: false,
         accel_quant_table: true,
-        accel_dct_lanes: false,
+        accel_dct_lanes: true,
         accel_gamma_lut_cache: false,
         accel_flat_cos: false,
         accel_sse_early_exit: false,

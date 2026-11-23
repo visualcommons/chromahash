@@ -636,8 +636,10 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     // byte-identical — see `dct::dct_encode_selected_separable` — and is false
     // in `Tunables::DEFAULT`, so the shipped path is always the direct sum.
     // `accel_dct_lanes` is §12.1 item 3, which *is* byte-identical
-    // (`dct::dct_encode_lanes`); the separable prototype wins if both
-    // are set, since it is the one that changes what is computed.
+    // (`dct::dct_encode_lanes`) and on in `Tunables::DEFAULT`: the shipped
+    // direct sum, four coefficients per pass, with `dct_encode_selected` as
+    // its reference. The separable prototype wins if both are set, since it
+    // is the one that changes what is computed.
     let forward = if t.dct_separable {
         crate::dct::dct_encode_selected_separable
     } else if t.accel_dct_lanes {
