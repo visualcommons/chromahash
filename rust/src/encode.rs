@@ -2631,7 +2631,10 @@ mod tests {
                 px[2] = px[0] / 2 + px[1] / 2;
             }
             for tier in 0..=MAX_TIER {
-                let d = Tunables::DEFAULT;
+                // The fixed-width length rows with the coder off: under the
+                // defaults code 3 is already coded, and would compare the
+                // coded stream with itself.
+                let d = shipped_fields(&Tunables::DEFAULT);
                 let fixed = encode_with(w, h, &rgba, Gamut::Srgb, &d, tier);
                 let hash = encode_with(w, h, &rgba, Gamut::Srgb, &coded(d), tier);
                 assert_eq!(hash.len(), fixed.len(), "tier {tier} alpha {alpha}");
@@ -2665,6 +2668,9 @@ mod tests {
             t.layout_upper.la_tiers = [(50, 5), (0, 5)];
             t.layout_upper.a_count = 60;
             t.layout_upper.a_bits = 4;
+            // Codes 3 and 4 read their own rows: bound them the same way.
+            t.layout_t3 = t.layout_upper;
+            t.layout_t4 = t.layout_upper;
             for tier in 2..=MAX_TIER {
                 let hash = encode_with(w, h, &rgba, Gamut::Srgb, &t, tier);
                 let shipped = body_len_bytes(&Tunables::DEFAULT, alpha, tier);
