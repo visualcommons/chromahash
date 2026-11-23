@@ -6340,6 +6340,13 @@ console.log(
       guards: ["ok", "ok"],
       pHolm: [0.0004, 0.0004],
     },
+    // D6's holdout3 read (#137): both frozen alpha rows pass R1 and the
+    // stratum rule, the opacity halves included. Both p sit at the floor, ×2.
+    D6: {
+      pass: [true, true],
+      guards: ["ok", "ok"],
+      pHolm: [0.0004, 0.0004],
+    },
   } as const;
   for (const [id, want] of Object.entries(recorded)) {
     let v: ReturnType<typeof deriveVerdict> | undefined;
@@ -6384,6 +6391,23 @@ console.log(
         )
         .join(", "),
     );
+    if (id === "D6") {
+      check(
+        "D6: each comparison's stratum rule reads the opacity halves beside the pinned strata, and none fails",
+        got.every(
+          (c) =>
+            c.strata !== undefined &&
+            !c.strata.fails &&
+            c.strata.strata.map((s) => s.stratum).includes("mostly-opaque") &&
+            c.strata.strata
+              .map((s) => s.stratum)
+              .includes("mostly-transparent"),
+        ),
+        got
+          .map((c) => c.strata?.strata.map((s) => s.stratum).join("/"))
+          .join(" | "),
+      );
+    }
     if (id === "C1") {
       check(
         "C1: the compact row's ThumbHash admission holds on all four means",

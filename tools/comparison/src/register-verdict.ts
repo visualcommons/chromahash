@@ -7,7 +7,7 @@
  * Re-scores nothing.
  *
  * Usage:
- *   node dist/register-verdict.js C1|C2|D1|D3|D4|D5 [--seeds N]
+ *   node dist/register-verdict.js C1|C2|D1|D3|D4|D5|D6 [--seeds N]
  *
  * D4 rests on counts rather than intervals (`dct-identity-core.ts`), so
  * `--seeds` does not apply to it.
