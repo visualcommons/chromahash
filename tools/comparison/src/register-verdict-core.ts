@@ -52,6 +52,7 @@ import {
   statFor,
 } from "./arms-core.ts";
 import { HOLDOUT3_STRATA } from "./corpus.ts";
+import { type CutReading, embeddedCuts, readCut } from "./embedded-core.ts";
 import { GRAPHIC_IMAGES } from "./graphic-images.ts";
 import { CURATED_IMAGES } from "./natural-images.ts";
 import {
@@ -502,4 +503,103 @@ export function deriveVerdict(
     verdict.admission = { metrics, holds: metrics.every((m) => m.wins) };
   }
   return verdict;
+}
+
+// ─── D2: embedded tiers (R2 with a tier-step margin) ───────────────────────
+
+/**
+ * D2's one holdout3 read and the cuts it froze (spec/V0.8-DECISIONS.md, D2).
+ * D2 is not an R1 entry, so it is not in {@link FROZEN}: its comparisons are
+ * cuts read by `embedded-core.ts`, each against native code k with the same
+ * run's tier gap as its margin.
+ */
+export const D2_FROZEN: { result: string; cuts: readonly string[] } = {
+  result: "embedded-tiers-ladder-frozen-holdout3",
+  cuts: [],
+};
+
+/** Part 1 on a read: every interleaved full-length arm matched its native one. */
+export interface IdentityCheck {
+  arm: string;
+  of: string;
+  images: number;
+}
+
+export interface EmbeddedVerdict {
+  id: "D2";
+  /** Each frozen cut at the default seed, overall and per stratum. */
+  cuts: CutReading[];
+  /** Part 1: the identity checks the read recorded, one per code 0–4. */
+  identity: IdentityCheck[];
+  /** Whether every code 0–4 was checked on every image of the read. */
+  identityHolds: boolean;
+  seeds: number[];
+  /** Every frozen cut whose outcome turned under one of {@link seeds}. */
+  turned: { seed: number; cut: string }[];
+  /** Every frozen cut passes, part 1 holds, and no outcome turns. */
+  adopted: boolean;
+}
+
+/**
+ * Derive D2's verdict from its committed holdout3 read: part 1 from the
+ * identity checks the run recorded (it fails before writing if any image
+ * differs, so a recorded check found none), and each frozen cut under D2's
+ * conditions 1 and 2 and the stratum rule with its tier-step margin, with
+ * condition 4 under `seedCount` other seeds.
+ */
+export function deriveEmbeddedVerdict(
+  seedCount: number,
+  dir: string = RESULTS_DIR,
+  frozen: { result: string; cuts: readonly string[] } = D2_FROZEN,
+): EmbeddedVerdict {
+  const rev = FREEZE_REVS.D2;
+  if (!rev || frozen.cuts.length === 0) {
+    throw new Error("D2 has not frozen: no freeze rev or no frozen cut");
+  }
+  const file = load(dir, frozen.result, rev);
+  if (file.split !== "holdout3") {
+    throw new Error(`${frozen.result} is not a holdout3 read`);
+  }
+  const tol = file.settings.guardTolerances as GuardTolerances;
+  const rise = (file.settings.artifactGuardRise as number | null) ?? undefined;
+  const members = strataMembers(file.imageNames);
+  const specs = embeddedCuts(file.rows);
+  const chosen = frozen.cuts.map((label) => {
+    const spec = specs.find((s) => s.cut === label);
+    if (!spec) throw new Error(`no frozen cut ${label} in ${frozen.result}`);
+    return spec;
+  });
+  const cuts = chosen.map((s) => readCut(s, file.rows, tol, rise, members));
+
+  const identity =
+    (file.settings.identity as IdentityCheck[] | undefined) ?? [];
+  const identityHolds = [0, 1, 2, 3, 4].every((k) =>
+    identity.some(
+      (c) =>
+        c.arm === `t${k} interleaved full` &&
+        c.of === `t${k} native` &&
+        c.images === file.imageNames.length,
+    ),
+  );
+
+  const seeds: number[] = [];
+  for (let s = 1; seeds.length < seedCount; s++) {
+    if (s !== BOOTSTRAP_SEED) seeds.push(s);
+  }
+  const turned: EmbeddedVerdict["turned"] = [];
+  for (const seed of seeds) {
+    for (const [i, spec] of chosen.entries()) {
+      const r = readCut(spec, file.rows, tol, rise, members, seed);
+      if (r.pass !== cuts[i]?.pass) turned.push({ seed, cut: spec.cut });
+    }
+  }
+  return {
+    id: "D2",
+    cuts,
+    identity,
+    identityHolds,
+    seeds,
+    turned,
+    adopted: identityHolds && turned.length === 0 && cuts.every((c) => c.pass),
+  };
 }

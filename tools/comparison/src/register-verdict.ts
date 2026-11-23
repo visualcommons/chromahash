@@ -5,11 +5,20 @@
  * other bootstrap seeds, and C1's ThumbHash admission. Re-scores nothing.
  *
  * Usage:
- *   node dist/register-verdict.js C1|C2|D1 [--seeds N]
+ *   node dist/register-verdict.js C1|C2|D1|D2 [--seeds N]
+ *
+ * D2 is not an R1 entry: its frozen cuts are read by `embedded-core.ts`
+ * against native code k with the same run's tier gap as the margin, and its
+ * part 1 off the identity checks its read recorded.
  */
 
 import { parseArgs } from "node:util";
-import { FREEZE_REVS, FROZEN, deriveVerdict } from "./register-verdict-core.ts";
+import {
+  FREEZE_REVS,
+  FROZEN,
+  deriveEmbeddedVerdict,
+  deriveVerdict,
+} from "./register-verdict-core.ts";
 import { BOOTSTRAP_SEED } from "./stats.ts";
 
 const signed = (x: number, digits: number): string =>
@@ -22,11 +31,19 @@ function main(): void {
   });
   const id = positionals[0] ?? "";
   const seedCount = Number(values.seeds);
-  if (!FROZEN[id] || !Number.isInteger(seedCount) || seedCount < 0) {
+  if (
+    (!FROZEN[id] && id !== "D2") ||
+    !Number.isInteger(seedCount) ||
+    seedCount < 0
+  ) {
     console.error(
-      `usage: register-verdict ${Object.keys(FROZEN).join("|")} [--seeds N]`,
+      `usage: register-verdict ${[...Object.keys(FROZEN), "D2"].join("|")} [--seeds N]`,
     );
     process.exit(2);
+  }
+  if (id === "D2") {
+    printEmbedded(seedCount);
+    return;
   }
 
   const v = deriveVerdict(id, seedCount);
@@ -80,6 +97,41 @@ function main(): void {
       `  Admission ${v.admission.holds ? "holds: beats ThumbHash on all four metric means" : "fails: not all four"}`,
     );
   }
+}
+
+/** D2: each frozen cut under conditions 1, 2 and 4 and the stratum rule. */
+function printEmbedded(seedCount: number): void {
+  const v = deriveEmbeddedVerdict(seedCount);
+  console.log(
+    `D2: ${v.cuts.length} frozen cut(s), each against native code k with the same run's tier gap as its margin; no Holm (an intersection-union of interval bounds) (results at ${(FREEZE_REVS.D2 ?? "").slice(0, 7)}, clean)`,
+  );
+  console.log(
+    `  part 1: ${v.identity.map((c) => `${c.arm} = ${c.of} on ${c.images}`).join("; ") || "no identity check recorded"} -> ${v.identityHolds ? "every code 0-4 decodes to the shipped pixels on every image" : "NOT shown for every code 0-4"}`,
+  );
+  const yes = (b: boolean): string => (b ? "yes" : "no");
+  for (const c of v.cuts) {
+    const base = c.delta.baseMean;
+    const pct = (x: number) => signed((100 * x) / base, 2);
+    console.log(
+      `  ${c.spec.cut} vs ${c.spec.native} [margin from ${c.spec.below}]\n` +
+        `    Δ ${signed(c.delta.meanDelta, 3)} [${signed(c.delta.ci[0], 3)}, ${signed(c.upper, 3)}] = ${pct(c.delta.meanDelta)}% (upper ${pct(c.upper)}%)  G ${signed(c.gapMean, 3)} = ${pct(c.gapMean)}%  guards (CI) ${c.guards}\n` +
+        `    (1) U < G ${yes(c.cond1)}  (2) guards ok ${yes(c.guardsOk)}  stratum rule ${c.strata?.some((s) => s.verdict === "FAIL") ? "a stratum fails" : "no stratum fails"}  -> ${c.pass ? "passes" : "fails"}`,
+    );
+    for (const s of c.strata ?? []) {
+      console.log(
+        `      ${s.stratum.padEnd(15)} n ${String(s.n).padStart(2)}  Δ ${signed(s.delta.meanDelta, 3)} [${signed(s.delta.ci[0], 3)}, ${signed(s.delta.ci[1], 3)}] (lower ${signed(s.lowerRel, 2)}%)  G ${signed(s.gapRel, 2)}%  guards (CI) ${s.guards}  ${s.verdict}${s.literalFails ? "  (+1.0% test, ungated: FAIL)" : ""}`,
+      );
+    }
+  }
+  if (v.seeds.length > 0) {
+    for (const t of v.turned) console.log(`    seed ${t.seed}: ${t.cut} turns`);
+    console.log(
+      `  Condition 4: under ${v.seeds.length} seeds other than ${BOOTSTRAP_SEED}, ${v.turned.length} outcome(s) turn`,
+    );
+  }
+  console.log(
+    `  D2 ${v.adopted ? "passes: every frozen cut passes and part 1 holds" : "does not pass"}`,
+  );
 }
 
 main();
