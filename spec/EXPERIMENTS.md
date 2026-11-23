@@ -790,6 +790,9 @@ mise run stratify entropy-coded-ac-frozen-holdout3 --strata             # §13.8
 mise run sweep embedded-tiers-ladder                                    # §13.9
 mise run stratify embedded-tiers-ladder --embedded                      # §13.9
 mise run arms --seed-sensitivity embedded-tiers-ladder                  # §13.9
+# and part 1 on the generated fixtures and tune2, which the ladder leaves out
+mise run sweep embedded-tiers-identity                                  # §13.9
+mise run sweep embedded-tiers-identity --split tune2                    # §13.9
 
 # Check the tables in this file against the results above
 mise run verify:experiments
@@ -4356,7 +4359,11 @@ whole hash's. Part 1 holds on every image: each of the five interleaved
 full-length arms decoded to its native arm's pixels, byte for byte, on all
 63 images (`identicalTo`, recorded in the result's `settings.identity`), and
 `rust/tests/spec_vectors.rs` asserts the same on every encode vector at codes
-0–4. Each cut is read against native code `k`; `relative` is the difference
+0–4. The ladder leaves out the generated fixtures and tune2, so
+`embedded-tiers-identity` (native codes 0–4 and the same five `identicalTo`
+arms, no cut, no `realOnly`) checks them too: every interleaved arm matched
+on all 106 tune images, the 43 generated fixtures included, and on all 39
+tune2 images. Its two results judge nothing. Each cut is read against native code `k`; `relative` is the difference
 of means over native `k`'s mean, and the interval and guards are paired.
 
 | arm | ΔE00 | relative | 95% CI of Δ | guards (CI) |
@@ -4461,7 +4468,8 @@ and no Holm verdict.
 
 **The verdict: D2 does not pass.** Embedded tiers are not adopted. Part 1
 holds (the interleaved order is a pure permutation that decodes to the
-shipped pixels on every tune image and every encode vector at codes 0–4),
+shipped pixels on every non-sealed image and every encode vector at codes
+0–4),
 but it carries no benefit on its own, and every prefix fails R2's guards
 against the native code it stands for. Two readings go beyond the verdict.
 The prefix fails on guards a native lower tier also fails against the
