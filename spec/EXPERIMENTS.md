@@ -3750,7 +3750,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 898 | 670 | 617 | 555 | 174 | 169 | 87 | 87 |
+| all committed sweeps | 916 | 686 | 633 | 573 | 174 | 169 | 87 | 87 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3765,13 +3765,14 @@ when the 2026-09 re-measure committed the §6 sweeps no table had bound, and
 to 864 when the register's confirmations committed their three holdout2
 sweeps (§13.7), and to 880 and then 883 when D1 committed its tune sweep and
 its holdout3 read (§13.8), and to 898 when D2 committed its tune ladder
-(§13.9). The row compares every arm with its sweep's
+and then 916 when it committed the two `embedded-tiers-identity` results of
+part 1 (§13.9). The row compares every arm with its sweep's
 first row whatever the arm's tier, so it includes cross-tier comparisons at
-different byte counts that no decision judged: 147 of the 898 arms, 13 of them
+different byte counts that no decision judged: 163 of the 916 arms, 13 of them
 D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
 row, and the 2 code-4 rows of its holdout3 read against its code-3 row) and
-14 D2's (every `embedded-tiers-ladder` row but `t0 interleaved full` against
-its code-0 row), the
+30 D2's (every row but `t0 interleaved full` of `embedded-tiers-ladder` and
+of each `embedded-tiers-identity` result, against its code-0 row), the
 rest from the tier ladders and mixed-tier tables of earlier sweeps. The
 prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
