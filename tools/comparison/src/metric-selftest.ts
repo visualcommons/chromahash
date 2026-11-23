@@ -178,8 +178,10 @@ import {
 } from "./downsample-core.ts";
 import {
   CODE2_BYTES,
+  D9_RULE_REV,
   boundOver,
   d9Cells,
+  deriveD9Verdict,
   oracleTiers,
   readD9,
   recoverableClasses,
@@ -8098,6 +8100,43 @@ console.log(
       Math.abs(cells.alpha + 1) < 1e-9 &&
       typeof cells["extreme-aspect"] === "number",
     JSON.stringify(cells),
+  );
+  // deriveD9Verdict refuses a dirty result and one scored at any rev other
+  // than D9's rule, matched by equality so a fresh clone without the rule's
+  // commit object still reads the committed result.
+  const thrown = (f: () => unknown): string => {
+    try {
+      f();
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    return "";
+  };
+  const d9Rows = ladder([10, 9.9, 10.4, 10], all);
+  const at = (rev: string | null, dirty: boolean | null) => ({
+    name: "cfl-oracle",
+    provenance: { rev, dirty },
+    imageNames: names,
+    rows: d9Rows,
+  });
+  const dirtyMsg = thrown(() => deriveD9Verdict(at(D9_RULE_REV, true)));
+  const unaskedMsg = thrown(() => deriveD9Verdict(at(D9_RULE_REV, null)));
+  const otherRev = "4a18ce2".padEnd(40, "0");
+  const revMsg = thrown(() => deriveD9Verdict(at(otherRev, false)));
+  const nullRevMsg = thrown(() => deriveD9Verdict(at(null, false)));
+  check(
+    "deriveD9Verdict refuses a dirty or unknown-tree result and one not scored at D9's rule",
+    dirtyMsg.includes("not scored from a clean tree") &&
+      unaskedMsg.includes("not scored from a clean tree") &&
+      revMsg.includes(`not at D9's rule ${D9_RULE_REV}`) &&
+      nullRevMsg.includes(`not at D9's rule ${D9_RULE_REV}`),
+    JSON.stringify([dirtyMsg, unaskedMsg, revMsg, nullRevMsg]),
+  );
+  const accepted = deriveD9Verdict(at(D9_RULE_REV, false));
+  check(
+    "deriveD9Verdict reads a clean result scored at D9's rule as readD9 does",
+    JSON.stringify(accepted) === JSON.stringify(under),
+    JSON.stringify(accepted.tiers.map((x) => x.overall.rel)),
   );
 }
 

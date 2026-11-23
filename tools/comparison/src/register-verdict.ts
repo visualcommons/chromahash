@@ -14,13 +14,12 @@
  * (`cfl-oracle-core.ts`), so `--seeds` applies to neither.
  */
 
-import { spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
-import { D9_BAR, D9_RULE_REV, readD9 } from "./cfl-oracle-core.ts";
+import { D9_BAR, deriveD9Verdict } from "./cfl-oracle-core.ts";
 import { SPEED_THRESHOLD, deriveD4Verdict } from "./dct-identity-core.ts";
 import { D5_FROZEN, deriveD5Verdict } from "./downsample-core.ts";
 import { FREEZE_REVS, FROZEN, deriveVerdict } from "./register-verdict-core.ts";
-import { REPO_ROOT, RESULTS_DIR, readResult } from "./results.ts";
+import { RESULTS_DIR, readResult } from "./results.ts";
 import { BOOTSTRAP_SEED } from "./stats.ts";
 import { WINDOW_FROZEN, deriveWindowVerdict } from "./window-core.ts";
 
@@ -209,8 +208,8 @@ function printD5Verdict(seedCount: number): void {
  * image's best of the shipped arm and the free CfL arms against the shipped
  * mean, overall and in each class the decoder recovers from the hash. The
  * bound is a mean of per-image minima, so no bootstrap seed moves it and
- * `--seeds` does not apply. The result must be clean and scored at a rev that
- * descends from the commit that fixed D9's rule.
+ * `--seeds` does not apply. The result must be clean and scored at the commit
+ * that fixed D9's rule (`deriveD9Verdict` refuses it otherwise).
  */
 function printD9Verdict(): void {
   const file = readResult(RESULTS_DIR, "cfl-oracle");
@@ -219,17 +218,7 @@ function printD9Verdict(): void {
     process.exit(1);
   }
   const rev = file.provenance.rev ?? "";
-  const descends =
-    spawnSync("git", ["merge-base", "--is-ancestor", D9_RULE_REV, rev], {
-      cwd: REPO_ROOT,
-    }).status === 0;
-  if (file.provenance.dirty !== false || !descends) {
-    console.error(
-      `cfl-oracle was not scored from a clean tree at a rev that descends from D9's rule (${D9_RULE_REV.slice(0, 7)}): rev ${rev.slice(0, 7)}, dirty ${file.provenance.dirty}; refusing to derive a verdict from it`,
-    );
-    process.exit(1);
-  }
-  const v = readD9(file);
+  const v = deriveD9Verdict(file);
   console.log(
     `D9: the oracle bound on ${file.split} (${file.imageNames.length} images, results at ${rev.slice(0, 7)}, clean); a code is decided on the bound when it is under ${D9_BAR.toFixed(1)}% lower overall and in every recoverable class`,
   );

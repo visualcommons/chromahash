@@ -35,10 +35,32 @@ export const D9_BAR = 3.0;
 export const D9_CODES: readonly number[] = [0, 1, 2, 3, 4];
 
 /**
- * The commit that fixed D9's sweep and rule (#139). Every D9 result must be
- * scored at a rev that descends from it.
+ * The commit that fixed D9's sweep and rule (#139), at which D9's result is
+ * scored. It is matched by equality, as `FREEZE_REVS` is, and never by
+ * ancestry: the repository squash-merges, so this commit is not reachable
+ * from the default branch and a fresh clone does not hold its object.
  */
 export const D9_RULE_REV = "00c44983952443c60dc2b2b53b920e6bc91804e0";
+
+/**
+ * Refuse a D9 result that was not scored at {@link D9_RULE_REV} from a clean
+ * tree, so no verdict is derived from a result the rule did not fix first.
+ */
+export function assertD9Provenance(
+  name: string,
+  p: { rev: string | null; dirty: boolean | null },
+): void {
+  if (p.dirty !== false) {
+    throw new Error(
+      `${name} was not scored from a clean tree (rev ${p.rev}, dirty ${p.dirty}); refusing to derive D9 from it`,
+    );
+  }
+  if (p.rev !== D9_RULE_REV) {
+    throw new Error(
+      `${name} was scored at ${p.rev}, not at D9's rule ${D9_RULE_REV}; refusing to derive D9 from it`,
+    );
+  }
+}
 
 /** The shipped code-2 lengths: an alpha-mode hash is 103 B, an opaque one 108 B. */
 export const CODE2_BYTES = { opaque: 108, alpha: 103 } as const;
@@ -254,6 +276,20 @@ export function readD9(file: {
     missing,
     decided: missing.length === 0 && tiers.every((t) => t.decided),
   };
+}
+
+/**
+ * D9's verdict from a committed `cfl-oracle` result: refused unless the
+ * result passes {@link assertD9Provenance}, then {@link readD9}.
+ */
+export function deriveD9Verdict(file: {
+  name: string;
+  provenance: { rev: string | null; dirty: boolean | null };
+  imageNames: readonly string[];
+  rows: readonly OracleRow[];
+}): D9Reading {
+  assertD9Provenance(file.name, file.provenance);
+  return readD9(file);
 }
 
 /**
