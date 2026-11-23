@@ -202,7 +202,11 @@ export interface EntryVerdict {
   admission?: { metrics: AdmissionMetric[]; holds: boolean };
 }
 
-function load(dir: string, name: string, rev: string): ResultFile {
+/**
+ * A committed result an entry's verdict rests on, refused unless it was scored
+ * at `rev` from a clean tree.
+ */
+export function load(dir: string, name: string, rev: string): ResultFile {
   const file = readResult(dir, name);
   if (!file) throw new Error(`no committed result ${name}`);
   if (file.provenance.rev !== rev || file.provenance.dirty !== false) {

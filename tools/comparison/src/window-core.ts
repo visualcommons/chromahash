@@ -36,7 +36,14 @@ import {
   guardVerdictOnIntervals,
   statFor,
 } from "./arms-core.ts";
-import { type StratumReading, stratumRule } from "./register-verdict-core.ts";
+import {
+  FREEZE_REVS,
+  RESULTS_DIR,
+  type StratumReading,
+  load,
+  strataMembers,
+  stratumRule,
+} from "./register-verdict-core.ts";
 import type { GuardTolerances, PerImage } from "./results.ts";
 import { BOOTSTRAP_RESAMPLES, BOOTSTRAP_SEED } from "./stats.ts";
 
@@ -197,6 +204,96 @@ export function readWindow(
     strata,
     pass: primary && cond1 && guardsOk && strataOk,
   };
+}
+
+/** A frozen window entry's holdout read: the result, and the arms it judges. */
+export interface WindowFreeze {
+  result: string;
+  arms: readonly string[];
+}
+
+/** D3's verdict on its holdout read, with condition 4 across other seeds. */
+export interface WindowVerdict {
+  id: string;
+  result: string;
+  readings: WindowReading[];
+  seeds: number[];
+  /** Every frozen arm whose outcome, overall or in a stratum, turned at a seed. */
+  turned: { seed: number; arm: string }[];
+}
+
+/** The outcome condition 4 holds still: the pass, and every stratum's verdict. */
+const outcome = (r: WindowReading): string =>
+  `${r.pass}|${(r.strata ?? []).map((s) => `${s.stratum}:${s.verdict}`).join(",")}`;
+
+/**
+ * D3's verdict from a holdout result's rows: every frozen arm read overall and
+ * per stratum at the harness seed, then re-read under `seedCount` other seeds.
+ */
+export function windowVerdict(
+  id: string,
+  result: string,
+  rows: readonly PairableRow[],
+  arms: readonly string[],
+  members: ReadonlyMap<string, readonly number[]>,
+  tol: GuardTolerances,
+  seedCount: number,
+): WindowVerdict {
+  const specs = windowArms(rows).filter((s) => arms.includes(s.arm));
+  if (specs.length !== arms.length) {
+    throw new Error(
+      `${result} does not hold every frozen arm of ${id} (${arms.join(", ")}) beside its shipped arm and ${WINDOW_FLOOR}`,
+    );
+  }
+  const readings = specs.map((s) => readWindow(s, rows, tol, members));
+  const seeds: number[] = [];
+  for (let s = 1; seeds.length < seedCount; s++) {
+    if (s !== BOOTSTRAP_SEED) seeds.push(s);
+  }
+  const turned: WindowVerdict["turned"] = [];
+  for (const seed of seeds) {
+    for (const [i, spec] of specs.entries()) {
+      const at = readWindow(spec, rows, tol, members, seed);
+      const base = readings[i];
+      if (base && outcome(at) !== outcome(base)) {
+        turned.push({ seed, arm: spec.arm });
+      }
+    }
+  }
+  return { id, result, readings, seeds, turned };
+}
+
+/**
+ * The arms each window entry froze, and the holdout result that reads them
+ * (`spec/V0.8-DECISIONS.md`, D3, "Frozen arms").
+ */
+export const WINDOW_FROZEN: Record<string, WindowFreeze> = {};
+
+/**
+ * Derive window entry `id`'s verdict from its committed holdout3 read, which
+ * must be scored at the entry's freeze rev from a clean tree.
+ */
+export function deriveWindowVerdict(
+  id: string,
+  seedCount: number,
+  dir: string = RESULTS_DIR,
+): WindowVerdict {
+  const freeze = WINDOW_FROZEN[id];
+  const rev = FREEZE_REVS[id];
+  if (!freeze || !rev) throw new Error(`no frozen window entry ${id}`);
+  const file = load(dir, freeze.result, rev);
+  if (file.split !== "holdout3") {
+    throw new Error(`${freeze.result} is not a holdout3 read`);
+  }
+  return windowVerdict(
+    id,
+    freeze.result,
+    file.rows,
+    freeze.arms,
+    strataMembers(file.imageNames),
+    file.settings.guardTolerances as GuardTolerances,
+    seedCount,
+  );
 }
 
 /**

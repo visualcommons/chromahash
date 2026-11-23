@@ -250,7 +250,12 @@ import {
   tierBaselinePairs,
 } from "./stratify-core.ts";
 import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
-import { readWindow, selectWindows, windowArms } from "./window-core.ts";
+import {
+  readWindow,
+  selectWindows,
+  windowArms,
+  windowVerdict,
+} from "./window-core.ts";
 import {
   checkIdenticalTo,
   decodeDigest,
@@ -6977,6 +6982,29 @@ console.log(
     pick.frozen.map((r) => r.spec.arm).join(",") === "d" &&
       pick.decidedInSample.join(",") === "4",
     `${pick.frozen.map((r) => r.spec.arm).join(",")}|${pick.decidedInSample.join(",")}`,
+  );
+
+  // The holdout verdict: the frozen arms read as readWindow reads them, the
+  // stratum rule included, re-read under other seeds; an arm the result
+  // does not hold is refused rather than skipped.
+  const v = windowVerdict("D3", "r", sRows, ["t3 light"], members, tol, 3);
+  const [vr] = v.readings;
+  let refused = false;
+  try {
+    windowVerdict("D3", "r", sRows, ["t4 light"], members, tol, 0);
+  } catch {
+    refused = true;
+  }
+  check(
+    "windowVerdict reads each frozen arm with the stratum rule, re-reads it under the requested seeds (none the harness's), and refuses an arm the result does not hold",
+    vr !== undefined &&
+      vr.spec.arm === "t3 light" &&
+      vr.strata?.length === 2 &&
+      !vr.pass &&
+      v.seeds.join(",") === "1,2,3" &&
+      v.turned.length === 0 &&
+      refused,
+    `${vr?.spec.arm} pass ${vr?.pass} seeds ${v.seeds.join(",")} turned ${v.turned.length} refused ${refused}`,
   );
 }
 
