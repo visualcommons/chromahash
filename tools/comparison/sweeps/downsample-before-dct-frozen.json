@@ -1,0 +1,101 @@
+{
+  "name": "downsample-before-dct-frozen",
+  "description": "Register entry D5's frozen holdout3 config: downsample-before-dct's rows kept for the read, per tier the full-resolution incumbent, at codes 0-2 the lever-free identity check, and the arm D5's selection rule froze, every setting and tune string copied unchanged. Register entry D5 (spec/V0.8-DECISIONS.md, #136): downsampling before the forward DCT, at every tier. Every arm encodes the source at its native resolution (encodeSource native), upright, and is scored against the harness's display reference as every sweep is. At each code k, 'tK full resolution' is the incumbent: the shipped encoder with every byte-identical lever of PERFORMANCE.md 12.1 on (ACCEL_ALL), which bounds a native encode at the top tiers to seconds. At codes 0-2, 'tK shipped default', the shipped default with no lever, is identicalTo it, so the run fails unless every image decodes to the same pixels both ways. Each candidate is a placement (Tunables::downsample: linear averages the premultiplied linear-light RGB and the alpha off the source bytes, before the colour pass; oklab averages the composited OKLAB and alpha planes after it) and a grid edge E (downsample_edge: a budget of E^2 pixels at the source's aspect, never enlarged), with the kernel the exact area average and the same levers as the incumbent. Every candidate arm at code k is read against 'tK full resolution', at equal bytes; expectBytes holds each tier to its shipped length per alpha mode. Corpus all with realOnly and the white-black-grey backdrops, as D1-D3: the photographic, alpha and graphics tune images, so the holdout3 read covers every stratum. Rows against the code-0 incumbent at other tiers, which the printed tables show by default, are at other byte counts and are not judged.",
+  "corpus": "all",
+  "realOnly": true,
+  "backdrops": "white-black-grey",
+  "alphaFidelity": true,
+  "encodeSource": "native",
+  "expectBytes": {
+    "0": {
+      "opaque": 21,
+      "alpha": 21
+    },
+    "1": {
+      "opaque": 32,
+      "alpha": 32
+    },
+    "2": {
+      "opaque": 108,
+      "alpha": 103
+    },
+    "3": {
+      "opaque": 411,
+      "alpha": 388
+    },
+    "4": {
+      "opaque": 1623,
+      "alpha": 1528
+    }
+  },
+  "variants": [
+    {
+      "label": "t0 full resolution",
+      "tier": 0,
+      "tune": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1 downsample=off"
+    },
+    {
+      "label": "t0 shipped default",
+      "tier": 0,
+      "tune": "downsample=off",
+      "identicalTo": "t0 full resolution"
+    },
+    {
+      "label": "t0 downsample=linear downsample_edge=128",
+      "tier": 0,
+      "tune": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1 downsample=linear downsample_edge=128"
+    },
+    {
+      "label": "t1 full resolution",
+      "tier": 1,
+      "tune": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1 downsample=off"
+    },
+    {
+      "label": "t1 shipped default",
+      "tier": 1,
+      "tune": "downsample=off",
+      "identicalTo": "t1 full resolution"
+    },
+    {
+      "label": "t1 downsample=linear downsample_edge=128",
+      "tier": 1,
+      "tune": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1 downsample=linear downsample_edge=128"
+    },
+    {
+      "label": "t2 full resolution",
+      "tier": 2,
+      "tune": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1 downsample=off"
+    },
+    {
+      "label": "t2 shipped default",
+      "tier": 2,
+      "tune": "downsample=off",
+      "identicalTo": "t2 full resolution"
+    },
+    {
+      "label": "t2 downsample=linear downsample_edge=128",
+      "tier": 2,
+      "tune": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1 downsample=linear downsample_edge=128"
+    },
+    {
+      "label": "t3 full resolution",
+      "tier": 3,
+      "tune": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1 downsample=off"
+    },
+    {
+      "label": "t3 downsample=linear downsample_edge=256",
+      "tier": 3,
+      "tune": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1 downsample=linear downsample_edge=256"
+    },
+    {
+      "label": "t4 full resolution",
+      "tier": 4,
+      "tune": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1 downsample=off"
+    },
+    {
+      "label": "t4 downsample=linear downsample_edge=512",
+      "tier": 4,
+      "tune": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1 downsample=linear downsample_edge=512"
+    }
+  ]
+}
