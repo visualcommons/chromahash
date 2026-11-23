@@ -29,9 +29,9 @@
     }
   },
   "provenance": {
-    "rev": "25814f7919d3c49399ebd545d9b1b6c8b4d8b896",
-    "dirty": true,
-    "dirtyPaths": ["tools/comparison/src/alpha-tiers-core.ts", "tools/comparison/src/register-verdict-core.ts"],
+    "rev": "b5d2ca64ba7d1d36f83fb6a3333b11728cf8244d",
+    "dirty": false,
+    "dirtyPaths": [],
     "iqaCli": "iqa-cli 1.2.1",
     "config": "tools/comparison/sweeps/alpha-tiers34.json",
     "configSha256": "053b204a1104b80d8f2430507d2b126847ff85ab49e58f4e5a637a55e891db1e",
