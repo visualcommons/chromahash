@@ -239,7 +239,7 @@ class ChromaHashTest {
                 "reserved bit set" to (valid[0].toInt() or 0b1000_0000),
                 "reserved tier code" to
                     ((valid[0].toInt() and 0b0011_1000.inv()) or ((MAX_TIER + 1) shl 3)),
-                "unsupported version" to (valid[0].toInt() or 0b0000_0001),
+                "unsupported version" to (valid[0].toInt() or 0b0000_0010),
             )
 
         for ((what, b0) in cases) {
@@ -334,7 +334,7 @@ class ChromaHashTest {
         // that asserts nothing. What is checkable is the contract the format
         // guarantees about the codes, and the byte lengths they select.
         assertEquals(0, compactTier().toInt())
-        assertEquals(0, formatVersion().toInt())
+        assertEquals(1, formatVersion().toInt())
         assertTrue(compactTier() < defaultTier() && defaultTier() < maxTier())
 
         val rgba = solid4x4()

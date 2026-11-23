@@ -184,7 +184,7 @@ prefix one code down stays inside one tier step in ΔE00 but fails the
 SSIMULACRA2 and Butteraugli guards against the native code it stands for
 (`EXPERIMENTS.md` §13.9). So tiers stay independent.
 
-### No entropy coding
+### Entropy coding at code 3 only
 At the default tier, fixed-width fields buy O(1) validation (deterministic length
 *is* the validity check), no decoder tables, and fixed DB width — and for ≤256
 bits the saving is small. An adaptive coder scored leave-one-image-out, so that
@@ -198,10 +198,14 @@ the sealed `holdout3`) and not at codes 2 and 4 (`EXPERIMENTS.md` §13.8). Its
 validity design is a total code, whose decoder reads a fixed number of in-range
 codes from any bits, so the O(1) length formula stays the validity check and a
 hash that validates still decodes. What a coded hash gives up is random access
-to an AC code, error locality and a canonical form. Adopting it at code 3 is a
-format change that the v0.8 verdict lands in every language or declines.
-The R-D gap to WebP/AVIF at those anchors is the budget a future wire
-generation would need it to close.
+to an AC code, error locality and a canonical form. **Generation v2 (0.8.0)
+adopts it at code 3 alone** (`V0.8-DECISIONS.md`, "The v0.8 verdict";
+`README.md` §3.6), which reverses this section's old title, "No entropy
+coding", at that one code. Codes 0–2 and 4 keep fixed fields: at codes 0–2
+the saving does not reach R1, and at code 4 it measured 2.80%. Random access
+and error locality matter least where the hash is already 411 bytes and its
+decode already reads every code. The R-D gap to WebP/AVIF at those anchors is
+the budget a future wire generation would need it to close.
 
 ### Self-describing, no checksum
 Byte 0 (version/tier/flags) + the deterministic length formula = a parser
@@ -288,7 +292,7 @@ zeros and excluded from scale (encoder); render-time filtering skips pairs
 outside the raster (decoder). Fixes the v0.5 1×N-strip catastrophe
 **[v0.6: dim_1x100 ΔE00 54.5 → 0.78]** and makes capped decodes band-limited.
 
-### Synthesis window: evaluated and rejected, re-measured and still off
+### Synthesis window: off at codes 0–2, on in two cells of codes 3–4
 A raised-cosine synthesis window (ρ = sqrt(priority/p_k)) was implemented and
 swept for v0.6. With corrected chroma scale ranges it cost more detail than
 the ringing it suppressed — v0.5's visible striping was chroma quantization
@@ -327,8 +331,14 @@ alpha stratum's ΔE00 is +0.69% with its interval excluding zero
 ([+0.026, +0.080], a lower bound of +0.35%), inside the stratum rule's +1.0%, and the alpha and skin
 strata are `inconclusive` on guards; at code 4 alpha is +0.49% (lower
 bound −0.03%). No stratum fails, so D3 passes at both codes. Applied by tier it is a decode change that moves the code-3
-and code-4 decode vectors and no hash; the v0.8 verdict lands it or
-declines it, and until then the shipped decode keeps the window off.
+and code-4 decode vectors and no hash. **Generation v2 (0.8.0) ships it in
+two cells**: `w_min` 0.85 for an alpha-mode code-3 hash and 0.7 for an opaque
+code-4 hash, off at codes 0–2, where the rejection above stands. The v0.8
+combination check, on tune, dropped it from the other two cells: beside the
+code-3 coder the opaque window no longer brings invented structure under
+code 2's, and beside code 4's 5-bit alpha row it costs more than δ
+(`README.md` §11.1; `V0.8-DECISIONS.md`, "The v0.8 verdict";
+`EXPERIMENTS.md` §13.15).
 
 ## Quantization (the audio-codec audit)
 
@@ -454,8 +464,9 @@ same bug one step earlier: codes 0 and 1 share level 0.
 ### Alpha: composite-over-average + separate channel
 Transparent pixels composite over the alpha-weighted average OKLAB (keeps the
 color channels clean of transparency edges — inherited from ThumbHash), and
-alpha is its own DCT channel (DC 5 b + scale 4 b + the row's alpha AC at 3 b —
-16 / 28 / 112 / 448 / 1792 for codes 0–4). Funded mostly out of chroma — a/b 15→3,
+alpha is its own DCT channel (DC 5 b + scale 4 b + the row's alpha AC, at 3 b
+for codes 0–2 and 5 b for codes 3–4 — 16 / 28 / 112 / 960 / 1024 for codes 0–4,
+code 3's a bound on its coded stream). Funded mostly out of chroma — a/b 15→3,
 L 28→22 — so the default tier stays 32 bytes.
 `hasAlpha` = any pixel α<255: exact and predictable; a threshold would be equally
 arbitrary and produce input-dependent surprises.
@@ -478,7 +489,7 @@ encoding.
 | Frequency-weighted quant matrices (JPEG/JXL) | **= the scalefactor-band experiment** (one mechanism, two framings): −0.14% at code 1 on the current corpus (`EXPERIMENTS.md` §11.9); −0.20% (code 1) / −0.52% (code 2) on the pre-2026-08 corpus — direction real, below threshold. |
 | DC prediction | **N/A:** one global DC. |
 | Directional intra prediction | **N/A:** no blocks. |
-| Entropy coding (ANS/CABAC) | **Rejected at the default tier; passes R1 at code 3 and not at codes 2 and 4** (`V0.8-DECISIONS.md` D1, decided; adoption at code 3 is the v0.8 verdict's to make; see Architecture). |
+| Entropy coding (ANS/CABAC) | **Rejected at the default tier; passes R1 at code 3 and not at codes 2 and 4** (`V0.8-DECISIONS.md` D1, decided); **adopted at code 3 in generation v2** (see Architecture). |
 | Progressive / embedded refinement | **Built as a sweep-only knob in v0.7; not adopted (`V0.8-DECISIONS.md` D2, `EXPERIMENTS.md` §13.9: every prefix fails the guards).** A 32 B interleaved prefix of a code-2 hash is +4.15% ΔE00 against native code 1 (`EXPERIMENTS.md` §7.11, tune); capped decode bounds the value from above (code 2 rendered at code-1 size, −20% ΔE00 against native code 1, pre-2026-08 corpus, not run on the current one). |
 | XYB color space | **Rejected** in favor of OKLAB (see Signal path). |
 | Wavelets (JPEG2000) | **Rejected at the default tier;** reopen at code 4 only if codes 3–4 survive their positioning question. |
@@ -568,8 +579,10 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
    count split stays flat there, but the 3-bit alpha field binds: a 5-bit
    alpha row at the same bytes is 13.50% better at code 3 and 22.69% at
    code 4 on `holdout3`'s alpha pins, and passes R1 at both
-   (`EXPERIMENTS.md` §13.12). Adopting it is a format change the v0.8
-   verdict lands or declines; the shipped rows are unchanged until then.
+   (`EXPERIMENTS.md` §13.12). Generation v2 (0.8.0) ships those rows, so at
+   codes 3–4 the more-coefficients-over-finer-ones rule of "Quality tiers"
+   does not hold for alpha. Both sit at the edge of D6's grid: a wider alpha
+   field, or at code 3 a larger 5-bit count, was never measured.
 3. ~~**Code 3–4 positioning**~~ — **resolved in v0.7 by repositioning them**
    (`README.md` §14.1). Size-matched WebP overtakes code 3 and AVIF/WebP/JPEG
    beat code 4, AVIF by 19% on ΔE00 (`EXPERIMENTS.md` §11.14). Entropy coding
@@ -582,8 +595,8 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
 4. **Entropy-coded AC at codes 2–4** — sized by that same R-D gap.
    `V0.8-DECISIONS.md` D1 is decided: the coder passes R1 at code 3 (−6.04%
    ΔE00 on `holdout3`) and not at codes 2 and 4 (`EXPERIMENTS.md` §13.8). Its
-   total code keeps the O(1) length check. Adopting it at code 3 is a new wire
-   generation, which the v0.8 verdict lands or declines.
+   total code keeps the O(1) length check. Generation v2 (0.8.0) adopts it at
+   code 3; codes 2 and 4 stay open to a new entry.
 5. **Embedded/progressive tiers** — interleave AC by priority so a code-k hash
    is a prefix of code k+1. Built as a sweep-only knob in v0.7: the first 32 B
    of an interleaved code-2 hash score +4.15% ΔE00 against a native code-1

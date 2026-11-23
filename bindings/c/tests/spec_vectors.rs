@@ -387,7 +387,7 @@ fn from_bytes_rejects_a_malformed_header() {
     reject(&reserved_tier, "reserved tier code");
 
     let mut bad_version = valid.clone();
-    bad_version[0] |= 0b0000_0001;
+    bad_version[0] &= !0b0000_0111; // generation v1 (version 0)
     reject(&bad_version, "unsupported version");
 }
 

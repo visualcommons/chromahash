@@ -16,15 +16,16 @@
  * if a spec change lands in the core, that guard fails until this module follows.
  */
 
+import { AcHistory, AcModels, ArithDecoder } from "./arith.ts";
 import {
+  AC_CODED,
   ALPHA_DC_BITS,
   ALPHA_SCALE_BITS,
   ANISO_OBLIQUE,
   A_DC_BITS,
   A_SCALE_BITS,
-  assertHash,
-  B_DC_BITS,
   BASE_LONG_EDGE,
+  B_DC_BITS,
   B_SCALE_BITS,
   DESCRIPTOR_BITS,
   L_DC_BITS,
@@ -39,18 +40,18 @@ import {
   MU_C,
   MU_L,
   PREFIX_BITS,
+  SEL_HV,
+  SEL_ONE,
+  WINDOW_W_EXP,
+  WINDOW_W_MIN_ALPHA,
+  WINDOW_W_MIN_OPAQUE,
+  assertHash,
   readAspect,
   readHasAlpha,
   readTier,
   renderLevel,
-  SEL_HV,
-  SEL_ONE,
   tierCountScale,
   tierLayout,
-  W_EXP_C,
-  W_EXP_L,
-  W_MIN_C,
-  W_MIN_L,
 } from "./header.ts";
 
 type Mat3 = readonly [
@@ -601,42 +602,70 @@ function renderAtSize(
     bitpos += ALPHA_SCALE_BITS;
   }
 
-  const lAc: number[] = [];
+  // Every AC code, in the order the payload carries them: luma (with its
+  // per-index widths), chroma a, chroma b, then alpha. A coded tier (§3.6)
+  // reads them from one arithmetic-coded stream over the rest of the hash;
+  // every other tier reads fixed-width fields.
+  const lBits: number[] = [];
   for (const [count, bits] of lBands) {
-    for (let i = 0; i < count; i++) {
-      const q = readBits(hash, bitpos, bits);
-      bitpos += bits;
-      lAc.push(muLawDequantize(q, bits, MU_L) * lScale);
+    for (let i = 0; i < count; i++) lBits.push(bits);
+  }
+  const alphaCount = hasAlpha ? alphaAcCount : 0;
+  const lRaw: number[] = [];
+  const aRaw: number[] = [];
+  const bRaw: number[] = [];
+  const alphaRaw: number[] = [];
+  if (AC_CODED[tier] === true) {
+    const dec = new ArithDecoder(hash, bitpos, hash.length * 8);
+    const models = new AcModels();
+    let hist = new AcHistory();
+    for (const [i, bits] of lBits.entries()) {
+      lRaw.push(models.decode(dec, hist, 0, i, bits));
     }
+    for (const raw of [aRaw, bRaw]) {
+      hist = new AcHistory();
+      for (let i = 0; i < cCount; i++) {
+        raw.push(models.decode(dec, hist, 1, i, cBits));
+      }
+    }
+    hist = new AcHistory();
+    for (let i = 0; i < alphaCount; i++) {
+      alphaRaw.push(models.decode(dec, hist, 2, i, alphaAcBits));
+    }
+  } else {
+    const read = (out: number[], n: number, width: (i: number) => number) => {
+      for (let i = 0; i < n; i++) {
+        const bits = width(i);
+        out.push(readBits(hash, bitpos, bits));
+        bitpos += bits;
+      }
+    };
+    read(lRaw, lBits.length, (i) => lBits[i] ?? 0);
+    read(aRaw, cCount, () => cBits);
+    read(bRaw, cCount, () => cBits);
+    read(alphaRaw, alphaCount, () => alphaAcBits);
   }
 
-  const aAc: number[] = [];
-  for (let i = 0; i < cCount; i++) {
-    const q = readBits(hash, bitpos, cBits);
-    bitpos += cBits;
-    aAc.push(muLawDequantize(q, cBits, MU_C) * aScale);
-  }
-  const bAc: number[] = [];
-  for (let i = 0; i < cCount; i++) {
-    const q = readBits(hash, bitpos, cBits);
-    bitpos += cBits;
-    bAc.push(muLawDequantize(q, cBits, MU_C) * bScale);
-  }
+  const lAc = lRaw.map(
+    (q, i) => muLawDequantize(q, lBits[i] ?? 0, MU_L) * lScale,
+  );
+  const aAc = aRaw.map((q) => muLawDequantize(q, cBits, MU_C) * aScale);
+  const bAc = bRaw.map((q) => muLawDequantize(q, cBits, MU_C) * bScale);
 
   let alphaSel: Selection | null = null;
   const alphaAc: number[] = [];
   if (hasAlpha) {
     alphaSel = selectCoefficients(aspect, tier, alphaAcCount);
-    for (let i = 0; i < alphaAcCount; i++) {
-      const q = readBits(hash, bitpos, alphaAcBits);
-      bitpos += alphaAcBits;
+    for (const q of alphaRaw) {
       alphaAc.push(muLawDequantize(q, alphaAcBits, MU_ALPHA) * alphaScaleVal);
     }
   }
 
-  // 5. Synthesis window + frequency filter for the render raster
-  const lWeights = windowWeights(lSel, W_MIN_L, W_EXP_L);
-  const cWeights = windowWeights(cSel, W_MIN_C, W_EXP_C);
+  // 5. Synthesis window (per alpha mode and tier code) + frequency filter
+  const wMin =
+    (hasAlpha ? WINDOW_W_MIN_ALPHA : WINDOW_W_MIN_OPAQUE)[tier] ?? 1.0;
+  const lWeights = windowWeights(lSel, wMin, WINDOW_W_EXP);
+  const cWeights = windowWeights(cSel, wMin, WINDOW_W_EXP);
 
   const lCh = prepareChannel(lAc, lSel.coeffs, lWeights, w, h);
   const aCh = prepareChannel(aAc, cSel.coeffs, cWeights, w, h);
@@ -647,7 +676,7 @@ function renderAtSize(
       ? prepareChannel(
           alphaAc,
           alphaSel.coeffs,
-          windowWeights(alphaSel, W_MIN_L, W_EXP_L),
+          windowWeights(alphaSel, wMin, WINDOW_W_EXP),
           w,
           h,
         )

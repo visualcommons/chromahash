@@ -134,8 +134,8 @@ use constants::{
 // locked into the spec.
 #[doc(hidden)]
 pub use constants::{
-    AcLayout, Companding, LAYOUT_A, LAYOUT_B, LAYOUT_C, LAYOUT_D, LAYOUT_T0, LAYOUT_TC, QuantTable,
-    Tunables,
+    AcLayout, Companding, LAYOUT_A, LAYOUT_B, LAYOUT_C, LAYOUT_D, LAYOUT_T0, LAYOUT_T3, LAYOUT_T4,
+    LAYOUT_TC, QuantTable, TIER_CODES, Tunables,
 };
 #[doc(hidden)]
 pub use encode::{CoeffDump, encode_debug_coefficients};
@@ -616,12 +616,17 @@ mod tests {
             .to_vec();
         assert!(ChromaHash::from_bytes(&bytes).is_ok());
 
-        let mut bad_version = bytes.clone();
-        bad_version[0] = (bad_version[0] & !0b111) | 1;
-        assert_eq!(
-            ChromaHash::from_bytes(&bad_version),
-            Err(ChromaHashError::UnsupportedVersion)
-        );
+        // Generation v1 (`version` 0, chromahash 0.7.x) and the next one up
+        // are both generations this build does not implement.
+        for version in [0, FORMAT_VERSION + 1] {
+            let mut bad_version = bytes.clone();
+            bad_version[0] = (bad_version[0] & !0b111) | version;
+            assert_eq!(
+                ChromaHash::from_bytes(&bad_version),
+                Err(ChromaHashError::UnsupportedVersion),
+                "version {version}"
+            );
+        }
 
         // The first code that is still reserved. The codes are ordered by
         // quality, so `MAX_TIER + 1` is exactly that code.
@@ -673,10 +678,10 @@ mod tests {
         let rgba = horizontal_gradient(w, h);
         let hash = ChromaHash::encode(w, h, &rgba, Gamut::Srgb);
         assert_eq!(hash.as_bytes().len(), 32);
-        // Header first (version 0, tier 1, opaque; aspect 4:1 → byte 191): a
+        // Header first (version 1, tier 1, opaque; aspect 4:1 → byte 191): a
         // scrambled byte 0 can name tier 7, whose render runs for minutes, so
         // a broken bit writer must fail here rather than time out the decode.
-        assert_eq!(hash.as_bytes()[..2], [8, 191]);
+        assert_eq!(hash.as_bytes()[..2], [9, 191]);
         let (dw, dh, pixels) = hash.decode();
         assert!(dw > dh, "panorama output should be wider than tall");
         assert_eq!(pixels.len(), (dw * dh * 4) as usize);
@@ -752,7 +757,7 @@ mod tests {
         let hash = ChromaHash::encode(w, h, &rgba, Gamut::Srgb);
         #[rustfmt::skip]
         let expected_hash = [
-            8, 128, 79, 97, 48, 16, 136, 0, 0, 77, 96, 21, 145, 64, 230, 140, 5, 136, 84, 204, 24,
+            9, 128, 79, 97, 48, 16, 136, 0, 0, 77, 96, 21, 145, 64, 230, 140, 5, 136, 84, 204, 24,
             16, 40, 33, 229, 201, 182, 235, 180, 18, 197, 40,
         ];
         assert_eq!(hash.as_bytes(), &expected_hash);
@@ -799,10 +804,10 @@ mod tests {
         // `ac * weight` and `ac / weight` coincide. Decode the same hash with the
         // window engaged so the per-coefficient weight application is pinned.
         let windowed = Tunables {
-            w_min_l: 0.55,
-            w_exp_l: 2,
-            w_min_c: 0.6,
-            w_exp_c: 2,
+            w_min_l: [[0.55; crate::constants::TIER_CODES]; 2],
+            w_exp_l: [[2; crate::constants::TIER_CODES]; 2],
+            w_min_c: [[0.6; crate::constants::TIER_CODES]; 2],
+            w_exp_c: [[2; crate::constants::TIER_CODES]; 2],
             ..Tunables::DEFAULT
         };
         let (ww, wh, wpx) = hash.decode_tuned(&windowed);

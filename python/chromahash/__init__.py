@@ -136,7 +136,7 @@ class ChromaHash:
         to decode.
 
         Raises:
-            ChromaHashError.InvalidData: the bytes are not a valid v1
+            ChromaHashError.InvalidData: the bytes are not a valid v2
                 ChromaHash (bad version, reserved tier code, set reserved bit,
                 or a length that disagrees with the header).
         """

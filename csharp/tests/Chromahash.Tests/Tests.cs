@@ -161,7 +161,7 @@ public class ChromaHashTests
     [Theory]
     [InlineData("reserved bit set", 0b1000_0000, 0)]
     [InlineData("reserved tier code", 0, (CH.MaxTier + 1) << 3)]
-    [InlineData("unsupported version", 0b0000_0001, 0)]
+    [InlineData("unsupported version", 0b0000_0010, 0)]
     public void FromBytesRejectsAMalformedHeader(string what, int orMask, int tierBits)
     {
         byte[] bytes = CH.Encode(4, 4, Helpers.SolidImage(4, 4, 1, 2, 3, 255), Gamut.Srgb).AsBytes();

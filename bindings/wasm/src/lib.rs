@@ -144,7 +144,7 @@ impl ChromaHash {
         })
     }
 
-    /// Reconstruct from raw hash bytes. Throws if `bytes` is not a valid v1
+    /// Reconstruct from raw hash bytes. Throws if `bytes` is not a valid v2
     /// ChromaHash.
     #[wasm_bindgen(js_name = fromBytes)]
     pub fn from_bytes(bytes: &[u8]) -> Result<ChromaHash, JsError> {

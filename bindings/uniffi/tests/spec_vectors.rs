@@ -169,13 +169,13 @@ fn from_bytes_rejects_a_malformed_header() {
     for (what, mutate) in [
         ("reserved bit set", 0usize),
         ("reserved tier code", 1),
-        ("unsupported version", 2),
+        ("unsupported version (generation v1)", 2),
     ] {
         let mut bytes = valid.clone();
         bytes[0] = match mutate {
             0 => bytes[0] | 0b1000_0000,
             1 => (bytes[0] & !0b0011_1000) | ((MAX_TIER + 1) << 3),
-            _ => bytes[0] | 0b0000_0001,
+            _ => bytes[0] & !0b0000_0111,
         };
         assert!(
             matches!(
@@ -296,16 +296,18 @@ fn integration_decode_vectors() {
 fn from_bytes_rejects_wrong_length() {
     // The expected length is a function of the descriptor byte, so each buffer
     // has to carry the descriptor for the tier whose length it is claiming.
-    // Descriptor 8 = version 0, tier 1 (the 32-byte default); descriptor 0 =
-    // the compact tier, which is 21 bytes.
+    // Descriptor 9 = version 1, tier 1 (the 32-byte default); descriptor 1 =
+    // version 1, the compact tier, which is 21 bytes.
     let mut default_tier = vec![0u8; 32];
-    default_tier[0] = 8;
+    default_tier[0] = 9;
     assert!(
         ChromaHash::from_bytes(default_tier.clone()).is_ok(),
         "from_bytes should accept a 32-byte default-tier buffer"
     );
+    let mut compact = vec![0u8; 21];
+    compact[0] = 1;
     assert!(
-        ChromaHash::from_bytes(vec![0u8; 21]).is_ok(),
+        ChromaHash::from_bytes(compact).is_ok(),
         "from_bytes should accept a 21-byte compact-tier buffer"
     );
 
@@ -323,8 +325,10 @@ fn from_bytes_rejects_wrong_length() {
     );
     // A compact descriptor on a 32-byte buffer is the renumbering's own hazard:
     // it must be a length mismatch, not a silently mis-read default-tier hash.
+    let mut compact_on_32 = vec![0u8; 32];
+    compact_on_32[0] = 1;
     assert!(
-        ChromaHash::from_bytes(vec![0u8; 32]).is_err(),
+        ChromaHash::from_bytes(compact_on_32).is_err(),
         "a compact-tier descriptor on 32 bytes must be rejected"
     );
 }

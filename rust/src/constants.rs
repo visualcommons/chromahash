@@ -8,19 +8,21 @@ pub enum Gamut {
     ProPhotoRgb,
 }
 
-// ── v1 wire format ─────────────────────────────────────────────────────────
+// ── v2 wire format ─────────────────────────────────────────────────────────
 //
-// chromahash ships as release 0.7.2, but the on-wire format carries its own
+// chromahash ships as release 0.8.0, but the on-wire format carries its own
 // generation number, independent of the package semver. This is wire-format
-// generation **v1**. Every framing parameter below is a named constant so the
+// generation **v2**. Every framing parameter below is a named constant so the
 // encoder, decoder, and `spec/constants.py` agree without scattered literals.
 
 /// Wire-format generation, stored in the 3-bit `version` field of byte 0.
 ///
-/// `0` is format **v1** (this redesign; chromahash 0.7.x). Future incompatible
-/// formats increment the field: `1` → v2, `2` → v3, `3` → v4, … A decoder MUST
-/// reject any value it does not implement.
-pub const FORMAT_VERSION: u8 = 0;
+/// `1` is format **v2** (chromahash 0.8.x): generation v1 (`0`, chromahash
+/// 0.7.x) with codes 3 and 4 changed by the v0.8 verdict
+/// (`spec/V0.8-DECISIONS.md`). Future incompatible formats increment the
+/// field: `2` → v3, `3` → v4, … A decoder MUST reject any value it does not
+/// implement, and this one implements v2 alone.
+pub const FORMAT_VERSION: u8 = 1;
 
 /// Width of the byte-0 `version` field (bits 0..3).
 pub const VERSION_BITS: u32 = 3;
@@ -34,6 +36,10 @@ pub const RESERVED_FLAG_BIT: u32 = 7;
 /// Highest valid tier code the v1 format defines (spec §2.5). Tier codes are
 /// `0..=MAX_TIER`, ordered by quality; codes `5..=7` remain reserved.
 pub const MAX_TIER: u8 = 4;
+
+/// How many tier codes the format defines (`0..=MAX_TIER`): the length of
+/// every per-tier [`Tunables`] array.
+pub const TIER_CODES: usize = MAX_TIER as usize + 1;
 
 /// The compact tier's code (spec §3.1). 21 bytes: the smallest and lowest-
 /// fidelity tier, rendered at [`DEFAULT_TIER`]'s resolution.
@@ -240,6 +246,72 @@ pub const LAYOUT_TC: AcLayout = AcLayout {
     a_bits: 3,
 };
 
+/// Layout T3: the **code-3 row** of generation v2 (v0.8), scaled by 16.
+///
+/// Code 3 carries its AC codes in the arithmetic-coded stream (register entry
+/// D1, `spec/V0.8-DECISIONS.md`), so this row **bounds** the codes the stream
+/// may carry instead of fixing their fields, and the hash keeps the length
+/// [`LAYOUT_B`] gives (411 / 388 bytes). The opaque bounds are three times
+/// [`LAYOUT_B`]'s counts at its widths (D1's frozen `x3`). The alpha bounds
+/// are three times the D6 row `A20@5 L18@4 C3@3`, at its widths: register
+/// entry D6's 5-bit alpha row, combined with the coder as the v0.8
+/// combination check read it on tune.
+pub const LAYOUT_T3: AcLayout = AcLayout {
+    l_tiers: [(78, 5), (0, 5)],
+    c_count: 27,
+    c_bits: 4,
+    la_tiers: [(54, 4), (0, 4)],
+    ca_count: 9,
+    ca_bits: 3,
+    a_count: 60,
+    a_bits: 5,
+};
+
+/// Layout T4: the **code-4 row** of generation v2 (v0.8), scaled by 64.
+///
+/// Opaque, it is [`LAYOUT_B`]'s row. Alpha, it is register entry D6's
+/// `A16@5 L23@4 C3@3`: a 5-bit alpha field in place of the 3-bit one, at the
+/// same 190 bits per base row, so the length is [`LAYOUT_B`]'s (1623 / 1528
+/// bytes). `54 + 9 + 64·(23·4 + 2·3·3 + 16·5) = 12223 bits` → 1528 bytes.
+pub const LAYOUT_T4: AcLayout = AcLayout {
+    l_tiers: [(26, 5), (0, 5)],
+    c_count: 9,
+    c_bits: 4,
+    la_tiers: [(23, 4), (0, 4)],
+    ca_count: 3,
+    ca_bits: 3,
+    a_count: 16,
+    a_bits: 5,
+};
+
+/// One value per alpha mode and tier code, indexed `[has_alpha][tier]`: the
+/// shape of every setting generation v2 makes conditional on both, which the
+/// decoder reads from byte 0.
+pub type PerCell<T> = [[T; TIER_CODES]; 2];
+
+/// The synthesis window's `w_min` per alpha mode and tier code, luma and
+/// chroma alike, with `w_exp = 1` (register entry D3, as the v0.8
+/// combination check kept it): off (`1.0`) at codes 0–2; at code 3 on in
+/// alpha mode (`0.85`) and off opaque, where it fails D3's primary beside
+/// the coder; at code 4 on opaque (`0.7`) and off in alpha mode, where it
+/// costs the 5-bit alpha row more than δ (`spec/V0.8-DECISIONS.md`, "The
+/// v0.8 verdict").
+pub const WINDOW_W_MIN: PerCell<f64> = [
+    [1.0, 1.0, 1.0, 1.0, 0.7],  // opaque
+    [1.0, 1.0, 1.0, 0.85, 1.0], // alpha
+];
+
+/// `[has_alpha][tier]` index of a (alpha mode, tier code) cell. A reserved
+/// code (never reached: `from_bytes` rejects it) reads the top tier's entry.
+#[inline]
+pub(crate) fn cell_index(has_alpha: bool, tier: u8) -> (usize, usize) {
+    (has_alpha as usize, tier_index(tier))
+}
+
+/// The AC coder per tier code (register entry D1): the arithmetic-coded
+/// stream at code 3, the fixed-width fields everywhere else.
+pub const AC_CODER: [u32; TIER_CODES] = [0, 0, 0, 1, 0];
+
 /// Per-channel AC counts/bit-widths resolved for one (alpha mode, tier). The
 /// [`AcLayout`] passed in describes that tier's base counts; a tier scales every
 /// coefficient *count* by `4^render_level(tier)` while bit widths stay fixed.
@@ -277,8 +349,17 @@ pub(crate) fn tier_layout(t: &Tunables, tier: u8) -> &AcLayout {
     match tier {
         COMPACT_TIER => &t.layout_compact,
         DEFAULT_TIER => &t.layout,
-        _ => &t.layout_upper,
+        2 => &t.layout_upper,
+        3 => &t.layout_t3,
+        _ => &t.layout_t4,
     }
+}
+
+/// The tier code's index into the per-tier [`Tunables`] arrays. A reserved
+/// code (never reached: `from_bytes` rejects it) reads the top tier's entry.
+#[inline]
+pub(crate) fn tier_index(tier: u8) -> usize {
+    (tier as usize).min(TIER_CODES - 1)
 }
 
 /// Resolve the layout for a (alpha mode, tier): pick the tier's table, then the
@@ -329,15 +410,19 @@ pub(crate) fn prefix_bits(t: &Tunables) -> u32 {
     8 + t.aspect_bits + t.l_dc_bits + t.a_dc_bits + t.b_dc_bits + scale_bits + 2 * t.cfl_bits
 }
 
-/// `t` with the shipped fixed-width AC fields: the shipped layouts and the
-/// coder off, every other knob as `t` has it. It fixes a coded hash's length,
-/// and it is the fixed alternative of the adaptive mode (`ac_coder = 2`).
+/// `t` with the fixed-width **length rows**: the compact and default rows,
+/// and [`LAYOUT_B`] at codes 2–4, with the coder off, every other knob as `t`
+/// has it. It fixes a coded hash's length (every generation-v2 row at codes
+/// 3 and 4 has the length [`LAYOUT_B`] gives), and it is the fixed
+/// alternative of the adaptive mode (`ac_coder = 2`).
 pub(crate) fn shipped_fields(t: &Tunables) -> Tunables {
     Tunables {
         layout: Tunables::DEFAULT.layout,
-        layout_upper: Tunables::DEFAULT.layout_upper,
+        layout_upper: LAYOUT_B,
         layout_compact: Tunables::DEFAULT.layout_compact,
-        ac_coder: 0,
+        layout_t3: LAYOUT_B,
+        layout_t4: LAYOUT_B,
+        ac_coder: [0; TIER_CODES],
         ..*t
     }
 }
@@ -352,7 +437,7 @@ pub(crate) fn shipped_fields(t: &Tunables) -> Tunables {
 /// hash is the shipped hash's size, and its own layout only bounds what the
 /// coded stream carries.
 pub(crate) fn body_len_bytes(t: &Tunables, has_alpha: bool, tier: u8) -> usize {
-    if t.ac_coder != 0 {
+    if t.ac_coder[tier_index(tier)] != 0 {
         return body_len_bytes(&shipped_fields(t), has_alpha, tier);
     }
     let shape = ac_shape(t, has_alpha, tier);
@@ -412,10 +497,18 @@ impl QuantTable {
 pub struct Tunables {
     /// AC layout at the **default tier** (code 1, 32 bytes).
     pub layout: AcLayout,
-    /// AC layout base for **codes 2..=4**, scaled by `4^level`.
+    /// AC layout base for **code 2**, scaled by `4^level` (×4).
     pub layout_upper: AcLayout,
     /// AC layout of the compact tier (code 0). The third row of the table.
     pub layout_compact: AcLayout,
+    /// AC layout base for **code 3**, scaled by `4^level` (×16). Since v0.8
+    /// (generation v2) codes 3 and 4 each have their own row: the v0.8
+    /// verdict adopted a different row at each (`spec/V0.8-DECISIONS.md`).
+    /// With [`Tunables::ac_coder`] on at code 3, the row bounds the codes the
+    /// coded stream may carry rather than fixing their fields.
+    pub layout_t3: AcLayout,
+    /// AC layout base for **code 4**, scaled by `4^level` (×64).
+    pub layout_t4: AcLayout,
     /// DC chroma quantization ranges. Sized to the union OKLab hull of the
     /// display-output gamuts (sRGB ∪ Display P3 ∪ Adobe RGB: max |a| ≈ 0.347,
     /// max |b| ≈ 0.321) so wide-gamut colors are stored faithfully for
@@ -430,12 +523,15 @@ pub struct Tunables {
     pub mu_l: f64,
     pub mu_c: f64,
     pub mu_alpha: f64,
-    /// Decode-side synthesis window: w = w_min + (1−w_min)·hann(ρ)^w_exp.
-    /// w_min = 1.0 disables the window.
-    pub w_min_l: f64,
-    pub w_exp_l: u32,
-    pub w_min_c: f64,
-    pub w_exp_c: u32,
+    /// Decode-side synthesis window: w = w_min + (1−w_min)·hann(ρ)^w_exp,
+    /// one entry per alpha mode and tier code (`[has_alpha][tier]`). w_min =
+    /// 1.0 disables the window. Generation v2 tapers two cells of codes 3
+    /// and 4 ([`WINDOW_W_MIN`]); the decoder reads the tier and the alpha
+    /// flag from the hash, so the window is conditional on both.
+    pub w_min_l: PerCell<f64>,
+    pub w_exp_l: PerCell<u32>,
+    pub w_min_c: PerCell<f64>,
+    pub w_exp_c: PerCell<u32>,
     /// Encoder-only: search the ±1 neighborhood of the DC codes for the
     /// triple minimizing post-clip sRGB error (off only for ablation).
     pub dc_search: bool,
@@ -673,8 +769,12 @@ pub struct Tunables {
     /// padding bit for it). The encoder writes both and keeps the one with the
     /// smaller AC reconstruction error ([`crate::encode`]'s
     /// `encode_adaptive`), an encoder-side decision paid for inside the same
-    /// bytes. Any other value reads as `1`. Wire-level; sweep-only.
-    pub ac_coder: u32,
+    /// bytes. Any other value reads as `1`. Wire-level.
+    ///
+    /// One entry per tier code. Generation v2 ships `1` at code 3 alone,
+    /// where register entry D1 passed, and `0` everywhere else; the decoder
+    /// reads the tier from the hash, so the coder is conditional on it.
+    pub ac_coder: [u32; TIER_CODES],
     /// Downsampling before the transform (register entry D5,
     /// `spec/V0.8-DECISIONS.md`): resample a source of more than
     /// `downsample_edge²` pixels to a grid of about that many pixels, with
@@ -746,6 +846,8 @@ impl Tunables {
         layout: LAYOUT_T0,
         layout_upper: LAYOUT_B,
         layout_compact: LAYOUT_TC,
+        layout_t3: LAYOUT_T3,
+        layout_t4: LAYOUT_T4,
         max_chroma_a: 0.35,
         max_chroma_b: 0.33,
         max_l_scale: 0.5,
@@ -755,10 +857,10 @@ impl Tunables {
         mu_l: 5.0,
         mu_c: 8.0,
         mu_alpha: 5.0,
-        w_min_l: 1.0,
-        w_exp_l: 1,
-        w_min_c: 1.0,
-        w_exp_c: 1,
+        w_min_l: WINDOW_W_MIN,
+        w_exp_l: [[1; TIER_CODES]; 2],
+        w_min_c: WINDOW_W_MIN,
+        w_exp_c: [[1; TIER_CODES]; 2],
         dc_search: true,
         compand_l: Companding::MuLaw,
         compand_c: Companding::MuLaw,
@@ -812,7 +914,7 @@ impl Tunables {
         interleave: false,
         trunc_bytes: 0,
         cut_tier: None,
-        ac_coder: 0,
+        ac_coder: AC_CODER,
         downsample: 0,
         downsample_edge: 256,
     };
@@ -957,6 +1059,7 @@ mod tests {
     fn both_l_tier_entries_scale_with_the_tier() {
         let mut t = Tunables::DEFAULT;
         t.layout_upper = LAYOUT_C;
+        t.layout_t3 = LAYOUT_C;
         assert_ne!(
             LAYOUT_C.l_tiers[1].0, 0,
             "this test needs a layout whose second L tier is non-empty"

@@ -85,8 +85,48 @@ const LAYOUT_TC: AcLayout = {
   aBits: 3,
 };
 
-/** Wire-format generation this module implements: `0` is v1. */
-export const FORMAT_VERSION = 0;
+/**
+ * Layout T3: code 3's own row (generation v2). Code 3 carries its AC codes in
+ * the arithmetic-coded stream, so this row bounds what the stream may carry,
+ * and the hash keeps the length {@link LAYOUT_B} gives.
+ */
+const LAYOUT_T3: AcLayout = {
+  lBands: [
+    [78, 5],
+    [0, 5],
+  ],
+  cCount: 27,
+  cBits: 4,
+  laBands: [
+    [54, 4],
+    [0, 4],
+  ],
+  caCount: 9,
+  caBits: 3,
+  aCount: 60,
+  aBits: 5,
+};
+
+/** Layout T4: code 4's own row (generation v2): B opaque, a 5-bit alpha row. */
+const LAYOUT_T4: AcLayout = {
+  lBands: [
+    [26, 5],
+    [0, 5],
+  ],
+  cCount: 9,
+  cBits: 4,
+  laBands: [
+    [23, 4],
+    [0, 4],
+  ],
+  caCount: 3,
+  caBits: 3,
+  aCount: 16,
+  aBits: 5,
+};
+
+/** Wire-format generation this module implements: `1` is v2. */
+export const FORMAT_VERSION = 1;
 const VERSION_BITS = 3;
 const TIER_BITS = 3;
 const ALPHA_FLAG_BIT = 6;
@@ -135,10 +175,18 @@ export const MAX_ALPHA_SCALE = 0.5;
 export const MU_L = 5.0;
 export const MU_C = 8.0;
 export const MU_ALPHA = 5.0;
-export const W_MIN_L = 1.0;
-export const W_EXP_L = 1;
-export const W_MIN_C = 1.0;
-export const W_EXP_C = 1;
+/**
+ * The synthesis window per alpha mode and tier code (spec §11.1, register
+ * entry D3 as the v0.8 combination check kept it): `w_min` for luma and
+ * chroma alike, with `w_exp = 1`. Off (`1.0`) at codes 0–2; on at code 4
+ * opaque and at code 3 in alpha mode.
+ */
+export const WINDOW_W_MIN_OPAQUE: readonly number[] = [1.0, 1.0, 1.0, 1.0, 0.7];
+export const WINDOW_W_MIN_ALPHA: readonly number[] = [1.0, 1.0, 1.0, 0.85, 1.0];
+export const WINDOW_W_EXP = 1;
+
+/** Whether a tier code's AC payload is the arithmetic-coded stream (code 3). */
+export const AC_CODED: readonly boolean[] = [false, false, false, true, false];
 
 /** §6.2 selection weights, on the exact Q12 integer grid the spec orders on. */
 export const ANISO_OBLIQUE = 1.2;
@@ -163,7 +211,19 @@ export function tierCountScale(tier: number): number {
 /** The §3.2 layout row governing a tier code. */
 export function tierLayout(tier: number): AcLayout {
   if (tier === COMPACT_TIER) return LAYOUT_TC;
-  return tier === DEFAULT_TIER ? LAYOUT_T0 : LAYOUT_B;
+  if (tier === DEFAULT_TIER) return LAYOUT_T0;
+  if (tier === 3) return LAYOUT_T3;
+  return tier === 4 ? LAYOUT_T4 : LAYOUT_B;
+}
+
+/**
+ * The fixed-width row a tier code's **length** is computed from (spec §3.5):
+ * its own row, except at codes 2–4, which all take {@link LAYOUT_B}'s length.
+ * Every generation-v2 row at codes 3 and 4 has that length, and a coded
+ * tier's row only bounds its stream.
+ */
+function lengthLayout(tier: number): AcLayout {
+  return tier >= 2 ? LAYOUT_B : tierLayout(tier);
 }
 
 /** Wire-format generation from byte 0 (bits 0..3). */
@@ -192,7 +252,7 @@ export function readAspect(hash: Uint8Array): number {
  * structural check rather than a checksum.
  */
 export function bodyLenBytes(tier: number, hasAlpha: boolean): number {
-  const layout = tierLayout(tier);
+  const layout = lengthLayout(tier);
   const scale = tierCountScale(tier);
   const bands = hasAlpha ? layout.laBands : layout.lBands;
   let acBits = 0;

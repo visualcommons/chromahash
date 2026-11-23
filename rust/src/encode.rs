@@ -4,6 +4,7 @@ use crate::color::{linear_rgb_to_oklab, oklab_to_linear_srgb};
 use crate::constants::{
     ALPHA_FLAG_BIT, DEFAULT_TIER, FORMAT_VERSION, Gamut, MAX_TIER, Tunables, VERSION_BITS,
     ac_payload_bits, ac_shape, body_len_bytes, is_valid_tier, prefix_bits, shipped_fields,
+    tier_index,
 };
 use crate::dct::{
     Selection, SelectionOrder, dct_decode_pixel_separable, dct_encode_selected, interleaved_order,
@@ -1270,6 +1271,9 @@ fn resample_channel_dct(chan: &[f64], w: usize, h: usize, rw: usize, rh: usize) 
 #[allow(clippy::too_many_arguments)]
 fn refine_codes(
     t: &Tunables,
+    // The (alpha mode, tier code) cell's index into the per-cell window
+    // arrays.
+    (ai, ti): (usize, usize),
     w: usize,
     h: usize,
     cos_x: &[Vec<f64>],
@@ -1293,9 +1297,9 @@ fn refine_codes(
         chans[2],
     );
     let windows = [
-        window_weights(sels[0], t.w_min_l, t.w_exp_l),
-        window_weights(sels[1], t.w_min_c, t.w_exp_c),
-        window_weights(sels[2], t.w_min_c, t.w_exp_c),
+        window_weights(sels[0], t.w_min_l[ai][ti], t.w_exp_l[ai][ti]),
+        window_weights(sels[1], t.w_min_c[ai][ti], t.w_exp_c[ai][ti]),
+        window_weights(sels[2], t.w_min_c[ai][ti], t.w_exp_c[ai][ti]),
     ];
     // The DC code ranges the shipped DC search uses (chroma never writes 0).
     let dc_lo = [0i64, 1, 1];
@@ -1579,7 +1583,7 @@ impl CodedAc<'_> {
 /// `tier`. Per spec §10 (v1). Returns the variable-length encoded bytes
 /// (the default tier = 32 bytes; each higher code roughly quadruples the length).
 pub fn encode_with(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) -> Box<[u8]> {
-    if t.ac_coder == 2 {
+    if t.ac_coder[tier_index(tier)] == 2 {
         return encode_adaptive(w, h, rgba, gamut, t, tier);
     }
     encode_parts(w, h, rgba, gamut, t, tier, 0, false).0
@@ -1960,6 +1964,7 @@ fn encode_parts(
             let rcos_y = precompute_cos_table(rh, (max_cy + 1).min(rh.max(1)));
             refine_codes(
                 t,
+                crate::constants::cell_index(has_alpha, tier),
                 rw,
                 rh,
                 &rcos_x,
@@ -1975,6 +1980,7 @@ fn encode_parts(
         } else {
             refine_codes(
                 t,
+                crate::constants::cell_index(has_alpha, tier),
                 src_w,
                 src_h,
                 &cos_x,
@@ -2079,7 +2085,7 @@ fn encode_parts(
             ],
         }
     };
-    if t.ac_coder != 0 {
+    if t.ac_coder[tier_index(tier)] != 0 {
         // Register D1: one arithmetic-coded stream in place of the fixed
         // fields, filling the rest of the shipped-size hash.
         // The stream carries exactly the counts the decoder derives from the
@@ -2374,7 +2380,7 @@ mod tests {
         // residual. Only the exact payload distinguishes those two.
         #[rustfmt::skip]
         let expected: [u8; 33] = [
-            8, 128, 64, 231, 172, 56, 22, 63, 128, 174, 26, 162, 29, 222, 225, 221, 221,
+            9, 128, 64, 231, 172, 56, 22, 63, 128, 174, 26, 162, 29, 222, 225, 221, 221,
             221, 221, 221, 221, 93, 18, 68, 146, 166, 81, 3, 36, 137, 212, 182, 109,
         ];
         assert_eq!(&with_cfl[..], &expected[..], "CfL bitstream");
@@ -2423,34 +2429,34 @@ mod tests {
         // Saturated gamut corners exercise the decode-aware DC code search; the
         // neutral/extreme tones pin the DC and scale quantizers and the header
         // packing. (spec/test-vectors/integration-encode.json)
-        // v1: byte 0 = descriptor (8 = version 0, tier 1, opaque), byte 1 =
+        // v2: byte 0 = descriptor (9 = version 1, tier 1, opaque), byte 1 =
         // aspect (128 for 1:1), then the 38-bit DC/scale prefix, then AC.
         #[rustfmt::skip]
         let cases: &[(u8, u8, u8, Gamut, [u8; 32])] = &[
             (128, 128, 128, Gamut::Srgb,
-                [8, 128, 76, 32, 16, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
+                [9, 128, 76, 32, 16, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
             (255, 0, 0, Gamut::Srgb,
-                [8, 128, 208, 116, 22, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
+                [9, 128, 208, 116, 22, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
             (0, 255, 0, Gamut::Srgb,
-                [8, 128, 238, 202, 24, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
+                [9, 128, 238, 202, 24, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
             (0, 0, 255, Gamut::Srgb,
-                [8, 128, 57, 29, 1, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
+                [9, 128, 57, 29, 1, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
             (255, 255, 255, Gamut::Srgb,
-                [8, 128, 127, 32, 16, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
+                [9, 128, 127, 32, 16, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
             (0, 0, 0, Gamut::Srgb,
-                [8, 128, 0, 32, 16, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
+                [9, 128, 0, 32, 16, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
             // Wide-gamut solids: the same pixels map through a different M1
             // matrix (and EOTF for ProPhoto) → distinct OKLAB and DC codes.
             (200, 100, 50, Gamut::DisplayP3,
-                [8, 128, 79, 171, 21, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
+                [9, 128, 79, 171, 21, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
             (220, 50, 30, Gamut::ProPhotoRgb,
-                [8, 128, 85, 62, 22, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
+                [9, 128, 85, 62, 22, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
             // Adobe RGB (γ = 2.2 EOTF) and BT.2020 (PQ→Reinhard EOTF) are the two
             // source-gamut transfer arms no other golden vector exercises.
             (200, 100, 50, Gamut::AdobeRgb,
-                [8, 128, 211, 171, 21, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
+                [9, 128, 211, 171, 21, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
             (200, 100, 50, Gamut::Bt2020,
-                [8, 128, 89, 52, 23, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
+                [9, 128, 89, 52, 23, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109]),
         ];
         for &(r, g, b, gamut, expected) in cases {
             let rgba = solid(4, 4, r, g, b, 255);
@@ -2463,7 +2469,7 @@ mod tests {
 
         // 1×1 solid (aspect-byte extreme, single-pixel DCT).
         #[rustfmt::skip]
-        let one = [8, 128, 78, 233, 20, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109];
+        let one = [9, 128, 78, 233, 20, 0, 192, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 221, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109];
         assert_eq!(
             encode(1, 1, &solid(1, 1, 200, 100, 50, 255), Gamut::Srgb).as_ref(),
             &one
@@ -2485,7 +2491,7 @@ mod tests {
             255, 182, 72, 0, 255, 218, 36, 0, 255, 255, 0, 0, 255,
         ];
         #[rustfmt::skip]
-        let h8x4 = [8, 159, 72, 166, 141, 120, 245, 128, 131, 53, 165, 222, 225, 157, 225, 221, 221, 221, 221, 221, 29, 58, 78, 219, 182, 109, 19, 168, 105, 219, 182, 109];
+        let h8x4 = [9, 159, 72, 166, 141, 120, 245, 128, 131, 53, 165, 222, 225, 157, 225, 221, 221, 221, 221, 221, 29, 58, 78, 219, 182, 109, 19, 168, 105, 219, 182, 109];
         assert_eq!(encode(8, 4, &g8x4, Gamut::Srgb).as_ref(), &h8x4);
 
         let g4x8: [u8; 128] = [
@@ -2498,7 +2504,7 @@ mod tests {
             170, 0, 255, 170, 85, 0, 255, 255, 0, 0, 255,
         ];
         #[rustfmt::skip]
-        let h4x8 = [8, 96, 201, 38, 142, 136, 49, 176, 28, 164, 250, 205, 33, 222, 217, 221, 221, 157, 221, 221, 93, 133, 113, 219, 182, 109, 131, 52, 109, 220, 182, 109];
+        let h4x8 = [9, 96, 201, 38, 142, 136, 49, 176, 28, 164, 250, 205, 33, 222, 217, 221, 221, 157, 221, 221, 93, 133, 113, 219, 182, 109, 131, 52, 109, 220, 182, 109];
         assert_eq!(encode(4, 8, &g4x8, Gamut::Srgb).as_ref(), &h4x8);
     }
 
@@ -2522,7 +2528,7 @@ mod tests {
             0, 255,
         ];
         #[rustfmt::skip]
-        let expected = [72, 128, 208, 116, 22, 0, 0, 132, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 109, 219, 182, 117, 219, 214, 117, 219, 54, 111, 155, 55, 15];
+        let expected = [73, 128, 208, 116, 22, 0, 0, 132, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 109, 219, 182, 117, 219, 214, 117, 219, 54, 111, 155, 55, 15];
         assert_eq!(encode(8, 8, &cb, Gamut::Srgb).as_ref(), &expected);
     }
 
@@ -2532,7 +2538,7 @@ mod tests {
         // default to black rather than divide by zero (`avg_alpha > 0.0` guard).
         let hash = encode(4, 4, &[0u8; 4 * 4 * 4], Gamut::Srgb);
         #[rustfmt::skip]
-        let expected = [72, 128, 0, 32, 16, 0, 0, 128, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 13];
+        let expected = [73, 128, 0, 32, 16, 0, 0, 128, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 109, 219, 182, 109, 219, 182, 109, 219, 182, 109, 219, 182, 13];
         assert_eq!(hash.as_ref(), &expected);
     }
 
@@ -2555,7 +2561,7 @@ mod tests {
             }
         }
         #[rustfmt::skip]
-        let expected = [72, 128, 71, 174, 20, 0, 192, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 109, 219, 134, 109, 219, 180, 109, 219, 182, 109, 219, 182, 13];
+        let expected = [73, 128, 71, 174, 20, 0, 192, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 187, 109, 219, 134, 109, 219, 180, 109, 219, 182, 109, 219, 182, 13];
         assert_eq!(encode(w, h, &rgba, Gamut::Srgb).as_ref(), &expected);
     }
 
@@ -2606,7 +2612,10 @@ mod tests {
     // ── Register D1: the entropy-coded AC payload (`ac_coder`) ───────────
 
     fn coded(t: Tunables) -> Tunables {
-        Tunables { ac_coder: 1, ..t }
+        Tunables {
+            ac_coder: [1; crate::constants::TIER_CODES],
+            ..t
+        }
     }
 
     /// A smooth image whose shipped-layout codes fit the coded stream whole:
@@ -2719,6 +2728,10 @@ mod tests {
     #[test]
     fn the_adaptive_mode_signals_the_encode_it_keeps() {
         let (w, h) = (40, 30);
+        // The adaptive mode chooses between the coded stream and the
+        // fixed-width rows, so it is read against the length rows at every
+        // upper code, with the coder off: the rows D1 measured it on.
+        let v1 = shipped_fields(&Tunables::DEFAULT);
         let mut cut = 0;
         for alpha in [false, true] {
             for tier in 2..=MAX_TIER {
@@ -2736,15 +2749,15 @@ mod tests {
                     })
                     .collect();
                 let t = Tunables {
-                    ac_coder: 2,
-                    ..Tunables::DEFAULT
+                    ac_coder: [2; crate::constants::TIER_CODES],
+                    ..v1
                 };
-                let coded = encode_with(w, h, &noisy, Gamut::Srgb, &coded(Tunables::DEFAULT), tier);
-                let fixed = encode_with(w, h, &noisy, Gamut::Srgb, &Tunables::DEFAULT, tier);
+                let coded = encode_with(w, h, &noisy, Gamut::Srgb, &coded(v1), tier);
+                let fixed = encode_with(w, h, &noisy, Gamut::Srgb, &v1, tier);
                 let hash = encode_with(w, h, &noisy, Gamut::Srgb, &t, tier);
                 assert_eq!(hash.len(), fixed.len());
-                if crate::decode::decode_with(&coded, &coded_t())
-                    != crate::decode::decode_with(&fixed, &Tunables::DEFAULT)
+                if crate::decode::decode_with(&coded, &super::tests::coded(v1))
+                    != crate::decode::decode_with(&fixed, &v1)
                 {
                     cut += 1;
                     assert_eq!(
@@ -2754,7 +2767,7 @@ mod tests {
                     );
                     assert_eq!(
                         crate::decode::decode_with(&hash, &t),
-                        crate::decode::decode_with(&fixed, &Tunables::DEFAULT)
+                        crate::decode::decode_with(&fixed, &v1)
                     );
                 }
 
@@ -2770,6 +2783,8 @@ mod tests {
                 big.layout_upper.c_count = 18;
                 big.layout_upper.la_tiers = [(44, 4), (0, 4)];
                 big.layout_upper.a_count = 56;
+                big.layout_t3 = big.layout_upper;
+                big.layout_t4 = big.layout_upper;
                 let hash = encode_with(w, h, &smooth, Gamut::Srgb, &big, tier);
                 assert_eq!(
                     adaptive_flag(&hash, &big, alpha),
@@ -2778,17 +2793,20 @@ mod tests {
                 );
                 // Behind the flag is the coded stream one bit short of the
                 // hash, and the decoder drops the flag at the right bit.
-                let plain = Tunables { ac_coder: 1, ..big };
+                let plain = Tunables {
+                    ac_coder: [1; crate::constants::TIER_CODES],
+                    ..big
+                };
                 let (inner, _) = encode_parts(w, h, &smooth, Gamut::Srgb, &plain, tier, 1, false);
                 assert_eq!(
                     crate::decode::decode_with(&hash, &big),
                     crate::decode::decode_with(&inner, &plain),
                     "tier {tier} alpha {alpha}"
                 );
-                let fixed = encode_with(w, h, &smooth, Gamut::Srgb, &Tunables::DEFAULT, tier);
+                let fixed = encode_with(w, h, &smooth, Gamut::Srgb, &v1, tier);
                 assert_ne!(
                     crate::decode::decode_with(&hash, &big),
-                    crate::decode::decode_with(&fixed, &Tunables::DEFAULT)
+                    crate::decode::decode_with(&fixed, &v1)
                 );
             }
         }
@@ -2796,15 +2814,11 @@ mod tests {
         assert!(cut > 0);
     }
 
-    fn coded_t() -> Tunables {
-        coded(Tunables::DEFAULT)
-    }
-
     /// `ac_coder` at twice the shipped upper-tier counts, in both alpha
     /// modes, in mode `mode`: the bound D1's sweep calls `x2`.
     fn bound_x2(mode: u32) -> Tunables {
         let mut t = Tunables {
-            ac_coder: mode,
+            ac_coder: [mode; crate::constants::TIER_CODES],
             ..Tunables::DEFAULT
         };
         t.layout_upper.l_tiers = [(52, 5), (0, 5)];
@@ -2832,7 +2846,7 @@ mod tests {
     }
 
     const GOLDEN_CODED_OPAQUE: [u8; 108] = [
-        16, 141, 209, 32, 208, 112, 202, 223, 81, 245, 173, 93, 31, 130, 12, 220, 38, 27, 46, 66,
+        17, 141, 209, 32, 208, 112, 202, 223, 81, 245, 173, 93, 31, 130, 12, 220, 38, 27, 46, 66,
         65, 227, 85, 77, 1, 72, 124, 14, 248, 210, 247, 161, 35, 221, 74, 216, 239, 178, 96, 73,
         227, 254, 131, 164, 103, 79, 11, 179, 242, 215, 200, 208, 175, 141, 90, 72, 212, 181, 228,
         246, 76, 131, 40, 97, 240, 54, 102, 250, 210, 23, 184, 93, 18, 161, 171, 197, 231, 224,
@@ -2840,7 +2854,7 @@ mod tests {
         121, 40, 65, 58, 126, 175, 222, 239, 39, 41, 7,
     ];
     const GOLDEN_CODED_ALPHA: [u8; 103] = [
-        80, 141, 212, 96, 80, 32, 4, 155, 47, 95, 253, 101, 99, 131, 27, 62, 131, 96, 108, 71, 176,
+        81, 141, 212, 96, 80, 32, 4, 155, 47, 95, 253, 101, 99, 131, 27, 62, 131, 96, 108, 71, 176,
         118, 201, 105, 36, 110, 219, 73, 36, 223, 161, 102, 202, 97, 49, 107, 182, 126, 134, 94,
         77, 153, 143, 125, 139, 67, 126, 254, 236, 29, 107, 64, 181, 171, 110, 209, 39, 138, 82,
         127, 75, 183, 105, 229, 102, 180, 227, 172, 39, 195, 69, 94, 213, 100, 230, 75, 116, 156,
@@ -2849,7 +2863,7 @@ mod tests {
     // The same image's coded stream one bit later, behind a set flag: byte 6
     // keeps bits 48..54 of the prefix and gains bit 54 = 1.
     const GOLDEN_ADAPTIVE_OPAQUE: [u8; 108] = [
-        16, 141, 209, 32, 208, 112, 202, 191, 163, 234, 91, 187, 62, 4, 25, 184, 77, 54, 92, 132,
+        17, 141, 209, 32, 208, 112, 202, 191, 163, 234, 91, 187, 62, 4, 25, 184, 77, 54, 92, 132,
         130, 198, 171, 154, 2, 144, 248, 28, 240, 165, 239, 67, 71, 186, 149, 176, 223, 101, 193,
         146, 198, 253, 7, 73, 207, 158, 22, 102, 229, 175, 145, 161, 95, 27, 181, 144, 168, 107,
         201, 237, 153, 6, 81, 194, 224, 109, 204, 244, 165, 47, 112, 187, 36, 66, 87, 139, 207,
@@ -2910,12 +2924,15 @@ mod tests {
         // widths both are 6 (bit 54) or 7 (bit 63), so a decoder reading the
         // wrong one of the two would pass every other test.
         let t = Tunables {
-            ac_coder: 2,
+            ac_coder: [2; crate::constants::TIER_CODES],
             mu_l: 9.0,
             l_scale_bits: 9,
             ..Tunables::DEFAULT
         };
-        let plain = Tunables { ac_coder: 0, ..t };
+        let plain = Tunables {
+            ac_coder: [0; crate::constants::TIER_CODES],
+            ..t
+        };
         let hash = encode_with(40, 30, &noisy, Gamut::Srgb, &t, 2);
         assert_eq!(adaptive_flag(&hash, &t, false), 0);
         let fixed = encode_with(40, 30, &noisy, Gamut::Srgb, &plain, 2);
@@ -2940,7 +2957,7 @@ mod tests {
         let hash = encode_with(40, 30, &smooth, Gamut::Srgb, &wide, 2);
         assert_eq!(adaptive_flag(&hash, &wide, false), 1);
         let coded_wide = Tunables {
-            ac_coder: 1,
+            ac_coder: [1; crate::constants::TIER_CODES],
             ..wide
         };
         let (inner, _) = encode_parts(40, 30, &smooth, Gamut::Srgb, &coded_wide, 2, 1, false);
@@ -2955,7 +2972,7 @@ mod tests {
     fn the_adaptive_mode_refuses_a_tier_with_no_spare_bit() {
         let rgba = lever_image(8, 8, false, 1);
         let t = Tunables {
-            ac_coder: 2,
+            ac_coder: [2; crate::constants::TIER_CODES],
             ..Tunables::DEFAULT
         };
         encode_with(8, 8, &rgba, Gamut::Srgb, &t, DEFAULT_TIER);
@@ -3052,7 +3069,7 @@ mod tests {
             .flat_map(|i| [(i % w * 10) as u8, (i / w * 15) as u8, 80, 255])
             .collect();
         let t = Tunables {
-            ac_coder: 2,
+            ac_coder: [2; crate::constants::TIER_CODES],
             ..Tunables::DEFAULT
         };
         for tier in 2..=MAX_TIER {
@@ -3258,7 +3275,7 @@ mod tests {
                 banded,
                 1,
                 &[
-                    8, 137, 77, 94, 50, 121, 210, 196, 144, 20, 9, 90, 110, 233, 217, 217, 225, 25,
+                    9, 137, 77, 94, 50, 121, 210, 196, 144, 20, 9, 90, 110, 233, 217, 217, 225, 25,
                     26, 97, 157, 26, 182, 96, 88, 53, 43, 217, 68, 152, 198, 148,
                 ],
             ),
@@ -3266,7 +3283,7 @@ mod tests {
                 banded,
                 2,
                 &[
-                    16, 137, 77, 94, 242, 152, 140, 1, 228, 140, 101, 70, 108, 53, 171, 235, 216,
+                    17, 137, 77, 94, 242, 152, 140, 1, 228, 140, 101, 70, 108, 53, 171, 235, 216,
                     107, 112, 58, 38, 87, 137, 8, 178, 248, 108, 148, 145, 54, 246, 152, 106, 49,
                     66, 249, 166, 107, 80, 193, 245, 92, 115, 111, 58, 249, 158, 123, 241, 173,
                     215, 222, 123, 239, 193, 247, 232, 123, 242, 185, 7, 223, 123, 111, 61, 246,
@@ -3285,7 +3302,7 @@ mod tests {
                 },
                 1,
                 &[
-                    8, 137, 77, 94, 242, 184, 74, 155, 3, 67, 98, 36, 104, 185, 165, 103, 103, 135,
+                    9, 137, 77, 94, 242, 184, 74, 155, 3, 67, 98, 36, 104, 185, 165, 103, 103, 135,
                     103, 104, 131, 116, 106, 72, 98, 98, 71, 205, 174, 131, 128, 26, 211, 2,
                 ],
             ),
@@ -3294,13 +3311,13 @@ mod tests {
                     refine_passes: 1,
                     refine_scale: true,
                     refine_dc: true,
-                    w_min_l: 0.6,
-                    w_exp_l: 2,
+                    w_min_l: [[0.6; crate::constants::TIER_CODES]; 2],
+                    w_exp_l: [[2; crate::constants::TIER_CODES]; 2],
                     ..banded
                 },
                 1,
                 &[
-                    8, 137, 76, 30, 82, 137, 16, 197, 144, 216, 8, 158, 46, 173, 221, 217, 221, 25,
+                    9, 137, 76, 30, 82, 137, 16, 197, 144, 216, 8, 158, 46, 173, 221, 217, 221, 25,
                     86, 157, 157, 152, 149, 96, 216, 52, 43, 201, 68, 168, 198, 148,
                 ],
             ),
@@ -3311,7 +3328,7 @@ mod tests {
                 },
                 1,
                 &[
-                    8, 137, 77, 94, 50, 121, 38, 134, 164, 72, 208, 114, 75, 207, 206, 14, 207,
+                    9, 137, 77, 94, 50, 121, 38, 134, 164, 72, 208, 114, 75, 207, 206, 14, 207,
                     208, 8, 235, 212, 176, 5, 195, 170, 89, 201, 38, 2, 181, 166, 4,
                 ],
             ),
@@ -3922,8 +3939,8 @@ mod tests {
             refine_delta: 2,
             refine_dc: true,
             refine_scale: true,
-            w_min_l: 0.6,
-            w_exp_l: 2,
+            w_min_l: [[0.6; crate::constants::TIER_CODES]; 2],
+            w_exp_l: [[2; crate::constants::TIER_CODES]; 2],
             ..Tunables::DEFAULT
         };
         let grid = Tunables {
@@ -3937,15 +3954,15 @@ mod tests {
         #[rustfmt::skip]
         let cases: [(u32, u32, Tunables, [u8; 32]); 5] = [
             (11, 9, base,
-                [8, 137, 206, 33, 240, 160, 22, 13, 129, 29, 147, 214, 152, 88, 98, 41, 97, 37, 209, 104, 34, 24, 115, 164, 24, 78, 91, 134, 109, 146, 168, 137]),
+                [9, 137, 206, 33, 240, 160, 22, 13, 129, 29, 147, 214, 152, 88, 98, 41, 97, 37, 209, 104, 34, 24, 115, 164, 24, 78, 91, 134, 109, 146, 168, 137]),
             (11, 9, grid,
-                [8, 137, 81, 32, 240, 144, 72, 12, 193, 153, 225, 202, 96, 150, 150, 230, 88, 25, 166, 222, 24, 170, 138, 149, 56, 73, 2, 130, 50, 140, 80, 202]),
+                [9, 137, 81, 32, 240, 144, 72, 12, 193, 153, 225, 202, 96, 150, 150, 230, 88, 25, 166, 222, 24, 170, 138, 149, 56, 73, 2, 130, 50, 140, 80, 202]),
             (1, 12, grid,
-                [8, 13, 86, 148, 177, 145, 84, 72, 233, 209, 24, 205, 222, 221, 221, 221, 221, 221, 221, 221, 157, 75, 82, 27, 181, 109, 67, 146, 144, 75, 181, 109]),
+                [9, 13, 86, 148, 177, 145, 84, 72, 233, 209, 24, 205, 222, 221, 221, 221, 221, 221, 221, 221, 157, 75, 82, 27, 181, 109, 67, 146, 144, 75, 181, 109]),
             (12, 1, grid,
-                [8, 242, 61, 38, 236, 96, 81, 200, 110, 155, 13, 221, 233, 245, 221, 221, 221, 221, 221, 221, 157, 210, 112, 163, 54, 78, 91, 16, 8, 214, 150, 101]),
+                [9, 242, 61, 38, 236, 96, 81, 200, 110, 155, 13, 221, 233, 245, 221, 221, 221, 221, 221, 221, 157, 210, 112, 163, 54, 78, 91, 16, 8, 214, 150, 101]),
             (11, 9, no_scale,
-                [8, 137, 208, 223, 240, 152, 202, 136, 192, 217, 110, 151, 13, 201, 221, 22, 93, 234, 213, 105, 45, 42, 79, 140, 20, 170, 12, 136, 164, 158, 184, 164]),
+                [9, 137, 208, 223, 240, 152, 202, 136, 192, 217, 110, 151, 13, 201, 221, 22, 93, 234, 213, 105, 45, 42, 79, 140, 20, 170, 12, 136, 164, 158, 184, 164]),
         ];
         for (k, (w, h, t, expected)) in cases.iter().enumerate() {
             let rgba = lever_image(*w, *h, false, 40 + k as u32);

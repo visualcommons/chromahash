@@ -125,7 +125,7 @@ public struct ChromaHash: Sendable, Equatable {
   /// length: a `ChromaHash` that comes back from `fromBytes` is guaranteed to
   /// decode.
   ///
-  /// - Throws: ``ChromaHashError`` if the bytes are not a valid v1 ChromaHash
+  /// - Throws: ``ChromaHashError`` if the bytes are not a valid v2 ChromaHash
   ///   — bad version, reserved tier code, set reserved bit, or a length that
   ///   disagrees with the header.
   public static func fromBytes(_ bytes: [UInt8]) throws -> ChromaHash {

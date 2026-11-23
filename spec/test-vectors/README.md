@@ -9,7 +9,7 @@ cargo test --manifest-path rust/Cargo.toml -- generate_test_vectors --nocapture 
 
 ## Files
 
-### Unit tests (wire-format v1)
+### Unit tests (wire-format v2)
 
 - `unit-color.json` — OKLAB color space transforms (RGB ↔ OKLAB)
 - `unit-mulaw.json` — µ-law companding round-trips for both format µ values
@@ -28,7 +28,7 @@ cargo test --manifest-path rust/Cargo.toml -- generate_test_vectors --nocapture 
 - `unit-validate.json` — `from_bytes` accept/reject cases: version, tier,
   reserved-bit, and length validation (spec §2.6)
 
-### Integration tests (wire-format v1)
+### Integration tests (wire-format v2)
 
 - `integration-encode.json` — Full encode: input RGBA → hash, across quality
   every tier code 0–4 (21/32/108/411/1623 bytes no-alpha). Includes degenerate dimensions

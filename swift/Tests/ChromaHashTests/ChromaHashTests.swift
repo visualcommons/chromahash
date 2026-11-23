@@ -205,7 +205,7 @@ func gamutFromName(_ name: String) -> Gamut {
   let mutations: [(String, UInt8)] = [
     ("reserved bit set", valid[0] | 0b1000_0000),
     ("reserved tier code", (valid[0] & ~0b0011_1000) | ((ChromaHash.maxTier + 1) << 3)),
-    ("unsupported version", valid[0] | 0b0000_0001),
+    ("unsupported version", valid[0] | 0b0000_0010),
   ]
   for (what, b0) in mutations {
     var bytes = valid
@@ -237,5 +237,5 @@ func gamutFromName(_ name: String) -> Gamut {
   #expect(ChromaHash.compactTier == 0)
   #expect(ChromaHash.compactTier < ChromaHash.defaultTier)
   #expect(ChromaHash.defaultTier < ChromaHash.maxTier)
-  #expect(ChromaHash.formatVersion == 0)
+  #expect(ChromaHash.formatVersion == 1)
 }
