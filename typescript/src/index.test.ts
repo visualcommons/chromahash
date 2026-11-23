@@ -272,7 +272,7 @@ describe("malformed headers", () => {
   const cases: [string, (b0: number) => number][] = [
     ["reserved bit set", (b0) => b0 | 0b1000_0000],
     ["reserved tier code", (b0) => (b0 & ~0b0011_1000) | ((MAX_TIER + 1) << 3)],
-    ["unsupported version", (b0) => b0 | 0b0000_0001],
+    ["unsupported version", (b0) => b0 | 0b0000_0010],
   ];
 
   for (const [what, mutate] of cases) {

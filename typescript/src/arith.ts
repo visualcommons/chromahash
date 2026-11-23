@@ -40,17 +40,15 @@ function update(m: BitModel, bit: boolean): void {
 
 /** Arithmetic decoder over the bit range `[start, end)` of `data`. */
 export class ArithDecoder {
+  private readonly data: Uint8Array;
   private pos: number;
   private readonly end: number;
   private low = 0;
   private high = TOP;
   private value = 0;
 
-  constructor(
-    private readonly data: Uint8Array,
-    start: number,
-    end: number,
-  ) {
+  constructor(data: Uint8Array, start: number, end: number) {
+    this.data = data;
     this.pos = start;
     this.end = Math.min(end, data.length * 8);
     for (let i = 0; i < 32; i++) this.value = this.value * 2 + this.nextBit();
