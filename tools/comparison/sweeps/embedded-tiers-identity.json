@@ -1,0 +1,51 @@
+{
+  "name": "embedded-tiers-identity",
+  "description": "Register entry D2 (spec/V0.8-DECISIONS.md, #133), part 1 beyond the ladder's images: native codes 0-4 on the shipped channel-sequential order ('tK native') and the same codes in the interleaved order (Tunables::interleave, alpha's AC codes merged as a fourth channel) at full length, each identicalTo its native arm, so the run fails if any image decodes to other pixels. Corpus all without realOnly, so the tune run adds the generated capability fixtures to the ladder's 63 real tune images, and --split tune2 covers the spent holdouts. It holds no cut and judges nothing: its scores are the native arms' and are not read.",
+  "corpus": "all",
+  "backdrops": "white-black-grey",
+  "alphaFidelity": true,
+  "expectBytes": {
+    "0": { "opaque": 21, "alpha": 21 },
+    "1": { "opaque": 32, "alpha": 32 },
+    "2": { "opaque": 108, "alpha": 103 },
+    "3": { "opaque": 411, "alpha": 388 },
+    "4": { "opaque": 1623, "alpha": 1528 }
+  },
+  "variants": [
+    { "label": "t0 native", "tier": 0 },
+    { "label": "t1 native", "tier": 1 },
+    { "label": "t2 native", "tier": 2 },
+    { "label": "t3 native", "tier": 3 },
+    { "label": "t4 native", "tier": 4 },
+    {
+      "label": "t0 interleaved full",
+      "tier": 0,
+      "tune": "interleave=1",
+      "identicalTo": "t0 native"
+    },
+    {
+      "label": "t1 interleaved full",
+      "tier": 1,
+      "tune": "interleave=1",
+      "identicalTo": "t1 native"
+    },
+    {
+      "label": "t2 interleaved full",
+      "tier": 2,
+      "tune": "interleave=1",
+      "identicalTo": "t2 native"
+    },
+    {
+      "label": "t3 interleaved full",
+      "tier": 3,
+      "tune": "interleave=1",
+      "identicalTo": "t3 native"
+    },
+    {
+      "label": "t4 interleaved full",
+      "tier": 4,
+      "tune": "interleave=1",
+      "identicalTo": "t4 native"
+    }
+  ]
+}
