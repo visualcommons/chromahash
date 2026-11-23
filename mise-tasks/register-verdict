@@ -2,7 +2,7 @@
 #MISE description="Apply a frozen register entry's judged comparisons to its committed holdout results"
 #MISE depends=["build:compare"]
 #
-# Usage: mise run register-verdict C1|C2|D1
+# Usage: mise run register-verdict C1|C2|D1|D3
 #
 # spec/V0.8-DECISIONS.md names, at each freeze, every comparison the entry
 # judges and the baseline it is judged against. This prints R1's conditions 1-3
@@ -13,6 +13,10 @@
 # tools/comparison/src/register-verdict-core.ts, which verify:experiments
 # (EXPERIMENTS.md §13.7's p Holm and guards columns) and selftest:metrics (the
 # R1 outcomes, condition 4, the stratum rule and the admission) also run.
+# D3, a window entry, is judged under R2 with an artifact primary instead:
+# each frozen arm's spurious detail against shipped code 2, its ΔE00
+# non-inferiority and guards against its tier's shipped arm, the stratum rule
+# and condition 4, with no Holm (tools/comparison/src/window-core.ts).
 #
 # A file task rather than an inline one, because mise appends an inline task's
 # arguments instead of passing them as "$@".

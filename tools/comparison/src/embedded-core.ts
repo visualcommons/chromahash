@@ -38,7 +38,8 @@ import {
   guardVerdictOnIntervals,
   statFor,
 } from "./arms-core.ts";
-import type { GuardTolerances, PerImage } from "./results.ts";
+import { subsetRow } from "./register-verdict-core.ts";
+import type { GuardTolerances } from "./results.ts";
 import { BOOTSTRAP_RESAMPLES, BOOTSTRAP_SEED } from "./stats.ts";
 
 /** One prefix cut of a ladder: the arm, its native code k, and native k−1. */
@@ -132,17 +133,6 @@ export interface CutStratum extends CutStat {
   literalFails: boolean;
 }
 
-const subset = (row: PairableRow, idx: readonly number[]): PairableRow => {
-  const perImage: PerImage = {};
-  for (const [key, series] of Object.entries(row.perImage) as [
-    keyof PerImage,
-    (number | null)[] | undefined,
-  ][]) {
-    if (series) perImage[key] = idx.map((i) => series[i] ?? null);
-  }
-  return { label: row.label, perImage };
-};
-
 /** Conditions 1 and 2's quantities over the given rows, at `seed`. */
 export function cutStat(
   cut: PairableRow,
@@ -178,9 +168,9 @@ export function cutStrata(
   const out: CutStratum[] = [];
   for (const [stratum, idx] of members) {
     const s = cutStat(
-      subset(cut, idx),
-      subset(native, idx),
-      subset(below, idx),
+      subsetRow(cut, idx),
+      subsetRow(native, idx),
+      subsetRow(below, idx),
       tol,
       artifactRise,
       seed,

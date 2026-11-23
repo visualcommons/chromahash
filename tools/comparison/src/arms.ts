@@ -44,6 +44,7 @@ import {
   pairedDeltas,
   summarizeInference,
 } from "./arms-core.ts";
+import { otherSeeds } from "./register-verdict-core.ts";
 import {
   type GuardTolerances,
   type PerImage,
@@ -379,10 +380,7 @@ function seedSensitivity(): void {
     process.exit(2);
   }
   // Seeds 1..count, skipping the default so every one is an alternative.
-  const seeds: number[] = [];
-  for (let s = 1; seeds.length < count; s++) {
-    if (s !== BOOTSTRAP_SEED) seeds.push(s);
-  }
+  const seeds = otherSeeds(count);
   const names = resultNames();
 
   let arms = 0;

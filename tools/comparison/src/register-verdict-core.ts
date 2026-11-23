@@ -81,6 +81,8 @@ export const FREEZE_REVS: Record<string, string> = {
   C2: FREEZE_REV,
   // D1 froze its code-3 and code-4 comparisons at #132's freeze commit.
   D1: "e3b2eb63eb08ff98a32cd980d9163cb1d0685490",
+  // D3 froze its code-3 and code-4 window arms at #134's freeze commit.
+  D3: "40bf6f2f927d1f4d6446d5a40bab1781455e73f5",
 };
 
 /** [result, arm, baseline]: one judged comparison, as the freeze names it. */
@@ -202,7 +204,11 @@ export interface EntryVerdict {
   admission?: { metrics: AdmissionMetric[]; holds: boolean };
 }
 
-function load(dir: string, name: string, rev: string): ResultFile {
+/**
+ * A committed result an entry's verdict rests on, refused unless it was scored
+ * at `rev` from a clean tree.
+ */
+export function load(dir: string, name: string, rev: string): ResultFile {
   const file = readResult(dir, name);
   if (!file) throw new Error(`no committed result ${name}`);
   if (file.provenance.rev !== rev || file.provenance.dirty !== false) {
@@ -316,7 +322,15 @@ export function strataMembers(
   return members;
 }
 
-const subset = (row: PairableRow, idx: readonly number[]): PairableRow => {
+/**
+ * The row restricted to the images at `idx`, in that order: every per-image
+ * series indexed by `idx`, so a stratum's members pair image by image across
+ * rows the same way the full rows do.
+ */
+export const subsetRow = (
+  row: PairableRow,
+  idx: readonly number[],
+): PairableRow => {
   const perImage: PerImage = {};
   for (const [key, series] of Object.entries(row.perImage) as [
     keyof PerImage,
@@ -326,6 +340,18 @@ const subset = (row: PairableRow, idx: readonly number[]): PairableRow => {
   }
   return { label: row.label, perImage };
 };
+
+/**
+ * The first `count` seeds from 1 upward other than {@link BOOTSTRAP_SEED}, so
+ * every one is an alternative draw: condition 4's seeds.
+ */
+export function otherSeeds(count: number): number[] {
+  const seeds: number[] = [];
+  for (let s = 1; seeds.length < count; s++) {
+    if (s !== BOOTSTRAP_SEED) seeds.push(s);
+  }
+  return seeds;
+}
 
 /**
  * The stratum rule for one arm against its incumbent: in each stratum, the
@@ -346,7 +372,7 @@ export function stratumRule(
   const strata: StratumReading[] = [];
   for (const [stratum, idx] of members) {
     const [cmp] = compareArms(
-      [subset(base, idx), subset(arm, idx)],
+      [subsetRow(base, idx), subsetRow(arm, idx)],
       0,
       BOOTSTRAP_RESAMPLES,
       seed,
@@ -449,10 +475,7 @@ export function deriveVerdict(
     };
   });
 
-  const seeds: number[] = [];
-  for (let s = 1; seeds.length < seedCount; s++) {
-    if (s !== BOOTSTRAP_SEED) seeds.push(s);
-  }
+  const seeds = otherSeeds(seedCount);
   const turned: EntryVerdict["turned"] = [];
   for (const seed of seeds) {
     const ps = comparisons.map((l) => {
