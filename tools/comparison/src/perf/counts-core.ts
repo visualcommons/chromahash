@@ -224,6 +224,44 @@ export function counterRefusal(p: CounterProbe): string | null {
   return null;
 }
 
+/**
+ * The implementations whose per-operation instruction count is a property of
+ * the operation: native code with no tracing collector. Rust runs none; Swift
+ * frees by reference counting, inline on the calling thread, so its retain and
+ * release instructions are part of the operation and repeat with it. Go is
+ * native but not admitted: its concurrent garbage collector runs on runtime
+ * threads that `perf stat` counts, and when it runs is paced by heap growth,
+ * so the long run's collector work is not N times the short run's and the
+ * short/long subtraction does not cancel it.
+ */
+export const COUNTABLE_IMPLS: readonly string[] = [
+  "Rust",
+  "Rust (scalar)",
+  "Swift",
+];
+
+/**
+ * Why an implementation cannot be counted, by name, or null when it can. A
+ * managed runtime (JIT tiering and a collector) and a native one with a
+ * tracing collector are both refused: either adds instructions to a process
+ * that the short/long subtraction does not cancel.
+ */
+export function implRefusal(t: {
+  name: string;
+  managed: boolean;
+}): string | null {
+  if (t.managed) {
+    return `${t.name} runs on a managed runtime: its JIT and collector make an instruction count depend on more than the operation, so benchmark:counts measures only native implementations without a collector`;
+  }
+  if (t.name === "Go") {
+    return "Go runs a concurrent garbage collector on threads perf stat counts, paced by heap growth rather than by the operation, so the short/long subtraction does not cancel its work; benchmark:counts measures only native implementations without a collector";
+  }
+  if (!COUNTABLE_IMPLS.includes(t.name)) {
+    return `${t.name} is not one of benchmark:counts' admitted implementations (${COUNTABLE_IMPLS.join(", ")})`;
+  }
+  return null;
+}
+
 /** Read `/proc/cpuinfo`'s first processor into a {@link CpuIdentity}. */
 export function parseCpuinfo(text: string): CpuIdentity {
   const first = text.split(/\n\s*\n/)[0] ?? "";

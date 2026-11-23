@@ -25,8 +25,9 @@
  * arms and CPU (`counts-core.ts` `compareRuns`), records the comparison, and
  * exits non-zero if the instruction ratios differ by more than 1%. The run
  * refuses, by name and before counting anything, a host whose counter cannot
- * be read, and a managed-runtime implementation, whose JIT and collector make
- * a process's instruction count depend on more than the operation.
+ * be read, and an implementation whose JIT or garbage collector makes a
+ * process's instruction count depend on more than the operation: every
+ * managed runtime, and Go (`counts-core.ts` `implRefusal`).
  */
 
 import { spawnSync } from "node:child_process";
@@ -52,6 +53,7 @@ import {
   blockSchedule,
   compareRuns,
   counterRefusal,
+  implRefusal,
   parseCpuinfo,
   readSchema,
   schemaErrors,
@@ -124,11 +126,8 @@ if (!found) {
   );
 }
 const target: Target = found;
-if (target.managed) {
-  fail(
-    `${target.name} runs on a managed runtime: its JIT and collector make an instruction count depend on more than the operation, so benchmark:counts measures only native implementations`,
-  );
-}
+const refused = implRefusal(target);
+if (refused !== null) fail(refused);
 if (!target.ops.includes(op)) fail(`${target.name} does not implement ${op}`);
 if (!target.tunable && (values["a-tune"] !== "" || values["b-tune"] !== "")) {
   fail(

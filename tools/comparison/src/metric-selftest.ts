@@ -248,7 +248,9 @@ import {
   type CountsRecord,
   blockSchedule,
   compareRuns,
+  COUNTABLE_IMPLS,
   counterRefusal,
+  implRefusal,
   parseCpuinfo,
   readSchema,
   schemaErrors,
@@ -7603,6 +7605,26 @@ console.log(
         "perf stat exited 255",
       ),
     String(probe({ paranoid: 4 })),
+  );
+
+  // Admission: exactly the native targets without a collector are counted.
+  const admitted = allTargets()
+    .filter((t) => implRefusal(t) === null)
+    .map((t) => t.name);
+  const goTarget = allTargets().find((t) => t.name === "Go");
+  check(
+    "implRefusal admits exactly Rust, Rust (scalar) and Swift, refuses Go by its garbage collector, every managed runtime by name, and an unknown implementation",
+    admitted.join(",") === COUNTABLE_IMPLS.join(",") &&
+      goTarget !== undefined &&
+      !goTarget.managed &&
+      (implRefusal(goTarget) ?? "").includes("garbage collector") &&
+      allTargets()
+        .filter((t) => t.managed)
+        .every((t) => (implRefusal(t) ?? "").includes("managed runtime")) &&
+      (implRefusal({ name: "Zig", managed: false }) ?? "").includes(
+        "not one of",
+      ),
+    admitted.join(","),
   );
 
   // Refusal to compare runs from different CPUs.

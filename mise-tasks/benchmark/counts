@@ -15,7 +15,8 @@
 # compares with an earlier record of the same cell, arms and CPU and fails if
 # the instruction ratios differ by more than 1%. Refuses, by name, a host whose
 # counter cannot be read (needs perf with kernel.perf_event_paranoid <= 2) and
-# a managed-runtime implementation. See tools/comparison/src/perf/counts.ts.
+# an implementation with a JIT or garbage collector (every managed runtime,
+# and Go). See tools/comparison/src/perf/counts.ts.
 #
 # The Rust encoder is built exactly as `mise run sweep` builds it, so a count
 # and a sweep running side by side never rebuild the binary under each other.
