@@ -44,6 +44,7 @@ import {
   summarize,
 } from "./results.ts";
 import {
+  BOOTSTRAP_SEED,
   type CorrelationInference,
   correlationInference,
   holm,
@@ -210,6 +211,27 @@ async function printEmbedded(name: string): Promise<void> {
       rs.map((r) => r.spec.cut).join(", ") || "none";
     console.log(
       `\nD2's selection rule: frozen ${list(pick.frozen)}; decided in sample (not qualifying) ${list(pick.notQualified)}; past the two-arm cap ${list(pick.capped)}`,
+    );
+    // Condition 4's reading of the selection: the same rule at other seeds
+    // (the means are seed-free; the guard intervals are not).
+    const key = (p: ReturnType<typeof selectCuts>) =>
+      `${list(p.frozen)}|${list(p.notQualified)}|${list(p.capped)}`;
+    const seeds: number[] = [];
+    for (let s = 1; seeds.length < 20; s++) {
+      if (s !== BOOTSTRAP_SEED) seeds.push(s);
+    }
+    const turned = seeds.filter(
+      (seed) =>
+        key(
+          selectCuts(
+            embeddedCuts(file.rows).map((spec) =>
+              readCut(spec, file.rows, tol, rise, undefined, seed),
+            ),
+          ),
+        ) !== key(pick),
+    );
+    console.log(
+      `  under ${seeds.length} seeds other than ${BOOTSTRAP_SEED}, the selection changes at ${turned.length}${turned.length > 0 ? ` (seeds ${turned.join(", ")})` : ""}`,
     );
   }
 }
