@@ -212,14 +212,17 @@ const FUSED_TILE: usize = 1024;
 /// budget and means no downsampling, and so does a grid that rounds back to
 /// the source's own size.
 pub(crate) fn downsample_dims(w: usize, h: usize, edge: u32) -> Option<(usize, usize)> {
-    let budget = u64::from(edge) * u64::from(edge);
-    if edge == 0 || (w as u64) * (h as u64) <= budget {
+    if edge == 0 {
         return None;
     }
+    // A source within the budget has `s >= 1` (IEEE square root and division
+    // are correctly rounded, so `sqrt(w·h) <= edge` whenever `w·h <= edge²`),
+    // so both axes clamp back to the source's: the identity, which is no
+    // grid. The same filter catches a source just over the budget whose
+    // axes round back to its own size, so the budget needs no test of its
+    // own.
     let s = f64::from(edge) / ((w as f64) * (h as f64)).sqrt();
     let axis = |n: usize| (round_half_away_from_zero(n as f64 * s) as usize).clamp(1, n);
-    // Just over the budget both axes can round back to the source's: the
-    // identity resample, which is no grid.
     Some((axis(w), axis(h))).filter(|&g| g != (w, h))
 }
 
