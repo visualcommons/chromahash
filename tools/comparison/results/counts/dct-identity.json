@@ -1,0 +1,2823 @@
+{
+  "schema": 1,
+  "tool": "dct-identity",
+  "name": "dct-identity",
+  "split": "open",
+  "settings": {
+    "candidate": "dct_separable=1",
+    "control": "mu_l=3",
+    "sizes": [
+      {
+        "size": "harness",
+        "tiers": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "size": "512",
+        "tiers": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      {
+        "size": "full",
+        "tiers": [
+          0,
+          1,
+          2
+        ]
+      }
+    ],
+    "controlSizes": [
+      "harness",
+      "512"
+    ]
+  },
+  "provenance": {
+    "rev": "b33a37af3b25eaa4d568d6ee8560db76cc9e006f",
+    "dirty": false,
+    "dirtyPaths": [],
+    "iqaCli": "unused",
+    "config": "dct-identity",
+    "configSha256": "",
+    "binaries": {
+      "rust/target/release/examples/encode_stdin": "cf1212bf7b8c013631fe651292cfab0f929f006f9d517c3645ea5b40ef04f716"
+    },
+    "node": "v24.20.0",
+    "corpus": [
+      {
+        "name": "cutout-3d-star-greek",
+        "sha256": "28b9e4888cdcbfa13cafbb1b56d0ee1f515756b99b8f7ecc00a544ecaa85dc7c"
+      },
+      {
+        "name": "cutout-3d-star-soviet",
+        "sha256": "89e2d3f669b448c56e47a9c29de65121c60a3d9e9910c95499f0233817074d94"
+      },
+      {
+        "name": "cutout-app-icon-aptoide",
+        "sha256": "40ae89a4816df285936235cf877f7c69cf9ca000e27eeea3ac4709dce0e7982a"
+      },
+      {
+        "name": "cutout-bioart-astrocyte",
+        "sha256": "559304d1f8226cfafa4de7685601a3d5dd0673e93365b7b8dc9093a2112849a9"
+      },
+      {
+        "name": "cutout-broccoli",
+        "sha256": "e7f19280e60b7f164bd53e68134040fa97c3efb539ff44edf2d985ccb3a48f8f"
+      },
+      {
+        "name": "cutout-campaign-medal",
+        "sha256": "1d49ac031e3ae558d3a46cbb3aec5b12c64e31363f01705a9b49852f458f29f8"
+      },
+      {
+        "name": "cutout-cheeseburger",
+        "sha256": "cff8d8ac543defb51454a96a1513dafb43457a569f487030380128b76cfa760a"
+      },
+      {
+        "name": "cutout-dod-seal",
+        "sha256": "8a67df69e07c9e342bd9d7ac677e6a962ac0a39507881b531bdf88e9baabbaa9"
+      },
+      {
+        "name": "cutout-dslr-camera",
+        "sha256": "b52e726f129bfc656763ac5d2c8c98f4ee96ce1b6cea95010fa90cb8564bffc5"
+      },
+      {
+        "name": "cutout-emblem-kscz",
+        "sha256": "c8095953b20fd2e8b0a2db22902f3353c5c7196ac35302e00dee221842afad43"
+      },
+      {
+        "name": "cutout-game-sprite-ship",
+        "sha256": "0e731563527cb737e4f0ff4cff0fbb723fa3dced9d48ec8f72f0ad63945519ca"
+      },
+      {
+        "name": "cutout-glassfish",
+        "sha256": "122c8a89f44ddd023cb0c581e565cd027c4013261e06a11d54ceef379d85305c"
+      },
+      {
+        "name": "cutout-greek-vase-figure",
+        "sha256": "ff3e45df88805a10348a8fd92d1212a9410ebe6cce22d52e02ab1188d05a89f8"
+      },
+      {
+        "name": "cutout-green-dragon",
+        "sha256": "4d02f29aec4e6de647874836130026e8c413b820b122af3bbddb56a61d097ea6"
+      },
+      {
+        "name": "cutout-insignia-4id",
+        "sha256": "8fb32f6350082d5b90019b4fdd2070bea4e0d8fb48e934a0f50b4c2d85f08924"
+      },
+      {
+        "name": "cutout-lamp-glow",
+        "sha256": "857ef6d2b9fd450be843429cca5f49353705c52000647791bb7530de81de840f"
+      },
+      {
+        "name": "cutout-lineart-hoe",
+        "sha256": "fd3ad52a4a82f4c685d05981ce3e54ddc35403e23945a3be62fb7b2986e6f142"
+      },
+      {
+        "name": "cutout-lineart-oinochoe",
+        "sha256": "3bfbc282601a585c17938950b8cba766faeaf4d423bf8a36b87e716c4c42d5ff"
+      },
+      {
+        "name": "cutout-navy-crest",
+        "sha256": "61eab4c1618ddbc8de9cbf78135492bee775be50d15a6eebd7335bf3be370643"
+      },
+      {
+        "name": "cutout-nokia-soft-shadow",
+        "sha256": "75951d906cb08acc1a643554dde538d739d3f814a5f5231a7971a96550ada98a"
+      },
+      {
+        "name": "cutout-planet-gas-giant",
+        "sha256": "16d9563712b9d7b42c548b64821d7f17f2913c5ed62c62086967394d5540183d"
+      },
+      {
+        "name": "cutout-planet-lava",
+        "sha256": "74b6ae59cbfef2fa11e59d29d51ed326b3c26a10ac40604eec9ccd94883ea9cc"
+      },
+      {
+        "name": "cutout-road-sign",
+        "sha256": "56297cb398e82ca506d2057a4402218a1113f7acb38ac92e2c1b3f5e6d460122"
+      },
+      {
+        "name": "graphic-alphaplot-app",
+        "sha256": "ba4a7e2fceb4bf58afbfd6c9ec7ebd688e5f788685f1a4a0417ec6d25d895484"
+      },
+      {
+        "name": "graphic-bar-chart-waymo",
+        "sha256": "ecdded63aa63c820ea3597ad54368a6a37762c8b21d8a2468c04e074e513dbe5"
+      },
+      {
+        "name": "graphic-block-diagram-arch",
+        "sha256": "96a3b45b68420d3a30c7c75353c14b6b868ae192b717867d2899ca899b16542e"
+      },
+      {
+        "name": "graphic-circuit-schematic",
+        "sha256": "21b08cc6349ed77eaf46b5441d0a87b138da341c78b3c6d7871003002a8f05be"
+      },
+      {
+        "name": "graphic-comic-strip-1940",
+        "sha256": "cfb1ac7c0ac7cf23889e8c166fc8d3f9060b32f4136f12436a8eab5b4754aa7d"
+      },
+      {
+        "name": "graphic-comic-wiggle-much",
+        "sha256": "f0ef6ccd47a41f6434ad799f95689fab4f329fd9c258651d789e99cb46484086"
+      },
+      {
+        "name": "graphic-flat-design-desk",
+        "sha256": "05052971fb70305f0b0374fdb4188f1a170fdc5d8bb3a3e47f4a4240b1197483"
+      },
+      {
+        "name": "graphic-geonames-map",
+        "sha256": "620e583c5123dd2fa7775b954a4fa62a683d38fa9b4f66f07dae03fcb68a66e9"
+      },
+      {
+        "name": "graphic-gnome-desktop",
+        "sha256": "ac321db9b5bdfd7fb0e42ee3f7ab484337b11d8b0891de5567da75bed004038d"
+      },
+      {
+        "name": "graphic-infographic-timeline",
+        "sha256": "9992cd11ecde839df92bfca7bb5f9f26cbf34995a8defe816303447c8799f7c5"
+      },
+      {
+        "name": "graphic-lineart-pictographs",
+        "sha256": "cefed9c71dc7a3f8c7564fc52dd9e57bf667d5fc794913cd4c8f3689e8b9f4a8"
+      },
+      {
+        "name": "graphic-lineart-scarecrow",
+        "sha256": "ff8d79e50f91a00d0f1e7f33f06fe828282d315f53bee6c27178f2b94262f10d"
+      },
+      {
+        "name": "graphic-logo-solid-blue",
+        "sha256": "b8651f9625e2639fe5edc9c32c9e4eeb2b3073d086813c8c35e024da677804f9"
+      },
+      {
+        "name": "graphic-periodic-table-nist",
+        "sha256": "cc1dfe32b5a69817debaba2ae3fe28133a249d78809d26355607f182bf1c941c"
+      },
+      {
+        "name": "graphic-playfair-piecharts",
+        "sha256": "95e0cedb123c1237e954b1d1092d11be48b52104f2c78ba7354b06d53d5b4f86"
+      },
+      {
+        "name": "graphic-scientific-plot",
+        "sha256": "9230123c94a491ed5da769521bbe0607f5e26b7b48cc31b0637421055b03aa89"
+      },
+      {
+        "name": "graphic-sheet-music-dense",
+        "sha256": "b7781ee6d008381c4e160b390e2cb8ce65f076be9659a7c0e179389b33732585"
+      },
+      {
+        "name": "graphic-smps-schematic",
+        "sha256": "334e85b5b4b8c3abe1860dacb90da7bbd357569faa57dc8b6510070efa4ff839"
+      },
+      {
+        "name": "graphic-tiling-wm",
+        "sha256": "a6d916ce0b0a1ed8725156cb333285d605df9f863ea34bcdaf34d03ee5a2e57b"
+      },
+      {
+        "name": "graphic-timechart-six-nations",
+        "sha256": "ea2ff4f323ad6cfa1f68831a26c530d600ecbc689a6cf1b16f13ed05520da5bf"
+      },
+      {
+        "name": "graphic-transit-diagram",
+        "sha256": "4191a1ad8c1b4a897c537a422df91cfb87734826c38c0f0a885f729f96e4627d"
+      },
+      {
+        "name": "graphic-web-app-screenshot",
+        "sha256": "3af04a4bc4dfdd53ab6bf5d4f17b2f37ab100fa021b60a169d3ab876ceb3fae0"
+      },
+      {
+        "name": "graphic-wikipedia-text-page",
+        "sha256": "47a33fc28e64aa8e9218235caaa759060d653a9b8c4b7fd2bd733e75387b6dfc"
+      },
+      {
+        "name": "graphic-world-map-colour",
+        "sha256": "e21e3a23daa9e8e5b43c61255350df5efa1211ec281cd9567ca6e07cc0703233"
+      },
+      {
+        "name": "kodak01",
+        "sha256": "a56e27cbf5f843c048b6af1d6e090760e9c92fadba88b7dee0205918a37523bd"
+      },
+      {
+        "name": "kodak02",
+        "sha256": "4f4b74a79237e311d72cad958237b5f7088d8bce1c82305ebefe1a70e3022dfd"
+      },
+      {
+        "name": "kodak03",
+        "sha256": "e25ca1ff2f0c0cb5fdfd5f9b0a0bb21ac4c3de3c84a67f35b09a85d3306249db"
+      },
+      {
+        "name": "kodak04",
+        "sha256": "e3b946107c5d3441c022f678d0c3caf1e224d81b1604ba840a4f88e562de61aa"
+      },
+      {
+        "name": "kodak05",
+        "sha256": "10349e963c5c813d327852f82c1795fa4148d69fedffc4c589bee458e3ac3d53"
+      },
+      {
+        "name": "kodak06",
+        "sha256": "363510303b715d4cbc384e1ce227e466b613a09e1b71ae985882bf8e7fbd9b18"
+      },
+      {
+        "name": "kodak07",
+        "sha256": "b77d3f006f42414bb242222e0482e750c0fb9e5ee8d4bed2f6f11c5605fe54a4"
+      },
+      {
+        "name": "kodak08",
+        "sha256": "ba23983c76b4832ee0e8af0592664756841a16779acd69f792e268fb6d13d6e7"
+      },
+      {
+        "name": "kodak09",
+        "sha256": "6a4361c2fc194feb4edaa9f9a4a0620fb9943e460ac7fdf037fb0f6dd6607a7d"
+      },
+      {
+        "name": "kodak10",
+        "sha256": "9dfb70f5867c29ff9ed6313683f19b3d867849e40fbc0c4c54a4a89df341cf23"
+      },
+      {
+        "name": "kodak11",
+        "sha256": "7936814b58b5387fce2e4e2488b4ec830dadd95fa9520f358ddb30990b50f2b6"
+      },
+      {
+        "name": "kodak12",
+        "sha256": "d78c37c2f04f23761ed2367dd77e2db584ddd4c3950833fecf89f199a8126980"
+      },
+      {
+        "name": "kodak13",
+        "sha256": "bc34a3ce58dea09dce1704c997171602de90cb34d0c8503a988b77f473d39b08"
+      },
+      {
+        "name": "kodak14",
+        "sha256": "55a94550ff18f3246c4074fd32b77b0c74447c26b6ad274d564d999c0450ba6e"
+      },
+      {
+        "name": "kodak15",
+        "sha256": "7538cbb80cb9103606c48b806eae57d56c885c7f90b9b3be70a41160f9cbb683"
+      },
+      {
+        "name": "kodak16",
+        "sha256": "a89c7268ccd4718ba424a99fc4643c572cf692ca6eae887185ceb4e9f11d2e54"
+      },
+      {
+        "name": "kodak17",
+        "sha256": "37afcc89fbdcb76d9518e04b2fc011027e2f4cd14b3b2f83cefd721641a47c5b"
+      },
+      {
+        "name": "kodak18",
+        "sha256": "1a9258c365988961d87a0598725b609139c303ad48a5aad6c503c3b1a87849aa"
+      },
+      {
+        "name": "kodak19",
+        "sha256": "b7450b264b1b0a411390d8931b112c27905a992520fc90569dc4b920aa32bbdc"
+      },
+      {
+        "name": "kodak20",
+        "sha256": "3b46c71e3b92a563820ba32936be8330c586c41f938efd94be938386aae4328a"
+      },
+      {
+        "name": "kodak21",
+        "sha256": "ac958597c82073f6bb65129c68f72b651db5b9efd82e11547d07350214bc268b"
+      },
+      {
+        "name": "kodak22",
+        "sha256": "1cee58eb1f2d9c7ebb254d208a03c783ce6cf2c4d8c2cf45e235dd23b4ce1b29"
+      },
+      {
+        "name": "kodak23",
+        "sha256": "e3111a2fd4da24af15d6459ef9eacfe54106b38e27b4a21821b75c3f5d2d5baf"
+      },
+      {
+        "name": "kodak24",
+        "sha256": "1071c68372cc5a01435c2c225a5cf7d4bb803846ec08bb6b3d6721b156d7cb96"
+      },
+      {
+        "name": "chroma-black-and-white",
+        "sha256": "0ea4fa6c16e8923ec0b3658a5cebb6bee4ba32ae35bca0641b69b9fe64e27f50"
+      },
+      {
+        "name": "chroma-glass-reinforcements",
+        "sha256": "7dc132db36c390e2be4b2b343a52b09525e24a8cbeb671113bfc4072bed707eb"
+      },
+      {
+        "name": "chroma-the-old-monochrome",
+        "sha256": "b6e5db7f2b2225939b08ea4d7de2c0e5ba2fa590a6c1dda7bc682de5c759024b"
+      },
+      {
+        "name": "chroma-windows-toronto-city",
+        "sha256": "ebd77b5d88886ee03a4f38be2a87c88ab364beab124270c20a3e52c9a8df1027"
+      },
+      {
+        "name": "natural-agraulis-vanillae-isla",
+        "sha256": "04c47c24d08d713222691350748206f79cbbf40b14ce0833110c13f495b39b40"
+      },
+      {
+        "name": "natural-andrew-jackson-state",
+        "sha256": "9756e13cbf24c588ce74fce684c8917d10e63545b057c59bcbbcba22b5fffa08"
+      },
+      {
+        "name": "natural-bird-cherry-ermine",
+        "sha256": "bf2a30c065bc167f8d7a364b05412af44b106f780087cda1b196e4d96573c012"
+      },
+      {
+        "name": "natural-dish-meatloaf-served",
+        "sha256": "cacedc4705bfd6433849756addb692920b1819db2b187dd8ef3c7922f9d35017"
+      },
+      {
+        "name": "natural-egretta-thula-las",
+        "sha256": "00e9a470e07721ac2d384a437fe922f66ee82c27cc81c106e8a2097a14bfb6c1"
+      },
+      {
+        "name": "natural-fishing-the-coast",
+        "sha256": "7497c8976f59942a24cefbd7fa94e2097ae2504e6f295e4453fa6082384f6fcf"
+      },
+      {
+        "name": "natural-forest-road-slavne",
+        "sha256": "54f1fae4f6195bbb1092e5ce87abe946fc691cb17ebfcdcacc916f181936f07d"
+      },
+      {
+        "name": "natural-hard-rock-cafe",
+        "sha256": "fe9f5c50d1c5c7439526f45de71e211c7d46b6486c3ddbd469f4be5999c07a62"
+      },
+      {
+        "name": "natural-interior-cafe-commerce",
+        "sha256": "2bb825fed40007f83a759f4103691599fcdddb116d411648752dd8df990b7ec9"
+      },
+      {
+        "name": "natural-landschaftsschutzgebiet-dwest-gen",
+        "sha256": "c76ccdd7cb56c1959272d57726c324998e3cb81bcaa0d658180d0d065d3bd33a"
+      },
+      {
+        "name": "natural-landschaftsschutzgebiet-volkspark-rehberge",
+        "sha256": "8600924344d252eeed2d5bfeb8502c77dedca362bcb4f996f63d94e8b5081b01"
+      },
+      {
+        "name": "natural-lmen-umland",
+        "sha256": "1330a32f865b6d3d713336bade56cb97d6b2c77a4d5b4506f309136de8bce3e6"
+      },
+      {
+        "name": "natural-mabrousha-cake-with",
+        "sha256": "fc1bc49c2b2ca9675bd87205d7b4382ef2b10d80da8346600abd9a19a637d985"
+      },
+      {
+        "name": "natural-maidens-tower",
+        "sha256": "6e2003530320c4b0f943940b9038ce56f80da238811a059fbfe6ce8cc3bb3d40"
+      },
+      {
+        "name": "natural-mid-1920s-house",
+        "sha256": "b71252c8ce94143164c38900d53f522d9e987e72eb00dd33384ae1d331bf95ec"
+      },
+      {
+        "name": "natural-nnov-shcherbinki-produce",
+        "sha256": "10030c1934c2753f6fd77451a45af8a8c94494252e0213df646b08b9d2d2185e"
+      },
+      {
+        "name": "natural-nster-westdeutsche-lotterie-2",
+        "sha256": "26f7412b89e183810ab9fe77142290296d87d3d65e7b7464340cb66a24ed3405"
+      },
+      {
+        "name": "natural-nster-westdeutsche-lotterie",
+        "sha256": "0ac1145f61da508d18f9b8b79fbb3e5c602c6618f641c88924444c9443dc3940"
+      },
+      {
+        "name": "natural-obama-center-library",
+        "sha256": "c849e4ca78b07c8e51f28c9aee920a48a12f9ac04d7eb9e40c2082ccc3cd5195"
+      },
+      {
+        "name": "natural-pike-place-market",
+        "sha256": "be45216f8c7cdbf31997ebacce9f297a0e20b3c5b4a5b07b7bc33fc3e674ef0e"
+      },
+      {
+        "name": "natural-roof-tiles-packed",
+        "sha256": "7832fed7d5f12a8aec3d36393d9f646b11d601a445d858eb214b916cb04d2688"
+      },
+      {
+        "name": "natural-studioarrangement-for-product",
+        "sha256": "7eac9625191027dc861c05e4b548f8fe2fa6b7abc37bcba5b0ac1270116b5c54"
+      },
+      {
+        "name": "natural-table-set-for",
+        "sha256": "9af6423b26141dce7d14aeeef58f94d4d980875ead7c7d6653814dec81ee756c"
+      },
+      {
+        "name": "natural-trees-rising-out",
+        "sha256": "31f10ec471cd35b2467469feac2c75b803e422f32e042c05ae2ac50250b54c18"
+      },
+      {
+        "name": "natural-walnut-tart-close",
+        "sha256": "68141502b2131761f963dca2c4f9ef09e43457812235f88c8a448326009f6e93"
+      },
+      {
+        "name": "night-bas-lica-notre",
+        "sha256": "accfac7a9eb21d983456dc80936c7797dd3496cd5c0b4d6e387f3605bd3210de"
+      },
+      {
+        "name": "night-long-island-city",
+        "sha256": "f009409b13acdd9a1aba85fa81309fe7c29681ab284a029c9cf7552a8f92a591"
+      },
+      {
+        "name": "night-night-sky-milky",
+        "sha256": "a84ed4e7b6b81b0deaec580b6def472b74b031300d17712def354847900c7eef"
+      },
+      {
+        "name": "night-nster-liudgerhaus-und",
+        "sha256": "1c4dedcc5564305a8bf0bfdfde912dc45057b60c3a80caef977c2b39eaa36674"
+      },
+      {
+        "name": "portrait-african-lady",
+        "sha256": "84d789fe7a5ef4f3713c596a5fdb562cdc11a2d0c6c903a13ccc8495f71beba9"
+      },
+      {
+        "name": "portrait-african-woman-rusinga",
+        "sha256": "b42b667d11aaeeca9a2b57c34c1bd5ec502935ad9565da8c4c1ffd12101d80cb"
+      },
+      {
+        "name": "portrait-imene6",
+        "sha256": "1c338666388eaba2b821ff9f1e136179bc1ac50f78e13cd13ace9d78ca563fd9"
+      },
+      {
+        "name": "portrait-mother-and-child",
+        "sha256": "0edca0e3a38b7670be967cb78c33ce1ed79c5a88e88ec4282970080a9766b8e0"
+      },
+      {
+        "name": "portrait-portrait-femme-tenue",
+        "sha256": "3db3587f2612133fc4859adc0b3097fb833bbe644e2b92617ee8fa60b9166fd4"
+      },
+      {
+        "name": "portrait-sideshow-bob-love",
+        "sha256": "1967684f3043484bb14543e2596c8bc94563a59094b510ca55bf2b82527597f0"
+      },
+      {
+        "name": "alpha-checkerboard",
+        "sha256": "8b84757373c1eaac26cfe473dc7fd577ee89505ae65ab3ba52fbcd1633dde0b9"
+      },
+      {
+        "name": "alpha-fully-transparent",
+        "sha256": "bc11e1419344369ce138cce6ee7aa3db7544e64603b772faf0c24e7eaa28e2b3"
+      },
+      {
+        "name": "alpha-gradient",
+        "sha256": "ffd86a8dbaa2a1fb68c7ad5c0ba84210fb05385117a718b55e5cbfdd0c25263d"
+      },
+      {
+        "name": "alpha-opaque",
+        "sha256": "eb344c4804397eb56b5454568eddd742f55000c495a0a7289e62a7b022fd8d50"
+      },
+      {
+        "name": "alpha-single-pixel",
+        "sha256": "590002884fdfb20a584518982aec306b0401edfd596d1d51bbefb19fd2bbd4b2"
+      },
+      {
+        "name": "alpha-uniform-128",
+        "sha256": "55a5049499e2d14a1f5432dbfd77764025b171c202e60278073a8570c5eb92ab"
+      },
+      {
+        "name": "checkerboard",
+        "sha256": "3d044dde28b4ec4e148c370db38c78c6186514aaa8bb46414fce56305888346f"
+      },
+      {
+        "name": "dim-100x1",
+        "sha256": "cf709eaabbf7829cce162ff8fb6203a35af40aef83b771bc4aba2d21e05dc425"
+      },
+      {
+        "name": "dim-100x100",
+        "sha256": "5edf897d55e47c02096539b18feeb21d7247d372ea8edc7b81c89cd212742cd0"
+      },
+      {
+        "name": "dim-16x16",
+        "sha256": "bf6062e6a457ec6682303cc8315746d358f3f15f6840823eaa4d5037b762a728"
+      },
+      {
+        "name": "dim-16x9",
+        "sha256": "bdb7c30ee630a6cb31623059384e13b22cc630f5eaa4e0d1d48e49fa1d24d8a3"
+      },
+      {
+        "name": "dim-1x1",
+        "sha256": "7d8169d954d0552c3512dd7580685ab08708dbc2d2d7af9399d19d7e127fe6f0"
+      },
+      {
+        "name": "dim-1x100",
+        "sha256": "a3c349ae26083d494153e1efda8c7015d073a2712144679fbd28d1db7d9c8fe1"
+      },
+      {
+        "name": "dim-4x4",
+        "sha256": "1e68e1dc443cd0117c1665682a78078f1faef4429771cad014deefd4999047a8"
+      },
+      {
+        "name": "dim-4x8",
+        "sha256": "3af68eb5d0f89de311f12fa1a46b25d8fdd8907c030c89a26b64e179681a8283"
+      },
+      {
+        "name": "dim-8x4",
+        "sha256": "a5ea4f57d09cfb5f2534b5167e09af4b980896bc8bdd84437a132588c70f127e"
+      },
+      {
+        "name": "dim-9x6",
+        "sha256": "fe22a04127f0906d93958da85b7e4f8145a8254268986daae2d78916795a4021"
+      },
+      {
+        "name": "gamut-adobe-rgb",
+        "sha256": "25b2e7ef9727a94d1d06d458b700f9f430632ce1f4eb61a528d2b2ef7152a9bf"
+      },
+      {
+        "name": "gamut-bt2020",
+        "sha256": "25b2e7ef9727a94d1d06d458b700f9f430632ce1f4eb61a528d2b2ef7152a9bf"
+      },
+      {
+        "name": "gamut-p3",
+        "sha256": "25b2e7ef9727a94d1d06d458b700f9f430632ce1f4eb61a528d2b2ef7152a9bf"
+      },
+      {
+        "name": "gamut-prophoto",
+        "sha256": "25b2e7ef9727a94d1d06d458b700f9f430632ce1f4eb61a528d2b2ef7152a9bf"
+      },
+      {
+        "name": "gamut-srgb",
+        "sha256": "25b2e7ef9727a94d1d06d458b700f9f430632ce1f4eb61a528d2b2ef7152a9bf"
+      },
+      {
+        "name": "gradient-2d",
+        "sha256": "bf6062e6a457ec6682303cc8315746d358f3f15f6840823eaa4d5037b762a728"
+      },
+      {
+        "name": "gradient-horizontal",
+        "sha256": "3f9d50c97e97d8e3039712faf3b7202c4d2e710a768535f18acb55c039fe7f57"
+      },
+      {
+        "name": "gradient-vertical",
+        "sha256": "fa021479dca8cedfa27ed9d74adc9356e6da7382bfe1b8be476d2643aa7969a4"
+      },
+      {
+        "name": "illust-comic",
+        "sha256": "48fa169151da00cfb4617d6c9bd6c35a3c164fbde5c21b0d9411cb6e2505f482"
+      },
+      {
+        "name": "illust-icon",
+        "sha256": "f08e792d73d771859f8f632f5f73d9fb84cf08fa69d21a691d89571571240e71"
+      },
+      {
+        "name": "illust-landscape",
+        "sha256": "21c5925e51fc2e73bf095bbeb2fafe222258d29172aae6e37010b15f63282912"
+      },
+      {
+        "name": "monochrome",
+        "sha256": "8f7621b40f2f59c06a5a86ed34ce5601e8924ab726efdff5665d309929eec683"
+      },
+      {
+        "name": "near-black-gradient",
+        "sha256": "4bf0ccb6ce0b93e1bf4e5e6eda1d889502022b40691fe6f80d1f346bc5c7771c"
+      },
+      {
+        "name": "near-white-gradient",
+        "sha256": "e23e7fd256b73c49705e97cc09e99bc7b7ad5c5d8000c10dbf2f464c82f9e515"
+      },
+      {
+        "name": "noise",
+        "sha256": "499c83a147c6603c383eb9fc6166d57644eaf99fac5a437b8f8f3bfddbde8552"
+      },
+      {
+        "name": "saturated-cool",
+        "sha256": "302221f417a9cd8d944b0d9f3d0ba4a1dbb23eb1df4e8c8901965e4c999e5753"
+      },
+      {
+        "name": "saturated-warm",
+        "sha256": "be0f0e2138289cb5f98738bba3eccac05e85b5f4dd6ec847293766dc5dc44b39"
+      },
+      {
+        "name": "solid-black",
+        "sha256": "0b0e23c11da2a01b4e64fb6acf71f7a17e0611e502d74341086ff5db27ed1e5e"
+      },
+      {
+        "name": "solid-blue",
+        "sha256": "7729e5c2551135bfa14bdf4a2cff30ea0858c599d5ef1478248c718238ffc7e2"
+      },
+      {
+        "name": "solid-gray",
+        "sha256": "75ca36d716b221186bd0fbd9e2107f16686c72812a7cff5fdd81fa73b1ddcb4f"
+      },
+      {
+        "name": "solid-green",
+        "sha256": "1689c51ad23602faf0eb2ad5a9279a4b6adbe8c11e8913055b2bee13560c6dee"
+      },
+      {
+        "name": "solid-red",
+        "sha256": "56f0b3d746d230296a9d2f8de64739615e6047a78872804e8dc6ff7767216705"
+      },
+      {
+        "name": "solid-white",
+        "sha256": "5dcc04282d97c0f8be0d6396508d2bf288d2995eb194e87c1516aaf973b6ace1"
+      },
+      {
+        "name": "textui-form",
+        "sha256": "77a86dd662f5ecf4e58ed9998fcccc2232fb8a9b028f5939343cd605f7acc5fe"
+      },
+      {
+        "name": "textui-terminal",
+        "sha256": "f2fba4f4d87ec61faf5169071a35c5c3bd99df3abd85ca45c028d35b7a3a3778"
+      },
+      {
+        "name": "textui-window",
+        "sha256": "57eeac6af516b4060343bbec4db22698e214acb535b7edcadcda79fbe2063bab"
+      }
+    ]
+  },
+  "images": [
+    {
+      "name": "cutout-3d-star-greek",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 827,
+      "height": 852,
+      "strata": []
+    },
+    {
+      "name": "cutout-3d-star-soviet",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 608,
+      "height": 579,
+      "strata": []
+    },
+    {
+      "name": "cutout-app-icon-aptoide",
+      "corpus": "alpha",
+      "split": "tune2",
+      "width": 601,
+      "height": 600,
+      "strata": []
+    },
+    {
+      "name": "cutout-bioart-astrocyte",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 1609,
+      "height": 1395,
+      "strata": []
+    },
+    {
+      "name": "cutout-broccoli",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 2261,
+      "height": 1833,
+      "strata": []
+    },
+    {
+      "name": "cutout-campaign-medal",
+      "corpus": "alpha",
+      "split": "tune2",
+      "width": 726,
+      "height": 816,
+      "strata": []
+    },
+    {
+      "name": "cutout-cheeseburger",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 2700,
+      "height": 1800,
+      "strata": []
+    },
+    {
+      "name": "cutout-dod-seal",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 600,
+      "height": 599,
+      "strata": []
+    },
+    {
+      "name": "cutout-dslr-camera",
+      "corpus": "alpha",
+      "split": "tune2",
+      "width": 800,
+      "height": 719,
+      "strata": []
+    },
+    {
+      "name": "cutout-emblem-kscz",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 564,
+      "height": 538,
+      "strata": []
+    },
+    {
+      "name": "cutout-game-sprite-ship",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 1344,
+      "height": 708,
+      "strata": []
+    },
+    {
+      "name": "cutout-glassfish",
+      "corpus": "alpha",
+      "split": "tune2",
+      "width": 2417,
+      "height": 1461,
+      "strata": []
+    },
+    {
+      "name": "cutout-greek-vase-figure",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 723,
+      "height": 1748,
+      "strata": []
+    },
+    {
+      "name": "cutout-green-dragon",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 2120,
+      "height": 2760,
+      "strata": []
+    },
+    {
+      "name": "cutout-insignia-4id",
+      "corpus": "alpha",
+      "split": "tune2",
+      "width": 622,
+      "height": 620,
+      "strata": []
+    },
+    {
+      "name": "cutout-lamp-glow",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 1000,
+      "height": 760,
+      "strata": []
+    },
+    {
+      "name": "cutout-lineart-hoe",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 2749,
+      "height": 2483,
+      "strata": []
+    },
+    {
+      "name": "cutout-lineart-oinochoe",
+      "corpus": "alpha",
+      "split": "tune2",
+      "width": 1255,
+      "height": 2048,
+      "strata": []
+    },
+    {
+      "name": "cutout-navy-crest",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 892,
+      "height": 1134,
+      "strata": []
+    },
+    {
+      "name": "cutout-nokia-soft-shadow",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 732,
+      "height": 1554,
+      "strata": []
+    },
+    {
+      "name": "cutout-planet-gas-giant",
+      "corpus": "alpha",
+      "split": "tune2",
+      "width": 4000,
+      "height": 4000,
+      "strata": []
+    },
+    {
+      "name": "cutout-planet-lava",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 2300,
+      "height": 2300,
+      "strata": []
+    },
+    {
+      "name": "cutout-road-sign",
+      "corpus": "alpha",
+      "split": "tune",
+      "width": 1332,
+      "height": 1509,
+      "strata": []
+    },
+    {
+      "name": "graphic-alphaplot-app",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 1280,
+      "height": 751,
+      "strata": []
+    },
+    {
+      "name": "graphic-bar-chart-waymo",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 3600,
+      "height": 1800,
+      "strata": []
+    },
+    {
+      "name": "graphic-block-diagram-arch",
+      "corpus": "graphic",
+      "split": "holdout",
+      "width": 5052,
+      "height": 4540,
+      "strata": []
+    },
+    {
+      "name": "graphic-circuit-schematic",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 3508,
+      "height": 2480,
+      "strata": []
+    },
+    {
+      "name": "graphic-comic-strip-1940",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 2612,
+      "height": 985,
+      "strata": []
+    },
+    {
+      "name": "graphic-comic-wiggle-much",
+      "corpus": "graphic",
+      "split": "holdout",
+      "width": 3637,
+      "height": 2263,
+      "strata": []
+    },
+    {
+      "name": "graphic-flat-design-desk",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 3002,
+      "height": 2002,
+      "strata": []
+    },
+    {
+      "name": "graphic-geonames-map",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 7200,
+      "height": 3600,
+      "strata": []
+    },
+    {
+      "name": "graphic-gnome-desktop",
+      "corpus": "graphic",
+      "split": "holdout",
+      "width": 1920,
+      "height": 1080,
+      "strata": []
+    },
+    {
+      "name": "graphic-infographic-timeline",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 788,
+      "height": 865,
+      "strata": []
+    },
+    {
+      "name": "graphic-lineart-pictographs",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 3676,
+      "height": 618,
+      "strata": []
+    },
+    {
+      "name": "graphic-lineart-scarecrow",
+      "corpus": "graphic",
+      "split": "holdout",
+      "width": 1817,
+      "height": 2061,
+      "strata": []
+    },
+    {
+      "name": "graphic-logo-solid-blue",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 6600,
+      "height": 4400,
+      "strata": []
+    },
+    {
+      "name": "graphic-periodic-table-nist",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 3300,
+      "height": 2550,
+      "strata": []
+    },
+    {
+      "name": "graphic-playfair-piecharts",
+      "corpus": "graphic",
+      "split": "holdout",
+      "width": 6306,
+      "height": 3456,
+      "strata": []
+    },
+    {
+      "name": "graphic-scientific-plot",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 3200,
+      "height": 1600,
+      "strata": []
+    },
+    {
+      "name": "graphic-sheet-music-dense",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 1781,
+      "height": 2363,
+      "strata": []
+    },
+    {
+      "name": "graphic-smps-schematic",
+      "corpus": "graphic",
+      "split": "holdout",
+      "width": 7016,
+      "height": 4961,
+      "strata": []
+    },
+    {
+      "name": "graphic-tiling-wm",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 1280,
+      "height": 1024,
+      "strata": []
+    },
+    {
+      "name": "graphic-timechart-six-nations",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 1529,
+      "height": 999,
+      "strata": []
+    },
+    {
+      "name": "graphic-transit-diagram",
+      "corpus": "graphic",
+      "split": "holdout",
+      "width": 9983,
+      "height": 13113,
+      "strata": []
+    },
+    {
+      "name": "graphic-web-app-screenshot",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 1920,
+      "height": 1080,
+      "strata": []
+    },
+    {
+      "name": "graphic-wikipedia-text-page",
+      "corpus": "graphic",
+      "split": "tune",
+      "width": 1646,
+      "height": 1975,
+      "strata": []
+    },
+    {
+      "name": "graphic-world-map-colour",
+      "corpus": "graphic",
+      "split": "holdout",
+      "width": 4572,
+      "height": 2500,
+      "strata": []
+    },
+    {
+      "name": "kodak01",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak02",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak03",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak04",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 512,
+      "height": 768,
+      "strata": []
+    },
+    {
+      "name": "kodak05",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak06",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak07",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak08",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak09",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 512,
+      "height": 768,
+      "strata": []
+    },
+    {
+      "name": "kodak10",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 512,
+      "height": 768,
+      "strata": []
+    },
+    {
+      "name": "kodak11",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak12",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak13",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak14",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak15",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak16",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak17",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 512,
+      "height": 768,
+      "strata": []
+    },
+    {
+      "name": "kodak18",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 512,
+      "height": 768,
+      "strata": []
+    },
+    {
+      "name": "kodak19",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 512,
+      "height": 768,
+      "strata": []
+    },
+    {
+      "name": "kodak20",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak21",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak22",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak23",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "kodak24",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 768,
+      "height": 512,
+      "strata": []
+    },
+    {
+      "name": "chroma-black-and-white",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 4157,
+      "height": 2771,
+      "strata": []
+    },
+    {
+      "name": "chroma-glass-reinforcements",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 1523,
+      "height": 1437,
+      "strata": []
+    },
+    {
+      "name": "chroma-the-old-monochrome",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 2736,
+      "height": 3648,
+      "strata": []
+    },
+    {
+      "name": "chroma-windows-toronto-city",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 6000,
+      "height": 3885,
+      "strata": []
+    },
+    {
+      "name": "natural-agraulis-vanillae-isla",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 4000,
+      "height": 2705,
+      "strata": []
+    },
+    {
+      "name": "natural-andrew-jackson-state",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 3914,
+      "height": 5219,
+      "strata": []
+    },
+    {
+      "name": "natural-bird-cherry-ermine",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 5058,
+      "height": 3372,
+      "strata": []
+    },
+    {
+      "name": "natural-dish-meatloaf-served",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 5184,
+      "height": 6912,
+      "strata": []
+    },
+    {
+      "name": "natural-egretta-thula-las",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 2437,
+      "height": 3159,
+      "strata": []
+    },
+    {
+      "name": "natural-fishing-the-coast",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 3984,
+      "height": 2656,
+      "strata": []
+    },
+    {
+      "name": "natural-forest-road-slavne",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 4500,
+      "height": 2850,
+      "strata": []
+    },
+    {
+      "name": "natural-hard-rock-cafe",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 3296,
+      "height": 2472,
+      "strata": []
+    },
+    {
+      "name": "natural-interior-cafe-commerce",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 4608,
+      "height": 3456,
+      "strata": []
+    },
+    {
+      "name": "natural-landschaftsschutzgebiet-dwest-gen",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 4032,
+      "height": 3024,
+      "strata": []
+    },
+    {
+      "name": "natural-landschaftsschutzgebiet-volkspark-rehberge",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 4032,
+      "height": 3024,
+      "strata": []
+    },
+    {
+      "name": "natural-lmen-umland",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 5184,
+      "height": 3456,
+      "strata": []
+    },
+    {
+      "name": "natural-mabrousha-cake-with",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 3456,
+      "height": 4608,
+      "strata": []
+    },
+    {
+      "name": "natural-maidens-tower",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 4288,
+      "height": 2848,
+      "strata": []
+    },
+    {
+      "name": "natural-mid-1920s-house",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 5184,
+      "height": 3888,
+      "strata": []
+    },
+    {
+      "name": "natural-nnov-shcherbinki-produce",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 2048,
+      "height": 1536,
+      "strata": []
+    },
+    {
+      "name": "natural-nster-westdeutsche-lotterie-2",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 7728,
+      "height": 4347,
+      "strata": []
+    },
+    {
+      "name": "natural-nster-westdeutsche-lotterie",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 3648,
+      "height": 5472,
+      "strata": []
+    },
+    {
+      "name": "natural-obama-center-library",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 3444,
+      "height": 2296,
+      "strata": []
+    },
+    {
+      "name": "natural-pike-place-market",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 3469,
+      "height": 2298,
+      "strata": []
+    },
+    {
+      "name": "natural-roof-tiles-packed",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 4000,
+      "height": 3000,
+      "strata": []
+    },
+    {
+      "name": "natural-studioarrangement-for-product",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 4374,
+      "height": 2925,
+      "strata": []
+    },
+    {
+      "name": "natural-table-set-for",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 4032,
+      "height": 6048,
+      "strata": []
+    },
+    {
+      "name": "natural-trees-rising-out",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 4032,
+      "height": 2800,
+      "strata": []
+    },
+    {
+      "name": "natural-walnut-tart-close",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 3872,
+      "height": 2592,
+      "strata": []
+    },
+    {
+      "name": "night-bas-lica-notre",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 4911,
+      "height": 4549,
+      "strata": []
+    },
+    {
+      "name": "night-long-island-city",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 8000,
+      "height": 4000,
+      "strata": []
+    },
+    {
+      "name": "night-night-sky-milky",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 5616,
+      "height": 3744,
+      "strata": []
+    },
+    {
+      "name": "night-nster-liudgerhaus-und",
+      "corpus": "photo",
+      "split": "tune2",
+      "width": 3601,
+      "height": 5401,
+      "strata": []
+    },
+    {
+      "name": "portrait-african-lady",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 1668,
+      "height": 2500,
+      "strata": []
+    },
+    {
+      "name": "portrait-african-woman-rusinga",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 4160,
+      "height": 6240,
+      "strata": []
+    },
+    {
+      "name": "portrait-imene6",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 3456,
+      "height": 5184,
+      "strata": []
+    },
+    {
+      "name": "portrait-mother-and-child",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 4288,
+      "height": 2848,
+      "strata": []
+    },
+    {
+      "name": "portrait-portrait-femme-tenue",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 3456,
+      "height": 5184,
+      "strata": []
+    },
+    {
+      "name": "portrait-sideshow-bob-love",
+      "corpus": "photo",
+      "split": "tune",
+      "width": 4288,
+      "height": 2848,
+      "strata": []
+    },
+    {
+      "name": "alpha-checkerboard",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "alpha-fully-transparent",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "alpha-gradient",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 16,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "alpha-opaque",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "alpha-single-pixel",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "alpha-uniform-128",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "checkerboard",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 16,
+      "height": 16,
+      "strata": []
+    },
+    {
+      "name": "dim-100x1",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 100,
+      "height": 1,
+      "strata": []
+    },
+    {
+      "name": "dim-100x100",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 100,
+      "height": 100,
+      "strata": []
+    },
+    {
+      "name": "dim-16x16",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 16,
+      "height": 16,
+      "strata": []
+    },
+    {
+      "name": "dim-16x9",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 16,
+      "height": 9,
+      "strata": []
+    },
+    {
+      "name": "dim-1x1",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 1,
+      "height": 1,
+      "strata": []
+    },
+    {
+      "name": "dim-1x100",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 1,
+      "height": 100,
+      "strata": []
+    },
+    {
+      "name": "dim-4x4",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 4,
+      "height": 4,
+      "strata": []
+    },
+    {
+      "name": "dim-4x8",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 4,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "dim-8x4",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 4,
+      "strata": []
+    },
+    {
+      "name": "dim-9x6",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 9,
+      "height": 6,
+      "strata": []
+    },
+    {
+      "name": "gamut-adobe-rgb",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "gamut-bt2020",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "gamut-p3",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "gamut-prophoto",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "gamut-srgb",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "gradient-2d",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 16,
+      "height": 16,
+      "strata": []
+    },
+    {
+      "name": "gradient-horizontal",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 16,
+      "height": 16,
+      "strata": []
+    },
+    {
+      "name": "gradient-vertical",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 16,
+      "height": 16,
+      "strata": []
+    },
+    {
+      "name": "illust-comic",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 320,
+      "height": 240,
+      "strata": []
+    },
+    {
+      "name": "illust-icon",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 256,
+      "height": 256,
+      "strata": []
+    },
+    {
+      "name": "illust-landscape",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 360,
+      "height": 240,
+      "strata": []
+    },
+    {
+      "name": "monochrome",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 16,
+      "height": 16,
+      "strata": []
+    },
+    {
+      "name": "near-black-gradient",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 16,
+      "height": 16,
+      "strata": []
+    },
+    {
+      "name": "near-white-gradient",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 16,
+      "height": 16,
+      "strata": []
+    },
+    {
+      "name": "noise",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 16,
+      "height": 16,
+      "strata": []
+    },
+    {
+      "name": "saturated-cool",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "saturated-warm",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "solid-black",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "solid-blue",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "solid-gray",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "solid-green",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "solid-red",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "solid-white",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 8,
+      "height": 8,
+      "strata": []
+    },
+    {
+      "name": "textui-form",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 280,
+      "height": 320,
+      "strata": []
+    },
+    {
+      "name": "textui-terminal",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 320,
+      "height": 220,
+      "strata": []
+    },
+    {
+      "name": "textui-window",
+      "corpus": "synthetic",
+      "split": "tune",
+      "width": 320,
+      "height": 240,
+      "strata": []
+    }
+  ],
+  "cells": [
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "harness",
+      "tier": 0,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 15
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "harness",
+      "tier": 1,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "harness",
+      "tier": 2,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "harness",
+      "tier": 3,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "harness",
+      "tier": 4,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "512",
+      "tier": 0,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "512",
+      "tier": 1,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "512",
+      "tier": 2,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "512",
+      "tier": 3,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "512",
+      "tier": 4,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "full",
+      "tier": 0,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "full",
+      "tier": 1,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune",
+      "size": "full",
+      "tier": 2,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "harness",
+      "tier": 0,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 7,
+      "controlDiffering": 7
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "harness",
+      "tier": 1,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 7,
+      "controlDiffering": 6
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "harness",
+      "tier": 2,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 7,
+      "controlDiffering": 7
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "harness",
+      "tier": 3,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 7,
+      "controlDiffering": 7
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "harness",
+      "tier": 4,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 7,
+      "controlDiffering": 7
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "512",
+      "tier": 0,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 7,
+      "controlDiffering": 7
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "512",
+      "tier": 1,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 7,
+      "controlDiffering": 6
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "512",
+      "tier": 2,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 7,
+      "controlDiffering": 7
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "512",
+      "tier": 3,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 7,
+      "controlDiffering": 7
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "512",
+      "tier": 4,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 7,
+      "controlDiffering": 7
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "full",
+      "tier": 0,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "full",
+      "tier": 1,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "alpha",
+      "split": "tune2",
+      "size": "full",
+      "tier": 2,
+      "encodes": 7,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "harness",
+      "tier": 0,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "harness",
+      "tier": 1,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "harness",
+      "tier": 2,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "harness",
+      "tier": 3,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "harness",
+      "tier": 4,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "512",
+      "tier": 0,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "512",
+      "tier": 1,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "512",
+      "tier": 2,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "512",
+      "tier": 3,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "512",
+      "tier": 4,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 16,
+      "controlDiffering": 16
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "full",
+      "tier": 0,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "full",
+      "tier": 1,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "graphic",
+      "split": "tune",
+      "size": "full",
+      "tier": 2,
+      "encodes": 16,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "harness",
+      "tier": 0,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 8,
+      "controlDiffering": 8
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "harness",
+      "tier": 1,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 8,
+      "controlDiffering": 8
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "harness",
+      "tier": 2,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 8,
+      "controlDiffering": 8
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "harness",
+      "tier": 3,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 8,
+      "controlDiffering": 8
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "harness",
+      "tier": 4,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 8,
+      "controlDiffering": 8
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "512",
+      "tier": 0,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 8,
+      "controlDiffering": 8
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "512",
+      "tier": 1,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 8,
+      "controlDiffering": 8
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "512",
+      "tier": 2,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 8,
+      "controlDiffering": 8
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "512",
+      "tier": 3,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 8,
+      "controlDiffering": 8
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "512",
+      "tier": 4,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 8,
+      "controlDiffering": 8
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "full",
+      "tier": 0,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "full",
+      "tier": 1,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "graphic",
+      "split": "holdout",
+      "size": "full",
+      "tier": 2,
+      "encodes": 8,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "harness",
+      "tier": 0,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 32,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "harness",
+      "tier": 1,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 32,
+      "controlDiffering": 32
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "harness",
+      "tier": 2,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 32,
+      "controlDiffering": 32
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "harness",
+      "tier": 3,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 32,
+      "controlDiffering": 32
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "harness",
+      "tier": 4,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 32,
+      "controlDiffering": 32
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "512",
+      "tier": 0,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 32,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "512",
+      "tier": 1,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 32,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "512",
+      "tier": 2,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 32,
+      "controlDiffering": 32
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "512",
+      "tier": 3,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 32,
+      "controlDiffering": 32
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "512",
+      "tier": 4,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 32,
+      "controlDiffering": 32
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "full",
+      "tier": 0,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "full",
+      "tier": 1,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "photo",
+      "split": "tune2",
+      "size": "full",
+      "tier": 2,
+      "encodes": 32,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "harness",
+      "tier": 0,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 31,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "harness",
+      "tier": 1,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 31,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "harness",
+      "tier": 2,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 31,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "harness",
+      "tier": 3,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 31,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "harness",
+      "tier": 4,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 31,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "512",
+      "tier": 0,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 31,
+      "controlDiffering": 30
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "512",
+      "tier": 1,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 31,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "512",
+      "tier": 2,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 31,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "512",
+      "tier": 3,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 31,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "512",
+      "tier": 4,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 31,
+      "controlDiffering": 31
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "full",
+      "tier": 0,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "full",
+      "tier": 1,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "photo",
+      "split": "tune",
+      "size": "full",
+      "tier": 2,
+      "encodes": 31,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "harness",
+      "tier": 0,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 43,
+      "controlDiffering": 20
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "harness",
+      "tier": 1,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 43,
+      "controlDiffering": 21
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "harness",
+      "tier": 2,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 43,
+      "controlDiffering": 23
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "harness",
+      "tier": 3,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 43,
+      "controlDiffering": 23
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "harness",
+      "tier": 4,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 43,
+      "controlDiffering": 23
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "512",
+      "tier": 0,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 43,
+      "controlDiffering": 20
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "512",
+      "tier": 1,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 43,
+      "controlDiffering": 21
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "512",
+      "tier": 2,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 43,
+      "controlDiffering": 23
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "512",
+      "tier": 3,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 43,
+      "controlDiffering": 23
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "512",
+      "tier": 4,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 43,
+      "controlDiffering": 23
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "full",
+      "tier": 0,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "full",
+      "tier": 1,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    },
+    {
+      "corpus": "synthetic",
+      "split": "tune",
+      "size": "full",
+      "tier": 2,
+      "encodes": 43,
+      "differing": 0,
+      "controlEncodes": 0,
+      "controlDiffering": 0
+    }
+  ],
+  "strata": [],
+  "vectors": {
+    "vectors": 58,
+    "encodes": 290,
+    "differing": 0,
+    "expectedMismatches": [],
+    "diffs": []
+  },
+  "totals": {
+    "encodes": 1989,
+    "differing": 0,
+    "controlEncodes": 1530,
+    "controlDiffering": 1313
+  },
+  "diffs": []
+}
