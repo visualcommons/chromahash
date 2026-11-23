@@ -4,6 +4,7 @@
  * these would start a sweep. Both are asserted in `metric-selftest.ts`.
  */
 
+import { createHash } from "node:crypto";
 import { tierFor } from "./corpus.ts";
 
 /** The byte lengths one tier's hashes must have, by alpha mode. */
@@ -43,4 +44,32 @@ export function realOnlyInputs<T>(
   nameOf: (input: T) => string,
 ): T[] {
   return inputs.filter((i) => tierFor(nameOf(i)) === "real");
+}
+
+/**
+ * The digest a variant's `identicalTo` check compares: the decode's raster
+ * size and every RGBA byte, so two decodes share a digest exactly when they
+ * are the same pixels at the same size.
+ */
+export function decodeDigest(w: number, h: number, rgba: Uint8Array): string {
+  return createHash("sha256").update(`${w}x${h}:`).update(rgba).digest("hex");
+}
+
+/**
+ * The images whose decode digest differs between a variant and the earlier
+ * variant its `identicalTo` names, by name, in corpus order. Empty when every
+ * image decodes to the same pixels. Throws when the two did not score the
+ * same images, which no run should produce.
+ */
+export function identityMismatches(
+  reference: readonly string[],
+  got: readonly string[],
+  names: readonly string[],
+): string[] {
+  if (reference.length !== got.length || got.length !== names.length) {
+    throw new Error(
+      `identicalTo compares ${got.length} decodes against ${reference.length}, over ${names.length} images`,
+    );
+  }
+  return names.filter((_, i) => reference[i] !== got[i]);
 }

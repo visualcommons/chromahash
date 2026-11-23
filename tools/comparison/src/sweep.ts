@@ -67,7 +67,9 @@ import {
 } from "./corpus.ts";
 import {
   type ExpectBytes,
+  decodeDigest,
   expectedLength,
+  identityMismatches,
   realOnlyInputs,
 } from "./sweep-core.ts";
 import { gamutToSrgbReference } from "./gamut.ts";
@@ -151,6 +153,18 @@ interface SweepVariant {
    * silently dropped.
    */
   version?: string;
+  /**
+   * Label of an earlier variant whose decodes this one must reproduce
+   * exactly: every image's decoded pixels, at the same raster, byte for byte
+   * (`sweep-core.ts` `decodeDigest`). The run fails on the first image that
+   * differs, so a committed result that records the check found none. The
+   * arm is encoded and decoded, and not scored again: equal pixels score
+   * equally, so its metric series are the named variant's, and the result
+   * records the check in `settings.identity`. Register entry D2's part 1 (a
+   * pure permutation of the payload decodes to the shipped pixels) is read
+   * this way, on every image of the run.
+   */
+  identicalTo?: string;
 }
 
 interface SweepConfig {
@@ -367,6 +381,8 @@ interface SweepRow {
   imageNames: string[];
   /** Every per-image series this arm measured: what the committed result keeps. */
   perImage: PerImage;
+  /** Each image's decode digest, aligned with `imageNames`; not committed. */
+  decodeDigests: string[];
 }
 
 /** Guard tolerances vs the incumbent (absolute for SSIM2, relative otherwise). */
@@ -563,6 +579,7 @@ async function scoreVariant(
   inputs: ImageInput[],
   versionBinaries: Map<string, string>,
   expect?: SweepConfig["expectBytes"],
+  reference?: SweepRow,
 ): Promise<SweepRow> {
   const tier = variant.tier ?? DEFAULT_TIER;
   // A tag variant runs its own binary; hashes are not portable across format
@@ -583,6 +600,7 @@ async function scoreVariant(
   const deficits: (number | null)[] = [];
   const grids: (number | null)[] = [];
   const bytes: number[] = [];
+  const digests: string[] = [];
   let bytesSum = 0;
 
   for (const input of inputs) {
@@ -625,10 +643,14 @@ async function scoreVariant(
       capH = t0dec.h;
     }
     const decoded = decodeViaRust(cli, hash, "srgb", capW, capH, variant.tune);
+    digests.push(decodeDigest(decoded.w, decoded.h, decoded.rgba));
+    // An identity arm's pixels are checked against its reference below and
+    // not scored again: equal pixels score equally.
+    if (reference) continue;
 
-    const reference = input.metricReferenceRgba ?? input.referenceRgba;
+    const target = input.metricReferenceRgba ?? input.referenceRgba;
     const { metrics, local } = await computeAllMetrics(
-      reference,
+      target,
       input.referenceWidth,
       input.referenceHeight,
       decoded.rgba,
@@ -649,16 +671,41 @@ async function scoreVariant(
     grids.push(local.spuriousGridEdge);
   }
 
+  const imageNames = inputs.map((i) =>
+    path.basename(i.filePath).replace(/\.[^.]+$/, ""),
+  );
+  if (reference) {
+    const differ = identityMismatches(
+      reference.decodeDigests,
+      digests,
+      imageNames,
+    );
+    if (differ.length > 0) {
+      throw new Error(
+        `${variant.label}: ${differ.length} of ${imageNames.length} decodes differ from ${reference.label}'s (identicalTo), first ${differ.slice(0, 5).join(", ")}`,
+      );
+    }
+    return {
+      ...reference,
+      label: variant.label,
+      tune: variant.tune ?? null,
+      tier,
+      version: variant.version ?? null,
+      bytes: bytesSum / (inputs.length || 1),
+      perImage: { ...reference.perImage, bytes },
+      decodeDigests: digests,
+    };
+  }
+
   return {
     label: variant.label,
     tune: variant.tune ?? null,
     tier,
     version: variant.version ?? null,
     images: inputs.length,
+    decodeDigests: digests,
     perImageCiede: ciedes,
-    imageNames: inputs.map((i) =>
-      path.basename(i.filePath).replace(/\.[^.]+$/, ""),
-    ),
+    imageNames,
     bytes: bytesSum / (inputs.length || 1),
     meanCiede: mean(ciedes),
     medianCiede: median(ciedes),
@@ -903,15 +950,41 @@ async function main(): Promise<void> {
     })),
   };
 
+  // Every identicalTo names an earlier variant, checked before the first
+  // encode so a misspelt label fails at once rather than hours in.
+  for (const [i, v] of config.variants.entries()) {
+    if (v.identicalTo === undefined) continue;
+    const earlier = config.variants.slice(0, i);
+    const target = earlier.find((e) => e.label === v.identicalTo);
+    if (!target || target.identicalTo !== undefined) {
+      throw new Error(
+        `variant "${v.label}" is identicalTo "${v.identicalTo}", which is no earlier scored variant of ${config.name}`,
+      );
+    }
+  }
+  const identity: { arm: string; of: string; images: number }[] = [];
+
   const rows: SweepRow[] = [];
   for (const variant of config.variants) {
     const started = performance.now();
+    const reference =
+      variant.identicalTo === undefined
+        ? undefined
+        : rows.find((r) => r.label === variant.identicalTo);
     const row = await scoreVariant(
       variant,
       inputs,
       versionBinaries,
       config.expectBytes,
+      reference,
     );
+    if (reference) {
+      identity.push({
+        arm: variant.label,
+        of: reference.label,
+        images: inputs.length,
+      });
+    }
     rows.push(row);
     console.log(
       `  ${variant.label.padEnd(28)} ΔE00 ${row.meanCiede?.toFixed(3) ?? "N/A"} (${((performance.now() - started) / 1000).toFixed(0)}s)`,
@@ -952,6 +1025,9 @@ async function main(): Promise<void> {
       forceOpaque: config.forceOpaque ?? false,
       expectBytes: config.expectBytes ?? null,
       realOnly: config.realOnly ?? false,
+      // Each identicalTo arm, and the images whose decodes it matched exactly:
+      // a run that found one differing would have failed before writing this.
+      ...(identity.length > 0 ? { identity } : {}),
       ...(holdout2 !== null ? { holdout2 } : {}),
       ...(holdout3 !== null ? { holdout3 } : {}),
       guardTolerances: {

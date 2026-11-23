@@ -249,7 +249,12 @@ import {
   realCorpusOf,
   tierBaselinePairs,
 } from "./stratify-core.ts";
-import { expectedLength, realOnlyInputs } from "./sweep-core.ts";
+import {
+  decodeDigest,
+  expectedLength,
+  identityMismatches,
+  realOnlyInputs,
+} from "./sweep-core.ts";
 import {
   type Binding,
   CROSS_RUN_TOLERANCE,
@@ -6556,6 +6561,38 @@ console.log(
     "tierBaselinePairs reads every arm against the first arm of its own tier, never across tiers",
     JSON.stringify(pairs) === "[[1,0],[3,2],[5,2],[6,4]]",
     JSON.stringify(pairs),
+  );
+}
+
+{
+  console.log("\nsweep's identicalTo: decode digests and their mismatches");
+  const px = Uint8Array.of(1, 2, 3, 255, 4, 5, 6, 255);
+  const same = decodeDigest(2, 1, px);
+  const flipped = Uint8Array.from(px);
+  flipped[5] = 6;
+  check(
+    "decodeDigest: equal for the same pixels at the same raster, different for one changed byte or a transposed raster",
+    same === decodeDigest(2, 1, Uint8Array.from(px)) &&
+      same !== decodeDigest(2, 1, flipped) &&
+      same !== decodeDigest(1, 2, px) &&
+      /^[0-9a-f]{64}$/.test(same),
+    same,
+  );
+  const names = ["a", "b", "c"];
+  const none = identityMismatches(["x", "y", "z"], ["x", "y", "z"], names);
+  const some = identityMismatches(["x", "y", "z"], ["x", "q", "r"], names);
+  let unequal = "";
+  try {
+    identityMismatches(["x", "y"], ["x", "y", "z"], names);
+  } catch (e) {
+    unequal = (e as Error).message;
+  }
+  check(
+    "identityMismatches names exactly the images whose digests differ, in order, and refuses unaligned series",
+    none.length === 0 &&
+      some.join(",") === "b,c" &&
+      unequal === "identicalTo compares 3 decodes against 2, over 3 images",
+    `${none.join(",")}|${some.join(",")}|${unequal}`,
   );
 }
 
