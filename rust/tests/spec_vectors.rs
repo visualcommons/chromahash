@@ -207,3 +207,60 @@ fn unit_validate_vectors() {
         assert_eq!(got, expected, "{name}: validation result mismatch");
     }
 }
+
+#[test]
+fn interleaved_encode_vectors_decode_to_the_shipped_pixels() {
+    // Register entry D2, part 1: the embedded order is a pure permutation of
+    // the fixed-width fields, so every encode vector, at every code 0-4 and in
+    // both alpha modes, must decode to exactly the shipped channel-sequential
+    // pixels at full length, while its bytes differ wherever it has more than
+    // one AC code to reorder.
+    use chromahash::Tunables;
+    let interleaved = Tunables {
+        interleave: true,
+        ..Tunables::DEFAULT
+    };
+    let cases: Value = serde_json::from_str(ENCODE_VECTORS).expect("parse encode vectors");
+    let cases = cases.as_array().expect("encode vectors should be an array");
+    let mut tiers = [0usize; 5];
+    let mut reordered = 0usize;
+    for case in cases {
+        let name = case["name"].as_str().unwrap_or("<unnamed>");
+        let input = &case["input"];
+        let w = input["width"].as_u64().expect("width") as u32;
+        let h = input["height"].as_u64().expect("height") as u32;
+        let gamut = gamut_from_str(input["gamut"].as_str().expect("gamut"));
+        let tier = input["tier"].as_u64().expect("tier") as u8;
+        let rgba = bytes(&input["rgba"]);
+
+        let shipped = ChromaHash::encode_with_quality(w, h, &rgba, gamut, tier);
+        let mixed = ChromaHash::encode_tuned_quality(w, h, &rgba, gamut, &interleaved, tier);
+        assert_eq!(
+            shipped.as_bytes(),
+            bytes(&case["expected"]["hash"]).as_slice(),
+            "{name}: premise: the shipped encode is the vector"
+        );
+        assert_eq!(
+            mixed.as_bytes().len(),
+            shipped.as_bytes().len(),
+            "{name}: length"
+        );
+        if mixed.as_bytes() != shipped.as_bytes() {
+            reordered += 1;
+        }
+        assert_eq!(
+            mixed.decode_tuned(&interleaved),
+            shipped.decode(),
+            "{name}: the interleaved hash decodes to other pixels"
+        );
+        tiers[tier as usize] += 1;
+    }
+    assert!(
+        tiers.iter().all(|&n| n > 0),
+        "premise: vectors at every code 0-4 ({tiers:?})"
+    );
+    assert!(
+        reordered > cases.len() / 2,
+        "premise: most vectors reorder ({reordered})"
+    );
+}

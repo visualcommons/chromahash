@@ -1505,7 +1505,7 @@ fn encode_parts(
 ) -> (Box<[u8]>, Option<AcRecon>) {
     let Analysis {
         has_alpha,
-        aspect: _aspect,
+        aspect,
         aspect_code,
         shape,
         l: (l_dc, l_ac, l_scale),
@@ -1727,7 +1727,7 @@ fn encode_parts(
         if t.refine_grid == 1 {
             // Score on the decoder's natural render grid, against the ideal
             // full-basis downsample of the source.
-            let (rw, rh) = crate::aspect::decode_output_size(_aspect, tier);
+            let (rw, rh) = crate::aspect::decode_output_size(aspect, tier);
             let (rw, rh) = (rw as usize, rh as usize);
             let tl = resample_channel_dct(&l_chan, src_w, src_h, rw, rh);
             let ta = resample_channel_dct(&a_chan, src_w, src_h, rw, rh);
@@ -1901,14 +1901,25 @@ fn encode_parts(
         stage!("pack");
         return (hash.into_boxed_slice(), want_recon.then(|| recon_at(step)));
     }
-    if t.interleave && !has_alpha {
-        // Embedded order: all three channels merged by frequency priority, so a
+    if t.interleave {
+        // Embedded order (register D2): every channel merged by frequency
+        // priority, alpha's AC codes as a fourth channel in alpha mode, so a
         // truncated payload still carries every channel's lowest frequencies.
-        for (ch, i) in interleaved_order(&l_sel, &c_sel, shape.l_count(), shape.c_count) {
+        let alpha_count = if has_alpha { shape.alpha_ac_count } else { 0 };
+        let alpha_sel =
+            SelectionOrder::new(aspect, tier, t.aniso_oblique, t.sel_hv).take(alpha_count);
+        let channels = [
+            (&l_sel, shape.l_count()),
+            (&c_sel, shape.c_count),
+            (&c_sel, shape.c_count),
+            (&alpha_sel, alpha_count),
+        ];
+        for (ch, i) in interleaved_order(&channels) {
             let (bits, q) = match ch {
                 0 => (l_job.bits_at(i), l_codes[i]),
                 1 => (c_bits, a_codes[i]),
-                _ => (c_bits, b_codes[i]),
+                2 => (c_bits, b_codes[i]),
+                _ => (shape.alpha_ac_bits, alpha_codes[i]),
             };
             put(&mut hash, bitpos, bits, q);
             bitpos += bits as usize;
@@ -1935,7 +1946,7 @@ fn encode_parts(
         }
     }
 
-    if has_alpha {
+    if has_alpha && !t.interleave {
         for &q in &alpha_codes {
             put(&mut hash, bitpos, shape.alpha_ac_bits, q);
             bitpos += shape.alpha_ac_bits as usize;
@@ -3460,18 +3471,39 @@ mod tests {
             ..Tunables::DEFAULT
         };
         let d = Tunables::DEFAULT;
-        for (w, h, tier) in [(9u32, 7u32, 1u8), (12, 5, 0), (6, 6, 2)] {
-            let rgba = lever_image(w, h, false, w + h);
+        let cases = [
+            (9u32, 7u32, 1u8, false),
+            (12, 5, 0, false),
+            (6, 6, 2, false),
+            (6, 6, 1, true),
+            (11, 4, 0, true),
+            (7, 9, 2, true),
+        ];
+        for (w, h, tier, alpha) in cases {
+            let rgba = lever_image(w, h, alpha, w + h);
             let plain = encode_with(w, h, &rgba, Gamut::Srgb, &d, tier);
             let mixed = encode_with(w, h, &rgba, Gamut::Srgb, &il, tier);
+            assert_eq!(
+                plain[0] >> ALPHA_FLAG_BIT & 1 == 1,
+                alpha,
+                "premise: alpha mode {alpha}"
+            );
             assert_ne!(plain, mixed, "premise: {w}x{h} tier {tier} reorders");
 
             // Read the shipped order's codes, then lay them out in the merged
             // order: that must be the interleaved hash, bit for bit.
-            let shape = ac_shape(&d, false, tier);
+            let shape = ac_shape(&d, alpha, tier);
             let order = SelectionOrder::new(plain[1], tier, d.aniso_oblique, d.sel_hv);
-            let (l_sel, c_sel) = (order.take(shape.l_count()), order.take(shape.c_count));
-            let mut pos = prefix_bits(&d) as usize;
+            let l_sel = order.take(shape.l_count());
+            let c_sel = order.take(shape.c_count);
+            let alpha_sel = order.take(shape.alpha_ac_count);
+            let prefix = prefix_bits(&d) as usize
+                + if alpha {
+                    (d.alpha_dc_bits + d.alpha_scale_bits) as usize
+                } else {
+                    0
+                };
+            let mut pos = prefix;
             let mut read = |bits: u32| {
                 let q = crate::bitpack::read_bits(&plain, pos, bits);
                 pos += bits as usize;
@@ -3485,18 +3517,28 @@ mod tests {
             }
             let a: Vec<u32> = (0..shape.c_count).map(|_| read(shape.c_bits)).collect();
             let b: Vec<u32> = (0..shape.c_count).map(|_| read(shape.c_bits)).collect();
+            let al: Vec<u32> = (0..shape.alpha_ac_count)
+                .map(|_| read(shape.alpha_ac_bits))
+                .collect();
             let mut want = vec![0u8; plain.len()];
-            let mut pos = prefix_bits(&d) as usize;
+            let mut pos = prefix;
             for k in 0..pos {
                 if plain[k / 8] & (1 << (k % 8)) != 0 {
                     want[k / 8] |= 1 << (k % 8);
                 }
             }
-            for (ch, i) in interleaved_order(&l_sel, &c_sel, shape.l_count(), shape.c_count) {
+            let channels = [
+                (&l_sel, shape.l_count()),
+                (&c_sel, shape.c_count),
+                (&c_sel, shape.c_count),
+                (&alpha_sel, shape.alpha_ac_count),
+            ];
+            for (ch, i) in interleaved_order(&channels) {
                 let (bits, q) = match ch {
                     0 => l[i],
                     1 => (shape.c_bits, a[i]),
-                    _ => (shape.c_bits, b[i]),
+                    2 => (shape.c_bits, b[i]),
+                    _ => (shape.alpha_ac_bits, al[i]),
                 };
                 write_bits(&mut want, pos, bits, q);
                 pos += bits as usize;
@@ -3510,14 +3552,6 @@ mod tests {
                 "{w}x{h} tier {tier}"
             );
         }
-        // Alpha mode keeps the sequential layout on both sides.
-        let rgba = lever_image(6, 6, true, 1);
-        let plain = encode_with(6, 6, &rgba, Gamut::Srgb, &d, 1);
-        assert_eq!(encode_with(6, 6, &rgba, Gamut::Srgb, &il, 1), plain);
-        assert_eq!(
-            crate::decode::decode_to_with(&plain, &il, Gamut::Srgb),
-            crate::decode::decode_to_with(&plain, &d, Gamut::Srgb)
-        );
     }
 
     /// The alpha scale code of an alpha-mode hash.

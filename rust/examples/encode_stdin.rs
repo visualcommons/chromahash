@@ -230,6 +230,16 @@ fn tunables_from_env() -> Tunables {
             "synth_gain" => t.synth_gain = parse_f64(),
             "interleave" => t.interleave = value == "1" || value == "true",
             "trunc_bytes" => t.trunc_bytes = parse_u32() as usize,
+            // Register D2's cut: decode only the length a code-k hash of the
+            // same alpha mode has.
+            "cut_tier" => {
+                let k = parse_u32();
+                if k > u8::MAX as u32 || !chromahash::is_valid_tier(k as u8) {
+                    eprintln!("CHROMAHASH_TUNE: cut_tier={value} is not a valid tier code");
+                    std::process::exit(1);
+                }
+                t.cut_tier = Some(k as u8);
+            }
             "ac_coder" => t.ac_coder = parse_u32(),
             "alpha_dc_bits" => t.alpha_dc_bits = parse_u32(),
             "alpha_scale_bits" => t.alpha_scale_bits = parse_u32(),

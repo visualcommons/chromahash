@@ -128,23 +128,18 @@ impl SelectionOrder {
     }
 }
 
-/// Merged AC write order for the embedded/progressive layout: `(channel, index)`
-/// pairs sorted by frequency priority (L = 0, a = 1, b = 2), with the channel
-/// and index as deterministic tie-breaks. Encoder and decoder derive it from the
-/// selections alone, so it costs no bits.
-pub fn interleaved_order(
-    l_sel: &Selection,
-    c_sel: &Selection,
-    l_count: usize,
-    c_count: usize,
-) -> Vec<(u8, usize)> {
-    let mut v: Vec<(u64, u8, usize)> = Vec::with_capacity(l_count + 2 * c_count);
-    for (i, &p) in l_sel.priorities.iter().enumerate().take(l_count) {
-        v.push((p, 0, i));
-    }
-    for ch in [1u8, 2] {
-        for (i, &p) in c_sel.priorities.iter().enumerate().take(c_count) {
-            v.push((p, ch, i));
+/// Merged AC write order for the embedded/progressive layout (register entry
+/// D2): `(channel, index)` pairs sorted by frequency priority, with the channel
+/// and index as deterministic tie-breaks. `channels` lists each channel's
+/// selection and code count in channel order (L = 0, a = 1, b = 2, and alpha =
+/// 3 in alpha mode); a count past its selection's length is clamped to it.
+/// Encoder and decoder derive the order from the selections alone, so it costs
+/// no bits.
+pub fn interleaved_order(channels: &[(&Selection, usize)]) -> Vec<(u8, usize)> {
+    let mut v: Vec<(u64, u8, usize)> = Vec::with_capacity(channels.iter().map(|&(_, n)| n).sum());
+    for (ch, &(sel, count)) in channels.iter().enumerate() {
+        for (i, &p) in sel.priorities.iter().enumerate().take(count) {
+            v.push((p, ch as u8, i));
         }
     }
     v.sort_unstable();
@@ -1029,18 +1024,25 @@ mod tests {
         let c_sel = sel(vec![1, 4]);
         // Equal priorities break by channel (L, a, b), then by index.
         assert_eq!(
-            interleaved_order(&l_sel, &c_sel, 3, 2),
+            interleaved_order(&[(&l_sel, 3), (&c_sel, 2), (&c_sel, 2)]),
             vec![(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1), (0, 2)]
         );
         // Counts cap each channel's run, and a count past the selection's
         // length is clamped to it rather than indexing past the end.
         assert_eq!(
-            interleaved_order(&l_sel, &c_sel, 2, 1),
+            interleaved_order(&[(&l_sel, 2), (&c_sel, 1), (&c_sel, 1)]),
             vec![(0, 0), (1, 0), (2, 0), (0, 1)]
         );
         assert_eq!(
-            interleaved_order(&l_sel, &c_sel, 9, 0),
+            interleaved_order(&[(&l_sel, 9), (&c_sel, 0), (&c_sel, 0)]),
             vec![(0, 0), (0, 1), (0, 2)]
+        );
+        // Alpha mode's fourth channel joins the merge last at each priority,
+        // and a lower priority of any channel precedes it.
+        let alpha_sel = sel(vec![1, 2]);
+        assert_eq!(
+            interleaved_order(&[(&l_sel, 2), (&c_sel, 1), (&c_sel, 1), (&alpha_sel, 2)]),
+            vec![(0, 0), (1, 0), (2, 0), (3, 0), (3, 1), (0, 1)]
         );
     }
 }
