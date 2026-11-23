@@ -1384,6 +1384,16 @@ const D3_TIER_BASELINES: Record<string, string> = Object.fromEntries(
   ),
 );
 
+/** §13.10's holdout3 rows: D3's two frozen arms, by doc label. */
+const D3_FROZEN_ROWS: Record<string, string> = {
+  "code 3: `t3 w_min 0.85 exp 1`": "t3 w_min 0.85 exp 1",
+  "code 4: `t4 w_min 0.7 exp 1`": "t4 w_min 0.7 exp 1",
+};
+const D3_FROZEN_BASELINES: Record<string, string> = {
+  "code 3: `t3 w_min 0.85 exp 1`": "t3 shipped (no window)",
+  "code 4: `t4 w_min 0.7 exp 1`": "t4 shipped (no window)",
+};
+
 /** §13.8's holdout3 rows: D1's two frozen comparisons, by doc label. */
 const D1_FROZEN_ROWS: Record<string, string> = {
   "code 3: `t3 coded x3` vs `t3 shipped`": "t3 coded x3",
@@ -2734,6 +2744,48 @@ const BINDINGS: Binding[] = [
     },
     rowBaselines: D3_TIER_BASELINES,
   },
+  // §13.10 — D3's one holdout3 read, at the freeze: each frozen arm's
+  // spurious against code 2 (a column override) and its ΔE00, SSIMULACRA2
+  // and guards against its tier's shipped arm, then per holdout3 stratum.
+  {
+    kind: "rows",
+    section: "13.10",
+    table: 4,
+    sweep: "synthesis-window-codes34-frozen-holdout3",
+    columns: {
+      "Spur Δ vs code 2": "diff:spurious",
+      "Spur 95% CI": "diffCi:spurious",
+      ΔE00: "diff:ciede2000",
+      "95% CI of Δ": "diffCi:ciede2000",
+      relative: "ciedeDeltaPct",
+      SSIM2: "diff:ssimulacra2",
+      "SSIM2 95% CI": "diffCi:ssimulacra2",
+      "guards (CI)": "guardsCiVsBaseline",
+    },
+    aliases: D3_FROZEN_ROWS,
+    rowBaselines: D3_FROZEN_BASELINES,
+    baselines: {
+      "Spur Δ vs code 2": "t2 shipped (no window)",
+      "Spur 95% CI": "t2 shipped (no window)",
+    },
+  },
+  {
+    kind: "rows",
+    section: "13.10",
+    table: 5,
+    sweep: "synthesis-window-codes34-frozen-holdout3",
+    columns: Object.fromEntries(
+      D1_STRATUM_COLUMNS.map(([header]) => [header, "ciedeDeltaPct"]),
+    ),
+    subsets: Object.fromEntries(
+      D1_STRATUM_COLUMNS.map(([header, stratum]) => [
+        header,
+        (n: string) => holdout3StrataOf(n).includes(stratum),
+      ]),
+    ),
+    aliases: D3_FROZEN_ROWS,
+    rowBaselines: D3_FROZEN_BASELINES,
+  },
 
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
@@ -3017,6 +3069,12 @@ const EXPECTED_CELLS: Record<string, number> = {
   "13.10#0": 49,
   "13.10#1": 87,
   "13.10#2": 42,
+  // D3's holdout3 read: the two frozen arms' spurious difference and interval
+  // against code 2, ΔE00 difference, interval and relative, SSIM2 difference
+  // and interval, and guards (16); then their relative differences in each
+  // of the six strata (12).
+  "13.10#4": 16,
+  "13.10#5": 12,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */

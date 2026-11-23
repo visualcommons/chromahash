@@ -879,6 +879,95 @@ const REGISTER: Claim[] = [
     transform: abs,
   },
 
+  // D3's freeze quotes the two tune selections its rule made (§13.10 tables
+  // 0 and 1): each arm's mean spurious against code 2 and its relative ΔE00.
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D3: the code-3 selection's tune spurious against code 2",
+    pattern:
+      /mean spurious −([\d.]+) against code 2, ΔE00 −[\d.]+%, guards \(CI\)\s+`inconclusive` on SSIMULACRA2\);\n {2}- code 4/,
+    section: "13.10",
+    table: 0,
+    row: "t3 w_min 0.85 exp 1",
+    column: "Spur Δ vs code 2",
+    transform: abs,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D3: the code-3 selection's tune ΔE00",
+    pattern:
+      /mean spurious −[\d.]+ against code 2, ΔE00 −([\d.]+)%, guards \(CI\)\s+`inconclusive` on SSIMULACRA2\);\n {2}- code 4/,
+    section: "13.10",
+    table: 1,
+    row: "t3 w_min 0.85 exp 1",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D3: the code-4 selection's tune spurious against code 2",
+    pattern:
+      /`t4 w_min 0.7 exp 1` against `t4 shipped \(no window\)` \(tune:\s+mean spurious −([\d.]+) against code 2/,
+    section: "13.10",
+    table: 0,
+    row: "t4 w_min 0.7 exp 1",
+    column: "Spur Δ vs code 2",
+    transform: abs,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D3: the code-4 selection's tune ΔE00",
+    pattern:
+      /`t4 w_min 0.7 exp 1` against `t4 shipped \(no window\)` \(tune:\s+mean spurious −[\d.]+ against code 2, ΔE00 −([\d.]+)%/,
+    section: "13.10",
+    table: 1,
+    row: "t4 w_min 0.7 exp 1",
+    column: "relative",
+    transform: abs,
+  },
+
+  // D3's verdict quotes its two holdout3 readings (§13.10 table 4).
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D3: the code-3 holdout3 spurious against code 2",
+    pattern: /pinned grid \(spurious −([\d.]+), upper bound −[\d.]+\)/,
+    section: "13.10",
+    table: 4,
+    row: "code 3: `t3 w_min 0.85 exp 1`",
+    column: "Spur Δ vs code 2",
+    transform: abs,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D3: the code-3 holdout3 ΔE00",
+    pattern: /its ΔE00 is ([\d.]+)%\s+better than the shipped code-3 decode/,
+    section: "13.10",
+    table: 4,
+    row: "code 3: `t3 w_min 0.85 exp 1`",
+    column: "relative",
+    transform: abs,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D3: the code-4 holdout3 spurious against code 2",
+    pattern: /code 2 \(−([\d.]+), upper bound −[\d.]+\), is [\d.]+% better/,
+    section: "13.10",
+    table: 4,
+    row: "code 4: `t4 w_min 0.7 exp 1`",
+    column: "Spur Δ vs code 2",
+    transform: abs,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "D3: the code-4 holdout3 ΔE00",
+    pattern: /upper bound −[\d.]+\), is ([\d.]+)% better in ΔE00/,
+    section: "13.10",
+    table: 4,
+    row: "code 4: `t4 w_min 0.7 exp 1`",
+    column: "relative",
+    transform: abs,
+  },
+
   // D1's verdict quotes its two holdout3 readings (§13.8 table 3).
   {
     file: "spec/V0.8-DECISIONS.md",

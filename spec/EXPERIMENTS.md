@@ -801,6 +801,11 @@ mise run sweep embedded-tiers-identity --split tune2                    # §13.9
 mise run sweep synthesis-window-codes34                                 # §13.10
 mise run stratify synthesis-window-codes34 --window                     # §13.10
 mise run arms --seed-sensitivity synthesis-window-codes34               # §13.10
+# Its one holdout3 read, at the freeze commit 40bf6f2; a second read for D3
+# refuses, so this line cannot run again as written. Then its verdict,
+# re-derived from the committed result (re-scores nothing)
+mise run sweep synthesis-window-codes34-frozen --split holdout3 --decision D3  # §13.10
+mise run register-verdict D3                                            # §13.10
 
 # Check the tables in this file against the results above
 mise run verify:experiments
@@ -3694,7 +3699,8 @@ Stated as measurements, not as a plan. Nothing here adopts anything.
   below — indistinguishable from code 1, and ~0.7 levels under codes 3–4 with a
   paired interval that excludes zero. A taper judged there is judged where there
   is least invented structure for it to remove. The interesting measurement —
-  the same taper at codes 3 and 4 — has not been made.
+  the same taper at codes 3 and 4 — has not been made. (§13.10 has since
+  made it, under register entry D3.)
 * **Possibly two defects, not one.** A change that suppresses low-order banding
   on smooth content and a change that stops the basis fighting real texture
   would be different changes, and a single corpus mean would report their sum.
@@ -3758,7 +3764,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 932 | 702 | 649 | 589 | 174 | 169 | 87 | 87 |
+| all committed sweeps | 936 | 706 | 653 | 593 | 174 | 169 | 87 | 87 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3774,16 +3780,18 @@ to 864 when the register's confirmations committed their three holdout2
 sweeps (§13.7), and to 880 and then 883 when D1 committed its tune sweep and
 its holdout3 read (§13.8), and to 898 when D2 committed its tune ladder
 and then 916 when it committed the two `embedded-tiers-identity` results of
-part 1 (§13.9), and to 932 when D3 committed its tune sweep (§13.10). The
+part 1 (§13.9), and to 932 and then 936 when D3 committed its tune sweep
+and its holdout3 read (§13.10). The
 row compares every arm with its sweep's
 first row whatever the arm's tier, so it includes cross-tier comparisons at
-different byte counts that no decision judged: 179 of the 932 arms, 13 of them
+different byte counts that no decision judged: 183 of the 936 arms, 13 of them
 D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
-row, and the 2 code-4 rows of its holdout3 read against its code-3 row) and
+row, and the 2 code-4 rows of its holdout3 read against its code-3 row),
 30 D2's (every row but `t0 interleaved full` of `embedded-tiers-ladder` and
-of each `embedded-tiers-identity` result, against its code-0 row) and 16
-D3's (every code-3 and code-4 row of `synthesis-window-codes34` against its
-code-2 row, which D3 reads on spurious detail alone), the
+of each `embedded-tiers-identity` result, against its code-0 row) and 20
+D3's (every code-3 and code-4 row of `synthesis-window-codes34` and of its
+holdout3 read against its code-2 row, which D3 reads on spurious detail
+alone), the
 rest from the tier ladders and mixed-tier tables of earlier sweeps. The
 prose below counts the 839 of the re-measure. The
 eight rows below it did not move then: those sweeps re-ran per-image identical.
@@ -4644,4 +4652,65 @@ Both codes have a qualifying arm, so neither is decided in sample, and one
 arm per code keeps the register's two-arm cap. Under 20 bootstrap seeds
 other than 42 the selection does not change, and `mise run arms
 --seed-sensitivity synthesis-window-codes34` turns no interval and no Holm
-verdict.
+verdict. Q8's power statement for `holdout3`'s 88 images, from each arm's
+tune spread: a ΔE00 MDE of 0.36% at code 3 and 1.00% at code 4, so δ =
+1.0% is resolved, and a spurious MDE of 0.31 and 0.38 levels against tune
+estimates of −0.09 and −0.39, so at code 3 the read had little power to
+pass the primary.
+
+**The holdout3 read.** D3 froze at `40bf6f2`, and read `holdout3` once from
+a clean tree at that commit: `mise run sweep synthesis-window-codes34-frozen
+--split holdout3 --decision D3`, over all 88 pins (48 photographic, 24
+alpha, 16 graphics), with exactly the five frozen rows. The result is
+committed as `synthesis-window-codes34-frozen-holdout3.json`, and `mise run
+register-verdict D3` re-derives every row below from it. Spurious detail is
+read against shipped code 2 (4.59 here), everything else against the
+tier's shipped arm.
+
+| frozen arm | Spur Δ vs code 2 | Spur 95% CI | ΔE00 | 95% CI of Δ | relative | SSIM2 | SSIM2 95% CI | guards (CI) |
+|---|---|---|---|---|---|---|---|---|
+| code 3: `t3 w_min 0.85 exp 1` | −0.287 | [−0.513, −0.074] | −0.014 | [−0.028, +0.001] | −0.20% | −0.2 | [−0.491, +0.067] | ok |
+| code 4: `t4 w_min 0.7 exp 1` | −0.452 | [−0.717, −0.203] | −0.069 | [−0.096, −0.041] | −1.07% | +0.2 | [−0.162, +0.632] | ok |
+
+Per stratum, the relative ΔE00 difference against the tier's shipped arm
+over each stratum's pins (a pin may sit in several):
+
+| frozen arm | smartphone (17) | graphics (16) | alpha (24) | skin (17) | low-light (12) | extreme aspect (16) |
+|---|---|---|---|---|---|---|
+| code 3: `t3 w_min 0.85 exp 1` | −0.54% | −0.55% | +0.69% | −0.53% | −1.14% | +0.23% |
+| code 4: `t4 w_min 0.7 exp 1` | −1.65% | −1.40% | +0.49% | −1.85% | −2.96% | +0.41% |
+
+The shipped arms score 7.090 at code 3 and 6.397 at code 4, and invent
++0.412 [+0.170, +0.644] and +0.299 [+0.007, +0.579] more than code 2 here:
+§13.2's step holds out of sample, smaller than on tune. Under R2 with the
+artifact primary and the stratum rule (`mise run register-verdict D3`):
+
+1. **Code 3 passes.** `t3 w_min 0.85 exp 1` invents less than shipped code
+   2, with the interval's upper bound at −0.074; its ΔE00 is 0.20% better
+   than the shipped code-3 decode, with an upper bound of +0.02% against
+   the +1.0% margin; every guard is `ok` on its paired interval,
+   SSIMULACRA2 included (−0.2, [−0.491, +0.067] against the 1.0-point
+   tolerance). No stratum fails the stratum rule. Two are `inconclusive`
+   on guards (alpha and skin); the alpha stratum is the only one whose
+   ΔE00 interval excludes zero on the losing side, +0.69% with a lower
+   bound of +0.35%, inside the +1.0% the rule allows.
+2. **Code 4 passes.** `t4 w_min 0.7 exp 1` invents less than code 2 with
+   an upper bound of −0.203, is 1.07% better than the shipped code-4
+   decode in ΔE00 with its whole interval below zero, and is `ok` on every
+   guard. No stratum fails; graphics and extreme aspect are
+   `inconclusive` on guards, and alpha's ΔE00 interval reaches −0.03% at
+   its lower bound.
+3. **Condition 4 holds.** Under 20 bootstrap seeds other than 42 no
+   outcome turns, overall or in any stratum.
+
+Two readings go beyond the verdict. The SSIMULACRA2 cost that decided
+§12.3 at code 2, and that left both arms `inconclusive` on tune, is not
+there on `holdout3` (−0.2 and +0.2 points), so the tension §12.3 states
+is a property of the lower tiers, not of the window. And the alpha
+stratum is the one that pays at both codes, as alpha did on tune: the
+window tapers alpha's AC codes with the luma window, and an arm that left
+alpha untapered is untested. Adopting the window at codes 3–4 is a decode
+change in every language, which the v0.8 verdict lands or declines; it
+moves every code-3 and code-4 decode vector and no hash. U19 still bounds
+the claim: spurious detail and SSIMULACRA2 are both metrics no human has
+validated at placeholder fidelity.

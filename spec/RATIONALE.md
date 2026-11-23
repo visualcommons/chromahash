@@ -305,6 +305,17 @@ better DSSIM, and failing on SSIMULACRA2 alone. That is a decision resting
 entirely on whether SSIMULACRA2 is right about placeholders, which is U19 and
 is still open.
 
+**Measured where the invention is** (`V0.8-DECISIONS.md` D3, `EXPERIMENTS.md`
+§13.10). Codes 3–4 invent more structure than code 2, and the window was
+read there once on the sealed `holdout3`, under R2 with spurious detail as
+the primary. A light taper (`w_min 0.85` at code 3, `w_min 0.7` at code 4)
+brings both codes under code 2's floor, costs no ΔE00 (code 4 is better),
+and keeps every guard `ok` on intervals, SSIMULACRA2 included: at these
+codes the SSIMULACRA2 cost that decided code 2 does not appear. D3 passes at
+both codes. Applied by tier it is a decode change that moves the code-3
+and code-4 decode vectors and no hash; the v0.8 verdict lands it or
+declines it, and until then the shipped decode keeps the window off.
+
 ## Quantization (the audio-codec audit)
 
 ### µ-law companding, µ_L=5 / µ_C=8 / µ_ALPHA=5 — validated against the family
