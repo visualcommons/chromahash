@@ -836,6 +836,16 @@ mise run sweep alpha-tiers34-frozen --split holdout3 --decision D6      # §13.1
 mise run register-verdict D6                                            # §13.12
 mise run stratify alpha-tiers34-frozen-holdout3 --alpha-tiers           # §13.12
 
+# Register D8, the code-0 compact layout (§13.13): the tune sweeps at code 0,
+# every layout against the shipped one, on the photographs D8's selection
+# rule reads and on the graphics beside them, per stratum, and the seed
+# re-draw. D8 is decided in sample (Q13), so it has no holdout3 read
+mise run sweep compact-retune                                           # §13.13
+mise run sweep compact-retune-graphics                                  # §13.13
+mise run stratify compact-retune --strata                               # §13.13
+mise run stratify compact-retune-graphics --strata                      # §13.13
+mise run arms --seed-sensitivity compact-retune                         # §13.13
+
 # Check the tables in this file against the results above
 mise run verify:experiments
 mise run verify:experiments --list-unbound
@@ -3793,7 +3803,7 @@ against its incumbent:
 
 | sweep | arms | ΔE00 p < 0.05 | after Holm | guards (CI) ok | inconclusive | FAIL | ok on means, not on CI | FAIL on means, not shown on CI |
 |---|---|---|---|---|---|---|---|---|
-| all committed sweeps | 1021 | 779 | 726 | 674 | 175 | 172 | 88 | 87 |
+| all committed sweeps | 1049 | 786 | 731 | 681 | 190 | 178 | 97 | 93 |
 | `selection-weights` | 28 | 13 | 2 | 2 | 26 | 0 | 12 | 14 |
 | `alpha-layout` | 33 | 22 | 10 | 20 | 4 | 9 | 0 | 4 |
 | `refine-ablation` | 16 | 9 | 4 | 7 | 9 | 0 | 3 | 6 |
@@ -3812,10 +3822,12 @@ and then 916 when it committed the two `embedded-tiers-identity` results of
 part 1 (§13.9), and to 932 and then 936 when D3 committed its tune sweep
 and its holdout3 read (§13.10), and to 983 and then 995 when D5 committed
 its tune sweep and its holdout3 read (§13.11), and to 1018 and then 1021 when D6
-committed its tune sweep and its holdout3 read (§13.12). The
+committed its tune sweep and its holdout3 read (§13.12), and to 1049 when D8
+committed its two tune sweeps, every arm at code 0 against the shipped code-0
+layout (§13.13). The
 row compares every arm with its sweep's
 first row whatever the arm's tier, so it includes cross-tier comparisons at
-different byte counts that no decision judged: 245 of the 1021 arms, 13 of them
+different byte counts that no decision judged: 245 of the 1049 arms, 13 of them
 D1's (the 11 code-3 and code-4 rows of `entropy-coded-ac` against its code-2
 row, and the 2 code-4 rows of its holdout3 read against its code-3 row),
 30 D2's (every row but `t0 interleaved full` of `embedded-tiers-ladder` and
@@ -5142,3 +5154,121 @@ still rising with count there (−8.81%, −10.08%, −10.25% for `A12@5`,
 The shipped bytes are unchanged: adopting a 5-bit alpha row at codes 3 and 4 is a
 format change, and a per-code row ends the single base row that codes 2–4
 share, which the v0.8 verdict lands in every language or declines.
+
+### 13.13 D8: the code-0 compact layout (2026-11)
+
+Register entry D8 asks whether code 0 should ship another 21-byte AC layout
+in place of the shipped `L19@4 C6@3`. It exists because C1 found
+`L26@3 C6@3` 1.50% better than the shipped layout on `holdout2` (§13.7),
+below R1's 3%, and `holdout2` chose the candidate, so it is not evidence
+for it. `V0.8-DECISIONS.md` D8 records the sweep, the selection rule (the
+default: one arm, the lowest tune ΔE00 that is not the shipped layout,
+among those whose tune `guards (CI)` is not `FAIL`) and Q13's in-sample
+stop, all committed before this result.
+
+**Tune (`mise run sweep compact-retune`).** The 31 photographic tune
+images, every hash 21 B. The 15 layouts of `compact-tier.json` (§11.10),
+unchanged, each encoded at code 0 as deployed rather than at code 1 with a
+21-byte override as §11.10 and C1 measured them, every arm read against the
+shipped `L19@4 C6@3`. Every arm's mean ΔE00 is the one §11.10 records for
+the same layout to the third decimal: the tier code changes the header,
+not the payload or the render. `relative` is the difference of means over
+the shipped mean; the interval, `p Holm` (across the 14 arms) and the
+guards are paired.
+
+| arm | ΔE00 | relative | 95% CI of Δ | p Holm | guards (CI) |
+|---|---|---|---|---|---|
+| t0 L19@4 C6@3 (shipped) | 12.156 | — | — | — | — |
+| t0 L26@3 C6@3 | 12.166 | +0.09% | [−0.067, +0.085] | 1.0000 | inconclusive |
+| t0 L13@5 C6@4 (pre-v0.7 shape) | 12.620 | +3.81% | [+0.292, +0.666] | 0.0028 | FAIL |
+| t0 L22@3 C8@3 | 12.199 | +0.35% | [−0.026, +0.113] | 1.0000 | inconclusive |
+| t0 L18@4 C7@3 | 12.171 | +0.13% | [−0.028, +0.073] | 1.0000 | inconclusive |
+| t0 L20@4 C5@3 | 12.243 | +0.72% | [−0.002, +0.204] | 0.6775 | ok |
+| t0 L22@4 C4@3 | 12.207 | +0.42% | [−0.050, +0.188] | 1.0000 | ok |
+| t0 L16@4 C8@3 | 12.244 | +0.72% | [−0.007, +0.184] | 0.6775 | FAIL |
+| t0 L16@4 C6@4 | 12.289 | +1.10% | [+0.051, +0.226] | 0.0120 | FAIL |
+| t0 L24@3 C7@3 | 12.189 | +0.27% | [−0.033, +0.102] | 1.0000 | inconclusive |
+| t0 L28@3 C5@3 | 12.182 | +0.22% | [−0.130, +0.187] | 1.0000 | inconclusive |
+| t0 L30@3 C3@3 | 12.239 | +0.68% | [−0.107, +0.283] | 1.0000 | ok |
+| t0 L20@3 C9@3 | 12.228 | +0.59% | [−0.010, +0.148] | 0.7325 | inconclusive |
+| t0 L35@3 C2@2 (count-max) | 12.280 | +1.02% | [−0.124, +0.381] | 1.0000 | ok |
+| t0 L19@5 C2@4 (precision-max) | 12.444 | +2.37% | [+0.117, +0.486] | 0.0028 | inconclusive |
+
+The same arms on the 16 graphics tune images
+(`mise run sweep compact-retune-graphics`, with `forceOpaque` as §11.10's
+graphics run had), which gate nothing:
+
+| arm | ΔE00 | relative | 95% CI of Δ | p Holm | guards (CI) |
+|---|---|---|---|---|---|
+| t0 L19@4 C6@3 (shipped) | 10.855 | — | — | — | — |
+| t0 L26@3 C6@3 | 10.813 | −0.39% | [−0.121, +0.029] | 1.0000 | ok |
+| t0 L13@5 C6@4 (pre-v0.7 shape) | 11.166 | +2.86% | [+0.097, +0.576] | 0.0028 | FAIL |
+| t0 L22@3 C8@3 | 10.902 | +0.43% | [−0.063, +0.195] | 1.0000 | inconclusive |
+| t0 L18@4 C7@3 | 10.917 | +0.57% | [−0.028, +0.200] | 1.0000 | inconclusive |
+| t0 L20@4 C5@3 | 10.783 | −0.67% | [−0.190, +0.009] | 1.0000 | inconclusive |
+| t0 L22@4 C4@3 | 10.805 | −0.47% | [−0.201, +0.078] | 1.0000 | ok |
+| t0 L16@4 C8@3 | 11.060 | +1.89% | [+0.018, +0.446] | 0.3168 | FAIL |
+| t0 L16@4 C6@4 | 11.078 | +2.05% | [+0.046, +0.449] | 0.0052 | FAIL |
+| t0 L24@3 C7@3 | 10.885 | +0.27% | [−0.064, +0.159] | 1.0000 | inconclusive |
+| t0 L28@3 C5@3 | 10.737 | −1.09% | [−0.261, −0.002] | 0.5235 | ok |
+| t0 L30@3 C3@3 | 10.732 | −1.14% | [−0.296, +0.048] | 1.0000 | inconclusive |
+| t0 L20@3 C9@3 | 10.870 | +0.14% | [−0.169, +0.201] | 1.0000 | inconclusive |
+| t0 L35@3 C2@2 (count-max) | 10.869 | +0.13% | [−0.299, +0.429] | 1.0000 | inconclusive |
+| t0 L19@5 C2@4 (precision-max) | 10.996 | +1.30% | [−0.112, +0.478] | 1.0000 | inconclusive |
+
+Per `holdout3` stratum, from each tune image's own covariates
+(`mise run stratify compact-retune --strata` and
+`mise run stratify compact-retune-graphics --strata`), the relative
+difference of the layouts within 0.5% of the shipped one overall, and the
+stratum rule's verdict; the photographic tune split holds no
+extreme-aspect image, and on tune the strata gate nothing:
+
+| stratum (tune images) | `L26@3 C6@3` | `L18@4 C7@3` | `L28@3 C5@3` | `L24@3 C7@3` | `L22@3 C8@3` | `L22@4 C4@3` |
+|---|---|---|---|---|---|---|
+| smartphone (4) | −0.67%, inconclusive | +0.25%, inconclusive | −0.32%, inconclusive | +0.68%, inconclusive | −0.32%, inconclusive | +0.09%, inconclusive |
+| skin (11) | +0.24%, inconclusive | +0.29%, inconclusive | +1.55%, inconclusive | +0.16%, inconclusive | +0.19%, inconclusive | +1.32%, ok |
+| low-light (9) | +0.01%, inconclusive | +0.07%, inconclusive | −0.37%, inconclusive | +0.34%, inconclusive | +0.06%, inconclusive | −0.44%, inconclusive |
+| graphics (16) | −0.39%, ok | +0.57%, inconclusive | −1.09%, ok | +0.27%, inconclusive | +0.43%, inconclusive | −0.47%, ok |
+
+What the tune result says:
+
+1. **No layout beats the shipped one on the photographs.** Every one of
+   the 14 candidates has a higher mean ΔE00 than `L19@4 C6@3`, and none
+   has an interval wholly below zero. The leading layouts are §11.10's
+   plateau: `L26@3 C6@3` is +0.09% with an interval of [−0.067, +0.085],
+   and five layouts sit within +0.35%.
+2. **The graphics split leans the other way, and not far.** Five layouts
+   score below the shipped one on graphics, the best `L30@3 C3@3` at
+   −1.14% and `L28@3 C5@3` at −1.09%, the only interval that excludes zero
+   and not after Holm; `L26@3 C6@3` is −0.39%. None is near 3%, and the
+   graphics split gates nothing.
+3. **No stratum hides a gain the size of the bar.** The smartphone stratum
+   favours `L26@3 C6@3` by −0.67% over 4 images; no stratum entry for a
+   plateau layout is past ±1.6%.
+4. **An adaptive layout could not reach the bar either.** The per-image
+   oracle that picks, for each image, whichever of the 15 layouts scores
+   lowest, after scoring them, with no bit spent to signal it, is −2.41%
+   against the shipped layout on the photographs (−3.23% on graphics),
+   computed from the committed per-image ΔE00 of `compact-retune.json` and
+   `compact-retune-graphics.json`. It is an oracle, so it cannot be an arm
+   (the adaptive/conditional rule), and the minimum of 15 noisy scores per
+   image overstates any encoder's decision. A signalled form would also pay
+   for its choice inside the same 21 bytes, so on the photographic primary
+   no adaptive layout choice among these could clear R1's 3%.
+
+**Selection (the rule D8 recorded before this run).** The lowest tune
+ΔE00 that is not the shipped layout is `t0 L26@3 C6@3` (12.166), whose
+tune `guards (CI)` is `inconclusive`, not `FAIL`, so the rule picks it.
+It is +0.09% against the shipped layout, not 3% better, so it fails R1's
+condition 1 in sample, and under Q13 D8 is decided without a `holdout3`
+read: nothing is frozen, and `holdout3` stays unread by D8. The pick and
+the outcome rest on point estimates; under 20 bootstrap seeds other than
+42, `mise run arms --seed-sensitivity compact-retune` turns no interval
+and no Holm verdict, and no seed can move a mean.
+
+**The verdict: D8 does not pass.** The shipped `L19@4 C6@3` stays the
+code-0 layout. The 1.50% C1 found for `L26@3 C6@3` on `holdout2` does not
+reappear on tune, where the two are a tie (+0.09%); it was read on the
+split that chose the candidate, and it was below R1's 3% there too. The
+shipped bytes are unchanged, and C1's ThumbHash admission of the compact
+tier, which this entry did not re-read, stands as §13.7 records it.

@@ -7874,6 +7874,19 @@ console.log(
       ),
     `${committedSpread.comparisons.alpha.length} alpha comparisons`,
   );
+  // And D8's, a photographic tune result at the incumbent's bytes.
+  check(
+    "readSpread leaves compact-retune out of §13.6's population (MDE_EXCLUDED), as it does D6's",
+    MDE_EXCLUDED["compact-retune"] !== undefined &&
+      committedSpread.comparisons.photo.length > 0 &&
+      !committedSpread.comparisons.photo.some(
+        (c) => c.result === "compact-retune",
+      ) &&
+      !committedSpread.incumbents.photo.some(
+        (c) => c.result === "compact-retune",
+      ),
+    `${committedSpread.comparisons.photo.length} photo comparisons`,
+  );
   const noneEligible = selectD6(
     readings.filter((r) => r.spec.k === 4 || !r.eligible),
   );

@@ -2994,6 +2994,26 @@ const BINDINGS: Binding[] = [
     rowBaselines: D6_FROZEN_BASELINES,
   },
 
+  // §13.13 — register D8 on tune: every code-0 layout against the shipped
+  // one (row 0 of each config), on the photographs the selection reads and
+  // on the graphics beside them. D8 is decided in sample (Q13), so no
+  // holdout3 table exists to bind.
+  ...(["compact-retune", "compact-retune-graphics"] as const).map(
+    (sweep, table): RowBinding => ({
+      kind: "rows",
+      section: "13.13",
+      table,
+      sweep,
+      columns: {
+        ΔE00: "meanCiede",
+        relative: "ciedeDeltaPct",
+        "95% CI of Δ": "diffCi:ciede2000",
+        "p Holm": "pHolm:ciede2000",
+        "guards (CI)": "guardsCi",
+      },
+    }),
+  ),
+
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
   {
@@ -3302,6 +3322,11 @@ const EXPECTED_CELLS: Record<string, number> = {
   // relative differences in two strata and two opacity halves (8).
   "13.12#2": 10,
   "13.12#3": 8,
+  // §13.13, register D8 on tune: every layout's ΔE00 (15) and the 14
+  // candidates' relative, interval, Holm p and guards (56), on the
+  // photographs and then on the graphics.
+  "13.13#0": 71,
+  "13.13#1": 71,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
@@ -3419,6 +3444,8 @@ const UNBOUND_NOTES: Record<string, string> = {
     "stratify output, not a sweep: the same derived tune strata as §13.8's, under the stratum rule against each tier's full-resolution incumbent (downsample-core.ts). Reproduce with `mise run stratify downsample-before-dct --downsample`",
   "13.10#3":
     "stratify output, not a sweep: the same derived tune strata as §13.8's, under the stratum rule against each tier's shipped arm, with spurious against code 2 beside it (window-core.ts). Reproduce with `mise run stratify synthesis-window-codes34 --window`",
+  "13.13#2":
+    "stratify output, not a sweep: the same derived tune strata as §13.8's, under the stratum rule against the shipped code-0 layout. Reproduce with `mise run stratify compact-retune --strata` and `mise run stratify compact-retune-graphics --strata`",
 };
 
 if (values["list-unbound"]) {

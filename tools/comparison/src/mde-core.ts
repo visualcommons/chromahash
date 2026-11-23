@@ -58,13 +58,16 @@ export const NEAR = 0.03;
  * entry's own tune sweep, committed after it, would otherwise join the spread
  * and move a statement other freezes already cite. The entries that sweep on
  * corpus `all` never joined it (the spread reads only `photo` and `alpha`);
- * D6's sweeps the alpha corpus alone, so it is named here. Its own power
- * statement is computed at its freeze from its own spread (`V0.8-DECISIONS.md`
- * D6, Q8).
+ * D6's sweeps the alpha corpus alone and D8's the photographic one, so both
+ * are named here. D6's own power statement is computed at its freeze from its
+ * own spread (`V0.8-DECISIONS.md` D6, Q8); D8 was decided in sample (Q13) and
+ * never froze.
  */
 export const MDE_EXCLUDED: Readonly<Record<string, string>> = {
   "alpha-tiers34":
     "register D6's tune sweep (#137), committed after §13.6; its freeze computes its own Q8 statement",
+  "compact-retune":
+    "register D8's tune sweep (#138), committed after §13.6; D8 is decided in sample under Q13 and has no freeze",
 };
 
 export type MdeCorpus = "photo" | "alpha";
