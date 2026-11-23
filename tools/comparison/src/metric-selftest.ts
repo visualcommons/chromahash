@@ -251,9 +251,11 @@ import {
 } from "./stratify-core.ts";
 import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
 import {
+  checkIdenticalTo,
   decodeDigest,
   expectedLength,
   identityMismatches,
+  identityRow,
   realOnlyInputs,
 } from "./sweep-core.ts";
 import {
@@ -6594,6 +6596,79 @@ console.log(
       some.join(",") === "b,c" &&
       unequal === "identicalTo compares 3 decodes against 2, over 3 images",
     `${none.join(",")}|${some.join(",")}|${unequal}`,
+  );
+
+  const refusal = (
+    variants: { label: string; identicalTo?: string }[],
+  ): string => {
+    try {
+      checkIdenticalTo(variants, "cfg");
+      return "";
+    } catch (e) {
+      return (e as Error).message;
+    }
+  };
+  const valid = refusal([
+    { label: "n" },
+    { label: "i", identicalTo: "n" },
+    { label: "j", identicalTo: "n" },
+  ]);
+  const unknown = refusal([{ label: "n" }, { label: "i", identicalTo: "m" }]);
+  const later = refusal([{ label: "i", identicalTo: "n" }, { label: "n" }]);
+  const chained = refusal([
+    { label: "n" },
+    { label: "i", identicalTo: "n" },
+    { label: "j", identicalTo: "i" },
+  ]);
+  check(
+    "checkIdenticalTo accepts arms naming an earlier scored variant and refuses an unknown, a later or a chained label",
+    valid === "" &&
+      unknown ===
+        'variant "i" is identicalTo "m", which is no earlier scored variant of cfg' &&
+      later ===
+        'variant "i" is identicalTo "n", which is no earlier scored variant of cfg' &&
+      chained ===
+        'variant "j" is identicalTo "i", which is no earlier scored variant of cfg',
+    `${valid}|${unknown}|${later}|${chained}`,
+  );
+
+  const ref = {
+    label: "t1 native",
+    tune: null,
+    tier: 1,
+    version: null,
+    bytes: 32,
+    meanCiede: 2.5,
+    decodeDigests: ["x", "y", "z"],
+    perImage: { ciede2000: [1, 2, 3], bytes: [32, 32, 32] },
+  };
+  const arm = {
+    label: "t1 interleaved full",
+    tune: "interleave=1",
+    tier: 1,
+    version: null,
+  };
+  const row = identityRow(ref, arm, [32, 32, 33], ["x", "y", "z"], names);
+  let differs = "";
+  try {
+    identityRow(ref, arm, [32, 32, 32], ["x", "q", "z"], names);
+  } catch (e) {
+    differs = (e as Error).message;
+  }
+  check(
+    "identityRow keeps the reference's metric series under the arm's own label, spec, bytes and digests, and refuses a differing decode",
+    row.label === arm.label &&
+      row.tune === "interleave=1" &&
+      row.meanCiede === 2.5 &&
+      row.perImage.ciede2000 === ref.perImage.ciede2000 &&
+      row.perImage.bytes?.join(",") === "32,32,33" &&
+      row.bytes === 97 / 3 &&
+      row.decodeDigests.join(",") === "x,y,z" &&
+      ref.label === "t1 native" &&
+      ref.perImage.bytes.join(",") === "32,32,32" &&
+      differs ===
+        "t1 interleaved full: 1 of 3 decodes differ from t1 native's (identicalTo), first b",
+    `${JSON.stringify(row)}|${differs}`,
   );
 }
 

@@ -67,9 +67,10 @@ import {
 } from "./corpus.ts";
 import {
   type ExpectBytes,
+  checkIdenticalTo,
   decodeDigest,
   expectedLength,
-  identityMismatches,
+  identityRow,
   realOnlyInputs,
 } from "./sweep-core.ts";
 import { gamutToSrgbReference } from "./gamut.ts";
@@ -675,26 +676,18 @@ async function scoreVariant(
     path.basename(i.filePath).replace(/\.[^.]+$/, ""),
   );
   if (reference) {
-    const differ = identityMismatches(
-      reference.decodeDigests,
+    return identityRow(
+      reference,
+      {
+        label: variant.label,
+        tune: variant.tune ?? null,
+        tier,
+        version: variant.version ?? null,
+      },
+      bytes,
       digests,
       imageNames,
     );
-    if (differ.length > 0) {
-      throw new Error(
-        `${variant.label}: ${differ.length} of ${imageNames.length} decodes differ from ${reference.label}'s (identicalTo), first ${differ.slice(0, 5).join(", ")}`,
-      );
-    }
-    return {
-      ...reference,
-      label: variant.label,
-      tune: variant.tune ?? null,
-      tier,
-      version: variant.version ?? null,
-      bytes: bytesSum / (inputs.length || 1),
-      perImage: { ...reference.perImage, bytes },
-      decodeDigests: digests,
-    };
   }
 
   return {
@@ -952,16 +945,7 @@ async function main(): Promise<void> {
 
   // Every identicalTo names an earlier variant, checked before the first
   // encode so a misspelt label fails at once rather than hours in.
-  for (const [i, v] of config.variants.entries()) {
-    if (v.identicalTo === undefined) continue;
-    const earlier = config.variants.slice(0, i);
-    const target = earlier.find((e) => e.label === v.identicalTo);
-    if (!target || target.identicalTo !== undefined) {
-      throw new Error(
-        `variant "${v.label}" is identicalTo "${v.identicalTo}", which is no earlier scored variant of ${config.name}`,
-      );
-    }
-  }
+  checkIdenticalTo(config.variants, config.name);
   const identity: { arm: string; of: string; images: number }[] = [];
 
   const rows: SweepRow[] = [];
