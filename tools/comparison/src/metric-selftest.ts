@@ -276,6 +276,7 @@ import {
   d5Arms,
   d5Candidates,
   d5Verdict,
+  deriveD5Verdict,
   readD5,
   readD5Speed,
   selectD5,
@@ -7614,6 +7615,26 @@ console.log(
       !slow.pass &&
       refused.includes("one per tier"),
     `pass ${v.pass} slow ${slow.pass} refused ${refused.slice(0, 40)}`,
+  );
+
+  // The committed read: the register's D5 verdict, re-derived.
+  const shipped = deriveD5Verdict(0);
+  const failing = shipped.readings.flatMap((r) =>
+    (r.strata ?? [])
+      .filter((s) => s.verdict === "FAIL")
+      .map((s) => `t${r.spec.k} ${s.stratum}`),
+  );
+  check(
+    "D5's committed read: every tier passes conditions 1 and 2 and the speed passes (7.300× against ACCEL_ALL at linear 128), but code 2's low-light stratum fails the stratum rule, so D5 fails",
+    !shipped.pass &&
+      shipped.speed.pass &&
+      shipped.speed.accelRatio.toFixed(3) === "7.300" &&
+      shipped.readings.length === 5 &&
+      shipped.readings.every((r) => r.cond1 && r.guardsOk) &&
+      shipped.readings.map((r) => r.pass).join(",") ===
+        "true,true,false,true,true" &&
+      failing.join(",") === "t2 low-light",
+    `pass ${shipped.pass}; tiers ${shipped.readings.map((r) => r.pass).join(",")}; failing ${failing.join(",")}`,
   );
 }
 

@@ -400,8 +400,18 @@ export interface D5Freeze {
   candidate: string;
 }
 
-/** The freeze, once recorded (D5, "Frozen arms"). */
-export const D5_FROZEN: D5Freeze | null = null;
+/** The freeze (D5, "Frozen arms"): the linear placement's five arms. */
+export const D5_FROZEN: D5Freeze | null = {
+  result: "downsample-before-dct-frozen-holdout3",
+  arms: [
+    armLabel(0, "linear", 128),
+    armLabel(1, "linear", 128),
+    armLabel(2, "linear", 128),
+    armLabel(3, "linear", 256),
+    armLabel(4, "linear", 512),
+  ],
+  candidate: candidateId("linear", 128),
+};
 
 export interface D5Verdict {
   result: string;
