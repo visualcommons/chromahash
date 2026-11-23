@@ -1,0 +1,35 @@
+{
+  "name": "compact-retune",
+  "description": "Register entry D8 (spec/V0.8-DECISIONS.md, #138): should code 0 ship another 21-byte AC layout in place of the shipped L19@4 C6@3 (LAYOUT_TC)? Every arm is encoded at code 0 itself, as deployed, not at code 1 with a 21-byte override as compact-tier.json (EXPERIMENTS.md 11.10) and C1 measured it: the bare layout keys write every row of the table, and at code 0 only the compact row is read. The first arm pins the shipped row and is the incumbent every other arm is read against, at equal bytes (expectBytes 21). The candidates are the 14 other 21-byte layouts of compact-tier.json, unchanged: L26@3 C6@3 (C1's holdout2 figure, which is why D8 exists) first, then the rest in compact-tier.json's order, the pre-v0.7 compact shape L13@5 C6@4 included. Corpus photo, the photographic tune split, on which D8's selection rule is applied; compact-retune-graphics.json reads the same arms on the graphics tune split as secondary evidence.",
+  "corpus": "photo",
+  "expectBytes": 21,
+  "variants": [
+    { "label": "t0 L19@4 C6@3 (shipped)", "tier": 0, "tune": "l1=19:4 c=6:3" },
+    { "label": "t0 L26@3 C6@3", "tier": 0, "tune": "l1=26:3 c=6:3" },
+    {
+      "label": "t0 L13@5 C6@4 (pre-v0.7 shape)",
+      "tier": 0,
+      "tune": "l1=13:5 c=6:4"
+    },
+    { "label": "t0 L22@3 C8@3", "tier": 0, "tune": "l1=22:3 c=8:3" },
+    { "label": "t0 L18@4 C7@3", "tier": 0, "tune": "l1=18:4 c=7:3" },
+    { "label": "t0 L20@4 C5@3", "tier": 0, "tune": "l1=20:4 c=5:3" },
+    { "label": "t0 L22@4 C4@3", "tier": 0, "tune": "l1=22:4 c=4:3" },
+    { "label": "t0 L16@4 C8@3", "tier": 0, "tune": "l1=16:4 c=8:3" },
+    { "label": "t0 L16@4 C6@4", "tier": 0, "tune": "l1=16:4 c=6:4" },
+    { "label": "t0 L24@3 C7@3", "tier": 0, "tune": "l1=24:3 c=7:3" },
+    { "label": "t0 L28@3 C5@3", "tier": 0, "tune": "l1=28:3 c=5:3" },
+    { "label": "t0 L30@3 C3@3", "tier": 0, "tune": "l1=30:3 c=3:3" },
+    { "label": "t0 L20@3 C9@3", "tier": 0, "tune": "l1=20:3 c=9:3" },
+    {
+      "label": "t0 L35@3 C2@2 (count-max)",
+      "tier": 0,
+      "tune": "l1=35:3 c=2:2"
+    },
+    {
+      "label": "t0 L19@5 C2@4 (precision-max)",
+      "tier": 0,
+      "tune": "l1=19:5 c=2:4"
+    }
+  ]
+}
