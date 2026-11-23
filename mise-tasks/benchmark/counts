@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#MISE description="Paired A/B instruction and cycle counts of two arms (builds or Tunables) on one cell, load-robust (no wall-clock figure)"
+#MISE depends=["build:compare"]
+#
+# Usage: mise run benchmark:counts -- --size N|WxH --tier T --out FILE
+#          [--impl Rust] [--op encode|decode] [--content gradient|noise|solid]
+#          [--a-bin PATH] [--b-bin PATH] [--a-tune TUNE] [--b-tune TUNE]
+#          [--iterations N] [--blocks 10] [--against EARLIER.json]
+#
+# Counts retired user-space instructions, and cycles beside them, per
+# operation with `perf stat -e instructions:u,cycles:u`, in interleaved A B /
+# B A blocks, and writes one record matching
+# tools/comparison/results/counts/ab/counts.schema.json: each arm's median
+# count with its block range and the geometric-mean A/B ratio. `--against`
+# compares with an earlier record of the same cell, arms and CPU and fails if
+# the instruction ratios differ by more than 1%. Refuses, by name, a host whose
+# counter cannot be read (needs perf with kernel.perf_event_paranoid <= 2) and
+# a managed-runtime implementation. See tools/comparison/src/perf/counts.ts.
+#
+# The Rust encoder is built exactly as `mise run sweep` builds it, so a count
+# and a sweep running side by side never rebuild the binary under each other.
+# Other implementations are built by `mise run build:benchmark`.
+#
+# A file task rather than an inline one, because mise appends an inline task's
+# arguments instead of passing them as "$@".
+set -euo pipefail
+
+cargo build --manifest-path rust/Cargo.toml --release --features research-render --example encode_stdin
+node tools/comparison/dist/perf/counts.js "$@"

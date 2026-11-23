@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "benchmark:counts record",
+  "description": "One paired A/B count measurement of one cell (tools/comparison/src/perf/counts.ts). Every figure is a retired-event count read through the counter backend, or a ratio of two such counts; the record holds no wall-clock figure. A record is validated against this file before it is written.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "tool",
+    "cell",
+    "arms",
+    "settings",
+    "provenance",
+    "host",
+    "outputs",
+    "blocks",
+    "summary",
+    "against"
+  ],
+  "properties": {
+    "schema": { "const": 1 },
+    "tool": { "const": "benchmark-counts" },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "impl",
+        "op",
+        "width",
+        "height",
+        "tier",
+        "content",
+        "fixtureSha256",
+        "input"
+      ],
+      "properties": {
+        "impl": { "type": "string" },
+        "op": { "enum": ["encode", "decode"] },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "tier": { "type": "integer", "minimum": 0 },
+        "content": { "enum": ["gradient", "noise", "solid"] },
+        "fixtureSha256": { "type": "string" },
+        "input": {
+          "description": "For a decode cell, the hash both arms decode (arm A's encode of the fixture), hex; for an encode cell, null.",
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "arms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["a", "b"],
+      "properties": {
+        "a": { "$ref": "#/$defs/arm" },
+        "b": { "$ref": "#/$defs/arm" }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["events", "iterations", "blocks", "ratio"],
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": { "enum": ["instructions:u", "cycles:u"] }
+        },
+        "iterations": { "type": "integer", "minimum": 1 },
+        "blocks": { "type": "integer", "minimum": 2 },
+        "ratio": { "const": "a / b, per operation" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rev", "dirty", "dirtyPaths", "node"],
+      "properties": {
+        "rev": { "type": ["string", "null"] },
+        "dirty": { "type": ["boolean", "null"] },
+        "dirtyPaths": { "type": "array", "items": { "type": "string" } },
+        "node": { "type": "string" }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpu",
+        "kernel",
+        "threads",
+        "counter",
+        "loadavgStart",
+        "loadavgEnd"
+      ],
+      "properties": {
+        "cpu": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["vendor", "family", "model", "stepping", "modelName"],
+          "properties": {
+            "vendor": { "type": "string" },
+            "family": { "type": "string" },
+            "model": { "type": "string" },
+            "stepping": { "type": "string" },
+            "modelName": { "type": "string" }
+          }
+        },
+        "kernel": { "type": "string" },
+        "threads": { "type": "integer", "minimum": 1 },
+        "counter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["backend", "version", "paranoid"],
+          "properties": {
+            "backend": { "const": "perf-stat" },
+            "version": { "type": "string" },
+            "paranoid": { "type": ["integer", "null"] }
+          }
+        },
+        "loadavgStart": { "$ref": "#/$defs/loadavg" },
+        "loadavgEnd": { "$ref": "#/$defs/loadavg" }
+      }
+    },
+    "outputs": {
+      "description": "What each arm produces on the cell's input: an encode cell's hash, hex; a decode cell's sha256 of the decoded output.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["a", "b", "equal"],
+      "properties": {
+        "a": { "type": "string" },
+        "b": { "type": "string" },
+        "equal": { "type": "boolean" }
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["order", "a", "b", "ratio"],
+        "properties": {
+          "order": { "enum": ["AB", "BA"] },
+          "a": { "$ref": "#/$defs/counts" },
+          "b": { "$ref": "#/$defs/counts" },
+          "ratio": { "$ref": "#/$defs/counts" }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["a", "b", "ratio"],
+      "properties": {
+        "a": { "$ref": "#/$defs/spread" },
+        "b": { "$ref": "#/$defs/spread" },
+        "ratio": {
+          "description": "The geometric mean of the per-block A/B ratios over complete A B / B A block pairs, and their range.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["geomean", "min", "max"],
+          "properties": {
+            "geomean": { "$ref": "#/$defs/counts" },
+            "min": { "$ref": "#/$defs/counts" },
+            "max": { "$ref": "#/$defs/counts" }
+          }
+        }
+      }
+    },
+    "against": {
+      "description": "A back-to-back comparison with an earlier record of the same cell, arms and CPU, or null.",
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": [
+        "record",
+        "rev",
+        "instructionRatio",
+        "instructionAgreement",
+        "agree",
+        "cycleRatio",
+        "cycleSpread"
+      ],
+      "properties": {
+        "record": { "type": "string" },
+        "rev": { "type": ["string", "null"] },
+        "instructionRatio": {
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "instructionAgreement": {
+          "description": "|this run's instruction ratio / the earlier run's - 1|; agree is whether it is within 0.01.",
+          "type": "number"
+        },
+        "agree": { "type": "boolean" },
+        "cycleRatio": { "type": "array", "items": { "type": "number" } },
+        "cycleSpread": {
+          "description": "|this run's cycle ratio / the earlier run's - 1|, reported beside the instruction agreement and judging nothing.",
+          "type": "number"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "arm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bin", "binSha256", "tune"],
+      "properties": {
+        "bin": { "type": "string" },
+        "binSha256": { "type": "string" },
+        "tune": { "type": "string" }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instructions:u", "cycles:u"],
+      "properties": {
+        "instructions:u": { "type": "number", "exclusiveMinimum": 0 },
+        "cycles:u": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "spread": {
+      "description": "One arm's per-operation count over the blocks: the median, and the block range.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["median", "min", "max"],
+      "properties": {
+        "median": { "$ref": "#/$defs/counts" },
+        "min": { "$ref": "#/$defs/counts" },
+        "max": { "$ref": "#/$defs/counts" }
+      }
+    },
+    "loadavg": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0 }
+    }
+  }
+}
