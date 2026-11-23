@@ -30,6 +30,18 @@ import { parseArgs } from "node:util";
 import { compareArms, guardVerdictOnIntervals, statFor } from "./arms-core.ts";
 import { holdout3Strata } from "./corpus.ts";
 import { measureFile } from "./corpus-covariates.ts";
+import { COUNTS_DIR } from "./dct-identity-core.ts";
+import {
+  type D5Speed,
+  D5_PLACEMENTS,
+  D5_TIERS,
+  d5Arms,
+  loadD5Count,
+  readD5,
+  readD5Speed,
+  selectD5,
+  selectionKey,
+} from "./downsample-core.ts";
 import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
 import {
   WINDOW_FLOOR,
@@ -154,13 +166,14 @@ const { values, positionals } = parseArgs({
     strata: { type: "boolean", default: false },
     embedded: { type: "boolean", default: false },
     window: { type: "boolean", default: false },
+    downsample: { type: "boolean", default: false },
   },
 });
 
 const sweepName = positionals[0];
 if (!sweepName) {
   console.error(
-    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata | stratify <sweep> --embedded | stratify <sweep> --window",
+    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata | stratify <sweep> --embedded | stratify <sweep> --window | stratify <sweep> --downsample",
   );
   process.exit(2);
 }
@@ -174,6 +187,10 @@ if (values.embedded) {
 }
 if (values.window) {
   await printWindow(sweepName);
+  process.exit(0);
+}
+if (values.downsample) {
+  await printDownsample(sweepName);
   process.exit(0);
 }
 
@@ -318,6 +335,96 @@ async function printWindow(name: string): Promise<void> {
       `  under ${seeds.length} seeds other than ${BOOTSTRAP_SEED}, the selection changes at ${turned.length}${turned.length > 0 ? ` (seeds ${turned.join(", ")})` : ""}`,
     );
   }
+}
+
+/**
+ * `--downsample`: register entry D5's reading of a `downsample-before-dct`
+ * result (`downsample-core.ts`). Each candidate arm at code k against
+ * `tK full resolution`: its paired ΔE00 and the interval's upper bound
+ * against +1.0%, and its guards, overall, per corpus and in each holdout3
+ * stratum (the strata found as `--strata` finds them). On tune it also
+ * applies D5's selection rule, with the speed read off the committed
+ * `downsample-instructions` count when there is one, and re-draws the
+ * selection under 20 other seeds; on tune the corpora and strata gate
+ * nothing.
+ */
+async function printDownsample(name: string): Promise<void> {
+  const file = readResult(RESULTS_DIR, name);
+  if (!file) {
+    console.error(`no committed result ${name} — run the sweep`);
+    process.exit(1);
+  }
+  const strataOf =
+    file.split === "holdout3"
+      ? holdout3StrataOf
+      : await measuredStrata(file.imageNames);
+  const members = strataMembers(file.imageNames, strataOf);
+  const corpora = new Map<string, number[]>();
+  for (const [i, n] of file.imageNames.entries()) {
+    const c = realCorpusOf(n) ?? "other";
+    corpora.set(`corpus ${c}`, [...(corpora.get(`corpus ${c}`) ?? []), i]);
+  }
+  const tol = file.settings.guardTolerances as GuardTolerances;
+  const sign = (x: number, d: number) => `${x >= 0 ? "+" : ""}${x.toFixed(d)}`;
+  const iv = (s: { meanDelta: number; ci: [number, number] }) =>
+    `${sign(s.meanDelta, 3)} [${sign(s.ci[0], 3)}, ${sign(s.ci[1], 3)}]`;
+  const pct = (x: number, base: number) => `${sign((100 * x) / base, 2)}%`;
+  console.log(
+    `${name} (${file.split}, ${file.imageNames.length} images): each downsampling arm's ΔE00 and guards against its tier's full-resolution incumbent; condition 1 is the upper bound within +1.0%`,
+  );
+  for (const [s, idx] of [...corpora, ...members]) {
+    console.log(`  ${s}: ${idx.length} images`);
+  }
+  const specs = d5Arms(file.rows);
+  const readings = specs.map((spec) => readD5(spec, file.rows, tol, members));
+  for (const r of readings) {
+    const perCorpus = readD5(r.spec, file.rows, tol, corpora).strata ?? [];
+    console.log(
+      `\n${r.spec.arm} vs ${r.spec.incumbent}\n  ${"overall".padEnd(17)} n ${String(r.n).padStart(3)}  ΔE00 ${iv(r.delta)} = ${pct(r.delta.meanDelta, r.delta.baseMean)} (U ${sign(r.upperRel, 2)}%) ${r.cond1 ? "≤ δ" : "> δ"}  guards (CI) ${r.guards}  ${r.qualifies ? "qualifies" : "does not qualify"}  ${r.pass ? "passes" : "fails"} on intervals`,
+    );
+    for (const s of [...perCorpus, ...(r.strata ?? [])]) {
+      console.log(
+        `  ${s.stratum.padEnd(17)} n ${String(s.n).padStart(3)}  ΔE00 ${iv(s.deltaE)} = ${pct(s.deltaE.meanDelta, s.deltaE.baseMean)}  guards (CI) ${s.guards}  ${s.verdict}`,
+      );
+    }
+  }
+  if (file.split === "holdout3") return;
+  let speed = new Map<string, D5Speed>();
+  try {
+    speed = readD5Speed(loadD5Count(COUNTS_DIR));
+  } catch (e) {
+    console.log(
+      `\n(no readable downsample-instructions count: ${(e as Error).message}; the selection below has no speed)`,
+    );
+  }
+  for (const [id, s] of speed) {
+    console.log(
+      `  speed ${id.padEnd(12)} ${s.pairs.map((p) => `${p.label} ${p.ratio.toFixed(3)}× (runs ${p.runRatios.map((x) => x.toFixed(4)).join(" / ")}${p.agree ? "" : ", DISAGREE"})`).join("  ")}  ≥ 2.0× both ${s.pass ? "yes" : "no"}`,
+    );
+  }
+  const pick = selectD5(readings, speed);
+  console.log("\nD5's selection rule:");
+  for (const p of pick.placements) {
+    console.log(
+      `  ${p.placement.padEnd(6)} edges by tier ${D5_TIERS.map((k) => `t${k} ${p.edges[k] ?? "none"}`).join(", ")}  ${p.qualifies ? "qualifies" : "does not qualify"}${p.speed ? `  code-1 speed vs ACCEL_ALL ${p.speed.accelRatio.toFixed(3)}×` : ""}`,
+    );
+  }
+  console.log(
+    `  chosen ${pick.chosen ?? "none"} (ties to ${D5_PLACEMENTS[0]}); ${pick.outcome}${pick.frozen.length > 0 ? `: ${pick.frozen.map((f) => f.arm).join(", ")}` : ""}`,
+  );
+  const seeds = otherSeeds(20);
+  const turned = seeds.filter(
+    (seed) =>
+      selectionKey(
+        selectD5(
+          specs.map((spec) => readD5(spec, file.rows, tol, undefined, seed)),
+          speed,
+        ),
+      ) !== selectionKey(pick),
+  );
+  console.log(
+    `  under ${seeds.length} seeds other than ${BOOTSTRAP_SEED}, the selection changes at ${turned.length}${turned.length > 0 ? ` (seeds ${turned.join(", ")})` : ""}`,
+  );
 }
 
 /**

@@ -7,7 +7,7 @@
  * Re-scores nothing.
  *
  * Usage:
- *   node dist/register-verdict.js C1|C2|D1|D3|D4 [--seeds N]
+ *   node dist/register-verdict.js C1|C2|D1|D3|D4|D5 [--seeds N]
  *
  * D4 rests on counts rather than intervals (`dct-identity-core.ts`), so
  * `--seeds` does not apply to it.
@@ -15,6 +15,7 @@
 
 import { parseArgs } from "node:util";
 import { SPEED_THRESHOLD, deriveD4Verdict } from "./dct-identity-core.ts";
+import { D5_FROZEN, deriveD5Verdict } from "./downsample-core.ts";
 import { FREEZE_REVS, FROZEN, deriveVerdict } from "./register-verdict-core.ts";
 import { BOOTSTRAP_SEED } from "./stats.ts";
 import { WINDOW_FROZEN, deriveWindowVerdict } from "./window-core.ts";
@@ -29,10 +30,13 @@ function main(): void {
   });
   const id = positionals[0] ?? "";
   const seedCount = Number(values.seeds);
-  const known = id === "D4" || (FROZEN[id] ?? WINDOW_FROZEN[id]) !== undefined;
+  const known =
+    id === "D4" ||
+    (id === "D5" && D5_FROZEN !== null) ||
+    (FROZEN[id] ?? WINDOW_FROZEN[id]) !== undefined;
   if (!known || !Number.isInteger(seedCount) || seedCount < 0) {
     console.error(
-      `usage: register-verdict ${[...Object.keys(FROZEN), "D4", ...Object.keys(WINDOW_FROZEN)].join("|")} [--seeds N]`,
+      `usage: register-verdict ${[...Object.keys(FROZEN), "D4", ...(D5_FROZEN ? ["D5"] : []), ...Object.keys(WINDOW_FROZEN)].join("|")} [--seeds N]`,
     );
     process.exit(2);
   }
@@ -42,6 +46,10 @@ function main(): void {
   }
   if (WINDOW_FROZEN[id]) {
     printWindowVerdict(id, seedCount);
+    return;
+  }
+  if (id === "D5") {
+    printD5Verdict(seedCount);
     return;
   }
 
@@ -138,6 +146,53 @@ function printWindowVerdict(id: string, seedCount: number): void {
       `  Condition 4: under ${v.seeds.length} seeds other than ${BOOTSTRAP_SEED}, ${v.turned.length} outcome(s) turn (overall or in a stratum)`,
     );
   }
+}
+
+/**
+ * D5, downsampling before the transform (`downsample-core.ts`): R2 with a
+ * speed primary at every tier. Each frozen arm's ΔE00 non-inferiority and
+ * guards against its tier's full-resolution incumbent, the stratum rule and
+ * condition 4 from the holdout3 read; the speed from the count record.
+ */
+function printD5Verdict(seedCount: number): void {
+  const v = deriveD5Verdict(seedCount);
+  const yes = (b: boolean): string => (b ? "yes" : "no");
+  const iv = (s: { meanDelta: number; ci: [number, number] }): string =>
+    `${signed(s.meanDelta, 3)} [${s.ci.map((x) => signed(x, 3)).join(", ")}]`;
+  console.log(
+    `D5: ${v.readings.length} frozen arms, one per tier, R2 with a speed primary in retired instructions, no Holm (results at ${(FREEZE_REVS.D5 ?? "").slice(0, 7)}, clean) [${v.result}]`,
+  );
+  for (const p of v.speed.pairs) {
+    console.log(
+      `  speed ${v.speed.candidate} vs ${p.label}: ${p.ratio.toFixed(3)}× instructions (blocks ${p.min.toFixed(3)}–${p.max.toFixed(3)}; runs ${p.runRatios.map((r) => r.toFixed(4)).join(" / ")}, agree within 1% ${yes(p.agree)})  ≥ ${SPEED_THRESHOLD.toFixed(1)}× ${yes(p.pass)}`,
+    );
+  }
+  for (const r of v.readings) {
+    console.log(
+      `  ${r.spec.arm} vs ${r.spec.incumbent}\n` +
+        `    ΔE00 ${iv(r.delta)} = ${signed(r.deltaRel, 2)}% (upper ${signed(r.upperRel, 2)}%)  guards (CI) ${r.guards}\n` +
+        `    R2: (1) ΔE00 upper ≤ +1.0% ${yes(r.cond1)}  (2) guards ok ${yes(r.guardsOk)}`,
+    );
+    const fails = r.strata?.some((s) => s.verdict === "FAIL") ?? false;
+    console.log(
+      `    stratum rule: ${fails ? "a stratum fails" : "no stratum fails"}`,
+    );
+    for (const s of r.strata ?? []) {
+      console.log(
+        `      ${s.stratum.padEnd(15)} n ${String(s.n).padStart(2)}  ΔE00 ${iv(s.deltaE)} (lower ${signed(s.lowerRel, 2)}%)  guards (CI) ${s.guards}  ${s.verdict}`,
+      );
+    }
+  }
+  console.log(
+    `  ${v.readings.filter((r) => r.pass).length} of ${v.readings.length} tiers pass conditions 1-2 and the stratum rule at seed ${BOOTSTRAP_SEED}; speed ${v.speed.pass ? "passes" : "fails"}`,
+  );
+  if (v.seeds.length > 0) {
+    for (const t of v.turned) console.log(`    seed ${t.seed}: ${t.arm} turns`);
+    console.log(
+      `  Condition 4: under ${v.seeds.length} seeds other than ${BOOTSTRAP_SEED}, ${v.turned.length} outcome(s) turn (overall or in a stratum)`,
+    );
+  }
+  console.log(`  outcome: D5 ${v.pass ? "passes" : "fails"}`);
 }
 
 /**
