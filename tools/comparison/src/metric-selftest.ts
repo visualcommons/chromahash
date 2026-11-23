@@ -250,6 +250,7 @@ import {
   tierBaselinePairs,
 } from "./stratify-core.ts";
 import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
+import { readWindow, selectWindows, windowArms } from "./window-core.ts";
 import {
   checkIdenticalTo,
   decodeDigest,
@@ -6812,6 +6813,170 @@ console.log(
       cuts(pick2.notQualified) === "c1" &&
       cuts(pick2.capped) === "",
     `${cuts(pick.frozen)}|${cuts(pick.capped)}|${cuts(pick2.frozen)}|${cuts(pick2.notQualified)}`,
+  );
+}
+
+{
+  console.log("\nD3's synthesis-window reading (window-core.ts)");
+  const specs = windowArms(
+    [
+      "t2 shipped (no window)",
+      "t3 shipped (no window)",
+      "t3 w_min 0.9 exp 1",
+      "t4 w_min 0.9 exp 1",
+      "t2 w_min 0.9 exp 1",
+    ].map((label) => ({ label })),
+  );
+  check(
+    "windowArms reads a code-3 or code-4 window arm against its tier's shipped arm and the code-2 floor, and drops a shipped arm, another tier, or an arm whose incumbent is absent",
+    JSON.stringify(specs) ===
+      JSON.stringify([
+        {
+          k: 3,
+          arm: "t3 w_min 0.9 exp 1",
+          incumbent: "t3 shipped (no window)",
+          floor: "t2 shipped (no window)",
+        },
+      ]) && windowArms([{ label: "t3 shipped (no window)" }]).length === 0,
+    JSON.stringify(specs),
+  );
+
+  // Six images. The guard metrics are equal across arms, so every guard
+  // interval is [0, 0] and ok. The code-2 floor's spurious detail is 3 on
+  // every image; code 3 shipped invents one level more, the light arm half
+  // a level less than the floor, the heavy arm two levels less.
+  const guards = {
+    ssimulacra2: [50, 52, 54, 56, 58, 60],
+    butteraugli: [3, 3, 3, 3, 3, 3],
+    dssim: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+  };
+  const wRow = (label: string, ciede2000: number[], spurious: number[]) => ({
+    label,
+    perImage: { ciede2000, spurious, ...guards },
+  });
+  const tol = { ssimulacra2Drop: 1.0, relativeRise: 0.02 };
+  const rows = [
+    wRow(
+      "t2 shipped (no window)",
+      [12, 12, 12, 12, 12, 12],
+      [3, 3, 3, 3, 3, 3],
+    ),
+    wRow(
+      "t3 shipped (no window)",
+      [10, 10, 10, 10, 10, 10],
+      [4, 4, 4, 4, 4, 4],
+    ),
+    wRow(
+      "t3 light",
+      [10.02, 10.04, 10.0, 10.06, 10.02, 10.04],
+      [2.4, 2.6, 2.5, 2.4, 2.6, 2.5],
+    ),
+    wRow(
+      "t3 heavy",
+      [10.6, 10.8, 10.7, 10.5, 10.9, 10.7],
+      [1.0, 1.1, 0.9, 1.0, 1.1, 0.9],
+    ),
+    wRow("t3 inert", [10, 10, 10, 10, 10, 10], [3.9, 4.1, 4.0, 3.9, 4.1, 4.0]),
+  ];
+  const [light, heavy, inert] = windowArms(rows).map((s) =>
+    readWindow(s, rows, tol),
+  );
+  check(
+    "readWindow: the primary is spurious A − code 2 with its upper bound ≤ 0, condition 1 is ΔE00 A − tK shipped with its upper bound ≤ +1.0%, and an arm costing 7% ΔE00 or inventing more than the floor does not qualify",
+    light !== undefined &&
+      heavy !== undefined &&
+      inert !== undefined &&
+      Math.abs(light.spurious.meanDelta + 0.5) < 1e-9 &&
+      light.primary &&
+      Math.abs(light.delta.meanDelta - 0.03) < 1e-9 &&
+      light.cond1 &&
+      light.guardsOk &&
+      light.qualifies &&
+      light.pass &&
+      heavy.primary &&
+      Math.abs(heavy.deltaRel - 7) < 1e-9 &&
+      !heavy.cond1 &&
+      !heavy.qualifies &&
+      !heavy.pass &&
+      Math.abs(inert.spurious.meanDelta - 1) < 1e-9 &&
+      !inert.primary &&
+      inert.cond1 &&
+      !inert.qualifies &&
+      !inert.pass,
+    `light ${light?.spurious.meanDelta.toFixed(3)} [${light?.spurious.ci.map((x) => x.toFixed(3)).join(", ")}] ΔE ${light?.deltaRel.toFixed(3)}%; heavy ${heavy?.deltaRel.toFixed(3)}%; inert ${inert?.spurious.meanDelta.toFixed(3)}`,
+  );
+
+  // The stratum rule against tK shipped, as written: a stratum whose ΔE00
+  // interval sits wholly above +1.0% fails the arm, and its spurious
+  // detail against the floor is reported beside it.
+  const sRows = [
+    wRow(
+      "t2 shipped (no window)",
+      [12, 12, 12, 12, 12, 12],
+      [3, 3, 3, 3, 3, 3],
+    ),
+    wRow(
+      "t3 shipped (no window)",
+      [10, 10, 10, 10, 10, 10],
+      [4, 4, 4, 4, 4, 4],
+    ),
+    wRow(
+      "t3 light",
+      [10.3, 10.4, 10.35, 9.8, 9.82, 9.81],
+      [2.4, 2.6, 2.5, 2.4, 2.6, 2.5],
+    ),
+  ];
+  const members = new Map([
+    ["skin", [0, 1, 2]],
+    ["low-light", [3, 4, 5]],
+  ]);
+  const [sSpec] = windowArms(sRows);
+  const strat = sSpec ? readWindow(sSpec, sRows, tol, members) : undefined;
+  const byName = new Map((strat?.strata ?? []).map((s) => [s.stratum, s]));
+  check(
+    "the stratum rule for D3: a stratum whose ΔE00 lower bound is above +1.0% of tK shipped fails the arm, and its spurious against the floor is reported",
+    strat !== undefined &&
+      byName.get("skin")?.verdict === "FAIL" &&
+      byName.get("low-light")?.verdict === "ok" &&
+      Math.abs((byName.get("skin")?.spurious?.meanDelta ?? 0) + 0.5) < 1e-9 &&
+      !strat.pass,
+    [...byName.values()]
+      .map(
+        (s) =>
+          `${s.stratum} ΔE [${s.deltaE.ci.map((x) => x.toFixed(3)).join(", ")}] ${s.verdict}`,
+      )
+      .join("; "),
+  );
+
+  // The selection rule, per code: the lowest mean spurious among the
+  // qualifying arms (ties to the lower ΔE00, then the earlier row), and a
+  // code with no qualifying arm decided in sample.
+  const fake = (
+    arm: string,
+    k: number,
+    qualifies: boolean,
+    spur: number,
+    dE: number,
+  ) =>
+    ({
+      spec: { k, arm, incumbent: "", floor: "" },
+      qualifies,
+      spurious: { meanDelta: spur },
+      delta: { meanDelta: dE },
+    }) as unknown as Parameters<typeof selectWindows>[0][number];
+  const pick = selectWindows([
+    fake("a", 3, true, -0.2, 0.05),
+    fake("b", 3, true, -0.4, 0.09),
+    fake("c", 3, false, -1.5, 0.5),
+    fake("d", 3, true, -0.4, 0.02),
+    fake("e", 4, false, -0.9, 0.01),
+    fake("f", 3, true, -0.4, 0.02),
+  ]);
+  check(
+    "selectWindows freezes per code the qualifying arm with the lowest mean spurious (ties to the lower ΔE00, then the earlier row), and decides a code with none in sample",
+    pick.frozen.map((r) => r.spec.arm).join(",") === "d" &&
+      pick.decidedInSample.join(",") === "4",
+    `${pick.frozen.map((r) => r.spec.arm).join(",")}|${pick.decidedInSample.join(",")}`,
   );
 }
 

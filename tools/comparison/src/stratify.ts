@@ -31,6 +31,12 @@ import { compareArms, guardVerdictOnIntervals, statFor } from "./arms-core.ts";
 import { holdout3Strata } from "./corpus.ts";
 import { measureFile } from "./corpus-covariates.ts";
 import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
+import {
+  WINDOW_FLOOR,
+  readWindow,
+  selectWindows,
+  windowArms,
+} from "./window-core.ts";
 import { CURATED_IMAGES } from "./natural-images.ts";
 import {
   holdout3StrataOf,
@@ -146,13 +152,14 @@ const { values, positionals } = parseArgs({
     bins: { type: "string", default: "3" },
     strata: { type: "boolean", default: false },
     embedded: { type: "boolean", default: false },
+    window: { type: "boolean", default: false },
   },
 });
 
 const sweepName = positionals[0];
 if (!sweepName) {
   console.error(
-    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata | stratify <sweep> --embedded",
+    "usage: stratify <sweep> [--metric M] [--by AXIS] [--bins N] | stratify <sweep> --strata | stratify <sweep> --embedded | stratify <sweep> --window",
   );
   process.exit(2);
 }
@@ -162,6 +169,10 @@ if (values.strata) {
 }
 if (values.embedded) {
   await printEmbedded(sweepName);
+  process.exit(0);
+}
+if (values.window) {
+  await printWindow(sweepName);
   process.exit(0);
 }
 
@@ -226,6 +237,84 @@ async function printEmbedded(name: string): Promise<void> {
           selectCuts(
             embeddedCuts(file.rows).map((spec) =>
               readCut(spec, file.rows, tol, rise, undefined, seed),
+            ),
+          ),
+        ) !== key(pick),
+    );
+    console.log(
+      `  under ${seeds.length} seeds other than ${BOOTSTRAP_SEED}, the selection changes at ${turned.length}${turned.length > 0 ? ` (seeds ${turned.join(", ")})` : ""}`,
+    );
+  }
+}
+
+/**
+ * `--window`: register entry D3's reading of a `synthesis-window-codes34`
+ * result (`window-core.ts`). Each window arm at code 3 or 4: its spurious
+ * detail against shipped code 2 (the primary), and its ΔE00 and guards
+ * against its own tier's shipped arm, overall, per corpus and in each
+ * holdout3 stratum (the strata found as `--strata` finds them). On tune it
+ * also applies D3's selection rule, and re-draws it under 20 other seeds; on
+ * tune the corpora and strata gate nothing.
+ */
+async function printWindow(name: string): Promise<void> {
+  const file = readResult(RESULTS_DIR, name);
+  if (!file) {
+    console.error(`no committed result ${name} — run the sweep`);
+    process.exit(1);
+  }
+  const strataOf =
+    file.split === "holdout3"
+      ? holdout3StrataOf
+      : await measuredStrata(file.imageNames);
+  const members = strataMembers(file.imageNames, strataOf);
+  const corpora = new Map<string, number[]>();
+  for (const [i, n] of file.imageNames.entries()) {
+    const c = realCorpusOf(n) ?? "other";
+    corpora.set(`corpus ${c}`, [...(corpora.get(`corpus ${c}`) ?? []), i]);
+  }
+  const tol = file.settings.guardTolerances as GuardTolerances;
+  const sign = (x: number, d: number) => `${x >= 0 ? "+" : ""}${x.toFixed(d)}`;
+  const iv = (s: { meanDelta: number; ci: [number, number] }) =>
+    `${sign(s.meanDelta, 3)} [${sign(s.ci[0], 3)}, ${sign(s.ci[1], 3)}]`;
+  const pct = (x: number, base: number) => `${sign((100 * x) / base, 2)}%`;
+  console.log(
+    `${name} (${file.split}, ${file.imageNames.length} images): each window arm's spurious against ${WINDOW_FLOOR} (the primary, across byte counts) and its ΔE00 and guards against its tier's shipped arm`,
+  );
+  for (const [s, idx] of [...corpora, ...members]) {
+    console.log(`  ${s}: ${idx.length} images`);
+  }
+  const specs = windowArms(file.rows);
+  const readings = specs.map((spec) =>
+    readWindow(spec, file.rows, tol, members),
+  );
+  for (const r of readings) {
+    const perCorpus = readWindow(r.spec, file.rows, tol, corpora).strata ?? [];
+    console.log(
+      `\n${r.spec.arm} vs ${r.spec.incumbent} (spurious vs ${r.spec.floor})\n  ${"overall".padEnd(17)} n ${String(r.n).padStart(3)}  Spur ${iv(r.spurious)} ${r.primary ? "≤ 0" : "> 0"}  ΔE00 ${iv(r.delta)} = ${pct(r.delta.meanDelta, r.delta.baseMean)} (U ${pct(r.delta.ci[1], r.delta.baseMean)}) ${r.cond1 ? "≤ δ" : "> δ"}  guards (CI) ${r.guards}  ${r.qualifies ? "qualifies" : "does not qualify"}  ${r.pass ? "passes" : "fails"} on intervals`,
+    );
+    for (const s of [...perCorpus, ...(r.strata ?? [])]) {
+      console.log(
+        `  ${s.stratum.padEnd(17)} n ${String(s.n).padStart(3)}  Spur ${s.spurious ? iv(s.spurious) : "—"}  ΔE00 ${iv(s.deltaE)} = ${pct(s.deltaE.meanDelta, s.deltaE.baseMean)}  guards (CI) ${s.guards}  ${s.verdict}`,
+      );
+    }
+  }
+  if (file.split !== "holdout3") {
+    const pick = selectWindows(readings);
+    const key = (p: ReturnType<typeof selectWindows>) =>
+      `${p.frozen.map((r) => r.spec.arm).join(", ") || "none"}|${p.decidedInSample.join(", ") || "none"}`;
+    console.log(
+      `\nD3's selection rule: frozen ${pick.frozen.map((r) => r.spec.arm).join(", ") || "none"}; codes decided in sample (no qualifying arm) ${pick.decidedInSample.join(", ") || "none"}`,
+    );
+    const seeds: number[] = [];
+    for (let s = 1; seeds.length < 20; s++) {
+      if (s !== BOOTSTRAP_SEED) seeds.push(s);
+    }
+    const turned = seeds.filter(
+      (seed) =>
+        key(
+          selectWindows(
+            specs.map((spec) =>
+              readWindow(spec, file.rows, tol, undefined, seed),
             ),
           ),
         ) !== key(pick),
