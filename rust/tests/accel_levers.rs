@@ -112,7 +112,7 @@ fn the_shipped_defaults_set_each_lever_as_listed() {
     assert!(d.accel_flat_cos);
     assert!(d.accel_sse_early_exit);
     assert!(d.accel_fused_pixels);
-    assert!(!d.accel_word_bitpack);
+    assert!(d.accel_word_bitpack);
 }
 
 fn gamut_from_str(s: &str) -> Gamut {

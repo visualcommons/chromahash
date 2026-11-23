@@ -906,7 +906,7 @@ impl Tunables {
         accel_flat_cos: true,
         accel_sse_early_exit: true,
         accel_fused_pixels: true,
-        accel_word_bitpack: false,
+        accel_word_bitpack: true,
         refine_passes: 0,
         refine_delta: 1,
         refine_obj: 0,
