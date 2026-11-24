@@ -201,9 +201,12 @@ impl ChromaHash {
     /// Decode a ChromaHash into an RGBA image.
     /// Returns (width, height, rgba_pixels).
     ///
-    /// Output is unspecified for a hash this build does not support; check
-    /// [`is_version_supported`](Self::is_version_supported) first when the hash's
-    /// provenance is unknown.
+    /// A `ChromaHash` that exists has validated, so it decodes:
+    /// [`from_bytes`](Self::from_bytes) checks the version, quality tier,
+    /// reserved bits and exact byte length before it returns one, and
+    /// [`encode`](Self::encode) / [`encode_with_quality`](Self::encode_with_quality)
+    /// build one this build supports. A malformed or unsupported hash is
+    /// refused at `from_bytes` and never reaches `decode`.
     pub fn decode(&self) -> (u32, u32, Vec<u8>) {
         decode::decode(&self.hash)
     }
