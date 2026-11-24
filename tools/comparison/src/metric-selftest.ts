@@ -7883,6 +7883,40 @@ console.log(
       loadRecord,
     ],
     [
+      "a fused-pass prose saving",
+      edited(
+        "now executes 2.4% fewer instructions than the separate passes",
+        "now executes 2.5% fewer instructions than the separate passes",
+      ),
+      loadRecord,
+    ],
+    [
+      "a fused-pass cycle range",
+      edited("blocks' noise (0.93–1.15)", "blocks' noise (0.93–1.25)"),
+      loadRecord,
+    ],
+    [
+      "a build pair timing one binary in both arms",
+      repoFile,
+      (f) => {
+        const r = loadRecord(f);
+        if (f !== "eotf-lut-cache-encode-100-t1.json") return r;
+        return { ...r, arms: { ...r.arms, a: { ...r.arms.b } } };
+      },
+    ],
+    [
+      "a tune pair timing two binaries",
+      repoFile,
+      (f) => {
+        const r = loadRecord(f);
+        if (f !== "accel-quant-table.json") return r;
+        return {
+          ...r,
+          arms: { ...r.arms, a: { ...r.arms.a, binSha256: "0".repeat(64) } },
+        };
+      },
+    ],
+    [
       "a re-recorded ratio",
       repoFile,
       (f) => {

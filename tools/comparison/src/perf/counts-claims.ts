@@ -1,6 +1,6 @@
 /**
- * The figures `spec/PERFORMANCE.md` §12.4 quotes from the committed
- * `benchmark:counts` records under
+ * The figures `spec/PERFORMANCE.md` §12.4 and `rust/src/encode.rs` quote
+ * from the committed `benchmark:counts` records under
  * `tools/comparison/results/counts/ab/`, each checked against the record it
  * comes from. They are the evidence `Tunables::DEFAULT`'s levers rest on (#142),
  * so a re-recorded count that moves one must fail here rather than leave the
@@ -19,6 +19,7 @@ import type { CountsRecord } from "./counts-core.ts";
 import { ACCEL_NONE } from "./matrix.ts";
 
 export const COUNTS_DOC = "spec/PERFORMANCE.md";
+export const COUNTS_ENCODE = "rust/src/encode.rs";
 /** §12.4's counts table: the section and its index within it. */
 export const COUNTS_SECTION = "12.4";
 export const COUNTS_TABLE = 1;
@@ -33,6 +34,13 @@ export interface CountRow {
   refTune: string;
   /** The shipped arm's tune (B). */
   shippedTune: string;
+  /**
+   * Set on a row whose arms are two builds rather than two tunes: the short
+   * SHA of the commit before the change, which the reference arm's binary is
+   * built from (`base-<sha>` in `arms.a.bin`). Such a row's arms must hash
+   * differently; a tune row's arms must hash the same, being one binary.
+   */
+  refCommit?: string;
 }
 
 export const COUNT_ROWS: readonly CountRow[] = [
@@ -117,6 +125,7 @@ export const COUNT_ROWS: readonly CountRow[] = [
     record: "selection-prefix-decode-100-t1.json",
     refTune: "",
     shippedTune: "",
+    refCommit: "86ab1c4",
   },
   {
     lever: "selection prefix",
@@ -124,6 +133,7 @@ export const COUNT_ROWS: readonly CountRow[] = [
     record: "selection-prefix-encode-100-t1.json",
     refTune: "",
     shippedTune: "",
+    refCommit: "86ab1c4",
   },
   {
     lever: "selection prefix",
@@ -131,6 +141,7 @@ export const COUNT_ROWS: readonly CountRow[] = [
     record: "selection-prefix-encode-512-t4.json",
     refTune: "",
     shippedTune: "",
+    refCommit: "86ab1c4",
   },
   {
     lever: "EOTF table cache",
@@ -138,6 +149,7 @@ export const COUNT_ROWS: readonly CountRow[] = [
     record: "eotf-lut-cache-encode-100-t1.json",
     refTune: "",
     shippedTune: "",
+    refCommit: "8405b9f",
   },
   {
     lever: "EOTF table cache",
@@ -145,10 +157,12 @@ export const COUNT_ROWS: readonly CountRow[] = [
     record: "eotf-lut-cache-encode-512-t1.json",
     refTune: "",
     shippedTune: "",
+    refCommit: "8405b9f",
   },
 ];
 
 const INSTR = "instructions:u";
+const CYCLES = "cycles:u";
 const reference = (r: CountsRecord): number =>
   Math.floor(r.summary.a.median[INSTR]);
 const shipped = (r: CountsRecord): number =>
@@ -166,6 +180,42 @@ export interface CountProse {
 }
 
 export const COUNT_PROSE: readonly CountProse[] = [
+  {
+    file: COUNTS_DOC,
+    what: "§12.4: accel_fused_pixels' instruction saving over the separate passes, in %",
+    pattern:
+      /now executes ([\d.]+)% fewer instructions than the separate passes/,
+    record: "accel-fused-pixels.json",
+    value: (r) => (1 - 1 / ratio(r)) * 100,
+  },
+  {
+    file: COUNTS_DOC,
+    what: "§12.4: accel_fused_pixels' lowest block cycle ratio",
+    pattern: /blocks' noise \(([\d.]+)–[\d.]+\)/,
+    record: "accel-fused-pixels.json",
+    value: (r) => r.summary.ratio.min[CYCLES],
+  },
+  {
+    file: COUNTS_DOC,
+    what: "§12.4: accel_fused_pixels' highest block cycle ratio",
+    pattern: /blocks' noise \([\d.]+–([\d.]+)\)/,
+    record: "accel-fused-pixels.json",
+    value: (r) => r.summary.ratio.max[CYCLES],
+  },
+  {
+    file: COUNTS_ENCODE,
+    what: "cached_eotf_lut: the per-call table build's share of a 100×100 encode, in %",
+    pattern: /were ([\d.]+)% of a 100×100 encode's user-space instructions/,
+    record: "eotf-lut-cache-encode-100-t1.json",
+    value: (r) => (1 - 1 / ratio(r)) * 100,
+  },
+  {
+    file: COUNTS_ENCODE,
+    what: "cached_eotf_lut: the EOTF table cache row's count ratio",
+    pattern: /cache row's ([\d.]+) count ratio/,
+    record: "eotf-lut-cache-encode-100-t1.json",
+    value: ratio,
+  },
   {
     file: COUNTS_DOC,
     what: "§12.4: accel_word_bitpack's saving at tier 4",
@@ -254,6 +304,25 @@ export function countClaimFailures(
       out.push(
         `${where}: ${row.record}'s arms are "${r.arms.a.tune}" / "${r.arms.b.tune}", not "${row.refTune}" / "${row.shippedTune}"`,
       );
+    }
+    const sameBinary = r.arms.a.binSha256 === r.arms.b.binSha256;
+    if (row.refCommit === undefined) {
+      if (!sameBinary) {
+        out.push(
+          `${where}: ${row.record} times two binaries, but the row is a tune pair of one`,
+        );
+      }
+    } else {
+      if (sameBinary) {
+        out.push(
+          `${where}: ${row.record} times one binary in both arms, not a build of ${row.refCommit} against the change`,
+        );
+      }
+      if (!r.arms.a.bin.includes(`base-${row.refCommit}/`)) {
+        out.push(
+          `${where}: ${row.record}'s reference arm is ${r.arms.a.bin}, not a build of ${row.refCommit}`,
+        );
+      }
     }
     if (!r.outputs.equal) {
       out.push(`${where}: ${row.record}'s arms produced different outputs`);
