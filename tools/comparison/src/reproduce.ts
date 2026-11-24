@@ -21,8 +21,9 @@
  */
 
 import { parseArgs } from "node:util";
+import { compareArms, statFor } from "./arms-core.ts";
 import { measuredStrata } from "./measured-strata.ts";
-import { strataMembers } from "./register-verdict-core.ts";
+import { strataMembers, stratumRule } from "./register-verdict-core.ts";
 import {
   LEDGER,
   REPRODUCED_SWEEPS,
@@ -32,7 +33,7 @@ import {
   sweepCells,
   sweepMovements,
 } from "./reproduce-core.ts";
-import { RESULTS_DIR, type ResultFile } from "./results.ts";
+import { type GuardTolerances, RESULTS_DIR } from "./results.ts";
 
 const { values } = parseArgs({
   options: {
@@ -92,80 +93,80 @@ if (values.strata) {
 }
 
 /**
- * Each ΔE00 claim's arm against its base, overall and in every holdout3
- * stratum the re-run's images fall in, on the re-run at master. A claim whose
- * sign turns in some stratum is input-dependent: no later entry may inherit
- * it as a global gain.
+ * Each ΔE00 comparison the ledger reads, overall and in every holdout3 stratum
+ * the re-run's images fall in, on the re-run at master. A comparison whose
+ * sign turns in some stratum is input-dependent, and shown to be where that
+ * stratum holds two or more images and its paired interval excludes zero on
+ * the other side: no later entry may inherit it as a global gain.
  */
 async function printStrata(): Promise<void> {
-  const rows: string[] = [];
   const strataSeen = new Set<string>();
   const readings: {
-    claim: string;
+    label: string;
     overall: number;
-    by: Map<string, { rel: number; n: number }>;
+    by: Map<string, { rel: number; n: number; shown: boolean }>;
   }[] = [];
-  const cache = new Map<string, ResultFile>();
   const seen = new Set<string>();
   for (const c of LEDGER) {
     if (c.kind !== "sweep" || !c.pair || c.pair.key !== "ciede2000") continue;
+    const { arm, base } = c.pair;
     // A Holm p and a Δ% on the same pair are one comparison per stratum.
-    const pairKey = `${c.repro}\u0000${c.pair.arm}\u0000${c.pair.base}`;
+    const pairKey = `${c.repro}\u0000${arm}\u0000${base}`;
     if (seen.has(pairKey)) continue;
     seen.add(pairKey);
-    let run = cache.get(c.repro);
-    if (!run) {
-      const read = readReproduction(RESULTS_DIR, c.repro);
-      if (!read) continue;
-      run = read;
-      cache.set(c.repro, run);
-    }
-    const arm = run.rows.find((r) => r.label === c.pair?.arm);
-    const base = run.rows.find((r) => r.label === c.pair?.base);
-    if (!arm || !base) continue;
+    const run = readReproduction(RESULTS_DIR, c.repro);
+    const armRow = run?.rows.find((r) => r.label === arm);
+    const baseRow = run?.rows.find((r) => r.label === base);
+    if (!run || !armRow || !baseRow) continue;
+    const tol = run.settings.guardTolerances as GuardTolerances;
+    const rise = (run.settings.artifactGuardRise as number | null) ?? undefined;
     const members = strataMembers(
       run.imageNames,
       await measuredStrata(run.imageNames),
     );
-    const rel = (idx: readonly number[]): number => {
-      let a = 0;
-      let b = 0;
-      for (const i of idx) {
-        const x = arm.perImage.ciede2000?.[i];
-        const y = base.perImage.ciede2000?.[i];
-        if (x == null || y == null) continue;
-        a += x;
-        b += y;
-      }
-      return b === 0 ? 0 : ((a - b) / b) * 100;
-    };
-    const by = new Map<string, { rel: number; n: number }>();
-    for (const [s, idx] of members) {
-      strataSeen.add(s);
-      by.set(s, { rel: rel(idx), n: idx.length });
+    const overall = statFor(compareArms([baseRow, armRow])[0], "ciede2000");
+    if (!overall) continue;
+    const overallRel = (100 * overall.meanDelta) / overall.baseMean;
+    const by = new Map<string, { rel: number; n: number; shown: boolean }>();
+    for (const s of stratumRule(armRow, baseRow, members, tol, rise).strata) {
+      strataSeen.add(s.stratum);
+      const rel = (100 * s.deltaE.meanDelta) / s.deltaE.baseMean;
+      const turns = Math.sign(rel) !== Math.sign(overallRel);
+      // One image has no interval: its bootstrap is that image every time.
+      const shown =
+        turns &&
+        s.n >= 2 &&
+        (overallRel < 0 ? s.deltaE.ci[0] > 0 : s.deltaE.ci[1] < 0);
+      by.set(s.stratum, { rel, n: s.n, shown });
     }
     readings.push({
-      claim: c.claim,
-      overall: rel(run.imageNames.map((_, i) => i)),
+      label: `§${c.section} \`${arm.trim()}\` − \`${base.trim()}\``,
+      overall: overallRel,
       by,
     });
   }
   const strata = [...strataSeen];
-  rows.push(
-    `| claim | overall | ${strata.join(" | ")} | input-dependent |`,
+  const rows = [
+    `| comparison | overall | ${strata.join(" | ")} | input-dependent |`,
     `|---|---|${strata.map(() => "---|").join("")}---|`,
-  );
+  ];
   for (const r of readings) {
-    const flips = [...r.by.values()].some(
+    const turned = [...r.by.values()].filter(
       (s) => Math.sign(s.rel) !== Math.sign(r.overall),
     );
+    const verdict =
+      turned.length === 0
+        ? "no"
+        : turned.some((s) => s.shown)
+          ? "**shown**"
+          : "sign turns";
     rows.push(
-      `| ${r.claim} | ${signedFixed(r.overall, 2)}% | ${strata
+      `| ${r.label} | ${signedFixed(r.overall, 2)}% | ${strata
         .map((s) => {
           const x = r.by.get(s);
           return x ? `${signedFixed(x.rel, 2)}% (${x.n})` : "—";
         })
-        .join(" | ")} | ${flips ? "**yes**" : "no"} |`,
+        .join(" | ")} | ${verdict} |`,
     );
   }
   console.log(`\n${rows.join("\n")}`);

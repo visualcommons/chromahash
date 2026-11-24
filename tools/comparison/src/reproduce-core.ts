@@ -513,7 +513,11 @@ export function deltaFigure(
   };
 }
 
-/** `arm`'s mean of `key`, read against `base` for its verdict. */
+/**
+ * `arm`'s mean of `key`, read against `base` for its verdict. It carries no
+ * `pair`: the figure is a level, not a comparison, so it has no per-stratum
+ * gain to report.
+ */
 export function meanFigure(
   arm: string,
   key: PerImageKey,
@@ -526,7 +530,6 @@ export function meanFigure(
       return m === null ? null : m.toFixed(decimals);
     },
     verdict: (f) => pairVerdict(f, arm, base, key),
-    pair: { arm, base, key },
   };
 }
 
