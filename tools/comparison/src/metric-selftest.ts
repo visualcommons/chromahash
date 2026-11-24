@@ -9310,6 +9310,7 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
   };
   const grown = pyGrown(14_777);
   const beyond = pyGrown(29_553);
+  const shrunk = pyGrown(-32_000);
   const csHost = OVERHEAD_HOSTS.find((h) => h.impl === "C#");
   if (csHost === undefined) throw new Error("OVERHEAD_HOSTS lost C#");
   const csName = hostRecord(csHost, enc512);
@@ -9352,14 +9353,18 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
     same = (e as Error).message;
   }
   check(
-    "renderOverheadTable: the by-size paragraph refuses a Python 512×512 host side 10.7% over its 64×64 one (beyond the 10% it states without a cause), and a Kotlin 512×512 record counted at the 64×64 record's iterations",
+    "renderOverheadTable: the by-size paragraph refuses a Python 512×512 host side 10.7% over or 10.2% under its 64×64 one (beyond the 10% it states without a cause, either way), and a Kotlin 512×512 record counted at the 64×64 record's iterations",
     beyond.startsWith(
       `${pyName}: its host side is 10.7% over the 64×64 record's, beyond the 10%`,
     ) &&
       beyond.includes("no longer holds") &&
+      shrunk.startsWith(
+        `${pyName}: its host side is 10.2% under the 64×64 record's, beyond the 10%`,
+      ) &&
+      shrunk.includes("no longer holds") &&
       same.startsWith(`${ktName}: it counts 200 iterations, as the 64×64`) &&
       same.includes("no longer holds"),
-    `${beyond.slice(0, 160)} | ${same.slice(0, 160)}`,
+    `${beyond.slice(0, 160)} | ${shrunk.slice(0, 160)} | ${same.slice(0, 160)}`,
   );
 }
 
