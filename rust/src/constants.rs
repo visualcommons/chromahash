@@ -790,8 +790,9 @@ pub struct Tunables {
     /// in the bits after it) and the shipped fixed-width fields (`0`, one bit
     /// later than they would sit; every shipped layout at codes 2–4 leaves a
     /// padding bit for it). The encoder writes both and keeps the one with the
-    /// smaller AC reconstruction error (`encode::encode_adaptive`), an encoder-side decision paid for inside the same
-    /// bytes. Any other value reads as `1`. Wire-level.
+    /// smaller AC reconstruction error (`encode::encode_adaptive`), an
+    /// encoder-side decision paid for inside the same bytes. Any other value
+    /// reads as `1`. Wire-level.
     ///
     /// One entry per tier code. Generation v2 ships `1` at code 3 alone,
     /// where register entry D1 passed, and `0` everywhere else; the decoder
