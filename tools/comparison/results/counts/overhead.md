@@ -17,13 +17,13 @@ What each binding layer adds to an operation over the Rust core, as retired user
 
 ## Host runtimes
 
-What each host runtime adds to a call, counted through its published binding. Arm A is the host's own command-line driver (the cross-language benchmark's `encode-stdin`), run under the host's counting configuration (`counts-core.ts` `COUNTING_CONFIGS`); arm B is the core driver of the native layer the host binds, counted with `--b-impl Rust` on the same cell, and both arms decode to the same RGBA bytes or encode to the same hash in every record. A host is countable where, in every one of its records, each arm's per-operation count in each of the interleaved blocks is within 1.000% of that arm's median; the check and its tolerance were fixed in issue #173 before any host was counted. A counting configuration is not how the host ships: it pins the runtime's compiler tier and its collector's pacing, so a host's figure is its cost under that configuration. "Native layer" is the overhead row above for the same cell, counted against the same core binary, and "Host side" is what is left: the host's call, its marshalling and its runtime, with its CLI's bench loop. The TypeScript (wasm) arm runs the core itself as wasm in V8's baseline compiler, so its figure is the whole call against native code rather than the glue alone; the glue's share is not separable by this count.
+What each host runtime adds to a call, counted through its published binding. Arm A is the host's own command-line driver (the cross-language benchmark's `encode-stdin`), run under the host's counting configuration (`counts-core.ts` `COUNTING_CONFIGS`); arm B is the core driver of the native layer the host binds, counted with `--b-impl Rust` on the same cell, and both arms decode to the same RGBA bytes or encode to the same hash in every record. A host is countable where, in every one of its records, each arm's per-operation count in each of the interleaved blocks is within 1.000% of that arm's median; the check and its tolerance were fixed in issue #173 before any host was counted. The check tests that a record repeats, not that its per-operation figure is independent of the iteration count: work a process does once, part-way through the long process only (a JIT compile at its call threshold, say), is spread over the iterations, so each figure is its cell's at that record's iteration count (`settings.iterations`). Kotlin is counted in the JVM's interpreter for this reason; with C1 at its call threshold its decode counted about 12% more per call at 500 iterations than at 2,000. In the interpreter a smaller dependence remains, unexplained: arm A counts 0.5% more per decode at 500 iterations than at 2,000, 0.9% more per 64×64 encode at 200 than at 800, and 0.7% more per 512×512 encode at 20 than at 80, where the core (arm B) also moves by 0.1% and the host side falls by about 13%. A counting configuration is not how the host ships: it pins the runtime's compiler tier and its collector's pacing, so a host's figure is its cost under that configuration. "Native layer" is the overhead row above for the same cell, counted against the same core binary, and "Host side" is what is left: the host's call, its marshalling and its runtime, with its CLI's bench loop. The TypeScript (wasm) arm runs the core itself as wasm in V8's baseline compiler, so its figure is the whole call against native code rather than the glue alone; the glue's share is not separable by this count.
 
 | Host | Counting configuration | Largest block spread | Countable |
 | --- | --- | ---: | --- |
 | C# | `DOTNET_GCgen0size=0x10000000` `DOTNET_TieredCompilation=0` `DOTNET_TieredPGO=0` `DOTNET_gcConcurrent=0` | 0.024% | yes |
 | Go | `GOGC=off` `GOMAXPROCS=1` | 0.099% | yes |
-| Kotlin | `JAVA_OPTS=-XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Xbatch -XX:CICompilerCount=1` | 0.139% | yes |
+| Kotlin | `JAVA_OPTS=-XX:+UseSerialGC -Xint` | 0.009% | yes |
 | Python | `PYTHONHASHSEED=0` `runs: python/.venv/bin/python -m chromahash.encode_stdin` | 0.422% | yes |
 | TypeScript (wasm) | `--single-threaded` `--no-opt` `--no-maglev` `--no-sparkplug` `--liftoff-only` `--random-seed=1` `--hash-seed=1` | 0.002% | yes |
 
@@ -35,9 +35,9 @@ What each host runtime adds to a call, counted through its published binding. Ar
 | Go | cgo and the Go runtime | encode 64×64 | 3,740,767 | 3,735,887 | +4,880 per encode | +208 | +4,672 | 1.0013 | `host-go-encode-64.json` |
 | Go | cgo and the Go runtime | encode 512×512 | 109,884,856 | 109,849,427 | +35,429 per encode | +197 | +35,232 | 1.0006 | `host-go-encode-512.json` |
 | Go | cgo and the Go runtime | decode (64×64's hash) | 2,408,194 | 2,400,660 | +7,534 per decode | +182 | +7,352 | 1.0031 | `host-go-decode-64.json` |
-| Kotlin | JNA and the JVM | encode 64×64 | 5,434,788 | 3,735,888 | +1,698,900 per encode | +4,308 | +1,694,592 | 1.4548 | `host-kotlin-encode-64.json` |
-| Kotlin | JNA and the JVM | encode 512×512 | 117,198,877 | 109,849,412 | +7,349,465 per encode | +127,953 | +7,221,512 | 1.0669 | `host-kotlin-encode-512.json` |
-| Kotlin | JNA and the JVM | decode (64×64's hash) | 2,848,256 | 2,400,660 | +447,596 per decode | +4,138 | +443,458 | 1.1869 | `host-kotlin-decode-64.json` |
+| Kotlin | JNA and the JVM | encode 64×64 | 9,289,040 | 3,735,886 | +5,553,154 per encode | +4,308 | +5,548,846 | 2.4865 | `host-kotlin-encode-64.json` |
+| Kotlin | JNA and the JVM | encode 512×512 | 116,631,431 | 109,849,405 | +6,782,026 per encode | +127,953 | +6,654,073 | 1.0617 | `host-kotlin-encode-512.json` |
+| Kotlin | JNA and the JVM | decode (64×64's hash) | 5,006,579 | 2,400,660 | +2,605,919 per decode | +4,138 | +2,601,781 | 2.0855 | `host-kotlin-decode-64.json` |
 | Python | ctypes and CPython | encode 64×64 | 46,710,407 | 3,735,887 | +42,974,520 per encode | +4,308 | +42,970,212 | 12.4946 | `host-python-encode-64.json` |
 | Python | ctypes and CPython | encode 512×512 | 2,826,907,979 | 109,849,404 | +2,717,058,575 per encode | +127,953 | +2,716,930,622 | 25.7472 | `host-python-encode-512.json` |
 | Python | ctypes and CPython | decode (64×64's hash) | 2,748,974 | 2,400,660 | +348,314 per decode | +4,138 | +344,176 | 1.1451 | `host-python-decode-64.json` |
@@ -81,4 +81,4 @@ UniFFI byte arrays lifted and lowered in one slice copy instead of one push per 
 | --- | ---: | ---: | ---: | ---: | --- |
 | decode (64×64's hash) | 6,128,083 | 6,129,710 | −1,627 per decode | 0.9997 | `reduce-wasm-rgba-copy-decode-64.json` |
 
-Counted at 84e33389d9258cbebac4f536fe8a1accd9613278, 8f78dff892aebb1882d0e4a25a94e04a29eb830c on AMD Ryzen 7 7800X3D 8-Core Processor; each record holds its binaries' SHA-256, the host, the counter and every block.
+Counted at 84e33389d9258cbebac4f536fe8a1accd9613278, 8f78dff892aebb1882d0e4a25a94e04a29eb830c, b2f222f6f7748e404fc21d1cdf9b99df8dcd18cf on AMD Ryzen 7 7800X3D 8-Core Processor; each record holds its binaries' SHA-256, the host, the counter and every block.
