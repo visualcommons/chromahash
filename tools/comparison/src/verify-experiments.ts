@@ -3508,6 +3508,11 @@ const UNBOUND_COLUMN_NOTES: Record<string, string> = {
  *
  * §13.6 added two tables of minimum detectable effects: 8 rows × 8 and
  * 2 rows × 4.
+ *
+ * #168 re-recorded §11.14 at generation v2 and bound its table twice: all 22
+ * rows × 5 against `rd-budget-tune2`, and the 20 rows codes 3 and 4 leave
+ * unmoved × 5 against `rd-budget-holdout` (110 → 210). The two generation-v1
+ * rows it moved went to a second table, 2 rows × 5.
  */
 const EXPECTED_CELLS: Record<string, number> = {
   "1#0": 26,
@@ -3546,7 +3551,8 @@ const EXPECTED_CELLS: Record<string, number> = {
   "11.12#0": 8,
   "11.12#1": 3,
   "11.12#2": 10,
-  "11.14#0": 110,
+  "11.14#0": 210,
+  "11.14#1": 10,
   "12.2#0": 67,
   "12.3#0": 55,
   "13.1#0": 35,
