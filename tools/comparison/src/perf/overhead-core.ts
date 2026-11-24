@@ -401,8 +401,14 @@ export function renderOverheadTable(
     "| Host | Via | Cell | Host (A) | Core (B) | Over the core | Native layer | Host side | A/B | Record |",
     "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
   );
-  /** Each countable host's host side, by cell, for the by-size comparison. */
-  const hostSides = new Map<string, Map<string, number>>();
+  /**
+   * Each countable host's host side and record, by cell, for the by-size
+   * comparison.
+   */
+  const hostSides = new Map<
+    string,
+    Map<string, { side: number; r: CountsRecord; name: string }>
+  >();
   for (const { h, records, countable } of hostRecords) {
     if (!countable) continue;
     for (const { cell, name, r } of records) {
@@ -423,8 +429,10 @@ export function renderOverheadTable(
         rest = over - diff(lr);
         layer = signed(diff(lr));
         side = signed(rest);
-        const sides = hostSides.get(h.impl) ?? new Map<string, number>();
-        sides.set(cell.cell, rest);
+        const sides =
+          hostSides.get(h.impl) ??
+          new Map<string, { side: number; r: CountsRecord; name: string }>();
+        sides.set(cell.cell, { side: rest, r, name });
         hostSides.set(h.impl, sides);
       }
       // Arm A runs the core arm B runs, plus the layer and the host, so a
@@ -444,20 +452,81 @@ export function renderOverheadTable(
   }
 
   // The host side by input size: with the allocator pinned, what a host adds
-  // to a 512×512 encode over a 64×64 one is what grows with the image.
+  // to a 512×512 encode over a 64×64 one is what grows with the image. Every
+  // figure in the paragraph is computed from the records, and a qualitative
+  // statement it makes is refused where the records no longer bear it out.
+  const bySize = new Map<
+    string,
+    {
+      small: { side: number; r: CountsRecord; name: string };
+      large: { side: number; r: CountsRecord; name: string };
+    }
+  >();
+  for (const [impl, sides] of hostSides) {
+    const small = sides.get("encode-64");
+    const large = sides.get("encode-512");
+    if (small !== undefined && large !== undefined) {
+      bySize.set(impl, { small, large });
+    }
+  }
+  /** How far the 512×512 host side is from the 64×64 one, in words. */
+  const relative = (impl: string) => {
+    const s = bySize.get(impl);
+    if (s === undefined) throw new Error(`no by-size pair for ${impl}`);
+    const x = s.large.side / s.small.side - 1;
+    return `${(Math.abs(x) * 100).toFixed(1)}% ${x < 0 ? "under" : "over"}`;
+  };
+  /** The range of a record's per-block A − B, in instructions. */
+  const abRange = (r: CountsRecord) => {
+    const d = r.blocks.map((b) => b.a[INS] - b.b[INS]);
+    return Math.round(Math.max(...d) - Math.min(...d));
+  };
+  const prose: string[] = [
+    "With the allocator configuration pinned, the encode's host side changes with the input size only by what the host does per pixel or per unit of the call's duration.",
+  ];
+  if (bySize.has("Python")) {
+    prose.push(
+      `Python's pixels cross in one \`memmove\` (the \`uniffi-py-bytes\` reduction), and its 512×512 host side is ${relative("Python")} its 64×64 one.`,
+    );
+  }
+  // The hosts that pass the pixels by pointer, as countable here.
+  const pairs = ["C#", "Go"].flatMap((impl) => {
+    const s = bySize.get(impl);
+    return s === undefined ? [] : [{ impl, ...s }];
+  });
+  const core = pairs[0];
+  if (core !== undefined) {
+    for (const p of pairs) {
+      if (!(abRange(p.large.r) > abRange(p.small.r))) {
+        throw new Error(
+          `${p.large.name}: its A − B spreads ${whole(abRange(p.large.r))} instructions between blocks, not more than the 64×64 record's ${whole(abRange(p.small.r))}, so the by-size paragraph's account of the ${p.impl} difference no longer holds`,
+        );
+      }
+    }
+    const coreSmall = floored(core.small.r.summary.b);
+    const coreLarge = floored(core.large.r.summary.b);
+    const one = pairs.length === 1;
+    const their = one ? "its" : "their";
+    prose.push(
+      `${pairs.map((p) => p.impl).join(" and ")} ${one ? "passes" : "pass"} the pixels by pointer, with no copy; ${their} 512×512 host side${one ? " differs" : "s differ"} from ${their} 64×64 one${one ? "" : "s"} by ${pairs.map((p) => `${signed(p.large.side - p.small.side)} (${p.impl})`).join(" and ")} instructions, against a core (arm B of \`${core.large.name}\` and \`${core.small.name}\`) that counts ${(coreLarge / coreSmall).toFixed(1)} times the instructions at 512×512 (${whole(coreLarge)} against ${whole(coreSmall)}). ${one ? "Its" : "Their"} A − B per block also spreads more at 512×512 than at 64×64 (${pairs.map((p) => `${whole(abRange(p.large.r))} against ${whole(abRange(p.small.r))} instructions for ${p.impl}`).join(", ")}), which is what work that scales with the encode's duration rather than its input (a runtime thread counted with the process) would show. That share is not separated by this count.`,
+    );
+  }
+  const kotlin = bySize.get("Kotlin");
+  if (kotlin !== undefined) {
+    prose.push(
+      `Kotlin's 512×512 host side is ${relative("Kotlin")} its 64×64 one, its 512×512 record counted at ${whole(kotlin.large.r.settings.iterations)} iterations and its 64×64 record at ${whole(kotlin.small.r.settings.iterations)}; the difference carries the interpreter's iteration dependence above, which this count does not separate from what grows with the input.`,
+    );
+  }
   lines.push(
     "",
-    "With the allocator configuration pinned, the encode's host side changes with the input size only by what the host does per pixel or per unit of the call's duration. Python's pixels cross in one `memmove` (the `uniffi-py-bytes` reduction), and its 512×512 host side is within 1% of its 64×64 one. C# and Go pass the pixels by pointer, with no copy, and their 512×512 host sides are fewer than 4,000 instructions over their 64×64 ones, against a core that does 31 times the work; their 512×512 records also spread more between blocks than their 64×64 ones, which is what work that scales with the encode's duration rather than its input (a runtime thread counted with the process) would show. That share is not separated by this count. Kotlin's 512×512 host side is the interpreter's iteration dependence above: at 80 iterations, counted at `e1b90f8` with the same options, it is +5,752,341, 3.6% over its 64×64 one.",
+    prose.join(" "),
     "",
     "| Host | Host side, encode 64×64 | Host side, encode 512×512 | 512×512 − 64×64 | 512×512 / 64×64 |",
     "| --- | ---: | ---: | ---: | ---: |",
   );
-  for (const [impl, sides] of hostSides) {
-    const small = sides.get("encode-64");
-    const large = sides.get("encode-512");
-    if (small === undefined || large === undefined) continue;
+  for (const [impl, { small, large }] of bySize) {
     lines.push(
-      `| ${impl} | ${signed(small)} | ${signed(large)} | ${signed(large - small)} | ${(large / small).toFixed(3)} |`,
+      `| ${impl} | ${signed(small.side)} | ${signed(large.side)} | ${signed(large.side - small.side)} | ${(large.side / small.side).toFixed(3)} |`,
     );
   }
 
