@@ -1075,6 +1075,22 @@ mod tests {
         c
     }
 
+    /// `PREFIX_BITS` is what `from_bytes` checks for `TooShort`, and
+    /// `prefix_bits` is what the tunable paths use for the same thing. They
+    /// must agree at the shipped widths, and both must equal the 54 bits
+    /// (38 of DC and scale) the format fixes.
+    ///
+    /// The properties suite also catches a change here, through
+    /// `the_too_short_boundary_is_exact`. That suite runs after this one, and
+    /// its failing proptests shrink, so on a loaded host a mutated sum in
+    /// `DC_SCALE_BITS` timed out the full mutation sweep instead of failing it.
+    #[test]
+    fn prefix_bits_match_the_shipped_header() {
+        assert_eq!(DC_SCALE_BITS, 38);
+        assert_eq!(PREFIX_BITS, 54);
+        assert_eq!(prefix_bits(&Tunables::DEFAULT), PREFIX_BITS);
+    }
+
     /// `ac_shape` scales *both* `l_tiers` entries by `4^level`. Every shipped
     /// layout has a zero second entry (`[(28, 4), (0, 4)]` and friends), so
     /// `0 * s == 0 / s` and the scaling of that entry is unobservable through
