@@ -108,9 +108,9 @@ export const COUNT_ROWS: readonly CountRow[] = [
     refTune: "accel_fused_pixels=0",
     shippedTune: "",
   },
-  // #165's selection prefix has no flag: its two arms are two builds, the
-  // reference the commit before it (`arms.a.bin` and its hash), under the
-  // same shipped tune.
+  // #165's selection prefix and EOTF table cache have no flag: each row's
+  // two arms are two builds, the reference the commit before the change
+  // (`arms.a.bin` and its hash), under the same shipped tune.
   {
     lever: "selection prefix",
     cell: "decode 100×100 t1",
@@ -129,6 +129,20 @@ export const COUNT_ROWS: readonly CountRow[] = [
     lever: "selection prefix",
     cell: "encode 512×512 t4",
     record: "selection-prefix-encode-512-t4.json",
+    refTune: "",
+    shippedTune: "",
+  },
+  {
+    lever: "EOTF table cache",
+    cell: "encode 100×100 t1",
+    record: "eotf-lut-cache-encode-100-t1.json",
+    refTune: "",
+    shippedTune: "",
+  },
+  {
+    lever: "EOTF table cache",
+    cell: "encode 512×512 t1",
+    record: "eotf-lut-cache-encode-512-t1.json",
     refTune: "",
     shippedTune: "",
   },
