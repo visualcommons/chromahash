@@ -297,9 +297,13 @@ two runs of the host differ by, and a change the size of the bar always is.
 How many figures a re-run on this host moves past it is not known yet — the
 one pair of sweeps this host has compared was never committed, so that
 agreement is unverified — and the first committed pair will say. A stage share
-passes within half a point (provisional, as above), whatever its size: §1
-records two recordings back to back agreeing within 1.0 point on a loaded
-host, and §1.1 within 1.6. A percentage
+passes within half a point (provisional, as above), whatever its size. That
+floor is a resolution chosen, and the back-to-back agreement this host has
+measured does not support it: §1 records two recordings back to back agreeing
+within 1.0 point on a loaded host, and §1.1 within 1.6, both wider than the
+floor, so a re-recording here can fail a share that did not move. The floor is
+flagged for revision: the first committed stability pair sets it from measured
+drift. A percentage
 that is a difference of two timings (§4's "vs shipped", §5's "2%") is held to the same 5%
 on the ratio it stands for — §4's −36.3% is 0.637×, so ±3.2 points. A ratio or
 timing percentage that states a direction must also keep it: a figure written
@@ -445,8 +449,10 @@ megabytes each.
 **The forward DCT is still the largest stage, and rises with size and tier.**
 36% of a 100×100
 encode, 55% at 512×512, and **90%** at 512×512 tier 4. On the unaccelerated
-path `4d68c1f` recorded it was 57%, 79% and 97%: `accel_dct_lanes` executes
-2.56× fewer instructions in it (§12.4), so the stages around it now weigh
+path `4d68c1f` recorded it was 57%, 79% and 97%: with `accel_dct_lanes` on, a
+whole 512×512 encode executes 2.56× fewer instructions (§12.4), and since the
+lever changes nothing but this stage, the stage's own reduction is larger
+still (it was not counted on its own), so the stages around it now weigh
 more. That still orders §10: at tier 4 nothing but the transform matters, and
 at the default tier a lever that touches neither `dct_encode_selected` nor
 the colour pipeline cannot be worth much at any size a caller actually
@@ -676,7 +682,9 @@ one stage they touch.
 
 The shipped encoder is not that encoder any more. With every §12.4 lever on,
 §1 now prices that stage at **27.4%** of a 512×512 encode, because the
-transform around it executes 2.56× fewer instructions, so the ceiling `simd`
+transform around it is cheaper — `accel_dct_lanes` alone makes a whole
+512×512 encode execute 2.56× fewer instructions, all of the saving in the
+transform — so the ceiling `simd`
 works under is about four times what it was. These cells were not re-timed
 at the new defaults, so whether the gain grew with the ceiling is not
 measured; the 2% above is the unaccelerated encoder's.
@@ -1095,7 +1103,7 @@ separate passes do not, and its composite re-tested `has_alpha` and grew the
 alpha plane one push per pixel; an instruction profile put the increase in
 `analyze`, the function holding those loops. #165 walks each tile as zipped
 chunk iterators and collects the alpha plane in one pass, and the fused pass
-now executes 2.5% fewer instructions than the separate passes, with its
+now executes 2.4% fewer instructions than the separate passes, with its
 cycle ratio inside its blocks' noise (0.93–1.15).
 
 **The last five rows are #165's two changes without a flag**, so each
