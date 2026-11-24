@@ -347,6 +347,15 @@ written. These assert what the format guarantees, over inputs nobody enumerated:
   that "a hash that validates is guaranteed to decode". Reached by perturbing one
   byte of a real hash, so the accept path sees payloads the encoder never emits;
 - wrong lengths, reserved tier codes and a set reserved bit are always rejected;
+- **every validation branch returns its own error, in the spec's order** —
+  `TooShort`, then `UnsupportedVersion`, `InvalidTier`, `ReservedBitSet`,
+  `LengthMismatch`. One property per variant reaches exactly that check with
+  every later field random, and `every_header_byte_at_every_length_is_classified`
+  enumerates all 256 × 1625 `(byte 0, length)` pairs, so each branch is pinned
+  without randomness too and a mutation sweep cannot draw past it;
+- a hash that validates decodes **at its tier's raster**, and a capped decode
+  is `min(natural, cap)` per axis — for random payloads behind every valid
+  header as well as for real encodes;
 - encode and decode are deterministic;
 - `decode_capped` never exceeds its cap and never returns an empty image;
 - `average_color` reproduces a solid input's own colour to within the DC's
@@ -672,6 +681,14 @@ the claim before writing it down.
 | **`encode` rejects invalid dimensions, a mismatched rgba length, and a reserved tier** | The core panics on all three. A panic across FFI is undefined behaviour; in WebAssembly it aborts the module instance, so every later call fails too. |
 | **Batch encoding honours each item's tier, and an omitted tier is the *default* tier** | The tier codes are ordered by quality, so a zero default silently produces the 21-byte compact hash. Comparing batch against serial would pass if both used one tier — the byte lengths are what distinguish them. **Go is the exception**: a struct field cannot be "unset", so `ImageInput{...}` without `Quality` *is* the compact tier. That is pinned by `TestZeroValueQualityIsTheCompactTier` rather than papered over — it is the trap that made the Go batch benchmark measure 21-byte hashes against a 32-byte serial baseline. |
 | **Locally declared tier constants agree with the FFI's** | Go and C# must declare their own (they need constant expressions); a test ties them to the exported symbols so a renumber cannot leave one behind. |
+
+The C ABI, which the C# and Go bindings link, goes further than the table:
+`bindings/c/tests/validation.rs` pins every boundary check it makes to its
+documented status — each NULL pointer argument, zero dimensions, exact and
+overflowing RGBA lengths, every quality byte, every `from_bytes` header byte at
+every length, every `as_bytes` capacity, capped-decode sizes down to a zero cap,
+and the batch item checks in their order — and asserts that no error writes an
+out-parameter. The domains are small, so it enumerates rather than samples.
 
 TypeScript additionally ships a **pure-TypeScript decoder** (`src/header.ts`,
 `src/decode.ts`) for render-only consumers who skip the WASM init. That is a
