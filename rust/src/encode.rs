@@ -606,11 +606,16 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     let shape = ac_shape(t, has_alpha, tier);
     let l_count = shape.l_count();
     let c_count = shape.c_count;
-    let order = SelectionOrder::new(aspect, tier, t.aniso_oblique, t.sel_hv);
+    // Only the longest prefix any channel takes is ordered
+    // (`SelectionOrder::with_prefix`): the same coefficients, without sorting
+    // the whole candidate grid.
+    let alpha_count = if has_alpha { shape.alpha_ac_count } else { 0 };
+    let need = l_count.max(c_count).max(alpha_count);
+    let order = SelectionOrder::with_prefix(aspect, tier, t.aniso_oblique, t.sel_hv, need);
     let l_sel: Selection = order.take(l_count);
     let c_sel: Selection = order.take(c_count);
     let alpha_sel = if has_alpha {
-        order.take(shape.alpha_ac_count)
+        order.take(alpha_count)
     } else {
         Selection {
             coeffs: vec![],

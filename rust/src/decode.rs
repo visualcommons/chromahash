@@ -125,8 +125,8 @@ fn synthesize_detail(
     mut l_ac: Vec<f64>,
     t: &Tunables,
 ) -> (crate::dct::Selection, Vec<f64>) {
-    let ext =
-        SelectionOrder::new(aspect, tier, t.aniso_oblique, t.sel_hv).take(l_count + t.synth_count);
+    let need = l_count + t.synth_count;
+    let ext = SelectionOrder::with_prefix(aspect, tier, t.aniso_oblique, t.sel_hv, need).take(need);
     if ext.coeffs.len() <= l_count {
         return (l_sel, l_ac);
     }
@@ -272,8 +272,13 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     let l_count = shape.l_count();
     let c_count = shape.c_count;
     // Every channel's selection is a prefix of the same sorted candidate list,
-    // so the sort — the one superlinear step in a decode — happens once.
-    let order = SelectionOrder::new(aspect, tier, t.aniso_oblique, t.sel_hv);
+    // so the sort — the one superlinear step in a decode — happens once, and
+    // only over the longest prefix a channel takes
+    // (`SelectionOrder::with_prefix`).
+    let need = l_count
+        .max(c_count)
+        .max(if has_alpha { shape.alpha_ac_count } else { 0 });
+    let order = SelectionOrder::with_prefix(aspect, tier, t.aniso_oblique, t.sel_hv, need);
     let l_sel = order.take(l_count);
     let c_sel = order.take(c_count);
     stage!("selection");
