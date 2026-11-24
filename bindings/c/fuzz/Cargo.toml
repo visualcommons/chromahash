@@ -1,0 +1,36 @@
+[package]
+name = "chromahash-c-fuzz"
+version = "0.0.0"
+edition = "2021"
+description = "cargo-fuzz targets for the chromahash C ABI"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# Standalone, with no `[workspace]` table: the repository has no Cargo
+# workspace. Build with `cargo +nightly fuzz ... --fuzz-dir bindings/c/fuzz`
+# (or `mise run fuzz:c`).
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+# The C ABI, linked as a Rust lib so the `extern "C"` fns are callable directly,
+# exactly as bindings/c/tests/spec_vectors.rs calls them.
+chromahash-c = { path = ".." }
+# The core, as the differential oracle: every C call must agree with it.
+chromahash = { path = "../../../rust" }
+
+[[bin]]
+name = "c_handle"
+path = "fuzz_targets/c_handle.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "c_encode"
+path = "fuzz_targets/c_encode.rs"
+test = false
+doc = false
+bench = false
