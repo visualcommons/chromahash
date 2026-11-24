@@ -461,6 +461,12 @@ fn a_capped_decode_renders_at_min_of_natural_and_cap() {
         let caps = [0u32, 1, 2, nw - 1, nw, nw + 1, u32::MAX];
         for &max_w in &caps {
             for &max_h in &caps {
+                // A debug-build render costs its pixel count: render every
+                // pair up to the 64 px tier, and above it only the pairs with
+                // one small axis, which still reach every cap value.
+                if u64::from(nw.min(max_w)) * u64::from(nh.min(max_h)) > 64 * 64 {
+                    continue;
+                }
                 for to in [false, true] {
                     let mut image = empty_image();
                     let status = unsafe {
