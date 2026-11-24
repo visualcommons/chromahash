@@ -202,7 +202,9 @@ fuzz_target!(|data: &[u8]| {
             "batch: {w}x{h} len {rgba_len} tier {tier}"
         );
         if status == ChromaHashStatus::Ok && count > 0 {
-            let first = Core::encode_with_quality(w, h, &rgba, gamut, tier);
+            // Reuse the single-image reference: a tier-3 encode of a large
+            // image costs about a second under the sanitizer.
+            let first = core.unwrap_or_else(|| Core::encode_with_quality(w, h, &rgba, gamut, tier));
             let second = Core::encode_with_quality(1, 1, &pixel, Gamut::Srgb, DEFAULT_TIER);
             assert_eq!(handle_bytes(out[0]), first.as_bytes());
             assert_eq!(handle_bytes(out[1]), second.as_bytes());
