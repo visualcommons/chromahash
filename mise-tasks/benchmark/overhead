@@ -56,6 +56,9 @@ done
 wasm-pack build --target web bindings/wasm --out-dir ../../typescript/wasm
 pnpm --prefix typescript run build
 mkdir -p go/lib go/include
+# The static library the Go driver links; building the examples alone does not
+# write it.
+cargo build --manifest-path bindings/c/Cargo.toml --release
 cp bindings/c/target/release/libchromahash_c.a go/lib/
 cp bindings/c/include/chromahash.h go/include/
 ( cd go && CGO_ENABLED=1 go build -o encode-stdin ./cmd/encode-stdin )
