@@ -268,10 +268,17 @@ export interface CountingConfig {
   args?: readonly string[];
   /**
    * Repository-relative path of the program the host runs, which an arm's
-   * `--a-bin` / `--b-bin` replaces: the script, assembly or launcher. Null
-   * where the host runs a module by name and no other build can be named.
+   * `--a-bin` / `--b-bin` replaces: the script, assembly, launcher, or the
+   * package a module is run from by name. Null where no other build can be
+   * named.
    */
   program: string | null;
+  /**
+   * The repository-relative directory the host runs in, given the arm's
+   * program, where that replaces the target's: a host that imports the
+   * program by name finds the one in its working directory first.
+   */
+  cwd?: (program: string) => string;
   /**
    * Repository-relative files and directories whose bytes are the code under
    * test (`binSha256` digests them all), given the arm's program.
@@ -344,9 +351,10 @@ export const COUNTING_CONFIGS: Readonly<Record<string, CountingConfig>> = {
     flags: [],
     command: "python/.venv/bin/python",
     args: ["-m", "chromahash.encode_stdin"],
-    program: null,
-    artifacts: () => ["python/chromahash"],
-    why: "the virtual environment's interpreter runs directly rather than through `uv run`, whose start-up varies when it re-syncs the environment, with a fixed hash seed; CPython has no JIT and collects by reference count and allocation count",
+    program: "python/chromahash",
+    artifacts: (p) => [p],
+    cwd: (p) => path.dirname(p),
+    why: "the virtual environment's interpreter runs directly rather than through `uv run`, whose start-up varies when it re-syncs the environment, with a fixed hash seed; CPython has no JIT and collects by reference count and allocation count. The program is the package directory, and the interpreter runs in its parent, so `-m` imports that build of the package ahead of the environment's",
   },
 };
 

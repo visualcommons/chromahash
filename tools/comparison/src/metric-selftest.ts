@@ -7773,6 +7773,17 @@ console.log(
         .join(" ") ?? "") === "pkg/dist pkg/wasm",
     configTokens(COUNTING_CONFIGS.Go as never).join(" "),
   );
+  const py = COUNTING_CONFIGS.Python;
+  check(
+    "CPython's counting configuration names the package directory as its program, so --b-bin can name an earlier build of it: it digests that directory and runs from its parent, and the committed program is the repository's package",
+    py?.program === "python/chromahash" &&
+      py.artifacts("before/python/chromahash").join(" ") ===
+        "before/python/chromahash" &&
+      py.cwd?.("before/python/chromahash") === "before/python" &&
+      py.cwd?.(py.program) === "python" &&
+      (py.args ?? []).join(" ") === "-m chromahash.encode_stdin",
+    String(py?.program),
+  );
   const spreadOf = (median: number, min: number, max: number) =>
     blockSpread({
       median: c(median, 1),
