@@ -80,7 +80,12 @@ pub fn selection_key(px: u64, py: u64, a_q12: i64, h_q12: i64) -> u64 {
 /// 16:1 extreme), and every per-channel K(tier) the format uses is below that
 /// bound, so every selection is fully satisfied.
 pub struct SelectionOrder {
+    /// The first `entries.len()` candidates in selection order: every
+    /// candidate for [`SelectionOrder::new`], a prefix of them for
+    /// [`SelectionOrder::with_prefix`].
     entries: Vec<(u64, usize, usize)>,
+    /// How many candidates the grid has, ordered or not.
+    candidates: usize,
     w: usize,
     h: usize,
 }
@@ -88,6 +93,22 @@ pub struct SelectionOrder {
 impl SelectionOrder {
     /// Sort the candidate grid for one (aspect byte, tier) under the §6.2 weights.
     pub fn new(aspect_byte: u8, tier: u8, aniso: f64, hv: f64) -> Self {
+        Self::with_prefix(aspect_byte, tier, aniso, hv, usize::MAX)
+    }
+
+    /// The same order as [`SelectionOrder::new`], with only its first `need`
+    /// candidates ordered: [`SelectionOrder::take`] then serves any `k` up to
+    /// `need` and panics past it.
+    ///
+    /// A decode takes at most a few hundred coefficients from a grid of up to
+    /// 65,535 (tier 4's 256×256), and sorting the whole grid was most of a
+    /// capped tier-4 decode (`spec/PERFORMANCE.md` §1.1). Selecting the `need`
+    /// smallest first and sorting only those yields the same prefix, element
+    /// for element, because the sort key `(key, cx, cy)` is a **total** order
+    /// on distinct candidates — no two candidates share a `(cx, cy)` — so the
+    /// set of the `need` smallest is unique, and so is its sorted order. No
+    /// float is compared, so this is exact, not merely stable.
+    pub fn with_prefix(aspect_byte: u8, tier: u8, aniso: f64, hv: f64, need: usize) -> Self {
         let (w, h) = decode_output_size(aspect_byte, tier);
         let (w, h) = (w as usize, h as usize);
         let (a_q12, h_q12) = (sel_weight_q12(aniso), sel_weight_q12(hv));
@@ -101,8 +122,18 @@ impl SelectionOrder {
                 entries.push((key, cx, cy));
             }
         }
+        let candidates = entries.len();
+        if need < candidates {
+            entries.select_nth_unstable_by_key(need, |&(key, cx, cy)| (key, cx, cy));
+            entries.truncate(need);
+        }
         entries.sort_unstable_by_key(|&(key, cx, cy)| (key, cx, cy));
-        Self { entries, w, h }
+        Self {
+            entries,
+            candidates,
+            w,
+            h,
+        }
     }
 
     /// The first `k` frequencies in selection order.
@@ -110,8 +141,18 @@ impl SelectionOrder {
     /// `priorities`/`p_k` report the **unweighted** integer priority
     /// `(cx·H)² + (cy·W)²`: the synthesis window and the CfL taper are defined
     /// on the true spatial frequency, not on the perceptual sort key.
+    ///
+    /// # Panics
+    ///
+    /// If `k` reaches past the prefix [`SelectionOrder::with_prefix`] ordered
+    /// (and past nothing else: a `k` beyond the whole grid is clamped to it).
     pub fn take(&self, k: usize) -> Selection {
-        let n = k.min(self.entries.len());
+        let n = k.min(self.candidates);
+        assert!(
+            n <= self.entries.len(),
+            "selection of {n} asked of an order with only its first {} candidates sorted",
+            self.entries.len()
+        );
         let mut coeffs = Vec::with_capacity(n);
         let mut priorities = Vec::with_capacity(n);
         for &(_, cx, cy) in &self.entries[..n] {
@@ -513,6 +554,59 @@ mod tests {
                 assert_eq!(sel.priorities.len(), k);
             }
         }
+    }
+
+    /// Every `take` of a prefix-only order against the fully sorted one.
+    fn assert_prefix_matches(byte: u8, tier: u8, aniso: f64, hv: f64) {
+        let full = SelectionOrder::new(byte, tier, aniso, hv);
+        let n = full.candidates;
+        assert_eq!(full.entries.len(), n, "new() orders every candidate");
+        // The needs a caller passes, the boundaries of the selection
+        // (`need` = 0, the last candidate, the whole grid, past it), and one
+        // inside a large grid's middle.
+        for need in [0, 1, 2, 7, 63, 64, n / 2, n - 1, n, n + 9] {
+            let part = SelectionOrder::with_prefix(byte, tier, aniso, hv, need);
+            assert_eq!(part.candidates, n, "byte={byte} tier={tier} need={need}");
+            assert_eq!(part.entries.len(), need.min(n), "byte={byte} tier={tier}");
+            for k in [0, need.min(1), need / 2, need.saturating_sub(1), need] {
+                let (a, b) = (part.take(k), full.take(k));
+                let at = format!("byte={byte} tier={tier} need={need} k={k}");
+                assert_eq!(a.coeffs, b.coeffs, "{at}");
+                assert_eq!(a.priorities, b.priorities, "{at}");
+                assert_eq!(a.p_k, b.p_k, "{at}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_prefix_only_order_matches_the_full_sort() {
+        let t = crate::constants::Tunables::DEFAULT;
+        // Every aspect byte where a grid is small; a stride where it is up to
+        // 65,535 candidates, both 16:1 extremes and the square included.
+        for tier in 0..=crate::constants::MAX_TIER {
+            let stride = if tier <= 1 { 1 } else { 17 };
+            for byte in (0u8..=255).step_by(stride).chain([128, 255]) {
+                assert_prefix_matches(byte, tier, t.aniso_oblique, t.sel_hv);
+            }
+        }
+        // The unweighted order, where many candidates share a key and the
+        // `(cx, cy)` tie-break decides: the case that needs a total order.
+        for byte in [0u8, 64, 128, 191, 255] {
+            assert_prefix_matches(byte, 1, 0.0, 0.0);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "only its first 5 candidates sorted")]
+    fn taking_past_an_ordered_prefix_panics() {
+        SelectionOrder::with_prefix(128, 1, 1.2, 0.15, 5).take(6);
+    }
+
+    #[test]
+    fn taking_past_the_whole_grid_clamps_to_it() {
+        let part = SelectionOrder::with_prefix(128, 0, 1.2, 0.15, usize::MAX);
+        let all = part.candidates;
+        assert_eq!(part.take(all + 100).coeffs.len(), all);
     }
 
     #[test]

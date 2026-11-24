@@ -1,5 +1,5 @@
 /**
- * The figures `spec/PERFORMANCE.md` §12.4 and `rust/src/constants.rs` quote
+ * The figures `spec/PERFORMANCE.md` §12.4 and `rust/src/encode.rs` quote
  * from the committed `benchmark:counts` records under
  * `tools/comparison/results/counts/ab/`, each checked against the record it
  * comes from. They are the evidence `Tunables::DEFAULT`'s levers rest on (#142),
@@ -19,7 +19,7 @@ import type { CountsRecord } from "./counts-core.ts";
 import { ACCEL_NONE } from "./matrix.ts";
 
 export const COUNTS_DOC = "spec/PERFORMANCE.md";
-export const COUNTS_CONSTANTS = "rust/src/constants.rs";
+export const COUNTS_ENCODE = "rust/src/encode.rs";
 /** §12.4's counts table: the section and its index within it. */
 export const COUNTS_SECTION = "12.4";
 export const COUNTS_TABLE = 1;
@@ -34,6 +34,13 @@ export interface CountRow {
   refTune: string;
   /** The shipped arm's tune (B). */
   shippedTune: string;
+  /**
+   * Set on a row whose arms are two builds rather than two tunes: the short
+   * SHA of the commit before the change, which the reference arm's binary is
+   * built from (`base-<sha>` in `arms.a.bin`). Such a row's arms must hash
+   * differently; a tune row's arms must hash the same, being one binary.
+   */
+  refCommit?: string;
 }
 
 export const COUNT_ROWS: readonly CountRow[] = [
@@ -101,24 +108,66 @@ export const COUNT_ROWS: readonly CountRow[] = [
     shippedTune: "",
   },
   {
-    // Recorded at 955efb6, where the fused pass was briefly the default, so
-    // there the shipped arm (B) is the fused pass.
-    lever: "accel_fused_pixels (on)",
+    // Re-recorded by #165, which made the fused pass a reduction and a
+    // default; #142's record of it, an increase, is in that file's history.
+    lever: "accel_fused_pixels",
     cell: "encode 512×512 t1",
     record: "accel-fused-pixels.json",
     refTune: "accel_fused_pixels=0",
     shippedTune: "",
   },
+  // #165's selection prefix and EOTF table cache have no flag: each row's
+  // two arms are two builds, the reference the commit before the change
+  // (`arms.a.bin` and its hash), under the same shipped tune.
+  {
+    lever: "selection prefix",
+    cell: "decode 100×100 t1",
+    record: "selection-prefix-decode-100-t1.json",
+    refTune: "",
+    shippedTune: "",
+    refCommit: "86ab1c4",
+  },
+  {
+    lever: "selection prefix",
+    cell: "encode 100×100 t1",
+    record: "selection-prefix-encode-100-t1.json",
+    refTune: "",
+    shippedTune: "",
+    refCommit: "86ab1c4",
+  },
+  {
+    lever: "selection prefix",
+    cell: "encode 512×512 t4",
+    record: "selection-prefix-encode-512-t4.json",
+    refTune: "",
+    shippedTune: "",
+    refCommit: "86ab1c4",
+  },
+  {
+    lever: "EOTF table cache",
+    cell: "encode 100×100 t1",
+    record: "eotf-lut-cache-encode-100-t1.json",
+    refTune: "",
+    shippedTune: "",
+    refCommit: "8405b9f",
+  },
+  {
+    lever: "EOTF table cache",
+    cell: "encode 512×512 t1",
+    record: "eotf-lut-cache-encode-512-t1.json",
+    refTune: "",
+    shippedTune: "",
+    refCommit: "8405b9f",
+  },
 ];
 
 const INSTR = "instructions:u";
+const CYCLES = "cycles:u";
 const reference = (r: CountsRecord): number =>
   Math.floor(r.summary.a.median[INSTR]);
 const shipped = (r: CountsRecord): number =>
   Math.floor(r.summary.b.median[INSTR]);
 const ratio = (r: CountsRecord): number => r.summary.ratio.geomean[INSTR];
-/** The fused pass's instruction increase over the passes it replaces, in %. */
-const fusedIncrease = (r: CountsRecord): number => (1 / ratio(r) - 1) * 100;
 
 /** A figure quoted in prose, and how to compute it from its record. */
 export interface CountProse {
@@ -133,17 +182,39 @@ export interface CountProse {
 export const COUNT_PROSE: readonly CountProse[] = [
   {
     file: COUNTS_DOC,
-    what: "§12.4: accel_fused_pixels' instruction increase",
-    pattern: /turned on, it executes ([\d.]+)% more/,
+    what: "§12.4: accel_fused_pixels' instruction saving over the separate passes, in %",
+    pattern:
+      /now executes ([\d.]+)% fewer instructions than the separate passes/,
     record: "accel-fused-pixels.json",
-    value: fusedIncrease,
+    value: (r) => (1 - 1 / ratio(r)) * 100,
   },
   {
-    file: COUNTS_CONSTANTS,
-    what: "Tunables::accel_fused_pixels: its instruction increase",
-    pattern: /is ([\d.]+)% \*more\* user-space instructions/,
+    file: COUNTS_DOC,
+    what: "§12.4: accel_fused_pixels' lowest block cycle ratio",
+    pattern: /blocks' noise \(([\d.]+)–[\d.]+\)/,
     record: "accel-fused-pixels.json",
-    value: fusedIncrease,
+    value: (r) => r.summary.ratio.min[CYCLES],
+  },
+  {
+    file: COUNTS_DOC,
+    what: "§12.4: accel_fused_pixels' highest block cycle ratio",
+    pattern: /blocks' noise \([\d.]+–([\d.]+)\)/,
+    record: "accel-fused-pixels.json",
+    value: (r) => r.summary.ratio.max[CYCLES],
+  },
+  {
+    file: COUNTS_ENCODE,
+    what: "cached_eotf_lut: the per-call table build's share of a 100×100 encode, in %",
+    pattern: /were ([\d.]+)% of a 100×100 encode's user-space instructions/,
+    record: "eotf-lut-cache-encode-100-t1.json",
+    value: (r) => (1 - 1 / ratio(r)) * 100,
+  },
+  {
+    file: COUNTS_ENCODE,
+    what: "cached_eotf_lut: the EOTF table cache row's count ratio",
+    pattern: /cache row's ([\d.]+) count ratio/,
+    record: "eotf-lut-cache-encode-100-t1.json",
+    value: ratio,
   },
   {
     file: COUNTS_DOC,
@@ -233,6 +304,25 @@ export function countClaimFailures(
       out.push(
         `${where}: ${row.record}'s arms are "${r.arms.a.tune}" / "${r.arms.b.tune}", not "${row.refTune}" / "${row.shippedTune}"`,
       );
+    }
+    const sameBinary = r.arms.a.binSha256 === r.arms.b.binSha256;
+    if (row.refCommit === undefined) {
+      if (!sameBinary) {
+        out.push(
+          `${where}: ${row.record} times two binaries, but the row is a tune pair of one`,
+        );
+      }
+    } else {
+      if (sameBinary) {
+        out.push(
+          `${where}: ${row.record} times one binary in both arms, not a build of ${row.refCommit} against the change`,
+        );
+      }
+      if (!r.arms.a.bin.includes(`base-${row.refCommit}/`)) {
+        out.push(
+          `${where}: ${row.record}'s reference arm is ${r.arms.a.bin}, not a build of ${row.refCommit}`,
+        );
+      }
     }
     if (!r.outputs.equal) {
       out.push(`${where}: ${row.record}'s arms produced different outputs`);

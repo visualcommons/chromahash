@@ -373,12 +373,6 @@ const PROSE_CLAIMS: ProseClaim[] = [
     stages: ["unmarked"],
   },
   {
-    what: "§12 summary: the searches' share of the old residual at 100x100 t1",
-    pattern: /the searches are\s+([\d.]+) of its old/,
-    cell: "100x100-t1",
-    stages: ["ac_quantize"],
-  },
-  {
     what: "§12.1: `ac_quantize` at 100x100 t1, after the table",
     pattern: /`ac_quantize`, which is ([\d.]+)% of a thumbnail encode/,
     cell: "100x100-t1",
@@ -428,7 +422,7 @@ const PROSE_CLAIMS: ProseClaim[] = [
   },
   {
     what: "§12 summary: the SIMD-covered points, restated",
-    pattern: /because it covers ([\d.]+) of those points/,
+    pattern: /on the shipped one it covers ([\d.]+) of those points/,
     cell: "512x512-t1",
     stages: ["oklab_forward"],
   },
@@ -444,21 +438,19 @@ const PROSE_CLAIMS: ProseClaim[] = [
     cell: "512x512-t1",
     stages: ["oklab_forward"],
   },
+  // §5's ceiling and §6's comparison of stages quote the unaccelerated
+  // encoder their timings ran (`4d68c1f`'s recording), which this baseline no
+  // longer holds, so they name that revision and are not bound here; what
+  // each says about the shipped encoder is.
   {
-    what: "§5: the SIMD ceiling",
-    pattern: /So the ceiling was ([\d.]+)%/,
-    cell: "512x512-t1",
-    stages: ["oklab_forward"],
-  },
-  {
-    what: "§6: `dct_forward`'s share, against the SIMD stage",
-    pattern: /at ([\d.]+)% of the work rather than/,
+    what: "§6: `dct_forward`'s share on the shipped encoder",
+    pattern: /encoder the two stages are ([\d.]+)% and/,
     cell: "512x512-t1",
     stages: ["dct_forward"],
   },
   {
-    what: "§6: `oklab_forward`'s share, the stage SIMD covers",
-    pattern: /on the ([\d.]+)% stage `simd` covers/,
+    what: "§6: `oklab_forward`'s share on the shipped encoder",
+    pattern: /encoder the two stages are [\d.]+% and ([\d.]+)%/,
     cell: "512x512-t1",
     stages: ["oklab_forward"],
   },

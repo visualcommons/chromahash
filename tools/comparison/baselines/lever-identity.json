@@ -17,14 +17,14 @@
     "decodesDiffering": 1313
   },
   "provenance": {
-    "rev": "221900417854b81dc0d2238ead5fc60b472ff8df",
+    "rev": "51ea98b55fabd3070052088eb305e9d8edf12997",
     "dirty": false,
     "dirtyPaths": [],
     "iqaCli": "unused",
     "config": "lever-identity",
     "configSha256": "",
     "binaries": {
-      "rust/target/release/examples/encode_stdin": "cc64e49ecc220e949e9d5c5356827c099f3b9801de295b7c702552c41c4c63ac"
+      "rust/target/release/examples/encode_stdin": "45af61ef7d6302a5480bfbedf83cb3dbc206bfbc1a4b99305b09249e95044a6f"
     },
     "node": "v24.20.0",
     "corpus": [

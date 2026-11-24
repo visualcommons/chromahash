@@ -1583,8 +1583,8 @@ console.log("\nverify-benchmark — what passes, what is skipped, what fails\n")
 {
   // §12.4's lever speedups and the §12.3 claims are read off a paired ratio
   // base ÷ arm. Since #142 a lever's arm turns it off, so its ratio is
-  // shipped ÷ reference and the speedup is its reciprocal; the one arm that
-  // turns a lever on (`accel_fused_pixels`) is read as recorded. A selection
+  // shipped ÷ reference and the speedup is its reciprocal; an arm that turns
+  // nothing off (`shipped`, a prototype) is read as recorded. A selection
   // or reciprocal that went the wrong way would print every speedup inverted.
   const r = { value: 0.5, interval: [0.4, 0.625] as [number, number] };
   const near = (a: number, b: number) => Math.abs(a - b) < 1e-12;
@@ -1615,12 +1615,13 @@ console.log("\nverify-benchmark — what passes, what is skipped, what fails\n")
     "accel_quant_table=0",
     "accel_dct_lanes=0",
     "accel_word_bitpack=0",
+    "accel_fused_pixels=0",
     "accel_gamma_lut_cache=0",
     "accel_flat_cos=0",
     "accel none",
     "refine_passes=1 accel_sse_early_exit=0",
   ];
-  const on = ["accel_fused_pixels", "shipped", "dct_separable"];
+  const on = ["accel_fused_pixels=1", "shipped", "dct_separable"];
   const wrongOff = off.filter(
     (a) => !turnsLeverOff(a) || !near(leverArmSpeedup(a, r).value, 2),
   );
@@ -7880,9 +7881,46 @@ console.log(
       loadRecord,
     ],
     [
-      "the constants.rs increase",
-      edited("is 8.3% *more* user-space", "is 8.4% *more* user-space"),
+      "a prose count",
+      edited(
+        "it removes 42,882 instructions per encode",
+        "it removes 42,883 instructions per encode",
+      ),
       loadRecord,
+    ],
+    [
+      "a fused-pass prose saving",
+      edited(
+        "now executes 2.4% fewer instructions than the separate passes",
+        "now executes 2.5% fewer instructions than the separate passes",
+      ),
+      loadRecord,
+    ],
+    [
+      "a fused-pass cycle range",
+      edited("blocks' noise (0.93–1.15)", "blocks' noise (0.93–1.25)"),
+      loadRecord,
+    ],
+    [
+      "a build pair timing one binary in both arms",
+      repoFile,
+      (f) => {
+        const r = loadRecord(f);
+        if (f !== "eotf-lut-cache-encode-100-t1.json") return r;
+        return { ...r, arms: { ...r.arms, a: { ...r.arms.b } } };
+      },
+    ],
+    [
+      "a tune pair timing two binaries",
+      repoFile,
+      (f) => {
+        const r = loadRecord(f);
+        if (f !== "accel-quant-table.json") return r;
+        return {
+          ...r,
+          arms: { ...r.arms, a: { ...r.arms.a, binSha256: "0".repeat(64) } },
+        };
+      },
     ],
     [
       "a re-recorded ratio",
