@@ -1,8 +1,13 @@
 {
   "levers": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1",
+  "arms": {
+    "shipped": "",
+    "all levers": "accel_quant_table=1 accel_dct_lanes=1 accel_gamma_lut_cache=1 accel_flat_cos=1 accel_sse_early_exit=1 accel_fused_pixels=1 accel_word_bitpack=1"
+  },
+  "reference": "accel_quant_table=0 accel_dct_lanes=0 accel_gamma_lut_cache=0 accel_flat_cos=0 accel_sse_early_exit=0 accel_fused_pixels=0 accel_word_bitpack=0",
   "images": 153,
-  "encodePairs": 1989,
-  "decodePairs": 1989,
+  "encodePairs": 3978,
+  "decodePairs": 3978,
   "differing": 0,
   "diffs": [],
   "control": {
@@ -12,14 +17,14 @@
     "decodesDiffering": 1313
   },
   "provenance": {
-    "rev": "b0679d55f20f4e388bf619fbd0d2e69a228a6de1",
+    "rev": "221900417854b81dc0d2238ead5fc60b472ff8df",
     "dirty": false,
     "dirtyPaths": [],
     "iqaCli": "unused",
     "config": "lever-identity",
     "configSha256": "",
     "binaries": {
-      "rust/target/release/examples/encode_stdin": "252ef3d5e92a3ec7df133ac5996ab3e447ce8092fce6defca4a0e8d21258f4b4"
+      "rust/target/release/examples/encode_stdin": "cc64e49ecc220e949e9d5c5356827c099f3b9801de295b7c702552c41c4c63ac"
     },
     "node": "v24.20.0",
     "corpus": [

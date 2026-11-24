@@ -1002,7 +1002,10 @@ levers directly, because they are the defaults its adapter runs.
 compares two arms with it, the shipped defaults and all seven on, at 100 px
 and 512 px at every tier code and at full resolution at codes 0–2, hashes
 byte for byte and decoded pixels too, beside a negative control that must
-report a difference.
+report a difference. At `2219004`, whose Rust is this change's, it compared
+153 images in 3,978 encode and 3,978 decode pairs, 1,989 per arm, and none
+differed; the control differed in 1,313 of its 1,530 encodes and as many
+decodes.
 
 No binding exposes `Tunables`, so the other eight languages cannot reach a
 lever, and since #142 they run the shipped levers through `Tunables::DEFAULT`.
