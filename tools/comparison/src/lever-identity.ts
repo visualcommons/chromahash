@@ -6,8 +6,11 @@
  * and `rd:gate` on its 64 photographs. Turning the levers on by default (#142)
  * is a claim about every input, so this widens the evidence to every fixture
  * image the harness has fetched. It encodes each one with every lever off
- * (`ACCEL_NONE`, the unaccelerated reference) and all seven on (`ACCEL_ALL`,
- * the shipped defaults written out) at three sizes:
+ * (`ACCEL_NONE`, the unaccelerated reference) and compares two arms with it
+ * (`ON_ARMS`): the shipped defaults, which turn on every lever but
+ * `accel_fused_pixels`, and all seven on (`ACCEL_ALL`), so the lever the
+ * defaults leave off is held to the same evidence. Each arm is one pair, at
+ * three sizes:
  *
  * - 100 px, at every tier code;
  * - 512 px, at every tier code;
@@ -15,7 +18,7 @@
  *   and run the same per-coefficient code as at 512 px.
  *
  * The hashes must match byte for byte. Each hash is then decoded at its
- * natural size with every lever off and all seven on, and the pixels must
+ * natural size with every lever off and under each arm, and the pixels must
  * match too: two of the levers act only on decode.
  *
  * A comparison that could never report a difference would print the same
@@ -60,6 +63,15 @@ const DIRS = ["natural", "alpha", "graphic", "synthetic", "holdout"] as const;
  * synthetic fixtures, so it cannot be relied on to differ on a given corpus.
  */
 const CONTROL = "mu_l=3";
+
+/**
+ * The arms compared with the levers-off reference: the shipped defaults (the
+ * empty tune), and every lever on.
+ */
+const ON_ARMS: ReadonlyArray<readonly [string, string]> = [
+  ["shipped", ""],
+  ["all levers", ACCEL_ALL],
+];
 
 /** Each source size (0 = full resolution) and the tier codes encoded at it. */
 const SIZES: ReadonlyArray<readonly [number, readonly number[]]> = [
@@ -126,18 +138,21 @@ for (const d of DIRS) {
       const args = ["encode", String(info.width), String(info.height), "srgb"];
       for (const tier of tiers) {
         const off = run(args, data, ACCEL_NONE, tier);
-        const on = run(args, data, ACCEL_ALL, tier);
-        encodePairs++;
-        if (!off.equals(on)) {
-          diffs.push(`${where} t${tier}: hash differs`);
-          continue;
-        }
         const pixelsOff = run(["decode"], off, ACCEL_NONE, tier);
-        const pixelsOn = run(["decode"], off, ACCEL_ALL, tier);
-        decodePairs++;
-        if (!pixelsOff.equals(pixelsOn)) {
-          diffs.push(`${where} t${tier}: decode differs`);
+        let hashesMatch = true;
+        for (const [arm, tune] of ON_ARMS) {
+          encodePairs++;
+          if (!off.equals(run(args, data, tune, tier))) {
+            diffs.push(`${where} t${tier}: ${arm} hash differs`);
+            hashesMatch = false;
+            continue;
+          }
+          decodePairs++;
+          if (!pixelsOff.equals(run(["decode"], off, tune, tier))) {
+            diffs.push(`${where} t${tier}: ${arm} decode differs`);
+          }
         }
+        if (!hashesMatch) continue;
         if (size === 0) continue;
         const control = run(args, data, `${ACCEL_NONE} ${CONTROL}`, tier);
         controlPairs++;
@@ -155,6 +170,7 @@ for (const d of DIRS) {
 
 const result = {
   levers: ACCEL_ALL,
+  arms: Object.fromEntries(ON_ARMS),
   reference: ACCEL_NONE,
   images: corpus.length,
   encodePairs,

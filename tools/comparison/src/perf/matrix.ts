@@ -88,8 +88,9 @@ export const ACCEL_LEVERS = [
 /**
  * Every §12.1 lever on at once. Encode-only and decode-only flags are both
  * harmless on the other operation, so one string serves both arm sets. Since
- * #142 this is what `Tunables::DEFAULT` sets, so it is the shipped path
- * written out; records made before then compare it with a levers-off default.
+ * #142 `Tunables::DEFAULT` sets every one of them but `accel_fused_pixels`,
+ * whose paired count is an instruction increase; records made before then
+ * compare this with a levers-off default.
  */
 export const ACCEL_ALL = ACCEL_LEVERS.map((l) => `${l}=1`).join(" ");
 
@@ -120,17 +121,19 @@ export const TUNE_ARMS: ReadonlyArray<{ label: string; tune: string | null }> =
     // binding (constants.rs `dct_separable: false`, pinned by a test), so this
     // is the only way to price it — and PERFORMANCE.md §6 quotes it.
     { label: "dct_separable", tune: "dct_separable=1" },
-    // PERFORMANCE.md §12.1's byte-identical levers that act on encode. They
-    // are on in the shipped defaults (#142), so each arm turns one off, and
-    // the last turns all seven off: the reference path a lever replaced. Like
-    // the levers they produce the shipped bytes (rust/tests/accel_levers.rs),
-    // so the time column is the whole of what they change, and a lever's
-    // speedup is its arm's time over `shipped`'s. The two decode-only levers
+    // PERFORMANCE.md §12.1's byte-identical levers that act on encode. The
+    // shipped defaults turn all but `accel_fused_pixels` on (#142), so each
+    // of those arms turns one off, `accel_fused_pixels` turns its lever on,
+    // and `accel none` turns all seven off: the reference path the levers
+    // replaced. Every arm produces the shipped bytes
+    // (rust/tests/accel_levers.rs), so the time column is the whole of what
+    // it changes; a lever's speedup is the `=0` arm's time over `shipped`'s,
+    // and the fused pass's is `shipped`'s over its arm's. The two decode-only levers
     // are in `DECODE_ACCEL_ARMS`; the early exit only acts inside refinement,
     // so it is priced against `refine_passes=1` rather than against `shipped`.
     { label: "accel_quant_table=0", tune: "accel_quant_table=0" },
     { label: "accel_dct_lanes=0", tune: "accel_dct_lanes=0" },
-    { label: "accel_fused_pixels=0", tune: "accel_fused_pixels=0" },
+    { label: "accel_fused_pixels", tune: "accel_fused_pixels=1" },
     { label: "accel_word_bitpack=0", tune: "accel_word_bitpack=0" },
     { label: "accel none", tune: ACCEL_NONE },
     {

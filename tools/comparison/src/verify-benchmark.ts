@@ -175,9 +175,10 @@ const vsBase = (r: Estimate): Estimate => {
 
 /**
  * A §12.1 lever's speedup, reference time ÷ shipped time, from the paired
- * ratio the run records (shipped ÷ reference). The levers are on in the
- * shipped defaults (#142), so their arms turn one off (`accel_*=0`, or
- * `accel none` for all seven), and the speedup is that pair read the other
+ * ratio the run records (shipped ÷ reference). The shipped defaults turn
+ * every lever but `accel_fused_pixels` on (#142), so their arms turn one off
+ * (`accel_*=0`, or `accel none` for all seven), and the speedup is that pair
+ * read the other
  * way: the reciprocal of a geometric mean is the geometric mean of the
  * reciprocals, and the range's ends swap.
  */
@@ -701,7 +702,12 @@ const BINDINGS: Binding[] = [
           const base = arm.startsWith("refine_passes=1 ")
             ? "refine_passes=1"
             : "shipped";
-          return leverSpeedup(R.ratio(armId(n, base), armId(n, arm)));
+          const r = R.ratio(armId(n, base), armId(n, arm));
+          // A lever the defaults leave off (`accel_fused_pixels`) is an arm
+          // that turns it on, and its speedup is the pair as recorded.
+          return arm.endsWith("=0") || arm === "accel none"
+            ? leverSpeedup(r)
+            : r;
         },
       ]),
     ) as Record<string, Resolve>,
