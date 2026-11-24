@@ -123,6 +123,9 @@ mise run verify:sweep-labels # every enforceable sweep arm sets the constants it
 mise run corpus:licenses -- --check   # corpus attribution vs the pin tables
 mise run verify:benchmark   # every number in spec/PERFORMANCE.md vs the committed runs
 mise run mutants:rust       # full mutation sweep of the core (slow)
+mise run fuzz:seeds         # write the fuzz seed corpora from spec/test-vectors
+mise run fuzz:rust          # fuzz from_bytes, decode, encode for FUZZ_SECONDS each (nightly)
+mise run fuzz:c             # fuzz the C ABI's c_handle, c_encode for FUZZ_SECONDS each (nightly)
 mise run benchmark:session  # re-measure spec/PERFORMANCE.md end to end (about 1.5 h)
 mise run benchmark          # one bounded perf sweep
 mise run benchmark:full     # the cells only the exhaustive matrix has (a supplement)
@@ -300,7 +303,7 @@ and carries the parity gate plus a small behavioural suite — not a
 re-implementation of the Rust suite. What each binding must have is listed under
 [Binding test requirements](#binding-test-requirements).
 
-The core has tests at four layers:
+The core has tests at six layers:
 
 **1. Unit tests** — individual functions in isolation, in each module's
 `#[cfg(test)]` block:
@@ -376,6 +379,31 @@ deterministic differential sweep under non-default `Tunables` that reach what
 the vectors cannot (a tiered-width luma job, refinement, alpha, CfL). The
 library half needs no `spec/` directory, so the mutation sweep runs it. A
 failure here means a lever changed a byte, which no lever is allowed to do.
+
+**6. Fuzzing** — two standalone cargo-fuzz crates, `rust/fuzz/` (targets
+`from_bytes`, `decode`, `encode`) and `bindings/c/fuzz/` (targets `c_handle`,
+`c_encode`), on a nightly toolchain.
+
+Where the property tests draw from generators, the fuzzers mutate real hashes
+and images, coverage-guided, under AddressSanitizer. They assert the fail-fast
+contract of spec §2.6 against an oracle in `rust/fuzz/src/lib.rs` that restates
+the spec rather than importing the crate's constants: `from_bytes` returns
+exactly the `Ok` or the error variant the spec's check order names, a hash that
+validates decodes at its tier's size under every cap and gamut, an encode has
+the §3.5 length and round-trips, and the C ABI matches the core status for
+status and byte for byte, including NULL pointers and out-of-range gamuts. No
+input may panic or read out of bounds.
+
+Seeds are generated, never committed: `mise run fuzz:seeds` writes them from
+`spec/test-vectors/integration-*.json` (and `unit-validate.json` for
+`from_bytes`), and `fuzz:rust` / `fuzz:c` run it first. Each target runs for
+`FUZZ_SECONDS` (default 60) on `FUZZ_TOOLCHAIN` (default `nightly`).
+`ci-fuzz.yml` is the 60 s smoke run; a campaign is
+`FUZZ_SECONDS=1800 mise run fuzz:rust` on a developer machine. A crash lands in
+`<crate>/fuzz/artifacts/<target>/`; replay it with
+`cargo +nightly fuzz run --fuzz-dir <crate>/fuzz <target> <file>`. At codes 3
+and 4 the targets render capped at 32 px per axis, so the full natural rasters
+there stay pinned by the spec vectors alone.
 
 ### Tolerances
 
@@ -645,6 +673,7 @@ edit ran nothing but the commit linter.
 | `ci-repo.yml` | *no path filter* | `spec/validate.py`, the core's `--features full` test, and the manifest-version check — the repo-wide gates that must run on every change |
 | `ci-tools.yml` | `tools/{thumbhash-rs,gamut-ref-stdin,benchmark,ci}/**` | fmt, lint and build the three helper tools; manifest versions. The two Rust tools have no `#[test]` of their own — the `cargo test` step is a compile gate, and their correctness is asserted where they are *used*, by the comparison harness's own checks |
 | `ci-comparison.yml` | `tools/comparison/**`, `typescript/**`, `rust/**` | build the harness and run the R–D quality gate. `rust/**` is there because the gate exists to catch *encoder* regressions |
+| `ci-fuzz.yml` | `rust/src/**`, `rust/Cargo.toml`, `rust/fuzz/**`, `bindings/c/src/**`, `bindings/c/Cargo.toml`, `bindings/c/fuzz/**`, `spec/test-vectors/**`, the workflow itself (PRs; also on demand) | fmt and clippy over both fuzz crates on stable; a nightly smoke matrix that writes the seeds, builds each of the five cargo-fuzz targets and fuzzes it for 60 s, uploading any crash artifacts |
 | `ci-mutants.yml` | `rust/**` (PRs) | mutation-test the changed core lines (`--in-diff`), with an empty-diff guard; full sweep weekly and on demand |
 | `ci-commits.yml` | *all* | conventional-commit format (convco) |
 
