@@ -43,6 +43,13 @@ export const OVERHEAD_GLIBC_TUNABLES = "glibc.malloc.mmap_threshold=65536";
 /** The default tier's hash length: every cell here encodes at tier 1. */
 const TIER1_BYTES = 32;
 
+/**
+ * The largest relative difference between a host's 512×512 and 64×64 encode
+ * host sides that the overhead table's by-size paragraph states without a
+ * cause (the Python sentence): a larger one is refused until it is explained.
+ */
+const BY_SIZE_UNEXPLAINED = 0.1;
+
 export interface OverheadLayer {
   layer: "c" | "uniffi";
   name: string;
@@ -469,11 +476,15 @@ export function renderOverheadTable(
       bySize.set(impl, { small, large });
     }
   }
-  /** How far the 512×512 host side is from the 64×64 one, in words. */
-  const relative = (impl: string) => {
+  /** The 512×512 host side over the 64×64 one, less one. */
+  const growth = (impl: string) => {
     const s = bySize.get(impl);
     if (s === undefined) throw new Error(`no by-size pair for ${impl}`);
-    const x = s.large.side / s.small.side - 1;
+    return s.large.side / s.small.side - 1;
+  };
+  /** How far the 512×512 host side is from the 64×64 one, in words. */
+  const relative = (impl: string) => {
+    const x = growth(impl);
     return `${(Math.abs(x) * 100).toFixed(1)}% ${x < 0 ? "under" : "over"}`;
   };
   /** The range of a record's per-block A − B, in instructions. */
@@ -484,7 +495,17 @@ export function renderOverheadTable(
   const prose: string[] = [
     "With the allocator configuration pinned, the encode's host side changes with the input size only by what the host does per pixel or per unit of the call's duration.",
   ];
-  if (bySize.has("Python")) {
+  const python = bySize.get("Python");
+  if (python !== undefined) {
+    // The sentence gives Python's by-size difference no cause, so it holds
+    // only while the difference stays within BY_SIZE_UNEXPLAINED; a larger
+    // one is something the host does per pixel, and is refused until it is
+    // explained.
+    if (Math.abs(growth("Python")) > BY_SIZE_UNEXPLAINED) {
+      throw new Error(
+        `${python.large.name}: its host side is ${relative("Python")} the 64×64 record's, beyond the ${BY_SIZE_UNEXPLAINED * 100}% the by-size paragraph leaves unexplained, so its account of the Python difference no longer holds`,
+      );
+    }
     prose.push(
       `Python's pixels cross in one \`memmove\` (the \`uniffi-py-bytes\` reduction), and its 512×512 host side is ${relative("Python")} its 64×64 one.`,
     );
@@ -513,6 +534,15 @@ export function renderOverheadTable(
   }
   const kotlin = bySize.get("Kotlin");
   if (kotlin !== undefined) {
+    // The sentence attributes the difference to the interpreter's iteration
+    // dependence, which only records counted at different iterations carry.
+    if (
+      kotlin.large.r.settings.iterations === kotlin.small.r.settings.iterations
+    ) {
+      throw new Error(
+        `${kotlin.large.name}: it counts ${whole(kotlin.large.r.settings.iterations)} iterations, as the 64×64 record does, so the by-size paragraph's attribution of the Kotlin difference to the iteration dependence no longer holds`,
+      );
+    }
     prose.push(
       `Kotlin's 512×512 host side is ${relative("Kotlin")} its 64×64 one, its 512×512 record counted at ${whole(kotlin.large.r.settings.iterations)} iterations and its 64×64 record at ${whole(kotlin.small.r.settings.iterations)}; the difference carries the interpreter's iteration dependence above, which this count does not separate from what grows with the input.`,
     );
