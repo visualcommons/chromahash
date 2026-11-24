@@ -16,7 +16,8 @@
 //!
 //! Flags: bit 0 NULL `bytes`; bit 1 NULL `out_hash`; bit 2 NULL `out_buf`;
 //! bit 3 NULL `out_image`; bit 4 NULL `out_color`; bits 5–6 pick the decode
-//! entry point (`decode`, `decode_to`, `decode_capped`, `decode_capped_to`).
+//! entry point (`decode`, `decode_to`, `decode_capped`, `decode_capped_to`);
+//! at tier codes 3 and 4 the capped twin runs, with each cap at most 64 px.
 //!
 //! Only the five defined gamut discriminants are passed: the parameter is a
 //! `#[repr(i32)]` enum, so any other value is undefined behaviour on the Rust
@@ -35,6 +36,9 @@ use chromahash_c::{
 use libfuzzer_sys::fuzz_target;
 
 const HEADER: usize = 12;
+/// Tier code from which decodes are capped (spec §2.5: bits 3–5 of byte 0).
+const HEAVY_TIER: u8 = 3;
+const HEAVY_CAP: u32 = 64;
 
 const GAMUTS: [(ChromaHashGamut, Gamut); 5] = [
     (ChromaHashGamut::Srgb, Gamut::Srgb),
@@ -192,7 +196,19 @@ fuzz_target!(|data: &[u8]| {
             assert_eq!([color.r, color.g, color.b, color.a], core.average_color());
         }
 
-        let entry = (flags >> 5) & 3;
+        // Codes 3 and 4 render 128 and 256 px at O(w·h·K): a natural decode
+        // costs about a second under the sanitizer, twice here (C and core).
+        // There, take the capped twin of the chosen entry point and cap each
+        // axis at 64 px. The entry points differ only in the arguments they
+        // hand the core, so the uncapped ones stay covered at codes 0–2.
+        let heavy = (bytes[0] >> 3) & 0b111 >= HEAVY_TIER;
+        let mut entry = (flags >> 5) & 3;
+        let (max_w, max_h) = if heavy {
+            entry |= 2;
+            (max_w.min(HEAVY_CAP), max_h.min(HEAVY_CAP))
+        } else {
+            (max_w, max_h)
+        };
         let decode = |out: *mut ChromaHashImage| match entry {
             0 => chromahash_decode(handle, out),
             1 => chromahash_decode_to(handle, c_gamut, out),

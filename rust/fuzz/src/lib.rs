@@ -84,8 +84,8 @@ pub fn check_raster(hash: &ChromaHash, w: u32, h: u32, rgba: &[u8]) {
     }
 }
 
-/// Assert the natural decode of a validated hash has the tier's size.
-pub fn check_natural(hash: &ChromaHash, w: u32, h: u32, rgba: &[u8]) {
+/// Assert `w × h` is the tier's natural size.
+pub fn check_natural_size(hash: &ChromaHash, w: u32, h: u32) {
     let t = tier(hash.as_bytes()[0]);
     let long = natural_long_edge(t);
     assert_eq!(
@@ -94,7 +94,46 @@ pub fn check_natural(hash: &ChromaHash, w: u32, h: u32, rgba: &[u8]) {
         "tier {t} decoded {w}x{h}, long edge must be {long}"
     );
     assert!(w >= 1 && h >= 1, "tier {t} decoded an empty {w}x{h} raster");
+}
+
+/// Assert the natural decode of a validated hash has the tier's size.
+pub fn check_natural(hash: &ChromaHash, w: u32, h: u32, rgba: &[u8]) {
+    check_natural_size(hash, w, h);
     check_raster(hash, w, h, rgba);
+}
+
+/// Codes 3 and 4 render at 128 and 256 px with up to ~3,000 coefficients, and
+/// the render is `O(w·h·K)`: one natural tier-4 decode costs about a second
+/// under the sanitizer, which would leave a 60 s smoke run replaying seeds.
+/// From this code up the targets render capped rasters instead.
+pub const HEAVY_TIER: u8 = 3;
+/// Per-axis cap the targets apply at [`HEAVY_TIER`] and above.
+pub const HEAVY_CAP: u32 = 64;
+
+/// Is this a [`HEAVY_TIER`] hash?
+pub fn is_heavy(hash: &ChromaHash) -> bool {
+    tier(hash.as_bytes()[0]) >= HEAVY_TIER
+}
+
+/// Decode a validated hash and check it, at a cost that does not grow with
+/// the tier: a natural decode below [`HEAVY_TIER`]; above it, the natural size
+/// read from two one-pixel-wide capped renders (a cap is a per-axis `min`, so
+/// `(∞, 1)` yields the natural width and `(1, ∞)` the natural height). Either
+/// way the whole AC payload is parsed, since a render reads every coefficient.
+/// Returns the natural size.
+pub fn check_decode(hash: &ChromaHash) -> (u32, u32) {
+    if !is_heavy(hash) {
+        let (w, h, rgba) = hash.decode();
+        check_natural(hash, w, h, &rgba);
+        return (w, h);
+    }
+    let (w, one_h, row) = hash.decode_capped(u32::MAX, 1);
+    let (one_w, h, col) = hash.decode_capped(1, u32::MAX);
+    assert_eq!((one_h, one_w), (1, 1), "a cap of 1 rendered more than 1 px");
+    check_natural_size(hash, w, h);
+    check_raster(hash, w, 1, &row);
+    check_raster(hash, 1, h, &col);
+    (w, h)
 }
 
 /// The five gamuts, indexed in the C ABI's discriminant order.

@@ -3,10 +3,11 @@
 //! The fail-fast contract (spec §2.6): every byte string is either rejected
 //! with the error the spec's checks name, in the spec's order, or accepted —
 //! and an accepted hash decodes, at its tier's natural size, without a panic.
+//! (At codes 3 and 4 the size is probed; see `chromahash_fuzz::check_decode`.)
 #![no_main]
 
 use chromahash::ChromaHash;
-use chromahash_fuzz::{check_natural, expected_validation};
+use chromahash_fuzz::{check_decode, expected_validation};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
@@ -19,8 +20,7 @@ fuzz_target!(|data: &[u8]| {
     );
     let Ok(hash) = got else { return };
     assert_eq!(hash.as_bytes(), data, "from_bytes did not keep the bytes");
-    let (w, h, rgba) = hash.decode();
-    check_natural(&hash, w, h, &rgba);
+    check_decode(&hash);
     // Cheap, and reads the same header and DC fields by a separate path.
     let _ = hash.average_color();
 });

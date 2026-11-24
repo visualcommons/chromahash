@@ -4,10 +4,15 @@
 //! Input layout: [`chromahash_fuzz::DecodeInput`]. The hash body is arbitrary,
 //! so at code 3 this drives the arithmetic-coded AC stream with bit strings no
 //! encoder wrote — the total-code property (§3.6) is what keeps them decodable.
+//!
+//! At codes 3 and 4 the caps are lowered to [`HEAVY_CAP`] and the natural
+//! size is probed rather than rendered; see [`chromahash_fuzz::HEAVY_TIER`].
 #![no_main]
 
 use chromahash::{ChromaHash, Gamut};
-use chromahash_fuzz::{DecodeInput, check_natural, check_raster};
+use chromahash_fuzz::{
+    DecodeInput, HEAVY_CAP, check_decode, check_natural, check_raster, is_heavy,
+};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {
@@ -21,38 +26,52 @@ fuzz_target!(|data: &[u8]| {
     else {
         return;
     };
+    let heavy = is_heavy(&hash);
 
-    let (nw, nh, natural) = hash.decode();
-    check_natural(&hash, nw, nh, &natural);
+    let (nw, nh, natural_in_gamut) = if heavy {
+        let (w, h) = check_decode(&hash);
+        (w, h, None)
+    } else {
+        let (w, h, natural) = hash.decode();
+        check_natural(&hash, w, h, &natural);
 
-    // `decode` is `decode_to(Srgb)`.
-    let (sw, sh, srgb) = hash.decode_to(Gamut::Srgb);
-    assert_eq!(
-        (sw, sh, &srgb),
-        (nw, nh, &natural),
-        "decode != decode_to(Srgb)"
-    );
+        // `decode` is `decode_to(Srgb)`.
+        let (sw, sh, srgb) = hash.decode_to(Gamut::Srgb);
+        assert_eq!(
+            (sw, sh, &srgb),
+            (w, h, &natural),
+            "decode != decode_to(Srgb)"
+        );
 
-    let (gw, gh, gamut) = hash.decode_to(input.gamut);
-    assert_eq!((gw, gh), (nw, nh), "decode_to changed the raster size");
-    check_raster(&hash, gw, gh, &gamut);
+        let (gw, gh, in_gamut) = hash.decode_to(input.gamut);
+        assert_eq!((gw, gh), (w, h), "decode_to changed the raster size");
+        check_raster(&hash, gw, gh, &in_gamut);
+        (w, h, Some(in_gamut))
+    };
+
+    let (max_w, max_h) = if heavy {
+        (input.max_w.min(HEAVY_CAP), input.max_h.min(HEAVY_CAP))
+    } else {
+        (input.max_w, input.max_h)
+    };
 
     // A cap is a per-axis `min` against the natural raster.
-    let (cw, ch, capped) = hash.decode_capped_to(input.max_w, input.max_h, input.gamut);
+    let (cw, ch, capped) = hash.decode_capped_to(max_w, max_h, input.gamut);
     assert_eq!(
         (cw, ch),
-        (nw.min(input.max_w), nh.min(input.max_h)),
-        "decode_capped_to is not the per-axis min of natural {nw}x{nh} and cap {}x{}",
-        input.max_w,
-        input.max_h
+        (nw.min(max_w), nh.min(max_h)),
+        "decode_capped_to is not the per-axis min of natural {nw}x{nh} and cap {max_w}x{max_h}"
     );
     check_raster(&hash, cw, ch, &capped);
     // A cap at or above the natural size renders the natural raster.
-    if input.max_w >= nw && input.max_h >= nh {
-        assert_eq!(capped, gamut, "an inert cap changed the decode");
+    if let Some(natural) = natural_in_gamut
+        && max_w >= nw
+        && max_h >= nh
+    {
+        assert_eq!(capped, natural, "an inert cap changed the decode");
     }
 
-    let (pw, ph, plain) = hash.decode_capped(input.max_w, input.max_h);
+    let (pw, ph, plain) = hash.decode_capped(max_w, max_h);
     assert_eq!(
         (pw, ph),
         (cw, ch),
