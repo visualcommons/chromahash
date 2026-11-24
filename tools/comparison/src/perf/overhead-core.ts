@@ -412,7 +412,7 @@ export function renderOverheadTable(
     `| Kotlin/JVM | UniFFI scaffolding | ${counted("Kotlin", "the native side of every call, with the host's buffer writes and reads emulated at their minimum")} | ${missed("Kotlin", "the JVM (tiered C1/C2 compilation in the background, its default collector)", "JNA and the JVM")} |`,
     "| Android | UniFFI scaffolding | the native side of every call, as Kotlin/JVM | JNA and ART: they run on a device, not on the counting host |",
     `| Python | UniFFI scaffolding | ${counted("Python", "as Kotlin/JVM")} | ${missed("Python", "CPython started through `uv run`, with a random hash seed", "ctypes and CPython")} |`,
-    `| TypeScript (wasm) | wasm-bindgen | ${counted("TypeScript (wasm)", "not measured")} | ${missed("TypeScript (wasm)", "V8 with its optimizing tiers (Maglev, TurboFan) and background threads, which is where the wasm core runs as it ships", "the whole call")} |`,
+    `| TypeScript (wasm) | wasm-bindgen | ${counted("TypeScript (wasm)", "not measured")} | ${missed("TypeScript (wasm)", "V8 with its optimizing tiers (Maglev, TurboFan) and background threads, which is where the wasm core runs", "the whole call")} |`,
     "| Swift | UniFFI scaffolding | not measured | Swift builds on macOS only (`ci-swift.yml`); its native layer is the UniFFI row above |",
     "",
     "## Reductions",

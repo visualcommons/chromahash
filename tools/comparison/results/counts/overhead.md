@@ -55,7 +55,7 @@ What each host runtime adds to a call, counted through its published binding. Ar
 | Kotlin/JVM | UniFFI scaffolding | the whole call, under its counting configuration (Host runtimes) | the JVM (tiered C1/C2 compilation in the background, its default collector) as it ships: its count is under the counting configuration |
 | Android | UniFFI scaffolding | the native side of every call, as Kotlin/JVM | JNA and ART: they run on a device, not on the counting host |
 | Python | UniFFI scaffolding | the whole call, under its counting configuration (Host runtimes) | CPython started through `uv run`, with a random hash seed as it ships: its count is under the counting configuration |
-| TypeScript (wasm) | wasm-bindgen | the whole call, under its counting configuration (Host runtimes) | V8 with its optimizing tiers (Maglev, TurboFan) and background threads, which is where the wasm core runs as it ships as it ships: its count is under the counting configuration |
+| TypeScript (wasm) | wasm-bindgen | the whole call, under its counting configuration (Host runtimes) | V8 with its optimizing tiers (Maglev, TurboFan) and background threads, which is where the wasm core runs as it ships: its count is under the counting configuration |
 | Swift | UniFFI scaffolding | not measured | Swift builds on macOS only (`ci-swift.yml`); its native layer is the UniFFI row above |
 
 ## Reductions
