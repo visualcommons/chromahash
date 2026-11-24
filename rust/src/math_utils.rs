@@ -8,6 +8,20 @@ pub fn round_half_away_from_zero(x: f64) -> f64 {
     }
 }
 
+/// The most halvings or doublings any `f64` needs to reach [1, 2), with
+/// margin: the largest finite value is below 2^1024 and the smallest
+/// subnormal is 2^-1074. Both power-of-two loops below are bounded by it.
+///
+/// The bound changes no result in either function's working domain (see
+/// `portable_exp` for where that ends). Every finite input to `portable_ln`
+/// finishes its loop well inside it, and only an infinite `m`, which the
+/// unbounded loop never left, reaches it; `portable_exp`'s result is already
+/// `inf` or `0` by then, where doubling or halving again leaves it. What the
+/// bound buys is that no edit to a comparison or a
+/// step can turn one of these loops into one that never ends, so a broken
+/// kernel fails its tests instead of hanging them.
+const POW2_STEPS: i32 = 1100;
+
 /// Portable natural logarithm using only basic IEEE 754 arithmetic.
 /// Range-reduces to [1, 2) then uses the series ln(m) = 2·Σ u^(2k+1)/(2k+1)
 /// where u = (m-1)/(m+1).
@@ -25,11 +39,17 @@ pub fn portable_ln(x: f64) -> f64 {
     // Range reduce to m ∈ [1, 2)
     let mut m = x;
     let mut e: i32 = 0;
-    while m >= 2.0 {
+    for _ in 0..POW2_STEPS {
+        if m < 2.0 {
+            break;
+        }
         m /= 2.0;
         e += 1;
     }
-    while m < 1.0 {
+    for _ in 0..POW2_STEPS {
+        if m >= 1.0 {
+            break;
+        }
         m *= 2.0;
         e -= 1;
     }
@@ -40,11 +60,9 @@ pub fn portable_ln(x: f64) -> f64 {
     let u2 = u * u;
     let mut term = u;
     let mut sum = u;
-    let mut k: i32 = 1;
-    while k <= 20 {
+    for k in 1..=20 {
         term *= u2;
         sum += term / (2 * k + 1) as f64;
-        k += 1;
     }
 
     2.0 * sum + e as f64 * LN2
@@ -68,26 +86,27 @@ pub fn portable_exp(x: f64) -> f64 {
     // Taylor polynomial for exp(r), |r| < 0.347
     let mut term = 1.0;
     let mut sum = 1.0;
-    let mut i: i32 = 1;
-    while i <= 25 {
+    for i in 1..=25 {
         term *= r / i as f64;
         sum += term;
-        i += 1;
     }
 
-    // Multiply by 2^k
+    // Multiply by 2^k. `sum` is within [0.7, 1.5], so it overflows to `inf`
+    // within 1025 doublings and flushes to `0` within 1076 halvings; capping
+    // the count at `POW2_STEPS` leaves the result as it was for every `x`
+    // whose `k` fits an `i32` (|x| below about 1.49e9, far past both
+    // saturations). Beyond that the `as i32` cast saturates, `r` is no longer
+    // reduced, and the result was and is meaningless; `unsigned_abs` at least
+    // stops `-k` overflowing at `k = i32::MIN`, which panicked a checked build.
+    let steps = k.unsigned_abs().min(POW2_STEPS as u32);
     let mut result = sum;
     if k >= 0 {
-        let mut j = 0;
-        while j < k {
+        for _ in 0..steps {
             result *= 2.0;
-            j += 1;
         }
     } else {
-        let mut j = 0;
-        while j < -k {
+        for _ in 0..steps {
             result /= 2.0;
-            j += 1;
         }
     }
 
@@ -143,8 +162,9 @@ pub fn cbrt_halley(x: f64) -> f64 {
 
 /// Signed cube root per spec §2.4: cbrt(x) = sign(x) × |x|^(1/3).
 /// Uses portable_pow for cross-platform determinism.
-/// Superseded by cbrt_halley for production use; retained for test verification.
-#[allow(dead_code)]
+/// Superseded by cbrt_halley for production use; retained as the reference
+/// the tests check `cbrt_halley` against, and compiled only for them.
+#[cfg(test)]
 pub fn cbrt_signed(x: f64) -> f64 {
     if x == 0.0 {
         0.0
@@ -165,8 +185,9 @@ pub fn portable_cos(x: f64) -> f64 {
     const TWO_PI: f64 = 6.283185307179586;
     const HALF_PI: f64 = 1.5707963267948966;
 
-    // cos is even
-    let mut x = if x < 0.0 { -x } else { x };
+    // cos is even. (`abs` rather than `if x < 0.0 { -x }`: the two differ
+    // only at -0.0, whose cosine is 1 either way.)
+    let mut x = x.abs();
 
     // Range reduce to [0, 2π)
     if x >= TWO_PI {
@@ -368,6 +389,39 @@ mod tests {
         assert!((portable_pow(0.8, 2.4) - 0.8_f64.powf(2.4)).abs() < 1e-12);
         assert_eq!(portable_pow(0.0, 2.4), 0.0);
         assert_eq!(portable_pow(1.0, 2.4), 1.0);
+    }
+
+    /// Exact values at the points where a kernel's branch or loop decides
+    /// something, which the tolerance tests above cannot see.
+    #[test]
+    fn kernels_are_exact_at_their_boundaries() {
+        // The kernels' local `LN2`, `PI`, `TWO_PI` and `HALF_PI` literals are
+        // these constants rounded to f64, so they are the same bits.
+        use std::f64::consts::{FRAC_PI_2, LN_2 as LN2, PI, TAU};
+        // A power of two range-reduces to m = 1 exactly, so the series adds
+        // nothing and ln is e·LN2 to the bit. Reducing m = 1 once more (a
+        // `<=` in the doubling loop) would sum the series at m = 2 instead,
+        // which lands an ulp or two off.
+        assert_eq!(portable_ln(2.0), LN2);
+        assert_eq!(portable_ln(0.5), -LN2);
+        assert_eq!(portable_ln(4.0), 2.0 * LN2);
+        assert_eq!(portable_ln(0.25), -2.0 * LN2);
+
+        // The 2^k scaling saturates rather than wrapping or running away: a
+        // large argument overflows to inf and a small one flushes to 0, and
+        // the largest finite results sit just inside.
+        assert_eq!(portable_exp(1000.0), f64::INFINITY);
+        assert_eq!(portable_exp(-1000.0), 0.0);
+        assert!(portable_exp(709.0).is_finite() && portable_exp(709.0) > 8.2e307);
+        assert!(portable_exp(-708.0) > 0.0);
+
+        // At exactly π/2 the Taylor polynomial leaves a positive residue, and
+        // the quadrant fold (`x > HALF_PI`) must not negate it.
+        assert_eq!(portable_cos(FRAC_PI_2), 5.260236690673992e-13);
+        assert_eq!(portable_cos(-FRAC_PI_2), 5.260236690673992e-13);
+        // Premise of the `x > PI` exclusion in .cargo/mutants.toml: at x = π
+        // the fold computes 2π - π, which is π again, so `>` and `>=` agree.
+        assert_eq!(TAU - PI, PI);
     }
 
     #[test]

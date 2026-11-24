@@ -77,9 +77,10 @@ exclude_re = [
     # k = byte/255*8 - 4, which equals 1.0 only at the non-integer byte 127.5, so
     # ratio is never exactly 1.0 and `>` vs `>=` are equivalent over all 256
     # bytes. `no_aspect_byte_decodes_to_exactly_one` asserts that premise, so
-    # these two exclusions rest on a test rather than on this comment.
-    "src/aspect.rs.*replace > with >= in decode_output_size",
-    "src/aspect.rs.*replace > with >= in base_output_size",
+    # this exclusion rests on a test rather than on this comment. (Its twin
+    # for `decode_output_size` matched nothing: that function now delegates
+    # the comparison to `base_output_size`.)
+    "src/aspect.rs:22:14: replace > with >= in base_output_size",
     # Drop joins the worker threads; replacing it with a no-op leaks threads but
     # leaves every batch result byte-identical, so no functional test can observe it.
     "src/batch.rs.*replace <impl Drop for BatchEncoder>::drop with \\(\\)",
@@ -103,7 +104,16 @@ exclude_re = [
     # `delete - in select_dc_codes` and `replace < with <= in select_dc_codes`
     # used to be excluded here on the same reasoning. They are not equivalent —
     # `select_dc_codes_searches_l_neighbors` kills both — so they are gone.
-    "replace \\+ with - in select_dc_codes",
+    #
+    # Anchored to the three offset lines. The unanchored form also matched the
+    # two `+`s of the error sum `dr² + dg² + db²` below them, which are not
+    # equivalent and which tests kill once unexcluded. An exact tie between
+    # two distinct codes is not proven impossible; a seeded search over
+    # 40,000 small images at `Tunables::DEFAULT` found none for any of the
+    # three offsets.
+    "src/encode.rs:110:31: replace \\+ with - in select_dc_codes",
+    "src/encode.rs:111:31: replace \\+ with - in select_dc_codes",
+    "src/encode.rs:112:31: replace \\+ with - in select_dc_codes",
     # (The L candidate's clamp ceiling used to be excluded here: widening it
     # alone is equivalent. All three ceilings now come from one helper,
     # `dc_code_ceiling`, whose mutants `select_dc_codes_never_exceeds_its_field_width`
@@ -127,26 +137,22 @@ exclude_re = [
     "replace stage_timing::mark with \\(\\)",
     "replace stage_timing::take .* with vec!",
 
-    # Numeric kernels. portable_ln / portable_exp range-reduce in a loop: operator
-    # mutations either re-converge to the same value (the series is invariant to
-    # which 2^k bracket is chosen) or never terminate (timeouts). The remaining
-    # comparisons guard the x==0 / boundary cases the early returns already handle.
-    # All are pinned by the exact known-value tests in this module; mutation adds
-    # no signal. (cbrt_signed is also retained only for those tests.)
-    "src/math_utils.rs.* in portable_ln",
-    "src/math_utils.rs.* in portable_exp",
-    "replace < with <= in portable_cos",
-    "replace > with >= in portable_cos",
-    "replace < with <= in cbrt_halley",
-    "replace > with >= in cbrt_signed",
-    # mu_compress feeds portable_ln; these two mutations pass it a non-finite
-    # argument (outside its x>0 domain), hanging in ln's reduction loop rather than
-    # failing — a property of the kernel, not a test gap.
-    "replace \\+ with - in mu_compress",
-    "replace \\* with / in mu_compress",
-    # (Unanchored, those two also match `mu_compress_by`, which is
-    # `mu_compress`'s body with the denominator passed in — PERFORMANCE.md
-    # §12.1 item 2 — and so carries the same two hanging mutations.)
+    # Numeric kernels. (portable_ln and portable_exp were excluded whole, and
+    # mu_compress's two mutations with them, as "re-converging or never
+    # terminating". Swept without the exclusions, all but one of their ~90
+    # mutants were caught; the rest hung in an unbounded loop. Those loops are
+    # now bounded `for`s, `kernels_are_exact_at_their_boundaries` kills the
+    # one survivor, and the exclusions are gone. cbrt_signed is now
+    # `#[cfg(test)]`, which is all it was ever used by.)
+    #
+    # `cbrt_halley` returns on `x == 0.0` (which -0.0 also equals) before it
+    # tests `x < 0.0`, so `<=` is the same test.
+    "src/math_utils.rs:138:18: replace < with <= in cbrt_halley",
+    # portable_cos folds x > π to 2π - x. At x = π exactly that is π again
+    # (2π and π are one exponent apart, so the subtraction is exact), so
+    # `>` and `>=` give the same x. `kernels_are_exact_at_their_boundaries`
+    # asserts that premise.
+    "src/math_utils.rs:198:10: replace > with >= in portable_cos",
 
     # ── Equivalent mutants left by the #119 sweep ───────────────────────────
     #
@@ -193,9 +199,9 @@ exclude_re = [
     # `band_gain_refine_cfl_and_shared_scale_goldens` (passes, ±2 moves, DC and
     # scale refinement, the decoder-raster target, the convergence break) and
     # `refinement_keeps_a_code_on_an_exact_tie` (a tie with the current code
-    # keeps it, for scale, DC and AC moves). What those leave is below. Only
-    # the first entry is a proof; the rest are excluded as unproven,
-    # research-only.
+    # keeps it, for scale, DC and AC moves) and `refinement_edge_goldens`.
+    # What those leave is below. Only the first entry is a proof; the rest
+    # rest on a measurement, and are research-only.
 
     # Equivalent: the `live` test is `cx < src.0 && cy < src.1 && cx < w &&
     # cy < h`. With `refine_grid = 0`, (w, h) *is* src, so `cx < w` repeats
@@ -204,31 +210,27 @@ exclude_re = [
     # Either way the last two conjuncts never decide, and `<=` cannot differ.
     "src/encode.rs:1385:40: replace < with <= in refine_codes",
     "src/encode.rs:1385:50: replace < with <= in refine_codes",
-    # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT):
-    # `cx <= src.0` also refines the one frequency a source exactly cx pixels
-    # wide cannot hold (refine_grid = 1 on a strip). That basis carries no
-    # source energy, so moving its code away from zero has not lowered the
-    # objective on any image tried, and the strict improvement test never
-    # accepts it. Not proven.
-    "src/encode.rs:1385:12: replace < with <= in refine_codes",
+    # (`cx < src.0` → `<=`, the scale search's offset order and its `<=`, and
+    # the DC search's `e < be` → `==` were excluded here as unproven. None was
+    # equivalent: `refinement_edge_goldens` carries an input for each, found
+    # by a seeded search over 3,000 small images and every refinement knob.)
+    #
     # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT): tie
     # order between two improving candidates. Each candidate set is symmetric
-    # ({±1, ±2} for scale, {±1} for DC, ±d for AC), so `cur + d` → `cur - d`
-    # only reorders it, and `<=` in the second-candidate test (`e < be`) only
-    # changes which of two equally improving candidates wins. Both differ
-    # only when two distinct codes give exactly the same pixel-domain SSE
-    # *below* the current one. No fixture here produces that, and none is
-    # proven impossible: the gamma-LUT objective (0) and the clipped ones (2,
-    # 3) are flat in places, so such a tie may be reachable.
-    "src/encode.rs:1428:44: replace \\+ with - in refine_codes",
+    # ({±1} for DC, ±d for AC), so `cur + d` → `cur - d` only reorders it, and
+    # `<=` in the second-candidate test (`e < be`) only changes which of two
+    # equally improving candidates wins. Both differ only when two distinct
+    # codes give exactly the same pixel-domain SSE *below* the current one.
+    # The scale search has such a tie (`refinement_edge_goldens`), so it is
+    # not impossible; for these four, the same seeded search over 40,000 small
+    # images under every refinement knob found none. Measured, not proven.
     "src/encode.rs:1467:44: replace \\+ with - in refine_codes",
     "src/encode.rs:1508:48: replace \\+ with - in refine_codes",
-    "src/encode.rs:1446:85: replace < with <= in refine_codes",
     "src/encode.rs:1520:84: replace < with <= in refine_codes",
     # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT): the DC
-    # second-candidate test `e < be`. `==` is not a tie-order change: it
-    # differs whenever both DC neighbours strictly improve and the second is
-    # strictly better, and `<=` whenever both improve equally.
+    # second-candidate test `e < be` → `<=`, which differs only when both DC
+    # neighbours improve equally (the `==` mutant, which differs whenever the
+    # second is strictly better, is killed by `refinement_edge_goldens`).
     #
     # For refine_obj = 1 (plain OKLAB SSE) both are equivalent. A DC move adds
     # the same delta to every pixel of one channel, the DC grid is uniform
@@ -240,9 +242,8 @@ exclude_re = [
     # off; with it on, the second candidate's SSE may be a partial sum, which
     # `==`/`<=` could match only if it landed exactly on `be`.)
     #
-    # For refine_obj = 0, 2 and 3 it is *not* equivalent: the clip and the
-    # gamma LUT break the quadratic, so both neighbours can improve, and
-    # these mutants would pick the wrong one. Excluded only because the
-    # whole function is research-only.
-    "src/encode.rs:1479:80: replace < with (<=|==) in refine_codes",
+    # For refine_obj = 0, 2 and 3 the clip and the gamma LUT break the
+    # quadratic, so both neighbours can improve; an *equal* improvement from
+    # both is what `<=` needs, and the 40,000-image search above found none.
+    "src/encode.rs:1479:80: replace < with <= in refine_codes",
 ]
