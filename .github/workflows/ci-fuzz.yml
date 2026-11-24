@@ -1,0 +1,101 @@
+name: CI (fuzz)
+
+# A 60 s smoke run of every cargo-fuzz target (rust/fuzz, bindings/c/fuzz) on
+# pull requests that touch the code they reach. It is a smoke test, not a
+# campaign: it proves the targets build, replay the seed corpus cleanly, and
+# survive a minute of mutation. Long runs are `FUZZ_SECONDS=1800 mise run
+# fuzz:rust` / `fuzz:c` on a developer machine.
+on:
+  pull_request:
+    paths:
+      - "rust/src/**"
+      - "rust/Cargo.toml"
+      - "rust/fuzz/**"
+      - "bindings/c/src/**"
+      - "bindings/c/Cargo.toml"
+      - "bindings/c/fuzz/**"
+      - "spec/test-vectors/**"
+      - ".github/workflows/ci-fuzz.yml"
+  workflow_dispatch:
+
+jobs:
+  # Format and clippy the fuzz crates on stable: only `cargo fuzz build` needs
+  # nightly, for the sanitizer flags.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Format check
+        run: |
+          cargo fmt --manifest-path rust/fuzz/Cargo.toml --check
+          cargo fmt --manifest-path bindings/c/fuzz/Cargo.toml --check
+
+      - name: Lint
+        run: |
+          cargo clippy --manifest-path rust/fuzz/Cargo.toml --all-targets -- -D warnings
+          cargo clippy --manifest-path bindings/c/fuzz/Cargo.toml --all-targets -- -D warnings
+
+  smoke:
+    name: fuzz · ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { dir: rust/fuzz, target: from_bytes }
+          - { dir: rust/fuzz, target: decode }
+          - { dir: rust/fuzz, target: encode }
+          - { dir: bindings/c/fuzz, target: c_handle }
+          - { dir: bindings/c/fuzz, target: c_encode }
+    steps:
+      - uses: actions/checkout@v4
+
+      # The repository pins `stable` (rust/rust-toolchain.toml); cargo-fuzz
+      # needs nightly, and `cargo +nightly` below overrides the pin.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install cargo-fuzz
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz@0.13.2
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ matrix.dir }}/target
+          # Cargo.lock is gitignored repo-wide, so key off the manifest.
+          key: ${{ runner.os }}-fuzz-${{ matrix.target }}-${{ hashFiles(format('{0}/Cargo.toml', matrix.dir)) }}
+
+      # Seeds are generated from spec/test-vectors on every run, never committed.
+      - name: Write seed corpora
+        run: python3 -I rust/fuzz/seeds.py
+
+      - name: Build
+        run: cargo +nightly fuzz build --fuzz-dir ${{ matrix.dir }} ${{ matrix.target }}
+
+      - name: Fuzz for 60 s
+        env:
+          DIR: ${{ matrix.dir }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p "$DIR/corpus/$TARGET"
+          cargo +nightly fuzz run --fuzz-dir "$DIR" "$TARGET" \
+            "$DIR/corpus/$TARGET" "$DIR/seeds/$TARGET" -- -max_total_time=60
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: ${{ matrix.dir }}/artifacts/
+          if-no-files-found: ignore

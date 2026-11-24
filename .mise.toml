@@ -15,6 +15,7 @@ dotnet = "9"
 "cargo:cargo-ndk" = "4.1.2" # cross-compile the Android binding's cdylib per ABI
 "cargo:wasm-pack" = "0.15.0" # build the WASM binding (chromahash-wasm) for the web
 "cargo:cargo-mutants" = "27.1.0" # mutation-test the core Rust crate (mise run mutants:rust)
+"cargo:cargo-fuzz" = "0.13.2" # coverage-guided fuzzing (mise run fuzz:rust / fuzz:c; needs a nightly toolchain)
 "aqua:cli/cli" = "2.93.0"   # gh — used by the Android publishing bootstrap tasks
 "aqua:jdx/hk" = "1.56.1"    # git hook manager; config in hk.pkl, install with `hk install`
 
@@ -43,6 +44,7 @@ depends = [
   "format:rust", "format:c", "format:wasm", "format:ts", "format:jvm",
   "format:swift", "format:go", "format:python", "format:csharp", "format:android",
   "format:compare", "format:thumbhash", "format:gamutref", "format:benchmark",
+  "format:fuzz",
 ]
 
 [tasks."format:check"]
@@ -52,6 +54,7 @@ depends = [
   "format:check:jvm", "format:check:swift", "format:check:go", "format:check:python",
   "format:check:csharp", "format:check:android", "format:check:compare",
   "format:check:thumbhash", "format:check:gamutref", "format:check:benchmark",
+  "format:check:fuzz",
 ]
 
 [tasks.lint]
@@ -59,7 +62,7 @@ description = "Lint all implementations"
 depends = [
   "lint:rust", "lint:c", "lint:wasm", "lint:ts", "lint:jvm", "lint:swift",
   "lint:go", "lint:python", "lint:csharp", "lint:android", "lint:compare",
-  "lint:thumbhash", "lint:gamutref", "lint:benchmark",
+  "lint:thumbhash", "lint:gamutref", "lint:benchmark", "lint:fuzz",
 ]
 
 [tasks."lint:fix"]
@@ -68,7 +71,7 @@ depends = [
   "lint:fix:rust", "lint:fix:c", "lint:fix:wasm", "lint:fix:ts", "lint:fix:jvm",
   "lint:fix:swift", "lint:fix:go", "lint:fix:python", "lint:fix:csharp",
   "lint:fix:android", "lint:fix:compare", "lint:fix:thumbhash",
-  "lint:fix:gamutref", "lint:fix:benchmark",
+  "lint:fix:gamutref", "lint:fix:benchmark", "lint:fix:fuzz",
 ]
 
 [tasks.test]
@@ -139,6 +142,77 @@ run = "rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu wasm
 [tasks."mutants:rust"]
 description = "Mutation-test the core Rust crate (full sweep, slow)"
 run = "cargo mutants -d rust"
+
+# ─── Fuzzing (rust/fuzz, bindings/c/fuzz) ─────────────────────────────────────
+# Two standalone cargo-fuzz crates: the core's from_bytes / decode / encode, and
+# the C ABI's handle and encode surfaces. cargo-fuzz needs a nightly toolchain;
+# only these tasks and the ci-fuzz workflow use one (FUZZ_TOOLCHAIN overrides
+# the `nightly` default, e.g. FUZZ_TOOLCHAIN=nightly-2026-11-20). Each target
+# runs FUZZ_SECONDS (default 60, the CI smoke budget) over its growing corpus
+# plus the seeds `fuzz:seeds` writes from spec/test-vectors. A crash lands in
+# <crate>/fuzz/artifacts/<target>/; replay it with
+# `cargo +nightly fuzz run --fuzz-dir <crate>/fuzz <target> <file>`.
+
+[tasks."fuzz:seeds"]
+description = "Write the fuzz seed corpora from spec/test-vectors"
+run = "python3 -I rust/fuzz/seeds.py"
+
+[tasks."fuzz:rust"]
+description = "Fuzz each core target (from_bytes, decode, encode) for FUZZ_SECONDS"
+depends = ["fuzz:seeds"]
+run = '''
+set -eu
+for t in from_bytes decode encode; do
+  mkdir -p "rust/fuzz/corpus/$t"
+  cargo "+${FUZZ_TOOLCHAIN:-nightly}" fuzz run --fuzz-dir rust/fuzz "$t" \
+    "rust/fuzz/corpus/$t" "rust/fuzz/seeds/$t" -- -max_total_time="${FUZZ_SECONDS:-60}"
+done
+'''
+
+[tasks."fuzz:c"]
+description = "Fuzz each C ABI target (c_handle, c_encode) for FUZZ_SECONDS"
+depends = ["fuzz:seeds"]
+run = '''
+set -eu
+for t in c_handle c_encode; do
+  mkdir -p "bindings/c/fuzz/corpus/$t"
+  cargo "+${FUZZ_TOOLCHAIN:-nightly}" fuzz run --fuzz-dir bindings/c/fuzz "$t" \
+    "bindings/c/fuzz/corpus/$t" "bindings/c/fuzz/seeds/$t" -- -max_total_time="${FUZZ_SECONDS:-60}"
+done
+'''
+
+[tasks."format:fuzz"]
+description = "Format both fuzz crates"
+alias = "format:fix:fuzz"
+run = [
+  "cargo fmt --manifest-path rust/fuzz/Cargo.toml",
+  "cargo fmt --manifest-path bindings/c/fuzz/Cargo.toml",
+]
+
+[tasks."format:check:fuzz"]
+description = "Check formatting of both fuzz crates"
+run = [
+  "cargo fmt --manifest-path rust/fuzz/Cargo.toml --check",
+  "cargo fmt --manifest-path bindings/c/fuzz/Cargo.toml --check",
+]
+
+# Clippy builds the targets on stable: only `cargo fuzz build` needs nightly
+# (for the sanitizer flags), not the code itself.
+[tasks."lint:fuzz"]
+description = "Clippy both fuzz crates"
+run = [
+  "cargo clippy --manifest-path rust/fuzz/Cargo.toml --all-targets -- -D warnings",
+  "cargo clippy --manifest-path bindings/c/fuzz/Cargo.toml --all-targets -- -D warnings",
+]
+
+[tasks."lint:fix:fuzz"]
+description = "Auto-fix clippy findings in both fuzz crates"
+run = [
+  "cargo clippy --manifest-path rust/fuzz/Cargo.toml --all-targets --fix --allow-staged --allow-dirty",
+  "cargo clippy --manifest-path bindings/c/fuzz/Cargo.toml --all-targets --fix --allow-staged --allow-dirty",
+  "cargo clippy --manifest-path rust/fuzz/Cargo.toml --all-targets -- -D warnings",
+  "cargo clippy --manifest-path bindings/c/fuzz/Cargo.toml --all-targets -- -D warnings",
+]
 
 # ─── C binding (chromahash-c) ─────────────────────────────────────────────────
 # Hand-written extern "C" surface + cbindgen header. The header is regenerated on
