@@ -676,7 +676,7 @@ edit ran nothing but the commit linter.
 | `ci-tools.yml` | `tools/{thumbhash-rs,gamut-ref-stdin,benchmark,ci}/**` | fmt, lint and build the three helper tools; manifest versions. The two Rust tools have no `#[test]` of their own — the `cargo test` step is a compile gate, and their correctness is asserted where they are *used*, by the comparison harness's own checks |
 | `ci-comparison.yml` | `tools/comparison/**`, `typescript/**`, `rust/**` | build the harness and run the R–D quality gate. `rust/**` is there because the gate exists to catch *encoder* regressions |
 | `ci-fuzz.yml` | `rust/src/**`, `rust/Cargo.toml`, `rust/fuzz/**`, `bindings/c/src/**`, `bindings/c/Cargo.toml`, `bindings/c/fuzz/**`, `spec/test-vectors/**`, the workflow itself (PRs; also on demand) | fmt and clippy over both fuzz crates on stable; a nightly smoke matrix that writes the seeds, builds each of the five cargo-fuzz targets and fuzzes it for 60 s, uploading any crash artifacts |
-| `ci-mutants.yml` | `rust/**` (PRs) | mutation-test the changed core lines (`--in-diff`), with an empty-diff guard; full sweep weekly and on demand |
+| `ci-mutants.yml` | `rust/**` (PRs) | mutation-test the changed core lines (`--in-diff`), with an empty-diff guard; full sweep weekly and on demand, in 8 parallel shards |
 | `ci-commits.yml` | *all* | conventional-commit format (convco) |
 
 CI mirrors the local `mise run` tasks. If local checks pass, CI should pass — with
@@ -786,7 +786,7 @@ Scope is the core only (per issue #41); the FFI bindings are thin wrappers and
 are exercised by their own spec-vector tests.
 
 ```bash
-mise run mutants:rust                     # full sweep of rust/src (~2000 mutants, ~hours)
+mise run mutants:rust                     # full sweep of rust/src (~2,900 mutants, ~hours)
 mise run mutants:rust:diff                # only the lines changed vs origin/master (fast)
 mise run mutants:rust --file src/dct.rs   # extra args pass straight to cargo-mutants
 ```
@@ -835,7 +835,9 @@ is worth re-running before acting on; a repeatable one is a real gap.
 **Where it runs.** The `mutants:rust:diff` hk pre-push step gates pushes
 that touch `rust/src` on the changed lines being covered; `ci-mutants.yml` runs
 the same incremental check on pull requests. The full sweep is too slow for a PR
-gate, so it runs weekly on a schedule (and on demand via workflow_dispatch): a
+gate, so it runs weekly on a schedule (and on demand via workflow_dispatch),
+split into 8 round-robin shards (`--shard k/8`) that run as parallel jobs,
+because unsharded it outruns GitHub's 6 h job limit: a
 gap the incremental gate cannot see is one in code nobody is touching, worth
 catching eventually but not worth blocking every PR on.
 

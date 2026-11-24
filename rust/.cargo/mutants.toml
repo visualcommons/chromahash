@@ -11,7 +11,7 @@
 no_default_features = true
 
 # Build the sweep with the `mutants` profile: optimized (the sweep re-runs the
-# whole suite once per mutant, ~2000 of them, and the suite is dominated by
+# whole suite once per mutant, ~2,900 of them, and the suite is dominated by
 # tier-4 decodes at ~0.7s each in a debug build) but with overflow and debug
 # assertions kept on.
 #
@@ -22,6 +22,17 @@ no_default_features = true
 # reports those as equivalent mutants when they are nothing of the sort.
 # See `[profile.mutants]` in rust/Cargo.toml.
 profile = "mutants"
+
+# A floor under the per-mutant test timeout. cargo-mutants sets it from the
+# unmutated baseline, which was 8 s of tests at 4aba398, giving 41 s. Some
+# mutants that are caught still slow the suite a lot. `portable_ln`'s `m < 2.0`
+# changed to `m == 2.0` makes the range reduction run its full 1100 steps on
+# almost every call, so the unit suite takes about 20 s before it fails 50
+# tests. On a shared host at load 30 to 50, the #147 sweep's first run reported
+# that mutant as a timeout, and it was caught in 20 s when re-run alone. 120 s
+# leaves room for that. A real hang still times out, only later. The kernels'
+# loops are bounded `for`s, so no mutant in them can loop forever.
+minimum_test_timeout = 120
 
 # Re-enable `simd` plus the opt-in `simd-diff-tests` (both dropped above with the
 # defaults) so the host-runnable SIMD backends — AVX2/SSE2 on the x86_64 sweep
