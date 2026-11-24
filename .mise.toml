@@ -153,7 +153,7 @@ run = "cargo mutants -d rust"
 # runs FUZZ_SECONDS (default 60, the CI smoke budget) over its growing corpus
 # plus the seeds `fuzz:seeds` writes from spec/test-vectors. A crash lands in
 # <crate>/fuzz/artifacts/<target>/; replay it with
-# `cargo +nightly fuzz run --fuzz-dir <crate>/fuzz <target> <file>`.
+# `cargo +nightly fuzz run --target "$(rustc +nightly -vV|sed -n 's/^host: //p')" --fuzz-dir <crate>/fuzz <target> <file>`.
 
 [tasks."fuzz:seeds"]
 description = "Write the fuzz seed corpora from spec/test-vectors"

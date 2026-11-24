@@ -401,7 +401,9 @@ Seeds are generated, never committed: `mise run fuzz:seeds` writes them from
 `ci-fuzz.yml` is the 60 s smoke run; a campaign is
 `FUZZ_SECONDS=1800 mise run fuzz:rust` on a developer machine. A crash lands in
 `<crate>/fuzz/artifacts/<target>/`; replay it with
-`cargo +nightly fuzz run --fuzz-dir <crate>/fuzz <target> <file>`. At codes 3
+`cargo +nightly fuzz run --target "$(rustc +nightly -vV|sed -n 's/^host: //p')" --fuzz-dir <crate>/fuzz <target> <file>`
+(the `--target` pin matters for the same reason as in the tasks: a prebuilt
+cargo-fuzz otherwise defaults to its own musl triple). At codes 3
 and 4 the targets render capped at 32 px per axis, so the full natural rasters
 there stay pinned by the spec vectors alone.
 
