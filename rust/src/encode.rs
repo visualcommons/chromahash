@@ -32,8 +32,9 @@ fn build_eotf_lut(gamut: Gamut) -> [f64; 256] {
 /// [`build_eotf_lut`]'s table for `gamut`, built once per process and shared.
 ///
 /// The encode-side twin of the decoder's `cached_gamma_lut`: 256 transfer
-/// curve evaluations, each a `portable_pow` for most gamuts, were about 3% of
-/// a 100×100 encode, rebuilt on every call (`spec/PERFORMANCE.md` §1). The
+/// curve evaluations, each a `portable_pow` for most gamuts, rebuilt on every
+/// call, were 1.2% of a 100×100 encode's user-space instructions (the EOTF
+/// table cache row's 1.012 count ratio, `spec/PERFORMANCE.md` §12.4). The
 /// table is a pure function of the curve `build_eotf_lut` picks, and sRGB and
 /// Display P3 pick the same one, so there are four tables, each the same 256
 /// values whether it is built once or on every call.
