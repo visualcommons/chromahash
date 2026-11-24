@@ -5624,7 +5624,12 @@ fixed in #130 before the first re-run:
 wire-format generation v2 after them, and it changes the encoder at codes 3
 and 4 (§13.15) and nothing below code 3. So every result that moved at master
 was re-run a second time at `225bdce`, the last generation-v1 revision, with
-the same harness: the two revisions differ only under `rust/`. A figure that
+the same harness. The scoring harness is identical at the two revisions:
+`git diff 225bdce 86a30af` also touches `spec/`, the bindings, `typescript/`
+and four files under `tools/comparison/src/` (`combination-core.ts`, new;
+`stratify.ts`'s `--combination`; and their `verify-experiments.ts` and
+`metric-selftest.ts` checks), none of them on the path `sweep` and `rd-budget`
+score through. A figure that
 moves at master and holds at v1 is the format change, not an error in the
 record. The re-runs are committed under `results/reproductions/` (master) and
 `results/reproductions/v1/` (v1), outside the directory every count in §13.5
@@ -5734,6 +5739,21 @@ What it says:
    reading is 0.077, 4.8%, 8 and 10; the eighth interval flip is
    `compact-retune-graphics`' `t0 L28@3 C5@3`, committed after §13.5 counted.
 
+The readings above that the claims table does not hold, each with its status
+and command. This table is unbound: `verify:experiments` does not recompute
+the seed readings (20 seeds over every interval, at 10,000 resamples, is too
+slow for a gate that runs on every push), and §11.14's two rows sit outside
+#130's list. Each figure is the command's own output, read off it by hand.
+
+| reading | § | as recorded | re-run | status | command |
+|---|---|---|---|---|---|
+| seed check at 1,000 resamples over the 54 results: largest bound move, largest move against its width, interval flips, Holm flips | 13.5 | 0.295 / 15.5% / 26 / 10 | 0.295 / 15.5% / 26 / 10 | reproduced | `arms --seed-sensitivity --resamples 1000 <the 54 results>` |
+| seed check at 10,000 resamples over the 54 results, the same four | 13.5 | 0.077 / 4.8% / 7 / 10 | 0.077 / 4.8% / 7 / 10 | reproduced | `arms --seed-sensitivity <the 54 results>` |
+| 1,000 → 10,000 resamples at seed 42 over the 54 results: largest bound move, interval flips, `guards (CI)` changes | 13.5 | 0.099 / 7 / 6 | 0.099 / 7 / 6 | reproduced | `arms --resample-change <the 54 results>` |
+| seed check at 10,000 resamples over every committed result (1,080 intervals), the same four | — | — | 0.077 / 4.8% / 8 / 10 | not a recorded claim | `arms --seed-sensitivity` |
+| `ChromaHash@411B` (code 3) mean ΔE00, `rd-budget` on tune2 | 11.14 | 7.783 | 7.313 (7.783 at v1) | outside #130's list (#168) | `rd-budget --split tune2` |
+| `ChromaHash@1623B` (code 4) mean ΔE00, `rd-budget` on tune2 | 11.14 | 6.768 | 6.642 (6.768 at v1) | outside #130's list (#168) | `rd-budget --split tune2` |
+
 **What the record now says.** The four master figures are not errors in the
 sections that hold them: those tables record generation v1, and stay bound to
 the v1 results. Each of those sections now says which of its rows are
@@ -5747,34 +5767,49 @@ cross-format record, are generation v1 (ΔE00 7.783 → 7.313 at code 3, 6.768 �
 6.642 at code 4 on the `rd-budget` re-run), and re-recording that table at v2
 is #168.
 
-**Per stratum.** Each ΔE00 comparison above, overall and in every holdout3
-stratum its re-run's images fall in (`node tools/comparison/dist/reproduce.js
---strata`, which measures the strata off the fetched fixtures; unbound,
-because CI does not fetch the corpus). On tune the strata gate nothing. A
-comparison is **input-dependent** when its sign turns in some stratum, and
-**shown** to be when that stratum's paired interval excludes zero on the other
-side; no later entry may inherit an input-dependent comparison as a global
-gain.
+**Per stratum.** Each comparison above, overall and in every holdout3 stratum
+its re-run's images fall in, as the relative change in the comparison's own
+metric: the ΔE00 comparisons, the spurious-detail ones (§12.2's −73%, §12.3's
+−28% and §13.2's code 3 and code 4 − code 2, which the claims table quotes as
+absolute differences) and the compact tier against ThumbHash
+(`node tools/comparison/dist/reproduce.js --strata`, which measures the strata
+off the fetched fixtures; unbound, because CI does not fetch the corpus). It
+reads the committed re-runs under `results/reproductions/` with the strata
+`stratify --strata` measures (`measured-strata.ts`) and resamples each stratum
+as `stratify` does; `stratify` itself reads only top-level results, so it
+cannot name a re-run. Three kinds of claim have no row: §13.1's ladder
+figures are levels, not comparisons; §7.13's
+three figures come from an `entropy-budget` record of the picks and summed
+coded sizes, with no per-image series to split; and the §13.5 counts are
+whole-sweep counts. On tune the strata gate nothing. A comparison is
+**input-dependent** when its sign turns in some stratum, and **shown** to be
+when that stratum's paired interval excludes zero on the other side; no later
+entry may inherit an input-dependent comparison as a global gain.
 
-| comparison | overall | alpha | smartphone | skin | low-light | graphics | extreme-aspect | input-dependent |
-|---|---|---|---|---|---|---|---|---|
-| §11.3 `A28@3 L22@4 C3@3` − `SHIPPED A5@4 L20@5 C9@4` | −17.10% | −17.10% (16) | — | — | — | — | — | no |
-| §11.11 `A28@3 L22@4 C3@3 (t0 winner)` − `SHIPPED A5@4 L20@5 C9@4` | −11.95% | −11.95% (16) | — | — | — | — | — | no |
-| §11.10 `L19@4 C6@3  (§8.1 tune)` − `shipped shape L13@5 C6@4` | −3.67% | — | −3.06% (4) | −5.01% (11) | −2.49% (9) | — | — | no |
-| §11.10 `L16@4 C8@3` − `L19@4 C6@3  (§8.1 tune)` | +0.72% | — | −0.58% (4) | +1.40% (11) | −0.54% (9) | — | — | sign turns |
-| §11.10 `L19@4 C6@3  (§8.1 tune)` − `shipped shape L13@5 C6@4` | −2.78% | −3.32% (1) | — | −3.32% (1) | −2.00% (1) | −2.78% (16) | −4.68% (1) | no |
-| §11.12 `compact 21B L19@4 C6@3` − `compact 21B shipped shape` | −2.78% | — | +0.80% (1) | −2.67% (16) | — | — | — | sign turns |
-| §7.11 `t1 interleaved, trunc 32 B` − `t0 native 32 B` | +4.15% | — | +3.65% (4) | +3.14% (11) | +2.56% (9) | — | — | no |
-| §7.11 `t1 interleaved, trunc 32 B` − `t1 seq, trunc 32 B` | −4.97% | — | −4.88% (4) | −12.20% (11) | −5.52% (9) | — | — | no |
-| §7.10 `32B paid cfl5 L24C9` − `32B shipped L26@5C9@4` | +2.11% | — | +3.20% (4) | +1.43% (11) | +2.41% (9) | — | — | no |
-| §7.10 `32B free cfl5 (34 B)` − `32B shipped L26@5C9@4` | −0.10% | — | −0.13% (4) | −0.35% (11) | +0.22% (9) | — | — | sign turns |
-| §7.10 `411B t2 free cfl5` − `411B t2 shipped` | −0.29% | — | +0.46% (4) | −0.62% (11) | −1.18% (9) | — | — | sign turns |
-| §7.10 `1623B t3 free cfl5` − `1623B t3 shipped` | −0.92% | — | −1.16% (4) | −1.74% (11) | −1.76% (9) | — | — | no |
-| §11.5 `aniso=0.9 hv=0.0` − `DEFAULT aniso=1.2 hv=0.15` | −0.76% | — | +0.28% (4) | −1.00% (11) | −0.72% (9) | — | — | sign turns |
-| §11.5 `aniso=1.2 hv=0.0` − `DEFAULT aniso=1.2 hv=0.15` | −0.52% | — | +0.03% (4) | −0.64% (11) | −0.80% (9) | — | — | sign turns |
-| §11.5 `aniso=1.2 hv=0.3` − `DEFAULT aniso=1.2 hv=0.15` | +0.39% | — | +1.46% (4) | +0.36% (11) | +0.75% (9) | — | — | no |
-| §12.2 `w_min 0.85 exp 1` − `shipped (no window)` | +0.33% | — | −0.14% (4) | +0.57% (11) | +0.12% (9) | — | — | sign turns |
-| §12.3 `t2 w_min 0.85 exp 1` − `t2 shipped (no window)` | +0.08% | — | −0.21% (4) | +0.20% (11) | +0.23% (9) | — | — | sign turns |
+| comparison | metric | overall | alpha | smartphone | skin | low-light | graphics | extreme-aspect | input-dependent |
+|---|---|---|---|---|---|---|---|---|---|
+| §11.3 `A28@3 L22@4 C3@3` − `SHIPPED A5@4 L20@5 C9@4` | ΔE00 | −17.10% | −17.10% (16) | — | — | — | — | — | no |
+| §11.11 `A28@3 L22@4 C3@3 (t0 winner)` − `SHIPPED A5@4 L20@5 C9@4` | ΔE00 | −11.95% | −11.95% (16) | — | — | — | — | — | no |
+| §11.10 `L19@4 C6@3  (§8.1 tune)` − `shipped shape L13@5 C6@4` | ΔE00 | −3.67% | — | −3.06% (4) | −5.01% (11) | −2.49% (9) | — | — | no |
+| §11.10 `L16@4 C8@3` − `L19@4 C6@3  (§8.1 tune)` | ΔE00 | +0.72% | — | −0.58% (4) | +1.40% (11) | −0.54% (9) | — | — | sign turns |
+| §11.10 `L19@4 C6@3  (§8.1 tune)` − `shipped shape L13@5 C6@4` | ΔE00 | −2.78% | −3.32% (1) | — | −3.32% (1) | −2.00% (1) | −2.78% (16) | −4.68% (1) | no |
+| §11.12 `compact 21B L19@4 C6@3` − `compact 21B shipped shape` | ΔE00 | −2.78% | — | +0.80% (1) | −2.67% (16) | — | — | — | sign turns |
+| §11.12 `ChromaHash@21B` − `ThumbHash` | ΔE00 | −5.16% | — | −8.66% (1) | −3.16% (16) | — | — | — | no |
+| §7.11 `t1 interleaved, trunc 32 B` − `t0 native 32 B` | ΔE00 | +4.15% | — | +3.65% (4) | +3.14% (11) | +2.56% (9) | — | — | no |
+| §7.11 `t1 interleaved, trunc 32 B` − `t1 seq, trunc 32 B` | ΔE00 | −4.97% | — | −4.88% (4) | −12.20% (11) | −5.52% (9) | — | — | no |
+| §7.10 `32B paid cfl5 L24C9` − `32B shipped L26@5C9@4` | ΔE00 | +2.11% | — | +3.20% (4) | +1.43% (11) | +2.41% (9) | — | — | no |
+| §7.10 `32B free cfl5 (34 B)` − `32B shipped L26@5C9@4` | ΔE00 | −0.10% | — | −0.13% (4) | −0.35% (11) | +0.22% (9) | — | — | sign turns |
+| §7.10 `411B t2 free cfl5` − `411B t2 shipped` | ΔE00 | −0.29% | — | +0.46% (4) | −0.62% (11) | −1.18% (9) | — | — | sign turns |
+| §7.10 `1623B t3 free cfl5` − `1623B t3 shipped` | ΔE00 | −0.92% | — | −1.16% (4) | −1.74% (11) | −1.76% (9) | — | — | no |
+| §11.5 `aniso=0.9 hv=0.0` − `DEFAULT aniso=1.2 hv=0.15` | ΔE00 | −0.76% | — | +0.28% (4) | −1.00% (11) | −0.72% (9) | — | — | sign turns |
+| §11.5 `aniso=1.2 hv=0.0` − `DEFAULT aniso=1.2 hv=0.15` | ΔE00 | −0.52% | — | +0.03% (4) | −0.64% (11) | −0.80% (9) | — | — | sign turns |
+| §11.5 `aniso=1.2 hv=0.3` − `DEFAULT aniso=1.2 hv=0.15` | ΔE00 | +0.39% | — | +1.46% (4) | +0.36% (11) | +0.75% (9) | — | — | no |
+| §12.2 `w_min 0.5 exp 2` − `shipped (no window)` | spurious | −73.04% | — | −72.46% (4) | −70.48% (11) | −76.45% (9) | — | — | no |
+| §12.2 `w_min 0.85 exp 1` − `shipped (no window)` | ΔE00 | +0.33% | — | −0.14% (4) | +0.57% (11) | +0.12% (9) | — | — | sign turns |
+| §12.3 `t2 w_min 0.85 exp 1` − `t2 shipped (no window)` | ΔE00 | +0.08% | — | −0.21% (4) | +0.20% (11) | +0.23% (9) | — | — | sign turns |
+| §12.3 `t2 w_min 0.85 exp 1` − `t2 shipped (no window)` | spurious | −28.16% | — | −29.37% (4) | −25.42% (11) | −24.26% (9) | — | — | no |
+| §13.2 `code 3 (411 B)` − `code 2 (108 B)` | spurious | +22.40% | — | +31.34% (4) | +11.29% (11) | +3.63% (9) | — | — | no |
+| §13.2 `code 4 (1623 B)` − `code 2 (108 B)` | spurious | −10.18% | — | −12.37% (4) | −15.66% (11) | −27.18% (9) | — | — | no |
 
 No comparison is shown to be input-dependent: no stratum of two or more images
 has an interval wholly on the other side of its overall effect. Eight turn
@@ -5792,4 +5827,7 @@ images on tune, one on tune2), and each is labelled input-dependent here:
 
 The other figures the format adopted on this evidence (the alpha row at codes
 1 and 2) and the costs that kept features out (the embedded-tier prefix and
-paid CfL) hold their sign in every stratum.
+paid CfL) hold their sign in every stratum. So do the compact tier's ΔE00 win
+over ThumbHash on tune2, every spurious-detail cut the window makes (§12.2 at
+code 1, §12.3 at code 2), and §13.2's two spurious-detail comparisons at
+master: code 3 − code 2 rises and code 4 − code 2 falls in every stratum.

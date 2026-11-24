@@ -3700,6 +3700,8 @@ const UNBOUND_NOTES: Record<string, string> = {
   "7.13#0":
     "entropy-budget output, not a sweep; its bold row and the two figures its prose spends it on are re-run and bound in §13.16's claims table, against the committed results/reproductions/entropy-budget-tune.json record",
   "13.16#2":
+    "UNCHECKED here: §13.5's seed readings re-derive every interval under 20 seeds at 10,000 resamples, too slow for this gate, and §11.14's two rows are outside #130's list (#168 re-records that table); `arms --seed-sensitivity`, `arms --resample-change` and `rd-budget --split tune2` print them",
+  "13.16#3":
     "UNCHECKED here: per-stratum readings need each image's strata measured off the fetched fixtures, and CI does not fetch the corpus; `node tools/comparison/dist/reproduce.js --strata` prints the table from the committed re-runs",
   "9.3#0":
     "old-corpus vs new-corpus figures; the old corpus no longer exists, which is the point of the section",
