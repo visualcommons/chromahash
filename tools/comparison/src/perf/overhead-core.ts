@@ -148,9 +148,13 @@ export function recordProblem(
 }
 
 const INS = "instructions:u";
-const whole = (n: number) => Math.floor(n).toLocaleString("en-US");
+/** An arm's median count, floored to the whole instructions printed. */
+const floored = (s: CountsRecord["summary"]["a"]) => Math.floor(s.median[INS]);
+const whole = (n: number) => n.toLocaleString("en-US");
+/** A − B of the printed counts, so the column is the difference a reader computes. */
+const diff = (r: CountsRecord) => floored(r.summary.a) - floored(r.summary.b);
 const signed = (n: number) =>
-  `${n < 0 ? "−" : "+"}${Math.abs(Math.floor(n)).toLocaleString("en-US")}`;
+  `${n < 0 ? "−" : "+"}${Math.abs(Math.round(n)).toLocaleString("en-US")}`;
 
 function unit(cell: OverheadCell): string {
   return cell.batch === null ? `per ${cell.op}` : "per batch";
@@ -201,11 +205,11 @@ export function renderOverheadTable(
         driver(l.layer, "overhead_core"),
       );
       const s = r.summary;
-      const extra = s.a.median[INS] - s.b.median[INS];
+      const extra = diff(r);
       const perItem =
         cell.batch === null ? "" : ` (${signed(extra / cell.batch)} per image)`;
       lines.push(
-        `| ${l.name} | ${l.serves} | ${cell.label} | ${whole(s.a.median[INS])} | ${whole(s.b.median[INS])} | ${signed(extra)} ${unit(cell)}${perItem} | ${s.ratio.geomean[INS].toFixed(4)} | \`${name}\` |`,
+        `| ${l.name} | ${l.serves} | ${cell.label} | ${whole(floored(s.a))} | ${whole(floored(s.b))} | ${signed(extra)} ${unit(cell)}${perItem} | ${s.ratio.geomean[INS].toFixed(4)} | \`${name}\` |`,
       );
     }
   }
@@ -227,11 +231,17 @@ export function renderOverheadTable(
     "## Reductions",
     "",
     "Each reduction is byte-identical (both arms' outputs are equal in every record) and is shown by a paired count of the layer's driver after it (A) against the same driver built before it (B), each cell counted with `benchmark:overhead`'s options and `--b-bin` naming the earlier build.",
-    "",
-    "| Reduction | Cell | After (A) | Before (B) | Change | A/B | Record |",
-    "| --- | --- | ---: | ---: | ---: | ---: | --- |",
   );
   for (const red of OVERHEAD_REDUCTIONS) {
+    lines.push(
+      "",
+      `### \`${red.id}\` (${red.layer})`,
+      "",
+      `${red.what}. B is \`${red.beforeBin}\`, built at \`${red.beforeRev}\`.`,
+      "",
+      "| Cell | After (A) | Before (B) | Change | A/B | Record |",
+      "| --- | ---: | ---: | ---: | ---: | --- |",
+    );
     for (const cell of OVERHEAD_CELLS) {
       const name = reductionRecord(red, cell);
       const r = take(
@@ -242,7 +252,7 @@ export function renderOverheadTable(
       );
       const s = r.summary;
       lines.push(
-        `| ${red.what}; B built at \`${red.beforeRev}\` | ${cell.label} | ${whole(s.a.median[INS])} | ${whole(s.b.median[INS])} | ${signed(s.a.median[INS] - s.b.median[INS])} ${unit(cell)} | ${s.ratio.geomean[INS].toFixed(4)} | \`${name}\` |`,
+        `| ${cell.label} | ${whole(floored(s.a))} | ${whole(floored(s.b))} | ${signed(diff(r))} ${unit(cell)} | ${s.ratio.geomean[INS].toFixed(4)} | \`${name}\` |`,
       );
     }
   }
