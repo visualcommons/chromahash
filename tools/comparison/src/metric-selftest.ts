@@ -245,9 +245,16 @@ import {
 } from "./perf/count.ts";
 import { countClaimFailures } from "./perf/counts-claims.ts";
 import {
+  HOST_CELLS,
   OVERHEAD_CELLS,
+  OVERHEAD_HOSTS,
+  OVERHEAD_REDUCTIONS,
+  hostCore,
+  hostProgram,
+  hostRecord,
   overheadRecord,
   recordProblem,
+  reductionRecord,
   renderOverheadTable,
 } from "./perf/overhead-core.ts";
 import {
@@ -7759,7 +7766,7 @@ console.log(
         why: "",
       }).join(" ") === "runs: py/bin/python -m m" &&
       (COUNTING_CONFIGS["TypeScript (wasm)"]?.flags ?? []).join(" ") ===
-        "--single-threaded --no-opt --no-maglev --no-sparkplug --liftoff-only" &&
+        "--single-threaded --no-opt --no-maglev --no-sparkplug --liftoff-only --random-seed=1 --hash-seed=1" &&
       (COUNTING_CONFIGS["TypeScript (wasm)"]
         ?.artifacts("pkg/dist/encode-stdin.js")
         .join(" ") ?? "") === "pkg/dist pkg/wasm",
@@ -9075,6 +9082,122 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
     rendered.startsWith("#")
       ? `${rendered.split("\n").length} lines`
       : rendered,
+  );
+
+  // A host record is quotable only as its host, against the Rust core, under
+  // the counting configuration the code holds now; a host whose blocks spread
+  // over HOST_SPREAD is rendered as not countable instead of in rows; and a
+  // reduction must count fewer instructions in every block.
+  const goHost = OVERHEAD_HOSTS.find((h) => h.impl === "Go");
+  const decode = HOST_CELLS.find((c) => c.cell === "decode-64");
+  if (goHost === undefined || decode === undefined) {
+    throw new Error("OVERHEAD_HOSTS lost Go or HOST_CELLS its decode cell");
+  }
+  const goName = hostRecord(goHost, decode);
+  const goRec = readAb(goName);
+  const hostRefused = (r: CountsRecord, text: string) =>
+    (
+      recordProblem(
+        r,
+        decode,
+        hostProgram(goHost),
+        hostCore(goHost),
+        "Go",
+        "Rust",
+      ) ?? ""
+    ).includes(text);
+  const goVariant = (f: (r: CountsRecord) => void): CountsRecord => {
+    const r = structuredClone(goRec);
+    f(r);
+    return r;
+  };
+  check(
+    "overhead recordProblem on a host record: accepts the committed one, and refuses another counting configuration, none, an arm B that is not the Rust core, and a same-implementation reading of it",
+    recordProblem(
+      goRec,
+      decode,
+      hostProgram(goHost),
+      hostCore(goHost),
+      "Go",
+      "Rust",
+    ) === null &&
+      hostRefused(
+        goVariant((r) => {
+          r.arms.a.config = ["GOGC=100", "GOMAXPROCS=1"];
+        }),
+        "ran under GOGC=100",
+      ) &&
+      hostRefused(
+        goVariant((r) => {
+          r.arms.a = {
+            bin: r.arms.a.bin,
+            binSha256: r.arms.a.binSha256,
+            tune: r.arms.a.tune,
+            impl: "Go",
+          };
+        }),
+        "no counting configuration",
+      ) &&
+      hostRefused(
+        goVariant((r) => {
+          r.arms.b.impl = "Go";
+        }),
+        "its arms run",
+      ) &&
+      (
+        recordProblem(
+          goRec,
+          decode,
+          hostProgram(goHost),
+          hostCore(goHost),
+          "Go",
+        ) ?? ""
+      ).includes("its arms run"),
+    "",
+  );
+  const withRecord =
+    (name: string, f: (r: CountsRecord) => void) =>
+    (n: string): CountsRecord => {
+      const r = readAb(n);
+      if (n === name) f(r);
+      return r;
+    };
+  let wide = "";
+  try {
+    wide = renderOverheadTable(
+      withRecord(goName, (r) => {
+        r.summary.a.max["instructions:u"] =
+          r.summary.a.median["instructions:u"] * 1.02;
+      }),
+    );
+  } catch (e) {
+    wide = (e as Error).message;
+  }
+  const red = OVERHEAD_REDUCTIONS.find((x) => x.id === "wasm-rgba-copy");
+  if (red === undefined)
+    throw new Error("the wasm-rgba-copy reduction is gone");
+  const redName = reductionRecord(red, decode);
+  let flat = "";
+  try {
+    flat = renderOverheadTable(
+      withRecord(redName, (r) => {
+        r.summary.ratio.max["instructions:u"] = 1;
+      }),
+    );
+  } catch (e) {
+    flat = (e as Error).message;
+  }
+  check(
+    "renderOverheadTable: a host whose arm spreads 2% is listed not countable with that spread and loses its rows, and a reduction with a block that does not count fewer instructions is refused",
+    wide.includes(
+      "| Go | `GOGC=off` `GOMAXPROCS=1` | 2.000% | no: over 1.000% |",
+    ) &&
+      !wide.includes(`\`${goName}\``) &&
+      wide.includes(
+        "under its counting configuration its blocks spread 2.000%",
+      ) &&
+      flat.includes(`${redName}: a reduction must count fewer instructions`),
+    flat.slice(0, 160),
   );
 }
 

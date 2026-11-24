@@ -9,9 +9,12 @@
  *
  * One arm's count in a block is two processes of the implementation's
  * `bench-encode` / `bench-decode` under `perf stat -e instructions:u,cycles:u`,
- * at 0 and `--iterations` timed iterations; their difference over the
+ * at 1 and 1 + `--iterations` timed iterations; their difference over the
  * iterations is the per-operation count, with start-up, the input read and the
- * warmup cancelled (`count.ts` `perIteration`). The bench loop's own timing
+ * warmup cancelled (`count.ts` `perIteration`). The short process runs one
+ * iteration, not none, because every host driver but Rust's runs at least one
+ * (`max(1, iters)`): a short process asked for none would run one, and the
+ * difference would be N − 1 operations divided by N. The bench loop's own timing
  * output is discarded. Blocks alternate A B and B A; the record holds each
  * arm's median count with its block range, and the geometric mean of the
  * per-block A/B ratios with theirs.
@@ -340,7 +343,7 @@ function countProcess(a: RunArm, n: number): ProcessCounts {
 }
 
 const perOperation = (a: RunArm): ProcessCounts =>
-  perIteration(countProcess(a, 0), countProcess(a, iterations), iterations);
+  perIteration(countProcess(a, 1), countProcess(a, 1 + iterations), iterations);
 
 /**
  * What an arm produces: an encode's hash, hex; a decode's SHA-256 of its

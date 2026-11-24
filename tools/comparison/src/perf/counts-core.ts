@@ -288,6 +288,8 @@ const NODE_FLAGS = [
   "--no-maglev",
   "--no-sparkplug",
   "--liftoff-only",
+  "--random-seed=1",
+  "--hash-seed=1",
 ] as const;
 
 /**
@@ -313,7 +315,7 @@ export const COUNTING_CONFIGS: Readonly<Record<string, CountingConfig>> = {
       const pkg = path.dirname(path.dirname(p));
       return [path.join(pkg, "dist"), path.join(pkg, "wasm")];
     },
-    why: `${NODE_FLAGS.join(" ")}: V8 runs JavaScript in its interpreter and wasm in its baseline compiler only, with no tier-up and no background compile or GC thread, so the wasm core runs slower than it ships`,
+    why: `${NODE_FLAGS.join(" ")}: V8 runs JavaScript in its interpreter and wasm in its baseline compiler only, with no tier-up and no background compile or GC thread, so the wasm core runs slower than it ships; fixed random and hash seeds make the heap's hash tables, and so the instructions spent in them, the same in every process`,
   },
   "C#": {
     env: {
