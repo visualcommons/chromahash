@@ -6,6 +6,7 @@ the cross-language parity gate. Per-function unit tests of the algorithm live in
 the Rust core (the single source of truth).
 """
 
+import array
 import json
 import os
 
@@ -243,3 +244,85 @@ def test_tier_constants_come_from_the_core():
     )
     with pytest.raises(ChromaHashError.InvalidTier):
         ChromaHash.encode_with_quality(4, 4, rgba, Gamut.SRGB, MAX_TIER + 1)
+
+
+def _write_per_byte(value) -> bytes:
+    """uniffi-bindgen's own byte-array writer: one loop iteration per item."""
+    from chromahash._uniffi import _UniffiRustBufferBuilder
+
+    b = _UniffiRustBufferBuilder()
+    try:
+        with b._reserve(len(value)):
+            for i, byte in enumerate(value):
+                b.rbuf.data[b.rbuf.len + i] = byte
+        return bytes(b.rbuf.data[0 : b.rbuf.len])
+    finally:
+        b.discard()
+
+
+def _write_patched(value) -> bytes:
+    from chromahash._uniffi import _UniffiRustBufferBuilder
+
+    b = _UniffiRustBufferBuilder()
+    try:
+        b.write(value)
+        return bytes(b.rbuf.data[0 : b.rbuf.len])
+    finally:
+        b.discard()
+
+
+def _outcome(write, value):
+    try:
+        return write(value)
+    except Exception as e:  # the same error, not just some error
+        return (type(e), str(e))
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        b"",
+        b"abc",
+        bytes(range(256)) * 70,
+        bytearray(b"xyz"),
+        memoryview(b"abcdef")[1:4],
+        memoryview(b"abcdef")[::2],
+        array.array("B", [7, 8]),
+        array.array("i", [1, 2]),
+        array.array("i", [1, 300]),
+        array.array("b", [1, -1]),
+        [1, 2, 3],
+    ],
+    ids=lambda v: type(v).__name__,
+)
+def test_rustbuffer_write_matches_the_per_byte_writer(value):
+    """`cbuild:python` replaces the generated per-byte writer with one copy for
+    a contiguous byte buffer and keeps the loop for anything else: every input
+    writes the same bytes, or raises the same error, as the loop it replaced.
+    """
+    assert _outcome(_write_patched, value) == _outcome(_write_per_byte, value)
+
+
+def test_rustbuffer_write_is_the_patched_single_copy():
+    """The staged bindings carry the post-generation patch, so a rebuild that
+    lost it fails here rather than only in an instruction count."""
+    import inspect
+
+    from chromahash._uniffi import _UniffiRustBufferBuilder
+
+    assert "ctypes.memmove" in inspect.getsource(_UniffiRustBufferBuilder.write)
+
+
+def test_rustbuffer_write_appends_across_a_reallocation():
+    from chromahash._uniffi import _UniffiRustBufferBuilder
+
+    b = _UniffiRustBufferBuilder()
+    try:
+        b.write(b"a" * 10)
+        b.write(bytearray(b"b" * 100))
+        b.write_i32(5)
+        b.write(memoryview(b"c" * 3))
+        got = bytes(b.rbuf.data[0 : b.rbuf.len])
+    finally:
+        b.discard()
+    assert got == b"a" * 10 + b"b" * 100 + (5).to_bytes(4, "big") + b"ccc"
