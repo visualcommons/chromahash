@@ -3,41 +3,42 @@
     "100x100-t1-natural": {
       "cap": null,
       "git": {
+        "digest": "0254cd8492daa51e80df404447291625c19a4bface52bf8e8e5344e74550d107",
         "dirty": false,
-        "rev": "8f5f4d1"
+        "rev": "8d0ca33"
       },
       "hashBytes": 32,
       "height": 100,
       "iters": 2000,
       "ns": {
-        "ac_dequant": 1218,
-        "cos_tables": 2228,
-        "gamma_lut": 213006,
-        "header": 135,
-        "render": 93058,
-        "selection": 13027,
-        "stage_sum": 322902,
-        "unmarked": 137,
-        "whole_decode": 323039,
-        "window_filter": 227
+        "ac_dequant": 1891,
+        "cos_tables": 3625,
+        "gamma_lut": 141,
+        "header": 235,
+        "render": 152179,
+        "selection": 7931,
+        "stage_sum": 166387,
+        "unmarked": 275,
+        "whole_decode": 166663,
+        "window_filter": 383
       },
-      "recordedAt": "2026-09-25T07:50:37.595190+00:00",
+      "recordedAt": "2026-11-24T02:48:10.343966+00:00",
       "render": {
         "height": 32,
         "width": 32
       },
       "sharePct": {
-        "ac_dequant": 0.37704425781407197,
-        "cos_tables": 0.6897000052625225,
-        "gamma_lut": 65.93816845644024,
-        "header": 0.04179061970845625,
-        "render": 28.80704806540387,
-        "selection": 4.032640021793035,
-        "unmarked": 0.042409740000433384,
-        "window_filter": 0.07027015313940423
+        "ac_dequant": 1.1346249617491584,
+        "cos_tables": 2.175047851052723,
+        "gamma_lut": 0.0846018612409473,
+        "header": 0.1410031020682455,
+        "render": 91.30940880699376,
+        "selection": 4.758704691503213,
+        "unmarked": 0.16500363007986177,
+        "window_filter": 0.22980505571122564
       },
       "tier": 1,
-      "vectorsChecked": 19,
+      "vectorsChecked": 22,
       "width": 100
     },
     "100x100-t4-cap32x32": {
@@ -46,81 +47,83 @@
         "width": 32
       },
       "git": {
+        "digest": "0254cd8492daa51e80df404447291625c19a4bface52bf8e8e5344e74550d107",
         "dirty": false,
-        "rev": "8f5f4d1"
+        "rev": "8d0ca33"
       },
       "hashBytes": 1623,
       "height": 100,
       "iters": 200,
       "ns": {
-        "ac_dequant": 26678,
-        "cos_tables": 19331,
-        "gamma_lut": 215035,
-        "header": 251,
-        "render": 2851504,
-        "selection": 1955727,
-        "stage_sum": 5076698,
-        "unmarked": 77579,
-        "whole_decode": 5154277,
-        "window_filter": 8170
+        "ac_dequant": 56294,
+        "cos_tables": 29718,
+        "gamma_lut": 593,
+        "header": 899,
+        "render": 4434193,
+        "selection": 1334040,
+        "stage_sum": 5904125,
+        "unmarked": 151824,
+        "whole_decode": 6055949,
+        "window_filter": 48385
       },
-      "recordedAt": "2026-09-25T07:50:44.307436+00:00",
+      "recordedAt": "2026-11-24T02:48:22.401354+00:00",
       "render": {
         "height": 32,
         "width": 32
       },
       "sharePct": {
-        "ac_dequant": 0.5175895668781479,
-        "cos_tables": 0.37504775160512327,
-        "gamma_lut": 4.171972131105876,
-        "header": 0.004869742157823493,
-        "render": 55.3230647091726,
-        "selection": 37.94376980515405,
-        "unmarked": 1.505138354031031,
-        "window_filter": 0.15850913716899576
+        "ac_dequant": 0.9295652919137859,
+        "cos_tables": 0.4907240797437363,
+        "gamma_lut": 0.009792024338381979,
+        "header": 0.014844907049250249,
+        "render": 73.22044819069646,
+        "selection": 22.028587096753952,
+        "unmarked": 2.507022433643348,
+        "window_filter": 0.7989664377952985
       },
       "tier": 4,
-      "vectorsChecked": 19,
+      "vectorsChecked": 22,
       "width": 100
     },
     "100x100-t4-natural": {
       "cap": null,
       "git": {
+        "digest": "0254cd8492daa51e80df404447291625c19a4bface52bf8e8e5344e74550d107",
         "dirty": false,
-        "rev": "8f5f4d1"
+        "rev": "8d0ca33"
       },
       "hashBytes": 1623,
       "height": 100,
       "iters": 20,
       "ns": {
-        "ac_dequant": 28165,
-        "cos_tables": 199623,
-        "gamma_lut": 215169,
-        "header": 1333,
-        "render": 243259756,
-        "selection": 2068577,
-        "stage_sum": 245780780,
-        "unmarked": 128379,
-        "whole_decode": 245909159,
-        "window_filter": 8154
+        "ac_dequant": 50159,
+        "cos_tables": 420110,
+        "gamma_lut": 1113,
+        "header": 1799,
+        "render": 478717754,
+        "selection": 2045095,
+        "stage_sum": 481417211,
+        "unmarked": 348208,
+        "whole_decode": 481765420,
+        "window_filter": 181178
       },
-      "recordedAt": "2026-09-25T07:50:43.022113+00:00",
+      "recordedAt": "2026-11-24T02:48:20.786825+00:00",
       "render": {
         "height": 256,
         "width": 256
       },
       "sharePct": {
-        "ac_dequant": 0.011453416421956044,
-        "cos_tables": 0.08117753759631215,
-        "gamma_lut": 0.08749938427466217,
-        "header": 0.0005420700901994464,
-        "render": 98.92260905987645,
-        "selection": 0.8411955896282822,
-        "unmarked": 0.05220586354817309,
-        "window_filter": 0.0033158586012650305
+        "ac_dequant": 0.01041149860859669,
+        "cos_tables": 0.08720219064290667,
+        "gamma_lut": 0.00023102529857788466,
+        "header": 0.0003734182499026186,
+        "render": 99.36739627348098,
+        "selection": 0.4245001644161177,
+        "unmarked": 0.07227749970099556,
+        "window_filter": 0.03760709932232164
       },
       "tier": 4,
-      "vectorsChecked": 19,
+      "vectorsChecked": 22,
       "width": 100
     }
   },
