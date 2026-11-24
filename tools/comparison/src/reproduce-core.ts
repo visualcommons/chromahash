@@ -656,6 +656,7 @@ export function thumbHashFigure(): SweepFigure {
       if (better.some((x) => x === null)) return null;
       return better.every((x) => x === true) ? "beats on all four" : "does not";
     },
+    pair: { arm: compact, base: th, key: "ciede2000" },
   };
 }
 
