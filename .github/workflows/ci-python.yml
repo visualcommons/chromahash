@@ -32,6 +32,8 @@ jobs:
           gen="$(mktemp -d)"
           ( cd bindings/uniffi && cargo run --release --quiet --bin uniffi-bindgen -- \
               generate --library target/release/libchromahash_uniffi.so --language python --out-dir "$gen" )
+          # Same post-generation patch as `mise run cbuild:python`.
+          python python/scripts/patch_uniffi_rustbuffer.py "$gen/chromahash_uniffi.py"
           cp "$gen/chromahash_uniffi.py" python/chromahash/_uniffi.py
           cp bindings/uniffi/target/release/libchromahash_uniffi.so python/chromahash/
 
