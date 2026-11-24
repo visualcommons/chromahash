@@ -243,6 +243,7 @@ import {
   perIteration,
   runsAgree,
 } from "./perf/count.ts";
+import { countClaimFailures } from "./perf/counts-claims.ts";
 import {
   AB_COUNTS_DIR,
   type CountsRecord,
@@ -7806,6 +7807,77 @@ console.log(
     "every committed benchmark:counts record matches the committed schema",
     recordErrors.length === 0,
     recordErrors.slice(0, 3).join("; "),
+  );
+
+  // verify:claims' count register (perf/counts-claims.ts): the committed
+  // documents agree with the committed records, and a moved figure on either
+  // side, or a row quoting another record, fails.
+  const repoFile = (rel: string): string =>
+    readFileSync(path.join(REPO_ROOT_FOR_SELFTEST, rel), "utf8");
+  const loadRecord = (f: string): CountsRecord =>
+    JSON.parse(readFileSync(path.join(AB_COUNTS_DIR, f), "utf8"));
+  const committed = countClaimFailures(repoFile, loadRecord);
+  check(
+    "verify:claims' count register agrees with the committed records",
+    committed.length === 0,
+    committed.slice(0, 3).join("; "),
+  );
+  // A `from` no file holds edits nothing, so its case passes the register
+  // and is reported as missed rather than vacuously caught.
+  const edited = (from: string, to: string) => (rel: string) =>
+    repoFile(rel).replace(from, to);
+  const cases: [string, (rel: string) => string, typeof loadRecord][] = [
+    [
+      "a table ratio",
+      edited(
+        "| encode 512×512 t1 | 281,235,421 | 109,849,392 | 2.560 |",
+        "| encode 512×512 t1 | 281,235,421 | 109,849,392 | 2.650 |",
+      ),
+      loadRecord,
+    ],
+    [
+      "a table count",
+      edited("| 11,645,256 | 6,238,744 |", "| 11,645,256 | 6,238,745 |"),
+      loadRecord,
+    ],
+    [
+      "the constants.rs increase",
+      edited("is 8.3% *more* user-space", "is 8.4% *more* user-space"),
+      loadRecord,
+    ],
+    [
+      "a re-recorded ratio",
+      repoFile,
+      (f) => {
+        const r = loadRecord(f);
+        if (f !== "accel-quant-table.json") return r;
+        const geomean = { ...r.summary.ratio.geomean, "instructions:u": 1.9 };
+        return {
+          ...r,
+          summary: { ...r.summary, ratio: { ...r.summary.ratio, geomean } },
+        };
+      },
+    ],
+    [
+      "a record of another cell",
+      repoFile,
+      (f) => {
+        const r = loadRecord(f);
+        return f === "accel-flat-cos.json"
+          ? { ...r, cell: { ...r.cell, tier: 1 } }
+          : r;
+      },
+    ],
+  ];
+  const missed = cases
+    .filter(([, read, load]) => countClaimFailures(read, load).length === 0)
+    .map(([name]) => name);
+  check(
+    "verify:claims' count register fails a moved figure on either side",
+    missed.length === 0,
+    missed.length === 0
+      ? `${cases.length} cases`
+      : `missed: ${missed.join(", ")}`,
   );
 }
 

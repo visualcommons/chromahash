@@ -1031,7 +1031,9 @@ defaults on one cell, committed under `tools/comparison/results/counts/ab/`
 at `29ae913` from a clean tree, both arms producing equal outputs. The ratio
 is reference instructions ÷ shipped instructions, so above 1 is a reduction;
 every block's ratio agreed with their geometric mean to four decimals. An instruction count is
-not a time, and no speedup is claimed from one.
+not a time, and no speedup is claimed from one. `verify:claims` holds every
+row, and the counts quoted below it and in `rust/src/constants.rs`, to its
+record (`perf/counts-claims.ts`).
 
 | lever | cell | reference | shipped | ratio |
 |---|---|---:|---:|---:|

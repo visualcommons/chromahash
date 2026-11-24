@@ -44,6 +44,11 @@
  * narrower promise than the sentence above. What it does and does not catch is
  * set out where it is defined.
  *
+ * One register here is not against `EXPERIMENTS.md`: the instruction counts
+ * `Tunables::DEFAULT`'s levers were chosen on, which `spec/PERFORMANCE.md`
+ * §12.4 and `rust/src/constants.rs` quote, are checked against the committed
+ * `benchmark:counts` records they come from (`perf/counts-claims.ts`).
+ *
  * Usage:
  *   node dist/verify-claims.js          # check every registered claim
  *   node dist/verify-claims.js --list   # print the register and exit
@@ -58,6 +63,12 @@ import {
   parseCell,
   parseTables,
 } from "./doc-tables.ts";
+import {
+  COUNT_PROSE,
+  COUNT_ROWS,
+  countClaimFailures,
+} from "./perf/counts-claims.ts";
+import { AB_COUNTS_DIR } from "./perf/counts-core.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const SOURCE = path.join(REPO_ROOT, "spec/EXPERIMENTS.md");
@@ -1657,6 +1668,23 @@ for (const claim of REGISTER) {
   }
 }
 
+// The instruction counts `Tunables::DEFAULT`'s levers were chosen on, quoted
+// by PERFORMANCE.md §12.4 and constants.rs, against their committed
+// `benchmark:counts` records (`perf/counts-claims.ts`). Committed files only,
+// like the register above.
+const countFailures = countClaimFailures(readFile, (record) =>
+  JSON.parse(readFileSync(path.join(AB_COUNTS_DIR, record), "utf8")),
+);
+if (countFailures.length > 0) {
+  console.error(
+    `${countFailures.length} quoted instruction count(s) disagree with results/counts/ab/:\n`,
+  );
+  for (const f of countFailures) console.error(`  ${f}`);
+  console.error(
+    "\nFix the quoting file, or re-record the count with `mise run benchmark:counts`.\n",
+  );
+}
+
 if (failures.length > 0) {
   console.error(
     `${failures.length} claim(s) disagree with spec/EXPERIMENTS.md:\n`,
@@ -1672,6 +1700,7 @@ if (failures.length > 0) {
   );
   process.exit(1);
 }
+if (countFailures.length > 0) process.exit(1);
 
 /**
  * The register is hand-written, so the gate above can only be as complete as
@@ -1769,6 +1798,9 @@ if (unregistered.length > 0) {
 console.log(
   `Checked ${checked} quoted figure(s) across ` +
     `${new Set(REGISTER.map((c) => c.file)).size} files against spec/EXPERIMENTS.md.`,
+);
+console.log(
+  `Checked ${COUNT_ROWS.length} rows of PERFORMANCE.md §12.4's counts table and ${COUNT_PROSE.length} quoted count figure(s) against results/counts/ab/.`,
 );
 console.log("\nEvery registered claim agrees with the section it cites.");
 console.log(
