@@ -39,6 +39,7 @@ import {
   type PerImageKey,
   type Provenance,
   type ResultFile,
+  provenanceErrors,
   readResult,
 } from "./results.ts";
 
@@ -357,6 +358,41 @@ export function reproductionFiles(
       const v1 = readReproduction(resultsDir, s.v1, true);
       if (v1) out.push({ where: `${REPRODUCTIONS}/v1/${s.v1}`, file: v1 });
     }
+  }
+  return out;
+}
+
+/**
+ * Where the §13.16 re-runs cannot be trusted as the record of a run. They are
+ * evidence like any committed result and are held to the same provenance
+ * ({@link provenanceErrors}): a re-run from a dirty tree, an unpinned
+ * `iqa-cli` or off the pinned bytes reproduces nothing. A `v1/` re-run scored
+ * anywhere but {@link GENERATION_V1_REV} would attribute a move to #162 that
+ * something else made, and the `entropy-budget` record must carry provenance.
+ */
+export function reproductionProvenanceErrors(
+  resultsDir: string,
+  pinnedIqaCli: string,
+): string[] {
+  const out: string[] = [];
+  for (const { where, file } of reproductionFiles(resultsDir)) {
+    out.push(...provenanceErrors(file, `results/${where}.json`, pinnedIqaCli));
+    if (
+      where.startsWith(`${REPRODUCTIONS}/v1/`) &&
+      file.provenance.rev !== GENERATION_V1_REV
+    ) {
+      out.push(
+        `results/${where}.json: a generation-v1 re-run scored at ${file.provenance.rev}, not at ${GENERATION_V1_REV}`,
+      );
+    }
+  }
+  const entropy = readEntropyBudget(resultsDir, "entropy-budget-tune");
+  if (entropy) {
+    const where = `results/${REPRODUCTIONS}/entropy-budget-tune.json`;
+    const { provenance } = entropy;
+    if (provenance) {
+      out.push(...provenanceErrors({ provenance }, where, pinnedIqaCli));
+    } else out.push(`${where}: no provenance`);
   }
   return out;
 }

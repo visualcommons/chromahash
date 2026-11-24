@@ -296,13 +296,17 @@ import {
 } from "./register-verdict-core.ts";
 import {
   type EntropyBudgetFile,
+  GENERATION_V1_REV,
+  REPRODUCTIONS,
   acBitsFigure,
   armMovements,
   classify,
   reproductionErrors,
+  reproductionProvenanceErrors,
   signedFixed,
   spendFigure,
 } from "./reproduce-core.ts";
+import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
 import {
   ARTIFACT_ZERO_BASE_ALLOWANCE,
   type Provenance,
@@ -8712,6 +8716,66 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
     spendFigure(32)(entropy) === "−2.0%" && spendFigure(108)(entropy) === null,
     `${spendFigure(32)(entropy)} / ${spendFigure(108)(entropy)}`,
   );
+
+  // The provenance audit `verify:experiments` holds the re-runs to, on copies
+  // of the committed ones: each copy breaks one thing, and each break must be
+  // reported against the file that holds it.
+  const shipped = path.resolve(import.meta.dirname, "../results");
+  check(
+    "reproductionProvenanceErrors: the committed re-runs carry clean provenance",
+    reproductionProvenanceErrors(shipped, PINNED_IQA_CLI).length === 0,
+    reproductionProvenanceErrors(shipped, PINNED_IQA_CLI).join("; "),
+  );
+  const dir = mkdtempSync(path.join(tmpdir(), "reproduce-provenance-"));
+  const repro = path.join(dir, REPRODUCTIONS);
+  mkdirSync(path.join(repro, "v1"), { recursive: true });
+  const copy = (
+    rel: string,
+    edit: (
+      provenance: Record<string, unknown>,
+      body: Record<string, unknown>,
+    ) => void,
+  ) => {
+    const body = JSON.parse(
+      readFileSync(path.join(shipped, REPRODUCTIONS, rel), "utf8"),
+    ) as Record<string, unknown>;
+    edit(body.provenance as Record<string, unknown>, body);
+    writeFileSync(path.join(repro, rel), JSON.stringify(body));
+  };
+  copy("cfl.json", (p) => {
+    p.dirty = true;
+    p.dirtyPaths = ["rust/src/encode.rs"];
+  });
+  copy("cfl-range.json", (p) => {
+    p.iqaCli = "iqa-cli 1.2.0";
+  });
+  copy("v1/cfl.json", (p) => {
+    p.rev = "86a30af0000000000000000000000000000000000";
+  });
+  copy("v1/cfl-range.json", () => {});
+  copy("entropy-budget-tune.json", (_p, body) => {
+    // JSON.stringify drops an undefined field, so the copy has none.
+    body.provenance = undefined;
+  });
+  const errors = reproductionProvenanceErrors(dir, PINNED_IQA_CLI);
+  const has = (file: string, text: string) =>
+    errors.some((e) => e.startsWith(`results/${file}:`) && e.includes(text));
+  check(
+    "reproductionProvenanceErrors: a dirty-tree re-run, an unpinned iqa-cli, a v1 re-run not scored at 225bdce and an entropy-budget record with no provenance are each refused, and a clean v1 re-run is not",
+    has(`${REPRODUCTIONS}/cfl.json`, "dirty tree (rust/src/encode.rs)") &&
+      has(
+        `${REPRODUCTIONS}/cfl-range.json`,
+        'not the pinned "iqa-cli 1.2.1"',
+      ) &&
+      has(`${REPRODUCTIONS}/v1/cfl.json`, `not at ${GENERATION_V1_REV}`) &&
+      has(`${REPRODUCTIONS}/entropy-budget-tune.json`, "no provenance") &&
+      !errors.some((e) =>
+        e.startsWith(`results/${REPRODUCTIONS}/v1/cfl-range.json`),
+      ) &&
+      errors.length === 4,
+    errors.join("; "),
+  );
+  rmSync(dir, { recursive: true, force: true });
 }
 
 console.log(

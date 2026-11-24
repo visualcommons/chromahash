@@ -92,13 +92,11 @@ import {
 import { tableRegisterProblems } from "./experiments-register.ts";
 import { type SpreadData, mdeTableCells, readSpread } from "./mde-core.ts";
 import {
-  GENERATION_V1_REV,
   LEDGER,
   REPRODUCED_SWEEPS,
   REPRODUCTIONS,
   ledgerCells,
-  readEntropyBudget,
-  reproductionFiles,
+  reproductionProvenanceErrors,
   sweepCells,
 } from "./reproduce-core.ts";
 // A result from another iqa-cli is a different instrument, not a reproduction.
@@ -113,8 +111,8 @@ import {
   RESULTS_DIR,
   type ResultFile,
   type SummarizedRow,
-  corpusPins,
   guardsHold,
+  provenanceErrors,
   readResult,
   summarize,
 } from "./results.ts";
@@ -158,35 +156,7 @@ function auditProvenance(
   file: Pick<ResultFile, "provenance">,
   where: string,
 ): void {
-  const p = file.provenance;
-  if (p.rev === null) provenanceProblems.push(`${where}: no git revision`);
-  if (p.dirty !== false) {
-    provenanceProblems.push(
-      `${where}: scored from a ${p.dirty === null ? "tree git could not inspect" : `dirty tree (${p.dirtyPaths.join(", ")})`}`,
-    );
-  }
-  if (p.iqaCli !== PINNED_IQA_CLI) {
-    provenanceProblems.push(
-      `${where}: scored by "${p.iqaCli}", not the pinned "${PINNED_IQA_CLI}"`,
-    );
-  }
-  for (const [bin, digest] of Object.entries(p.binaries)) {
-    if (digest === "missing") {
-      provenanceProblems.push(`${where}: binary ${bin} was missing`);
-    }
-  }
-  const pins = corpusPins();
-  const off = p.corpus.filter((c) => {
-    const pin = pins.get(c.name);
-    return pin !== undefined && pin !== c.sha256;
-  });
-  if (off.length > 0) {
-    provenanceProblems.push(
-      `${where}: ${off.length} image(s) scored on bytes that are not the pinned ones (${off
-        .map((c) => c.name)
-        .join(", ")})`,
-    );
-  }
+  provenanceProblems.push(...provenanceErrors(file, where, PINNED_IQA_CLI));
 }
 
 /**
@@ -3850,27 +3820,11 @@ for (const binding of BINDINGS) {
 }
 
 // The §13.16 re-runs are evidence like any committed result, and are held to
-// the same provenance: a re-run from a dirty tree, an unpinned iqa-cli or off
-// the pinned bytes reproduces nothing.
+// the same provenance (`reproductionProvenanceErrors`).
 if (!values.section || values.section === "13.16") {
-  for (const { where, file } of reproductionFiles(resultsDir)) {
-    auditProvenance(file, `results/${where}.json`);
-    if (
-      where.startsWith(`${REPRODUCTIONS}/v1/`) &&
-      file.provenance.rev !== GENERATION_V1_REV
-    ) {
-      provenanceProblems.push(
-        `results/${where}.json: a generation-v1 re-run scored at ${file.provenance.rev}, not at ${GENERATION_V1_REV}`,
-      );
-    }
-  }
-  const entropy = readEntropyBudget(resultsDir, "entropy-budget-tune");
-  if (entropy) {
-    const where = `results/${REPRODUCTIONS}/entropy-budget-tune.json`;
-    const { provenance } = entropy;
-    if (provenance) auditProvenance({ provenance }, where);
-    else provenanceProblems.push(`${where}: no provenance`);
-  }
+  provenanceProblems.push(
+    ...reproductionProvenanceErrors(resultsDir, PINNED_IQA_CLI),
+  );
 }
 
 const merged = mergeCoverage(coverage);
