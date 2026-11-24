@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+#MISE description="Per-binding FFI overhead over the Rust core as paired instruction counts (no wall-clock figure)"
+#MISE depends=["build:compare"]
+#
+# Usage: mise run benchmark:overhead [-- --blocks N]
+#
+# Builds the overhead drivers (bindings/overhead/protocol.rs) in the C ABI and
+# UniFFI crates, then counts each binding layer against the Rust core built in
+# the same crate and profile, with `benchmark:counts` (`--impl Rust`, arm A the
+# layer, arm B the core), on four cells: a 64x64 and a 512x512 encode, a decode
+# (of the 64x64 hash) and a batch of 16 64x64 encodes through a one-worker
+# batch encoder. Writes one record per cell to
+# tools/comparison/results/counts/ab/overhead-<layer>-<cell>.json, then
+# regenerates tools/comparison/results/counts/overhead.md from them.
+#
+# The C# (P/Invoke) and Go (cgo) bindings run on the C ABI and the Kotlin/JVM,
+# Android and Python bindings on the UniFFI scaffolding, so these two layers
+# are the native side of every binding but TypeScript (wasm) and Swift; what a
+# managed host runtime adds on its side is not counted (benchmark:counts
+# refuses a JIT or a collector). Extra arguments go to every count.
+set -euo pipefail
+
+cargo build --manifest-path bindings/c/Cargo.toml --release --example overhead_c --example overhead_core
+cargo build --manifest-path bindings/uniffi/Cargo.toml --release --example overhead_uniffi --example overhead_core
+
+out=tools/comparison/results/counts/ab
+for layer in c uniffi; do
+  bin=bindings/$layer/target/release/examples
+  count() {
+    node tools/comparison/dist/perf/counts.js --impl Rust --tier 1 \
+      --a-bin "$bin/overhead_$layer" --b-bin "$bin/overhead_core" "$@"
+  }
+  count --op encode --size 64 --iterations 200 --out "$out/overhead-$layer-encode-64.json" "${@}"
+  count --op encode --size 512 --iterations 20 --out "$out/overhead-$layer-encode-512.json" "${@}"
+  count --op decode --size 64 --iterations 2000 --out "$out/overhead-$layer-decode-64.json" "${@}"
+  CHROMAHASH_OVERHEAD_BATCH=16 count --op encode --size 64 --iterations 20 \
+    --out "$out/overhead-$layer-batch16-64.json" "${@}"
+done
+
+node tools/comparison/dist/perf/overhead-table.js
