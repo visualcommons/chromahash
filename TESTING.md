@@ -786,7 +786,7 @@ Scope is the core only (per issue #41); the FFI bindings are thin wrappers and
 are exercised by their own spec-vector tests.
 
 ```bash
-mise run mutants:rust                     # full sweep of rust/src (~2000 mutants, ~hours)
+mise run mutants:rust                     # full sweep of rust/src (~2,900 mutants, ~hours)
 mise run mutants:rust:diff                # only the lines changed vs origin/master (fast)
 mise run mutants:rust --file src/dct.rs   # extra args pass straight to cargo-mutants
 ```

@@ -3,7 +3,7 @@ name: CI (Mutants)
 # Mutation testing of the core Rust crate (cargo-mutants). On a pull request we
 # only mutate the lines the PR changed (`--in-diff` vs the merge base) and fail
 # if any mutant survives the test suite — i.e. new/changed core code must be
-# exercised, not just compiled. The full sweep is slow (~2000 mutants), so it
+# exercised, not just compiled. The full sweep is slow (~2,900 mutants), so it
 # runs on a weekly schedule (and on demand) rather than on every push: a gap the
 # incremental gate cannot see is one in code nobody is touching, which is worth
 # catching eventually but not worth blocking every PR on.

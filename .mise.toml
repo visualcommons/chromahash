@@ -137,7 +137,7 @@ run = "rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu wasm
 
 # cargo-mutants applies small code mutations and checks the tests catch each one;
 # a surviving (MISSED) mutant is a test gap. Arguments pass through to
-# cargo-mutants. Full sweep of the core crate — slow (~1100 mutants); the hk
+# cargo-mutants. Full sweep of the core crate — slow (~2,900 mutants); the hk
 # pre-push hook and CI use the diff form (mutants:rust:diff).
 [tasks."mutants:rust"]
 description = "Mutation-test the core Rust crate (full sweep, slow)"

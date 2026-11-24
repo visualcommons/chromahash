@@ -11,7 +11,7 @@
 no_default_features = true
 
 # Build the sweep with the `mutants` profile: optimized (the sweep re-runs the
-# whole suite once per mutant, ~2000 of them, and the suite is dominated by
+# whole suite once per mutant, ~2,900 of them, and the suite is dominated by
 # tier-4 decodes at ~0.7s each in a debug build) but with overflow and debug
 # assertions kept on.
 #
