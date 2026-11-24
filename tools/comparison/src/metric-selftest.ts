@@ -9292,18 +9292,24 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
   // The by-size paragraph's figures come from the records (PR #186 review
   // D1): moving the Python 512×512 host side moves the percentage it prints,
   // and a C# 512×512 record whose A − B no longer spreads more between blocks
-  // than its 64×64 one is refused rather than explained.
-  let grown = "";
-  try {
-    grown = renderOverheadTable(
-      withRecord(pyName, (r) => {
-        r.summary.a.median["instructions:u"] += 29_553;
-        r.summary.a.max["instructions:u"] += 29_553;
-      }),
-    );
-  } catch (e) {
-    grown = (e as Error).message;
-  }
+  // than its 64×64 one is refused rather than explained. The Python sentence
+  // gives its difference no cause, so one beyond 10% is refused, and the
+  // Kotlin sentence's iteration-dependence attribution is refused where both
+  // records count the same iterations (issue #187).
+  const pyGrown = (by: number) => {
+    try {
+      return renderOverheadTable(
+        withRecord(pyName, (r) => {
+          r.summary.a.median["instructions:u"] += by;
+          r.summary.a.max["instructions:u"] += by;
+        }),
+      );
+    } catch (e) {
+      return (e as Error).message;
+    }
+  };
+  const grown = pyGrown(14_777);
+  const beyond = pyGrown(29_553);
   const csHost = OVERHEAD_HOSTS.find((h) => h.impl === "C#");
   if (csHost === undefined) throw new Error("OVERHEAD_HOSTS lost C#");
   const csName = hostRecord(csHost, enc512);
@@ -9320,12 +9326,40 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
     still = (e as Error).message;
   }
   check(
-    "renderOverheadTable: the by-size paragraph prints the Python percentage its records give (10.7% over once its 512×512 host side grows by 29,553), and refuses a C# 512×512 record whose A − B per block does not spread more than its 64×64 one's",
-    grown.includes("its 512×512 host side is 10.7% over its 64×64 one") &&
-      !rendered.includes("10.7% over") &&
+    "renderOverheadTable: the by-size paragraph prints the Python percentage its records give (5.7% over once its 512×512 host side grows by 14,777), and refuses a C# 512×512 record whose A − B per block does not spread more than its 64×64 one's",
+    grown.includes("its 512×512 host side is 5.7% over its 64×64 one") &&
+      !rendered.includes("5.7% over") &&
       still.startsWith(`${csName}: its A − B spreads 0 instructions`) &&
       still.includes("no longer holds"),
-    `${grown.length} ${still.slice(0, 160)}`,
+    `${grown.slice(0, 160)} | ${still.slice(0, 160)}`,
+  );
+  const ktHost = OVERHEAD_HOSTS.find((h) => h.impl === "Kotlin");
+  const enc64 = HOST_CELLS.find((c) => c.cell === "encode-64");
+  if (ktHost === undefined || enc64 === undefined) {
+    throw new Error("OVERHEAD_HOSTS lost Kotlin or HOST_CELLS its 64 cell");
+  }
+  const ktName = hostRecord(ktHost, enc512);
+  let same = "";
+  try {
+    same = renderOverheadTable(
+      withRecord(ktName, (r) => {
+        r.settings.iterations = readAb(
+          hostRecord(ktHost, enc64),
+        ).settings.iterations;
+      }),
+    );
+  } catch (e) {
+    same = (e as Error).message;
+  }
+  check(
+    "renderOverheadTable: the by-size paragraph refuses a Python 512×512 host side 10.7% over its 64×64 one (beyond the 10% it states without a cause), and a Kotlin 512×512 record counted at the 64×64 record's iterations",
+    beyond.startsWith(
+      `${pyName}: its host side is 10.7% over the 64×64 record's, beyond the 10%`,
+    ) &&
+      beyond.includes("no longer holds") &&
+      same.startsWith(`${ktName}: it counts 200 iterations, as the 64×64`) &&
+      same.includes("no longer holds"),
+    `${beyond.slice(0, 160)} | ${same.slice(0, 160)}`,
   );
 }
 
