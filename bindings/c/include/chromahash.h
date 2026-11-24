@@ -25,24 +25,6 @@
 #include <stdlib.h>
 
 /**
- * Source/target color space. Mirrors [`chromahash::Gamut`].
- */
-enum ChromaHashGamut
-#ifdef __cplusplus
-  : int32_t
-#endif // __cplusplus
- {
-    CHROMA_HASH_GAMUT_SRGB = 0,
-    CHROMA_HASH_GAMUT_DISPLAY_P3 = 1,
-    CHROMA_HASH_GAMUT_ADOBE_RGB = 2,
-    CHROMA_HASH_GAMUT_BT2020 = 3,
-    CHROMA_HASH_GAMUT_PRO_PHOTO_RGB = 4,
-};
-#ifndef __cplusplus
-typedef int32_t ChromaHashGamut;
-#endif // __cplusplus
-
-/**
  * Status code returned by every fallible entry point. `Ok` is `0`.
  */
 enum ChromaHashStatus
@@ -73,7 +55,9 @@ enum ChromaHashStatus
     CHROMA_HASH_STATUS_INTERNAL = 4,
     /**
      * The bytes are not a valid v2 ChromaHash (bad version, tier, reserved bit,
-     * or the length does not match the self-describing header).
+     * or the length does not match the self-describing header), or an
+     * argument is out of range (a quality tier above `CHROMAHASH_MAX_TIER`, or
+     * a gamut no `CHROMA_HASH_GAMUT_*` constant names).
      */
     CHROMA_HASH_STATUS_INVALID_DATA = 5,
 };
@@ -95,6 +79,18 @@ typedef struct ChromaHash ChromaHash;
  * [`chromahash_batch_encoder_free`].
  */
 typedef struct ChromaHashBatchEncoder ChromaHashBatchEncoder;
+
+/**
+ * Source/target color space: one of the `CHROMA_HASH_GAMUT_*` constants, which
+ * mirror [`chromahash::Gamut`]. Any other value is rejected with
+ * [`ChromaHashStatus::InvalidData`].
+ *
+ * A plain `int32_t` rather than a Rust enum: the caller can pass any
+ * `int32_t`, and a Rust enum holding a value with no matching discriminant is
+ * undefined behaviour before a line of this crate runs. Every entry point
+ * checks the value instead.
+ */
+typedef int32_t ChromaHashGamut;
 
 /**
  * An 8-bit-per-channel RGBA color.
@@ -126,6 +122,10 @@ typedef struct {
     uint32_t height;
     const uint8_t *rgba;
     size_t rgba_len;
+    /**
+     * One of the `CHROMA_HASH_GAMUT_*` constants; any other value fails the
+     * whole batch with [`ChromaHashStatus::InvalidData`].
+     */
     ChromaHashGamut gamut;
     /**
      * Quality tier (`0..=CHROMAHASH_MAX_TIER`, ordered by quality). Set it to
@@ -134,6 +134,31 @@ typedef struct {
      */
     uint8_t quality;
 } ChromaHashImageInput;
+
+/**
+ * sRGB.
+ */
+#define CHROMA_HASH_GAMUT_SRGB 0
+
+/**
+ * Display P3.
+ */
+#define CHROMA_HASH_GAMUT_DISPLAY_P3 1
+
+/**
+ * Adobe RGB.
+ */
+#define CHROMA_HASH_GAMUT_ADOBE_RGB 2
+
+/**
+ * BT.2020.
+ */
+#define CHROMA_HASH_GAMUT_BT2020 3
+
+/**
+ * ProPhoto RGB.
+ */
+#define CHROMA_HASH_GAMUT_PRO_PHOTO_RGB 4
 
 #ifdef __cplusplus
 extern "C" {
@@ -162,8 +187,10 @@ extern const uint8_t CHROMAHASH_MAX_TIER;
 extern const uint8_t CHROMAHASH_FORMAT_VERSION;
 
 /**
- * Encode an RGBA image (4 bytes/pixel) into a default-tier (32-byte) ChromaHash. On
- * success `*out_hash` receives a new handle to free with [`chromahash_free`].
+ * Encode an RGBA image (4 bytes/pixel) into a default-tier (32-byte) ChromaHash.
+ * Rejects a gamut no `CHROMA_HASH_GAMUT_*` constant names with
+ * [`ChromaHashStatus::InvalidData`]. On success `*out_hash` receives a new
+ * handle to free with [`chromahash_free`].
  */
 ChromaHashStatus chromahash_encode(uint32_t width,
                                    uint32_t height,
@@ -175,7 +202,8 @@ ChromaHashStatus chromahash_encode(uint32_t width,
 /**
  * Encode an RGBA image at an explicit quality tier (`0..=4`, ordered by
  * quality; `1` is the 32-byte default and `0` the 21-byte compact tier, each
- * higher code ~4× larger). Rejects an out-of-range tier with
+ * higher code ~4× larger). Rejects an out-of-range tier, or a gamut no
+ * `CHROMA_HASH_GAMUT_*` constant names, with
  * [`ChromaHashStatus::InvalidData`]. On success `*out_hash` receives a new
  * handle to free with [`chromahash_free`].
  */
@@ -227,8 +255,10 @@ ChromaHashStatus chromahash_decode(const ChromaHash *hash, ChromaHashImage *out_
 
 /**
  * Decode into an RGBA image in the given output gamut (sRGB / Display P3 /
- * Adobe RGB; others fall back to sRGB). `*out_image` receives a library-owned
- * image to release with [`chromahash_image_free`].
+ * Adobe RGB; BT.2020 and ProPhoto RGB fall back to sRGB). Rejects a gamut no
+ * `CHROMA_HASH_GAMUT_*` constant names with [`ChromaHashStatus::InvalidData`].
+ * `*out_image` receives a library-owned image to release with
+ * [`chromahash_image_free`].
  */
 ChromaHashStatus chromahash_decode_to(const ChromaHash *hash,
                                       ChromaHashGamut output,
@@ -244,7 +274,8 @@ ChromaHashStatus chromahash_decode_capped(const ChromaHash *hash,
                                           ChromaHashImage *out_image);
 
 /**
- * Capped decode (see [`chromahash_decode_capped`]) in the given output gamut.
+ * Capped decode (see [`chromahash_decode_capped`]) in the given output gamut,
+ * checked as in [`chromahash_decode_to`].
  */
 ChromaHashStatus chromahash_decode_capped_to(const ChromaHash *hash,
                                              uint32_t max_width,

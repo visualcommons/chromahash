@@ -89,6 +89,9 @@ func EncodeWithQuality(w, h int, rgba []byte, gamut Gamut, quality uint8) Chroma
 	if len(rgba) != w*h*4 {
 		panic("chromahash: rgba length mismatch")
 	}
+	if !gamut.valid() {
+		panic("chromahash: unknown gamut")
+	}
 
 	var handle *C.ChromaHash
 	status := C.chromahash_encode_with_quality(
@@ -185,6 +188,9 @@ func (ch ChromaHash) Decode() (int, int, []byte) {
 // (GamutSRGB / GamutDisplayP3 / GamutAdobeRGB; others fall back to sRGB).
 // Returns width, height, and RGBA pixel data.
 func (ch ChromaHash) DecodeTo(output Gamut) (int, int, []byte) {
+	if !output.valid() {
+		panic("chromahash: unknown gamut")
+	}
 	handle := ch.handle()
 	defer C.chromahash_free(handle)
 	var img C.ChromaHashImage
@@ -202,6 +208,9 @@ func (ch ChromaHash) DecodeCapped(maxW, maxH int) (int, int, []byte) {
 
 // DecodeCappedTo decodes (see DecodeCapped) in the given output gamut.
 func (ch ChromaHash) DecodeCappedTo(maxW, maxH int, output Gamut) (int, int, []byte) {
+	if !output.valid() {
+		panic("chromahash: unknown gamut")
+	}
 	handle := ch.handle()
 	defer C.chromahash_free(handle)
 	var img C.ChromaHashImage
