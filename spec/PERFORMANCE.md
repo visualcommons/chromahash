@@ -26,11 +26,13 @@ cell cannot be published here.
 
 > ### Measured 2026-09, except the cells named below
 >
-> **216 of this document's values are checked against a committed run**, on
+> **207 of this document's values are checked against a committed run**, on
 > an AMD Ryzen 7 7800X3D (16 threads, Linux), from a clean tree.
 > **40 table cells** are placeholders no committed run can fill yet, and so
 > are **8 figures in the prose** that depend on them; all of them are named
-> below rather than left for a reader to find.
+> below rather than left for a reader to find. §6's table and the figures
+> quoted from it were recorded before its arms were pinned to every lever off,
+> so the gate reports them as missing until the quiet-host session (§6).
 >
 > The revision before last carried `TBD` throughout, and the reason is worth
 > keeping: the runs behind the revision before *that* were not reproducible.
@@ -677,7 +679,15 @@ reduction per coefficient. Saving ≈ `K / Cx`, and `K` grows by `4^level` while
 `Cx` grows by `2^level` — so the saving should *grow* with size and tier, which
 is what three points can show and two cannot.
 
-Behind `Tunables::dct_separable` (off by default, exposed by no binding):
+Behind `Tunables::dct_separable` (off by default, exposed by no binding).
+Both columns are encodes with every §12.4 lever off, so the pair differs in
+the transform alone. These figures were recorded at `e53e6cd`, when that was
+the shipped default. Since #142 the shipped encode runs `accel_dct_lanes`
+and `accel_quant_table`, so it is not the direct summation, and the gate
+binds this table and every figure quoted from it to the `accel none` and
+`accel none dct_separable` arms (`perf/matrix.ts`). No committed run holds
+those arms yet, so `verify:benchmark` reports these cells as missing until
+§0's quiet-host session records them:
 
 | source | tier 1 direct | separable | speedup |
 |---|---:|---:|---:|
@@ -818,6 +828,7 @@ file and line, with each entry tagged by whether it moves a byte.
    at tier 4, so it is the only place where a large win is available at all, and
    the byte-safe half of it needs no format change.
 2. **Adopt the separable transform** (§6) — **3.68× at 512×512**, now measured,
+   against the direct summation with every §12.4 lever off in both arms, and
    growing with size as its own `K / Cx` argument predicts. It is the largest
    lever in this document by an order of magnitude, and it costs a format
    version. Worth deciding deliberately rather than by default.
@@ -931,7 +942,7 @@ and the figures above are that measurement, pending (§12.3).
 
 | # | Where | What | What it costs |
 |---|---|---|---|
-| 8 | `dct.rs:424` | **Adopt the separable forward DCT.** §6 measures **3.68× at 512×512**, growing with size. Prototyped, and byte-identical over 40 encodings spanning five tiers and three content classes. | Reassociating float addition is not *guaranteed* to preserve quantized codes, and spec §10/§12.6 pin the direct summation as normative. Version bump, regenerated vectors, nine languages together |
+| 8 | `dct.rs:424` | **Adopt the separable forward DCT.** §6 measures **3.68× at 512×512** with every lever off in both arms, growing with size. Prototyped, and byte-identical over 40 encodings spanning five tiers and three content classes. | Reassociating float addition is not *guaranteed* to preserve quantized codes, and spec §10/§12.6 pin the direct summation as normative. Version bump, regenerated vectors, nine languages together |
 | 9 | `encode.rs:437` | **Downsample before the transform.** There is none: `dct_encode_selected` runs over the full source, so encode is `O(K·W·H)` in the *original's* pixels — 46.7 ms for one 512×512 image, and §3's per-megapixel column is what a caller encoding 12 MP originals actually pays. `refine_grid`/`resample_channel_dct` (`encode.rs:1023`) already gesture at the machinery | Changes the coefficients, so it changes every hash |
 
 ### 12.3 What this list does not claim

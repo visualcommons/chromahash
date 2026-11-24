@@ -117,10 +117,6 @@ export const TUNE_ARMS: ReadonlyArray<{ label: string; tune: string | null }> =
     },
     { label: "refine_passes=1", tune: "refine_passes=1" },
     { label: "refine_passes=2", tune: "refine_passes=2" },
-    // The prototype separable forward DCT. Off by default and exposed by no
-    // binding (constants.rs `dct_separable: false`, pinned by a test), so this
-    // is the only way to price it — and PERFORMANCE.md §6 quotes it.
-    { label: "dct_separable", tune: "dct_separable=1" },
     // PERFORMANCE.md §12.1's byte-identical levers that act on encode. The
     // shipped defaults turn all but `accel_fused_pixels` on (#142), so each
     // of those arms turns one off, `accel_fused_pixels` turns its lever on,
@@ -136,6 +132,20 @@ export const TUNE_ARMS: ReadonlyArray<{ label: string; tune: string | null }> =
     { label: "accel_fused_pixels", tune: "accel_fused_pixels=1" },
     { label: "accel_word_bitpack=0", tune: "accel_word_bitpack=0" },
     { label: "accel none", tune: ACCEL_NONE },
+    // The prototype separable forward DCT. Off by default and exposed by no
+    // binding (constants.rs `dct_separable: false`, pinned by a test), so this
+    // is the only way to price it — and PERFORMANCE.md §6 quotes it. §6 prices
+    // it against the direct summation with every §12.1 lever off, as it was
+    // measured before #142 made the levers the defaults: on the shipped
+    // defaults the direct path runs `accel_dct_lanes` and the quantizer runs
+    // `accel_quant_table`, so a ratio against `shipped` would be separable
+    // against the lane-batched DCT, not against the direct sum. The label
+    // extends `accel none`, so `plan.ts` pairs it with that arm, which must
+    // come first.
+    {
+      label: "accel none dct_separable",
+      tune: `${ACCEL_NONE} dct_separable=1`,
+    },
     {
       label: "refine_passes=1 accel_sse_early_exit=0",
       tune: "refine_passes=1 accel_sse_early_exit=0",

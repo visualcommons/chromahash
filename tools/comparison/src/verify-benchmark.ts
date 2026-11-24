@@ -191,6 +191,15 @@ const leverSpeedup = (r: Estimate): Estimate => ({
 const armId = (n: number, arm: string): string =>
   `encode/Rust/t1/${n}x${n}/gradient/${bare(arm)}`;
 
+/**
+ * §6's pair: the direct summation and the separable transform, each with every
+ * §12.1 lever off (`perf/matrix.ts`), so the two differ in the transform alone.
+ * Since #142 the shipped encode runs `accel_dct_lanes` rather than the direct
+ * sum, and `accel_quant_table` beside it, so `shipped` is not §6's direct arm.
+ */
+const DIRECT = "accel none";
+const SEPARABLE = "accel none dct_separable";
+
 function timeOr(R: Runs, id: string): Estimate | null {
   return R.has(id) ? R.est(id) : null;
 }
@@ -666,21 +675,24 @@ const BINDINGS: Binding[] = [
     section: "6",
     index: 0,
     title: "Separable forward DCT against the direct summation",
+    // `R.est`, not `timeOr`: since #142 both arms run with every lever off
+    // (`DIRECT`, `SEPARABLE`), and a run that predates those arms is missing
+    // the measurement, so the cell must fail as missing rather than count as
+    // deliberately unbound.
     columns: {
       "tier 1 direct": (row, R) => {
         const n = sizeOf(row("source"));
-        return n === null ? null : timeOr(R, armId(n, "shipped"));
+        return n === null ? null : R.est(armId(n, DIRECT));
       },
       separable: (row, R) => {
         const n = sizeOf(row("source"));
-        return n === null ? null : timeOr(R, armId(n, "dct_separable"));
+        return n === null ? null : R.est(armId(n, SEPARABLE));
       },
       speedup: (row, R) => {
         const n = sizeOf(row("source"));
         if (n === null) return null;
-        const direct = armId(n, "shipped");
-        const sep = armId(n, "dct_separable");
-        if (!R.has(direct) || !R.has(sep)) return null;
+        const direct = armId(n, DIRECT);
+        const sep = armId(n, SEPARABLE);
         return R.ratio(direct, sep);
       },
     },
@@ -858,7 +870,7 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     ),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(100), `${t1(100)}/dct_separable`),
+    resolve: (R) => R.ratio(armId(100, DIRECT), armId(100, SEPARABLE)),
   },
   {
     what: "§6: the separable speedup at 256x256",
@@ -867,7 +879,7 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     ),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(256), `${t1(256)}/dct_separable`),
+    resolve: (R) => R.ratio(armId(256, DIRECT), armId(256, SEPARABLE)),
   },
   {
     what: "§6: the separable speedup at 512x512",
@@ -876,14 +888,14 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     ),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(512), `${t1(512)}/dct_separable`),
+    resolve: (R) => R.ratio(armId(512, DIRECT), armId(512, SEPARABLE)),
   },
   {
     what: "§6: the separable DCT's absolute saving at 512x512",
     pattern: new RegExp(String.raw`takes \*\*${FIG} ms off an encode`),
     unit: "ms",
     decimals: 1,
-    resolve: (R) => saving(R, t1(512), `${t1(512)}/dct_separable`),
+    resolve: (R) => saving(R, armId(512, DIRECT), armId(512, SEPARABLE)),
   },
   {
     what: "§6: the simd feature's absolute saving at 512x512",
@@ -898,7 +910,7 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     unit: "ratio",
     decimals: 0,
     resolve: (R) =>
-      saving(R, t1(512), `${t1(512)}/dct_separable`) /
+      saving(R, armId(512, DIRECT), armId(512, SEPARABLE)) /
       saving(R, scalarT1(512), t1(512)),
   },
   {
@@ -915,14 +927,14 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     pattern: new RegExp(String.raw`\*\*${FIG}× at 512×512\*\*, now measured`),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(512), `${t1(512)}/dct_separable`),
+    resolve: (R) => R.ratio(armId(512, DIRECT), armId(512, SEPARABLE)),
   },
   {
     what: "§12.2 item 8: the separable speedup, restated",
     pattern: new RegExp(String.raw`§6 measures \*\*${FIG}× at 512×512\*\*`),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(512), `${t1(512)}/dct_separable`),
+    resolve: (R) => R.ratio(armId(512, DIRECT), armId(512, SEPARABLE)),
   },
   {
     what: "§12.2 item 9: one 512x512 encode",
