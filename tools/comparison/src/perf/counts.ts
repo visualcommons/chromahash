@@ -26,8 +26,17 @@
  * exits non-zero if the instruction ratios differ by more than 1%. The run
  * refuses, by name and before counting anything, a host whose counter cannot
  * be read, and an implementation whose JIT or garbage collector makes a
- * process's instruction count depend on more than the operation: every
- * managed runtime, and Go (`counts-core.ts` `implRefusal`).
+ * process's instruction count depend on more than the operation
+ * (`counts-core.ts` `implRefusal`). A host runtime with a counting
+ * configuration (`counts-core.ts` `COUNTING_CONFIGS`: Go, Node for the
+ * TypeScript wasm package, .NET, the JVM, CPython) is admitted and run under
+ * it, and its arm records the configuration; `--a-bin` / `--b-bin` then name
+ * the program its runtime runs.
+ *
+ * `--b-impl NAME` runs arm B on another implementation than arm A's
+ * (`--impl`), so a host binding can be counted against a Rust driver on the
+ * same cell: each arm then records its implementation, and a decode cell
+ * compares the arms' RGBA bytes.
  */
 
 import { spawnSync } from "node:child_process";
@@ -36,7 +45,12 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
-import { captureProvenance, fileSha256, repoRelative } from "../results.ts";
+import {
+  REPO_ROOT,
+  captureProvenance,
+  fileSha256,
+  repoRelative,
+} from "../results.ts";
 import {
   COUNT_EVENTS,
   type CountBlock,
@@ -47,12 +61,17 @@ import {
 } from "./count.ts";
 import {
   AB_COUNTS_DIR,
+  COUNTING_CONFIGS,
   type CountsArm,
   type CountsRecord,
   type Op,
+  artifactsSha256,
   blockSchedule,
+  blockSpread,
   compareRuns,
+  configTokens,
   counterRefusal,
+  decodedPixels,
   implRefusal,
   parseCpuinfo,
   readSchema,
@@ -73,6 +92,7 @@ function fail(message: string): never {
 const { values } = parseArgs({
   options: {
     impl: { type: "string", default: "Rust" },
+    "b-impl": { type: "string" },
     op: { type: "string", default: "encode" },
     size: { type: "string" },
     tier: { type: "string" },
@@ -115,44 +135,113 @@ try {
 if (!values.out) fail("--out is required");
 const out = path.resolve(values.out);
 
-const found: Target | undefined = allTargets().find(
-  (t) => t.name === values.impl,
-);
-if (!found) {
-  fail(
-    `no implementation named ${values.impl}; one of: ${allTargets()
-      .map((t) => t.name)
-      .join(", ")}`,
-  );
+function admittedTarget(name: string): Target {
+  const found = allTargets().find((t) => t.name === name);
+  if (!found) {
+    fail(
+      `no implementation named ${name}; one of: ${allTargets()
+        .map((t) => t.name)
+        .join(", ")}`,
+    );
+  }
+  const refused = implRefusal(found);
+  if (refused !== null) fail(refused);
+  if (!found.ops.includes(op)) fail(`${found.name} does not implement ${op}`);
+  return found;
 }
-const target: Target = found;
-const refused = implRefusal(target);
-if (refused !== null) fail(refused);
-if (!target.ops.includes(op)) fail(`${target.name} does not implement ${op}`);
-if (!target.tunable && (values["a-tune"] !== "" || values["b-tune"] !== "")) {
-  fail(
-    `${target.name} does not read CHROMAHASH_TUNE; only Rust targets take a tune`,
-  );
+const target = admittedTarget(values.impl ?? "Rust");
+const bTarget = admittedTarget(values["b-impl"] ?? target.name);
+const crossImpl = bTarget.name !== target.name;
+
+/** One arm as it runs: its record entry, and the process it launches. */
+interface RunArm extends CountsArm {
+  target: Target;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+  cwd: string;
 }
 
-function arm(
-  bin: string | undefined,
-  tune: string,
-): CountsArm & { abs: string } {
-  const abs = bin ? path.resolve(bin) : target.command;
-  if (!existsSync(abs))
-    fail(`no binary at ${repoRelative(abs)}; build it first`);
+function arm(t: Target, bin: string | undefined, tune: string): RunArm {
+  if (!t.tunable && tune !== "") {
+    fail(
+      `${t.name} does not read CHROMAHASH_TUNE; only Rust targets take a tune`,
+    );
+  }
+  const cfg = COUNTING_CONFIGS[t.name];
+  const identity = crossImpl ? { impl: t.name } : {};
+  if (cfg === undefined) {
+    const abs = bin ? path.resolve(bin) : t.command;
+    if (!existsSync(abs))
+      fail(`no binary at ${repoRelative(abs)}; build it first`);
+    return {
+      bin: repoRelative(abs),
+      binSha256: fileSha256(abs) ?? "missing",
+      tune,
+      ...identity,
+      target: t,
+      command: abs,
+      args: [...t.args],
+      env: { ...t.env },
+      cwd: t.cwd,
+    };
+  }
+  if (bin !== undefined && cfg.program === null) {
+    fail(`${t.name} runs a module by name; no other build of it can be named`);
+  }
+  // The program the arm runs, replacing the target's default one wherever the
+  // target's command line names it.
+  const program =
+    cfg.program === null
+      ? null
+      : bin
+        ? path.resolve(bin)
+        : path.join(REPO_ROOT, cfg.program);
+  const swap = (s: string): string =>
+    program !== null &&
+    cfg.program !== null &&
+    s === path.join(REPO_ROOT, cfg.program)
+      ? program
+      : s;
+  const command = swap(
+    cfg.command === undefined ? t.command : path.join(REPO_ROOT, cfg.command),
+  );
+  const args = [...cfg.flags, ...(cfg.args ?? t.args).map(swap)];
+  const artifacts = cfg.artifacts(
+    program === null ? "" : repoRelative(program),
+  );
+  for (const p of [...(program === null ? [] : [program]), ...artifacts]) {
+    if (!existsSync(path.resolve(REPO_ROOT, p)))
+      fail(
+        `no build at ${repoRelative(path.resolve(REPO_ROOT, p))}; build it first`,
+      );
+  }
   return {
-    abs,
-    bin: repoRelative(abs),
-    binSha256: fileSha256(abs) ?? "missing",
+    bin: program === null ? (artifacts[0] as string) : repoRelative(program),
+    binSha256: artifactsSha256(REPO_ROOT, artifacts) ?? "missing",
     tune,
+    ...identity,
+    config: configTokens(cfg),
+    target: t,
+    command,
+    args,
+    env: { ...t.env, ...cfg.env },
+    cwd: t.cwd,
   };
 }
 const arms = {
-  a: arm(values["a-bin"], values["a-tune"] ?? ""),
-  b: arm(values["b-bin"], values["b-tune"] ?? ""),
+  a: arm(target, values["a-bin"], values["a-tune"] ?? ""),
+  b: arm(bTarget, values["b-bin"], values["b-tune"] ?? ""),
 };
+
+/** An arm's record entry: what identifies it, without how it is launched. */
+const recordArm = (a: RunArm): CountsArm => ({
+  bin: a.bin,
+  binSha256: a.binSha256,
+  tune: a.tune,
+  ...(a.impl === undefined ? {} : { impl: a.impl }),
+  ...(a.config === undefined ? {} : { config: a.config }),
+});
 
 // ─── The counter ────────────────────────────────────────────────────────────
 
@@ -189,22 +278,22 @@ const paranoid = readParanoid();
 
 const fixture = makeFixture(width, height, content);
 
-function env(tune: string): NodeJS.ProcessEnv {
+function env(a: RunArm): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    ...target.env,
-    CHROMAHASH_TUNE: tune,
+    ...a.env,
+    CHROMAHASH_TUNE: a.tune,
     CHROMAHASH_TIER: String(tier),
     CHROMAHASH_BENCH_REPS: "1",
     CHROMAHASH_BENCH_WARMUP_MS: "0",
   };
 }
 
-function run(a: typeof arms.a, argv: string[], input: Buffer): Buffer {
-  const r = spawnSync(a.abs, [...target.args, ...argv], {
-    cwd: target.cwd,
+function run(a: RunArm, argv: string[], input: Buffer): Buffer {
+  const r = spawnSync(a.command, [...a.args, ...argv], {
+    cwd: a.cwd,
     input,
-    env: env(a.tune),
+    env: env(a),
     maxBuffer: 1 << 28,
   });
   if (r.error) fail(`${argv[0]}: ${r.error.message}`);
@@ -227,7 +316,7 @@ const benchArgv = (n: number): string[] =>
     ? ["bench-encode", String(width), String(height), "srgb", String(n)]
     : ["bench-decode", String(n)];
 
-function countProcess(a: typeof arms.a, n: number): ProcessCounts {
+function countProcess(a: RunArm, n: number): ProcessCounts {
   const r = spawnSync(
     "perf",
     [
@@ -236,11 +325,11 @@ function countProcess(a: typeof arms.a, n: number): ProcessCounts {
       "-e",
       COUNT_EVENTS.join(","),
       "--",
-      a.abs,
-      ...target.args,
+      a.command,
+      ...a.args,
       ...benchArgv(n),
     ],
-    { cwd: target.cwd, input, env: env(a.tune), maxBuffer: 1 << 26 },
+    { cwd: a.cwd, input, env: env(a), maxBuffer: 1 << 26 },
   );
   if (r.error) fail(`perf: ${r.error.message}`);
   if (r.status !== 0)
@@ -250,17 +339,33 @@ function countProcess(a: typeof arms.a, n: number): ProcessCounts {
   return parsePerfStat(r.stderr.toString());
 }
 
-const perOperation = (a: typeof arms.a): ProcessCounts =>
+const perOperation = (a: RunArm): ProcessCounts =>
   perIteration(countProcess(a, 0), countProcess(a, iterations), iterations);
 
-const outputOf = (a: typeof arms.a): string =>
-  op === "encode"
-    ? run(a, ["encode", String(width), String(height), "srgb"], input).toString(
-        "hex",
-      )
-    : createHash("sha256")
-        .update(run(a, ["decode"], input))
-        .digest("hex");
+/**
+ * What an arm produces: an encode's hash, hex; a decode's SHA-256 of its
+ * output, or, where the arms run different implementations, of its RGBA bytes
+ * (`decodedPixels`), since only the Rust drivers write a header before them.
+ */
+function outputOf(a: RunArm): string {
+  if (op === "encode") {
+    return run(
+      a,
+      ["encode", String(width), String(height), "srgb"],
+      input,
+    ).toString("hex");
+  }
+  const out = run(a, ["decode"], input);
+  let bytes: Buffer = out;
+  if (crossImpl) {
+    try {
+      bytes = decodedPixels(a.target.name, out);
+    } catch (e) {
+      fail((e as Error).message);
+    }
+  }
+  return createHash("sha256").update(bytes).digest("hex");
+}
 
 const loadavg = (): number[] => os.loadavg().map((l) => Number(l.toFixed(2)));
 
@@ -309,10 +414,7 @@ const record: CountsRecord = {
     fixtureSha256: createHash("sha256").update(fixture.rgba).digest("hex"),
     input: op === "decode" ? input.toString("hex") : null,
   },
-  arms: {
-    a: { bin: arms.a.bin, binSha256: arms.a.binSha256, tune: arms.a.tune },
-    b: { bin: arms.b.bin, binSha256: arms.b.binSha256, tune: arms.b.tune },
-  },
+  arms: { a: recordArm(arms.a), b: recordArm(arms.b) },
   settings: {
     events: COUNT_EVENTS,
     iterations,
@@ -370,7 +472,7 @@ console.error(
 );
 for (const side of ["a", "b"] as const) {
   console.error(
-    `arm ${side.toUpperCase()}: instructions ${fmt(s[side].median["instructions:u"])} per ${op} (blocks ${fmt(s[side].min["instructions:u"])}–${fmt(s[side].max["instructions:u"])}), cycles ${fmt(s[side].median["cycles:u"])}`,
+    `arm ${side.toUpperCase()}: instructions ${fmt(s[side].median["instructions:u"])} per ${op} (blocks ${fmt(s[side].min["instructions:u"])}–${fmt(s[side].max["instructions:u"])}, spread ${(blockSpread(s[side]) * 100).toFixed(3)}%), cycles ${fmt(s[side].median["cycles:u"])}`,
   );
 }
 console.error(

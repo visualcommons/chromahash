@@ -9,10 +9,22 @@
  * (arm B, `overhead_core.rs`, built in the same crate and profile) on one
  * cell, so A − B is what the layer adds per operation. Each reduction record
  * pairs the layer's driver after a reduction (A) with the same driver built
- * before it (B). `mise run benchmark:overhead` writes the overhead records.
+ * before it (B). Each host record pairs a host runtime's own CLI driver,
+ * through its published binding and under its counting configuration
+ * (`counts-core.ts` `COUNTING_CONFIGS`), with the core driver of the native
+ * layer it binds (`--b-impl Rust`); a host whose records do not hold every
+ * block within `HOST_SPREAD` of its arm's median is listed as not countable,
+ * with its spread, instead of in rows. `mise run benchmark:overhead` writes
+ * the overhead and host records.
  */
 
-import type { CountsRecord } from "./counts-core.ts";
+import {
+  COUNTING_CONFIGS,
+  type CountsRecord,
+  HOST_SPREAD,
+  blockSpread,
+  configTokens,
+} from "./counts-core.ts";
 
 export const OVERHEAD_TABLE = "tools/comparison/results/counts/overhead.md";
 
@@ -77,11 +89,17 @@ export const OVERHEAD_CELLS: readonly OverheadCell[] = [
 /** A byte-identical reduction and the paired records that show its decrease. */
 export interface OverheadReduction {
   id: string;
-  layer: OverheadLayer["layer"];
+  layer: OverheadLayer["layer"] | "wasm";
   what: string;
+  /** The implementation both arms run (`--impl`). */
+  impl: string;
+  /** The driver after the reduction (arm A). */
+  afterBin: string;
   /** The commit the B arm (the driver before the reduction) was built at. */
   beforeRev: string;
   beforeBin: string;
+  /** The cells the reduction is counted on: those whose path it changes. */
+  cells: readonly OverheadCell["cell"][];
 }
 
 export const OVERHEAD_REDUCTIONS: readonly OverheadReduction[] = [
@@ -89,13 +107,74 @@ export const OVERHEAD_REDUCTIONS: readonly OverheadReduction[] = [
     id: "uniffi-bytes",
     layer: "uniffi",
     what: "UniFFI byte arrays lifted and lowered in one slice copy instead of one push per byte (`bindings/uniffi/src/bytes.rs`); `ImageInput.rgba` lifted straight into the core's `Arc<[u8]>`",
+    impl: "Rust",
+    afterBin: "bindings/uniffi/target/release/examples/overhead_uniffi",
     beforeRev: "c4b3f9e",
     beforeBin: "bindings/uniffi/target/before/overhead_uniffi",
+    cells: ["encode-64", "encode-512", "decode-64", "batch16-64"],
+  },
+  {
+    id: "wasm-rgba-copy",
+    layer: "wasm",
+    what: "`DecodeResult::rgba` returns a `Uint8Array` built from the decoded slice (`bindings/wasm/src/lib.rs`), so the pixels cross to JS in one copy instead of a clone in the wasm heap, wasm-bindgen's copy of the clone and its free. Counted through the TypeScript package's CLI under Node's counting configuration (Host runtimes), on the decode cell, the only one whose path it changes",
+    impl: "TypeScript (wasm)",
+    afterBin: "typescript/dist/encode-stdin.js",
+    beforeRev: "4fd0571",
+    beforeBin: "bindings/wasm/target/before/typescript/dist/encode-stdin.js",
+    cells: ["decode-64"],
   },
 ];
 
+/** A host runtime counted through its own binding, and the layer it binds. */
+export interface OverheadHost {
+  impl: string;
+  slug: string;
+  /** The native layer whose core driver is arm B; null for the wasm package. */
+  layer: OverheadLayer["layer"] | null;
+  /** What the host adds on its side of the native layer. */
+  via: string;
+}
+
+export const OVERHEAD_HOSTS: readonly OverheadHost[] = [
+  { impl: "C#", slug: "csharp", layer: "c", via: "P/Invoke and .NET" },
+  { impl: "Go", slug: "go", layer: "c", via: "cgo and the Go runtime" },
+  { impl: "Kotlin", slug: "kotlin", layer: "uniffi", via: "JNA and the JVM" },
+  {
+    impl: "Python",
+    slug: "python",
+    layer: "uniffi",
+    via: "ctypes and CPython",
+  },
+  {
+    impl: "TypeScript (wasm)",
+    slug: "ts-wasm",
+    layer: null,
+    via: "the wasm-bindgen glue, V8, and the core itself compiled to wasm",
+  },
+];
+
+/** The cells a host is counted on: every single-image cell. */
+export const HOST_CELLS: readonly OverheadCell[] = OVERHEAD_CELLS.filter(
+  (c) => c.batch === null,
+);
+
 export const overheadRecord = (layer: string, cell: OverheadCell): string =>
   `overhead-${layer}-${cell.cell}.json`;
+
+export const hostRecord = (h: OverheadHost, cell: OverheadCell): string =>
+  `host-${h.slug}-${cell.cell}.json`;
+
+/** The program a host's arm A runs, as its record names it. */
+export function hostProgram(h: OverheadHost): string {
+  const cfg = COUNTING_CONFIGS[h.impl];
+  if (cfg === undefined)
+    throw new Error(`${h.impl} has no counting configuration`);
+  return cfg.program ?? (cfg.artifacts("")[0] as string);
+}
+
+/** The native core driver a host is counted against. */
+export const hostCore = (h: OverheadHost): string =>
+  driver(h.layer ?? "c", "overhead_core");
 
 export const reductionRecord = (
   r: OverheadReduction,
@@ -108,27 +187,48 @@ const driver = (layer: string, bin: string) =>
 /**
  * Why `record` cannot be quoted as `cell` with arms `a` and `b`, or `null`.
  * Holds the record to its cell, its arms, a clean tree, equal outputs and,
- * from the encode output's length, its batch size.
+ * from the encode output's length, its batch size. `impl` is arm A's
+ * implementation (the cell's); `bImpl`, where given, is arm B's, which the
+ * record must then name on each arm. An arm run under a counting
+ * configuration must state the one `COUNTING_CONFIGS` holds for it now.
  */
 export function recordProblem(
   record: CountsRecord,
   cell: OverheadCell,
   a: string,
   b: string,
+  impl = "Rust",
+  bImpl?: string,
 ): string | null {
   const c = record.cell;
   if (
-    c.impl !== "Rust" ||
+    c.impl !== impl ||
     c.op !== cell.op ||
     c.width !== cell.size ||
     c.height !== cell.size ||
     c.tier !== 1 ||
     c.content !== "gradient"
   ) {
-    return `its cell is ${c.impl} ${c.op} ${c.width}x${c.height} t${c.tier} ${c.content}, not ${cell.op} ${cell.size}x${cell.size} t1 gradient`;
+    return `its cell is ${c.impl} ${c.op} ${c.width}x${c.height} t${c.tier} ${c.content}, not ${impl} ${cell.op} ${cell.size}x${cell.size} t1 gradient`;
   }
   if (record.arms.a.bin !== a || record.arms.b.bin !== b) {
     return `its arms are ${record.arms.a.bin} / ${record.arms.b.bin}, not ${a} / ${b}`;
+  }
+  const impls = bImpl === undefined ? [] : [impl, bImpl];
+  if (
+    (record.arms.a.impl ?? null) !== (impls[0] ?? null) ||
+    (record.arms.b.impl ?? null) !== (impls[1] ?? null)
+  ) {
+    return `its arms run ${record.arms.a.impl ?? c.impl} / ${record.arms.b.impl ?? c.impl}, not ${impl} / ${bImpl ?? impl}`;
+  }
+  for (const side of ["a", "b"] as const) {
+    const name = record.arms[side].impl ?? c.impl;
+    const cfg = COUNTING_CONFIGS[name];
+    const want = cfg === undefined ? null : configTokens(cfg).join(" ");
+    const got = record.arms[side].config?.join(" ") ?? null;
+    if (got !== want) {
+      return `its arm ${side.toUpperCase()} ran under ${got ?? "no counting configuration"}, not ${want ?? "none"}`;
+    }
   }
   if (record.arms.a.tune !== "" || record.arms.b.tune !== "") {
     return "an arm ran under a tune";
@@ -175,9 +275,11 @@ export function renderOverheadTable(
     cell: OverheadCell,
     a: string,
     b: string,
+    impl = "Rust",
+    bImpl?: string,
   ): CountsRecord => {
     const r = read(name);
-    const problem = recordProblem(r, cell, a, b);
+    const problem = recordProblem(r, cell, a, b, impl, bImpl);
     if (problem !== null) throw new Error(`${name}: ${problem}`);
     revs.add(r.provenance.rev ?? "unknown");
     cpus.add(r.host.cpu.modelName);
@@ -195,6 +297,8 @@ export function renderOverheadTable(
     "| Layer | Serves | Cell | Layer (A) | Core (B) | Overhead | A/B | Record |",
     "| --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
   );
+  /** Each layer's record per cell, which the host rows read its share from. */
+  const layerRecords = new Map<string, CountsRecord>();
   for (const l of OVERHEAD_LAYERS) {
     for (const cell of OVERHEAD_CELLS) {
       const name = overheadRecord(l.layer, cell);
@@ -204,6 +308,7 @@ export function renderOverheadTable(
         driver(l.layer, `overhead_${l.layer}`),
         driver(l.layer, "overhead_core"),
       );
+      layerRecords.set(`${l.layer} ${cell.cell}`, r);
       const s = r.summary;
       const extra = diff(r);
       const perItem =
@@ -214,6 +319,87 @@ export function renderOverheadTable(
     }
   }
 
+  // ─── Host runtimes ────────────────────────────────────────────────────────
+  const hostRecords = OVERHEAD_HOSTS.map((h) => {
+    const records = HOST_CELLS.map((cell) => {
+      const name = hostRecord(h, cell);
+      return {
+        cell,
+        name,
+        r: take(name, cell, hostProgram(h), hostCore(h), h.impl, "Rust"),
+      };
+    });
+    const spread = Math.max(
+      ...records.flatMap(({ r }) => [
+        blockSpread(r.summary.a),
+        blockSpread(r.summary.b),
+      ]),
+    );
+    return { h, records, spread, countable: spread <= HOST_SPREAD };
+  });
+  const pct = (x: number) => `${(x * 100).toFixed(3)}%`;
+  lines.push(
+    "",
+    "## Host runtimes",
+    "",
+    `What each host runtime adds to a call, counted through its published binding. Arm A is the host's own command-line driver (the cross-language benchmark's \`encode-stdin\`), run under the host's counting configuration (\`counts-core.ts\` \`COUNTING_CONFIGS\`); arm B is the core driver of the native layer the host binds, counted with \`--b-impl Rust\` on the same cell, and both arms decode to the same RGBA bytes or encode to the same hash in every record. A host is countable where, in every one of its records, each arm's per-operation count in each of the interleaved blocks is within ${pct(HOST_SPREAD)} of that arm's median; the check and its tolerance were fixed before any host was counted. A counting configuration is not how the host ships: it pins the runtime's compiler tier and its collector's pacing, so a host's figure is its cost under that configuration. "Native layer" is the overhead row above for the same cell, counted against the same core binary, and "Host side" is what is left: the host's call, its marshalling and its runtime, with its CLI's bench loop. The TypeScript (wasm) arm runs the core itself as wasm in V8's baseline compiler, so its figure is the whole call against native code rather than the glue alone; the glue's share is not separable by this count.`,
+    "",
+    "| Host | Counting configuration | Largest block spread | Countable |",
+    "| --- | --- | ---: | --- |",
+  );
+  for (const { h, spread, countable } of hostRecords) {
+    const cfg = COUNTING_CONFIGS[h.impl];
+    lines.push(
+      `| ${h.impl} | ${
+        cfg === undefined
+          ? "—"
+          : configTokens(cfg)
+              .map((t) => `\`${t}\``)
+              .join(" ")
+      } | ${pct(spread)} | ${countable ? "yes" : `no: over ${pct(HOST_SPREAD)}`} |`,
+    );
+  }
+  lines.push(
+    "",
+    "| Host | Via | Cell | Host (A) | Core (B) | Over the core | Native layer | Host side | A/B | Record |",
+    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+  );
+  for (const { h, records, countable } of hostRecords) {
+    if (!countable) continue;
+    for (const { cell, name, r } of records) {
+      const s = r.summary;
+      const over = diff(r);
+      let layer = "—";
+      let side = "—";
+      if (h.layer !== null) {
+        const lr = layerRecords.get(`${h.layer} ${cell.cell}`);
+        if (lr === undefined || lr.arms.b.binSha256 !== r.arms.b.binSha256) {
+          throw new Error(
+            `${name}: its core binary is not the one ${overheadRecord(h.layer, cell)} counts the native layer against, so the layer's share cannot be subtracted`,
+          );
+        }
+        layer = signed(diff(lr));
+        side = signed(over - diff(lr));
+      }
+      lines.push(
+        `| ${h.impl} | ${h.via} | ${cell.label} | ${whole(floored(s.a))} | ${whole(floored(s.b))} | ${signed(over)} ${unit(cell)} | ${layer} | ${side} | ${s.ratio.geomean[INS].toFixed(4)} | \`${name}\` |`,
+      );
+    }
+  }
+
+  const host = (impl: string) => {
+    const found = hostRecords.find((x) => x.h.impl === impl);
+    if (found === undefined) throw new Error(`no host ${impl}`);
+    return found;
+  };
+  const counted = (impl: string, side: string) =>
+    host(impl).countable
+      ? "the whole call, under its counting configuration (Host runtimes)"
+      : side;
+  const missed = (impl: string, shipped: string, refused: string) =>
+    host(impl).countable
+      ? `${shipped} as it ships: its count is under the counting configuration`
+      : `${refused}: under its counting configuration its blocks spread ${pct(host(impl).spread)}, over ${pct(HOST_SPREAD)}`;
   lines.push(
     "",
     "## Every binding",
@@ -221,16 +407,17 @@ export function renderOverheadTable(
     "| Binding | Native layer | Counted here | Not counted |",
     "| --- | --- | --- | --- |",
     "| C | C ABI | the whole call | — |",
-    "| C# | C ABI | the native side of every call | the P/Invoke marshalling and the .NET runtime: `benchmark:counts` refuses a JIT and a collector |",
-    "| Go | C ABI | the native side of every call | the cgo transition and the Go runtime: `benchmark:counts` refuses Go's concurrent collector |",
-    "| Kotlin/JVM, Android | UniFFI scaffolding | the native side of every call, with the host's buffer writes and reads emulated at their minimum | JNA and the JVM: `benchmark:counts` refuses a JIT and a collector |",
-    "| Python | UniFFI scaffolding | as Kotlin | ctypes and CPython: `benchmark:counts` refuses a managed runtime |",
-    "| TypeScript (wasm) | wasm-bindgen | not measured | the whole call: it runs in a JIT engine, and a native count of the wasm crate would measure neither the JS glue nor the engine |",
+    `| C# | C ABI | ${counted("C#", "the native side of every call")} | ${missed("C#", "the .NET runtime (tiered JIT, concurrent collector)", "the P/Invoke marshalling and the .NET runtime")} |`,
+    `| Go | C ABI | ${counted("Go", "the native side of every call")} | ${missed("Go", "the Go runtime (its concurrent collector, every processor)", "the cgo transition and the Go runtime")} |`,
+    `| Kotlin/JVM | UniFFI scaffolding | ${counted("Kotlin", "the native side of every call, with the host's buffer writes and reads emulated at their minimum")} | ${missed("Kotlin", "the JVM (tiered C1/C2 compilation in the background, its default collector)", "JNA and the JVM")} |`,
+    "| Android | UniFFI scaffolding | the native side of every call, as Kotlin/JVM | JNA and ART: they run on a device, not on the counting host |",
+    `| Python | UniFFI scaffolding | ${counted("Python", "as Kotlin/JVM")} | ${missed("Python", "CPython started through `uv run`, with a random hash seed", "ctypes and CPython")} |`,
+    `| TypeScript (wasm) | wasm-bindgen | ${counted("TypeScript (wasm)", "not measured")} | ${missed("TypeScript (wasm)", "V8 with its optimizing tiers (Maglev, TurboFan) and background threads, which is where the wasm core runs as it ships", "the whole call")} |`,
     "| Swift | UniFFI scaffolding | not measured | Swift builds on macOS only (`ci-swift.yml`); its native layer is the UniFFI row above |",
     "",
     "## Reductions",
     "",
-    "Each reduction is byte-identical (both arms' outputs are equal in every record) and is shown by a paired count of the layer's driver after it (A) against the same driver built before it (B), each cell counted with `benchmark:overhead`'s options and `--b-bin` naming the earlier build.",
+    "Each reduction is byte-identical (both arms' outputs are equal in every record) and is shown by a paired count of the layer's driver after it (A) against the same driver built before it (B), each cell counted with `benchmark:overhead`'s options, `--impl` naming the driver's implementation and `--b-bin` naming the earlier build; every block of every record counts fewer instructions after it.",
   );
   for (const red of OVERHEAD_REDUCTIONS) {
     lines.push(
@@ -242,14 +429,16 @@ export function renderOverheadTable(
       "| Cell | After (A) | Before (B) | Change | A/B | Record |",
       "| --- | ---: | ---: | ---: | ---: | --- |",
     );
-    for (const cell of OVERHEAD_CELLS) {
+    for (const cell of OVERHEAD_CELLS.filter((c) =>
+      red.cells.includes(c.cell),
+    )) {
       const name = reductionRecord(red, cell);
-      const r = take(
-        name,
-        cell,
-        driver(red.layer, `overhead_${red.layer}`),
-        red.beforeBin,
-      );
+      const r = take(name, cell, red.afterBin, red.beforeBin, red.impl);
+      if (!(r.summary.ratio.max[INS] < 1)) {
+        throw new Error(
+          `${name}: a reduction must count fewer instructions in every block, but its largest block ratio is ${r.summary.ratio.max[INS]}`,
+        );
+      }
       const s = r.summary;
       lines.push(
         `| ${cell.label} | ${whole(floored(s.a))} | ${whole(floored(s.b))} | ${signed(diff(r))} ${unit(cell)} | ${s.ratio.geomean[INS].toFixed(4)} | \`${name}\` |`,

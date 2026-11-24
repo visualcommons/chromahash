@@ -253,10 +253,16 @@ import {
 import {
   AB_COUNTS_DIR,
   type CountsRecord,
+  artifactsSha256,
   blockSchedule,
+  blockSpread,
+  COUNTING_CONFIGS,
   compareRuns,
   COUNTABLE_IMPLS,
+  configTokens,
   counterRefusal,
+  decodedPixels,
+  HOST_SPREAD,
   implRefusal,
   parseCpuinfo,
   readSchema,
@@ -7706,25 +7712,111 @@ console.log(
     String(probe({ paranoid: 4 })),
   );
 
-  // Admission: exactly the native targets without a collector are counted.
+  // Admission: the native targets without a collector, and each host runtime
+  // with a counting configuration, are counted; nothing else is.
   const admitted = allTargets()
     .filter((t) => implRefusal(t) === null)
-    .map((t) => t.name);
-  const goTarget = allTargets().find((t) => t.name === "Go");
+    .map((t) => t.name)
+    .sort();
+  const wantAdmitted = [
+    ...COUNTABLE_IMPLS,
+    ...Object.keys(COUNTING_CONFIGS),
+  ].sort();
   check(
-    "implRefusal admits exactly Rust, Rust (scalar) and Swift, refuses Go by its garbage collector, every managed runtime by name, and an unknown implementation",
-    admitted.join(",") === COUNTABLE_IMPLS.join(",") &&
-      goTarget !== undefined &&
-      !goTarget.managed &&
-      (implRefusal(goTarget) ?? "").includes("garbage collector") &&
+    "implRefusal admits exactly Rust, Rust (scalar), Swift and the hosts with a counting configuration (C#, Go, Kotlin, Python, TypeScript (wasm)), and refuses a managed runtime without one (TypeScript (pure)) and an unknown implementation by name",
+    admitted.join(",") === wantAdmitted.join(",") &&
+      wantAdmitted.join(",") ===
+        "C#,Go,Kotlin,Python,Rust,Rust (scalar),Swift,TypeScript (wasm)" &&
       allTargets()
-        .filter((t) => t.managed)
-        .every((t) => (implRefusal(t) ?? "").includes("managed runtime")) &&
+        .filter((t) => t.managed && COUNTING_CONFIGS[t.name] === undefined)
+        .every((t) =>
+          (implRefusal(t) ?? "").includes("no counting configuration"),
+        ) &&
+      implRefusal({ name: "TypeScript (pure)", managed: true }) !== null &&
       (implRefusal({ name: "Zig", managed: false }) ?? "").includes(
         "not one of",
       ),
     admitted.join(","),
   );
+
+  // A counting configuration as a record states it, and the host check.
+  check(
+    "configTokens states the environment sorted as NAME=value, then the runtime flags in order, then any replacement command; every host's configuration names a program or a package that exists in the repository's layout",
+    configTokens({
+      env: { ZZ: "1", AA: "2" },
+      flags: ["--x", "--a"],
+      program: null,
+      artifacts: () => [],
+      why: "",
+    }).join(" ") === "AA=2 ZZ=1 --x --a" &&
+      configTokens({
+        env: {},
+        flags: [],
+        command: "py/bin/python",
+        args: ["-m", "m"],
+        program: null,
+        artifacts: () => [],
+        why: "",
+      }).join(" ") === "runs: py/bin/python -m m" &&
+      (COUNTING_CONFIGS["TypeScript (wasm)"]?.flags ?? []).join(" ") ===
+        "--single-threaded --no-opt --no-maglev --no-sparkplug --liftoff-only" &&
+      (COUNTING_CONFIGS["TypeScript (wasm)"]
+        ?.artifacts("pkg/dist/encode-stdin.js")
+        .join(" ") ?? "") === "pkg/dist pkg/wasm",
+    configTokens(COUNTING_CONFIGS.Go as never).join(" "),
+  );
+  const spreadOf = (median: number, min: number, max: number) =>
+    blockSpread({
+      median: c(median, 1),
+      min: c(min, 1),
+      max: c(max, 1),
+    });
+  check(
+    "blockSpread is the largest relative distance of an arm's block counts from its median (either side), and HOST_SPREAD admits a spread under 1% and not one over it",
+    Math.abs(spreadOf(1000, 990, 1001) - 0.01) < 1e-12 &&
+      Math.abs(spreadOf(1000, 999, 1020) - 0.02) < 1e-12 &&
+      spreadOf(1000, 1000, 1000) === 0 &&
+      HOST_SPREAD === 0.01 &&
+      spreadOf(1000, 991, 1009) <= HOST_SPREAD &&
+      !(spreadOf(1000, 989, 1000) <= HOST_SPREAD) &&
+      thrown(() => spreadOf(0, 0, 0)).includes("positive"),
+    String(spreadOf(1000, 990, 1001)),
+  );
+  const px = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]);
+  const headed = Buffer.concat([Buffer.from("2 1\n"), px]);
+  check(
+    "decodedPixels strips the Rust drivers' W H header and checks it against the bytes after it, passes a host's raw pixels through untouched, and refuses a Rust output with no header",
+    decodedPixels("Rust", headed).equals(px) &&
+      decodedPixels("Go", headed).equals(headed) &&
+      decodedPixels("TypeScript (wasm)", px).equals(px) &&
+      thrown(() => decodedPixels("Rust", px)).includes("no") &&
+      thrown(() =>
+        decodedPixels("Rust", Buffer.concat([Buffer.from("3 1\n"), px])),
+      ).includes("not 12"),
+    "",
+  );
+  {
+    const dir = mkdtempSync(path.join(tmpdir(), "artifacts-"));
+    writeFileSync(path.join(dir, "one"), "a");
+    mkdirSync(path.join(dir, "pkg/__pycache__"), { recursive: true });
+    writeFileSync(path.join(dir, "pkg/x.py"), "b");
+    const tree = artifactsSha256(dir, ["pkg"]);
+    writeFileSync(path.join(dir, "pkg/__pycache__/x.pyc"), "c");
+    const skipped = artifactsSha256(dir, ["pkg"]);
+    writeFileSync(path.join(dir, "pkg/x.py"), "B");
+    const edited = artifactsSha256(dir, ["pkg"]);
+    const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+    check(
+      "artifactsSha256 is a single file's own SHA-256, digests a directory's files by content and path, ignores __pycache__, changes with a file's bytes, and is null where an artifact is missing",
+      artifactsSha256(dir, ["one"]) === sha("a") &&
+        tree === sha(`${sha("b")}  pkg/x.py\n`) &&
+        skipped === tree &&
+        edited !== tree &&
+        artifactsSha256(dir, ["one", "missing"]) === null,
+      String(tree),
+    );
+    rmSync(dir, { recursive: true, force: true });
+  }
 
   // Refusal to compare runs from different CPUs.
   const cpu = parseCpuinfo(
