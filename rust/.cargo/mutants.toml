@@ -62,20 +62,20 @@ exclude_re = [
     # The same scale floor in `dct_encode_lanes` (PERFORMANCE.md §12.1 item 3),
     # equivalent for the same reason. Anchored to its line: the function's
     # other `<`s are the frequency clamp, and those are killable.
-    "src/dct.rs:347:14.*replace < with <= in dct_encode_lanes",
+    "src/dct.rs:383:14.*replace < with <= in dct_encode_lanes",
     # The CfL gain fields are written only `if t.cfl_bits > 0`. At the shipped
     # `cfl_bits = 0`, `>=` writes two zero-width fields, which both bit writers
     # (`write_bits`, and `write_bits_word` for PERFORMANCE.md §12.1 item 7)
     # treat as no-ops, so the body is identical. Anchored to the write, not to
     # the CfL computation's own `cfl_bits > 0`, which is killable.
-    "src/encode.rs:1582:19.*replace > with >= in encode_with",
+    "src/encode.rs:2097:19.*replace > with >= in encode_with",
     # `quantize_one`'s `ac_nearest` search scans the symmetric offsets
     # {0, -1, 1, -2, 2}, so `q + d` → `q - d` scans the same five candidates in
     # a different order — the reasoning of `select_dc_codes`' entry above.
     # With the strict `<`, order decides only an exact tie in reconstruction
     # error between two codes, which the uneven µ-law grid does not produce.
     # Anchored to the line.
-    "src/encode.rs:720:30.*replace \\+ with - in quantize_one",
+    "src/encode.rs:995:30.*replace \\+ with - in quantize_one",
     # `if ratio > 1.0` picks the landscape branch. decode_aspect(byte) is 2^k for
     # k = byte/255*8 - 4, which equals 1.0 only at the non-integer byte 127.5, so
     # ratio is never exactly 1.0 and `>` vs `>=` are equivalent over all 256
@@ -104,21 +104,14 @@ exclude_re = [
     # used to be excluded here on the same reasoning. They are not equivalent —
     # `select_dc_codes_searches_l_neighbors` kills both — so they are gone.
     "replace \\+ with - in select_dc_codes",
-    # `l_hi = (1 << l_dc_bits) - 1` is the L candidate's clamp ceiling. Widening
-    # it to 128 is reachable only when `l0` is already 127, which needs
-    # `l_mean >= 1`; there the target is clipped to white and code 128 decodes to
-    # that same clipped white, so it is an exact tie and the strict `<` keeps 127.
+    # (The L candidate's clamp ceiling used to be excluded here: widening it
+    # alone is equivalent. All three ceilings now come from one helper,
+    # `dc_code_ceiling`, whose mutants `select_dc_codes_never_exceeds_its_field_width`
+    # kills through the a and b channels, so there is no L-only mutant left.)
     #
-    # Anchored to the L line. The a/b analogues two lines below are *not*
-    # equivalent — `select_dc_codes_never_exceeds_its_field_width` kills both —
-    # and an unanchored version of this pattern excluded them too, silently
-    # widening a one-mutant exemption to three. That is the exact failure mode
-    # this list exists to prevent, so keep every entry as narrow as it can be.
-    #
-    # The line number makes this brittle, but it fails in the safe direction: if
-    # encode.rs shifts, the anchor stops matching and the sweep reports one extra
+    # Line anchors below are brittle, but they fail in the safe direction: if a
+    # file shifts, the anchor stops matching and the sweep reports one extra
     # missed mutant rather than quietly exempting a new one.
-    "src/encode.rs:63:39.*replace - with (\\+|/) in select_dc_codes",
 
     # `stage_timing` (src/encode.rs) is behind the off-by-default
     # `bench-internals` feature, which this sweep does not enable — see the
@@ -161,13 +154,10 @@ exclude_re = [
     # cannot be, and each comment is the proof. All are line-anchored, so a
     # shifted line fails safe (one extra MISSED, never a silent new exemption).
 
-    # The deadzone guard `deadzone > 0.0 && |n| < deadzone`: at deadzone == 0,
-    # the only input where `>` and `>=` differ, the second operand `|n| < 0` is
-    # false for every n (NaN included), so the conjunction is false either way.
-    # `compand_quantize` carries the same guard; `compand_quantize_hoisted`
-    # drops it for this reason.
-    "src/encode.rs:712:34: replace > with >= in quantize_one",
-    "src/mulaw.rs:201:17: replace > with >= in compand_quantize",
+    # (The deadzone guard `deadzone > 0.0 && |n| < deadzone` in `quantize_one`
+    # and `compand_quantize`, and `gamma_of`'s second clamp, used to be
+    # excluded here as never deciding anything. They are gone from the code
+    # instead, as is `render_at_size`'s always-true `if i < l_count`.)
     # `quantize_one`'s search scans q + {0, -1, 1, -2, 2}; deleting the minus on
     # -2 drops candidate q-2, which can never win. q is the companded-nearest
     # code, so the value lies at or above level q-1, and every family's levels
@@ -175,15 +165,11 @@ exclude_re = [
     # symmetric quantizer, and its q is already the nearest level outright).
     # So q-2 is never nearer than q-1, which is scored first, and the strict
     # `<` keeps the earlier of two equal errors.
-    "src/encode.rs:719:28: delete - in quantize_one",
-    # `gamma_of` computes its LUT index as round(clamp01(x) · 4095), already in
-    # [0, 4095] (clamp01 passes NaN through, and NaN as i64 is 0). The clamp
-    # after it never binds, so widening its ceiling to 4097 or 4096 is inert.
-    "src/encode.rs:840:47: replace - with (\\+|/) in PixelObjective::gamma_of",
+    "src/encode.rs:994:28: delete - in quantize_one",
     # `encode_with` refines only `if t.refine_passes > 0`. With `>=` it also
     # calls `refine_codes` at 0 passes, whose loop `for _ in 0..refine_passes`
     # then never runs: it builds a reconstruction and writes nothing back.
-    "src/encode.rs:1486:24: replace > with >= in encode_with",
+    "src/encode.rs:1999:24: replace > with >= in encode_with",
     # A-law expand's knee: at x = 1/(1 + ln A) the linear segment is t/A and
     # the log one exp(t - 1)/A with t = x·(1 + ln A) within an ulp of 1, where
     # portable_exp(t - 1) rounds to t. `a_law_expand_segments_agree_at_the_knee`
@@ -193,15 +179,11 @@ exclude_re = [
     # `table_dequantize` has already returned on `offset == 0` when it tests
     # `offset < 0`, so `<=` is the same test.
     "src/mulaw.rs:186:15: replace < with <= in table_dequantize",
-    # `render_at_size` fills `l_bits_at[i]` behind `if i < l_count`, but i walks
-    # the luma tier counts, which sum to l_count: the guard is always true, and
-    # `<=` is too.
-    "src/decode.rs:273:22: replace < with <= in render_at_size",
     # Detail synthesis is gated on `synth_count > 0`. At synth_count == 0,
     # `synthesize_detail` takes zero extra coefficients and returns its input
     # unchanged (its `ext.coeffs.len() <= l_count` early return), so `>=` is
     # the same render.
-    "src/decode.rs:360:42: replace > with >= in render_at_size",
+    "src/decode.rs:465:42: replace > with >= in render_at_size",
 
     # ── `refine_codes`: research-only, mostly unproven ─────────────────────
     #
@@ -220,15 +202,15 @@ exclude_re = [
     # `cx < src.0`; with `refine_grid = 1`, (w, h) is the decoder raster the
     # selection is drawn from, so every selected pair has cx < w and cy < h.
     # Either way the last two conjuncts never decide, and `<=` cannot differ.
-    "src/encode.rs:1106:40: replace < with <= in refine_codes",
-    "src/encode.rs:1106:50: replace < with <= in refine_codes",
+    "src/encode.rs:1385:40: replace < with <= in refine_codes",
+    "src/encode.rs:1385:50: replace < with <= in refine_codes",
     # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT):
     # `cx <= src.0` also refines the one frequency a source exactly cx pixels
     # wide cannot hold (refine_grid = 1 on a strip). That basis carries no
     # source energy, so moving its code away from zero has not lowered the
     # objective on any image tried, and the strict improvement test never
     # accepts it. Not proven.
-    "src/encode.rs:1106:12: replace < with <= in refine_codes",
+    "src/encode.rs:1385:12: replace < with <= in refine_codes",
     # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT): tie
     # order between two improving candidates. Each candidate set is symmetric
     # ({±1, ±2} for scale, {±1} for DC, ±d for AC), so `cur + d` → `cur - d`
@@ -238,11 +220,11 @@ exclude_re = [
     # *below* the current one. No fixture here produces that, and none is
     # proven impossible: the gamma-LUT objective (0) and the clipped ones (2,
     # 3) are flat in places, so such a tie may be reachable.
-    "src/encode.rs:1149:44: replace \\+ with - in refine_codes",
-    "src/encode.rs:1188:44: replace \\+ with - in refine_codes",
-    "src/encode.rs:1229:48: replace \\+ with - in refine_codes",
-    "src/encode.rs:1167:85: replace < with <= in refine_codes",
-    "src/encode.rs:1241:84: replace < with <= in refine_codes",
+    "src/encode.rs:1428:44: replace \\+ with - in refine_codes",
+    "src/encode.rs:1467:44: replace \\+ with - in refine_codes",
+    "src/encode.rs:1508:48: replace \\+ with - in refine_codes",
+    "src/encode.rs:1446:85: replace < with <= in refine_codes",
+    "src/encode.rs:1520:84: replace < with <= in refine_codes",
     # Unproven, research-only (refine_passes = 0 in Tunables::DEFAULT): the DC
     # second-candidate test `e < be`. `==` is not a tie-order change: it
     # differs whenever both DC neighbours strictly improve and the second is
@@ -262,5 +244,5 @@ exclude_re = [
     # gamma LUT break the quadratic, so both neighbours can improve, and
     # these mutants would pick the wrong one. Excluded only because the
     # whole function is research-only.
-    "src/encode.rs:1200:80: replace < with (<=|==) in refine_codes",
+    "src/encode.rs:1479:80: replace < with (<=|==) in refine_codes",
 ]

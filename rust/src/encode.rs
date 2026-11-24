@@ -85,9 +85,13 @@ fn select_dc_codes(l_mean: f64, a_mean: f64, b_mean: f64, t: &Tunables) -> (u32,
     if !t.dc_search {
         return (l0 as u32, a0 as u32, b0 as u32);
     }
-    let l_hi = ((1i64 << t.l_dc_bits) - 1).max(0);
-    let a_hi = ((1i64 << t.a_dc_bits) - 1).max(0);
-    let b_hi = ((1i64 << t.b_dc_bits) - 1).max(0);
+    // One ceiling for all three channels. Widening the L ceiling alone is
+    // equivalent (code 128 is reachable only from l0 = 127, which already
+    // decodes to clipped white, so the strict `<` keeps 127), but the a and b
+    // ceilings are not, so a single shared helper leaves no L-only mutant.
+    let l_hi = dc_code_ceiling(t.l_dc_bits);
+    let a_hi = dc_code_ceiling(t.a_dc_bits);
+    let b_hi = dc_code_ceiling(t.b_dc_bits);
 
     // Target = what the decoder could at best show for the true average color
     // (out-of-gamut targets are clipped per-channel, same as the decoder).
@@ -119,6 +123,12 @@ fn select_dc_codes(l_mean: f64, a_mean: f64, b_mean: f64, t: &Tunables) -> (u32,
         }
     }
     best
+}
+
+/// The largest code a `bits`-wide DC field holds, the DC search's clamp
+/// ceiling (0 for a zero-width field).
+fn dc_code_ceiling(bits: u32) -> i64 {
+    ((1i64 << bits) - 1).max(0)
 }
 
 /// First selection index of the scalefactor high band: `floor(count·split)`.
@@ -972,7 +982,9 @@ impl AcQuantJob<'_> {
 fn quantize_one(job: &AcQuantJob, i: usize, value: f64, scale: f64, nearest: bool) -> u32 {
     let normalized = if scale == 0.0 { 0.0 } else { value / scale };
     let q = job.quant(i, normalized);
-    let deadzoned = job.deadzone > 0.0 && normalized.abs() < job.deadzone;
+    // No `deadzone > 0` guard: at deadzone <= 0 (or NaN) `|n| < deadzone` is
+    // already false for every n, so the guard decided nothing.
+    let deadzoned = normalized.abs() < job.deadzone;
     if !nearest || scale == 0.0 || deadzoned {
         return q;
     }
@@ -1099,8 +1111,9 @@ impl PixelObjective {
     /// Gamma-encode a linear value through the LUT (same grid as the decoder).
     #[inline]
     fn gamma_of(&self, x: f64) -> f64 {
-        let idx = (round_half_away_from_zero(clamp01(x) * (REFINE_GAMMA_LUT - 1) as f64) as i64)
-            .clamp(0, REFINE_GAMMA_LUT as i64 - 1) as usize;
+        // round(clamp01(x) · 4095) is already in [0, 4095], so no second
+        // clamp: clamp01 passes NaN through, and NaN as usize is 0.
+        let idx = round_half_away_from_zero(clamp01(x) * (REFINE_GAMMA_LUT - 1) as f64) as usize;
         self.gamma[idx]
     }
 

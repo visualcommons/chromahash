@@ -198,7 +198,9 @@ pub fn compand_quantize(
     table: &QuantTable,
     deadzone: f64,
 ) -> u32 {
-    if deadzone > 0.0 && value.abs() < deadzone {
+    // No `deadzone > 0` guard, as in `compand_quantize_hoisted`: at deadzone
+    // <= 0 (or NaN) `|value| < deadzone` is already false for every value.
+    if value.abs() < deadzone {
         return (1u32 << (bits - 1)) - 1;
     }
     match family {
