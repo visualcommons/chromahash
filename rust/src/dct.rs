@@ -1139,4 +1139,56 @@ mod tests {
             vec![(0, 0), (1, 0), (2, 0), (3, 0), (3, 1), (0, 1)]
         );
     }
+
+    /// The near-zero scale floor is strict: a channel whose peak |AC| is
+    /// exactly `1e-10` keeps its coefficients, and one a ulp below is floored
+    /// to exact zero. Every forward transform carries the same floor.
+    ///
+    /// The channel is `[x, 0]` on a 2×1 source with the single coefficient
+    /// (1, 0), so each transform computes `AC = (x · cos_x[1][0] · 1) / 2`
+    /// (the second pixel adds an exact zero, and the halving is exact). `x` is
+    /// found by stepping ulps from `2e-10 / cos_x[1][0]` until that product
+    /// lands exactly on the threshold, which pins the boundary itself rather
+    /// than a value near it.
+    #[test]
+    fn scale_floor_keeps_a_channel_exactly_at_the_threshold() {
+        const FLOOR: f64 = 1e-10;
+        let (w, h) = (2usize, 1usize);
+        let coeffs = [(1usize, 0usize)];
+        let cos_x = precompute_cos_table(w, 2);
+        let cos_y = precompute_cos_table(h, 1);
+        let c = cos_x[1][0];
+        assert!(c > 0.0);
+        let ac_of = |x: f64| x * c * cos_y[0][0] / (w * h) as f64;
+
+        let start = 2.0 * FLOOR / c;
+        let x = (-64i64..=64)
+            .map(|d| f64::from_bits((start.to_bits() as i64 + d) as u64))
+            .find(|&x| ac_of(x) == FLOOR)
+            .expect("some x puts the coefficient exactly on the floor");
+        let below = f64::from_bits(x.to_bits() - 1);
+        assert!(ac_of(below) < FLOOR);
+
+        type Forward = fn(
+            &[f64],
+            usize,
+            usize,
+            &[(usize, usize)],
+            &[Vec<f64>],
+            &[Vec<f64>],
+        ) -> (f64, Vec<f64>, f64);
+        let forwards: [(&str, Forward); 3] = [
+            ("selected", dct_encode_selected),
+            ("lanes", dct_encode_lanes),
+            ("separable", dct_encode_selected_separable),
+        ];
+        for (name, forward) in forwards {
+            let (_, ac, scale) = forward(&[x, 0.0], w, h, &coeffs, &cos_x, &cos_y);
+            assert_eq!(scale, FLOOR, "{name}: a scale on the floor is kept");
+            assert_eq!(ac, vec![FLOOR], "{name}");
+            let (_, ac, scale) = forward(&[below, 0.0], w, h, &coeffs, &cos_x, &cos_y);
+            assert_eq!(scale, 0.0, "{name}: a scale below the floor is zeroed");
+            assert_eq!(ac, vec![0.0], "{name}");
+        }
+    }
 }

@@ -55,20 +55,17 @@ exclude_globs = ["src/simd/neon.rs", "src/simd/wasm.rs"]
 # affects resource cleanup. Keep this list short and justified; prefer adding a
 # test over an exclusion.
 exclude_re = [
-    # `if scale < 1e-10` floors near-constant channels to exact zero. No input
-    # lands a channel's peak |AC| exactly on 1e-10 (solids ~1e-15, detail ≫1e-10),
-    # so `<` and `<=` are indistinguishable.
-    "src/dct.rs.*replace < with <= in dct_encode_selected",
-    # The same scale floor in `dct_encode_lanes` (PERFORMANCE.md §12.1 item 3),
-    # equivalent for the same reason. Anchored to its line: the function's
-    # other `<`s are the frequency clamp, and those are killable.
-    "src/dct.rs:383:14.*replace < with <= in dct_encode_lanes",
+    # (The `scale < 1e-10` floors in src/dct.rs were excluded here as
+    # unreachable at exactly 1e-10. They are not:
+    # `scale_floor_keeps_a_channel_exactly_at_the_threshold` builds a channel
+    # on the floor and kills `<=` in all three forward transforms.)
+    #
     # The CfL gain fields are written only `if t.cfl_bits > 0`. At the shipped
     # `cfl_bits = 0`, `>=` writes two zero-width fields, which both bit writers
     # (`write_bits`, and `write_bits_word` for PERFORMANCE.md §12.1 item 7)
     # treat as no-ops, so the body is identical. Anchored to the write, not to
     # the CfL computation's own `cfl_bits > 0`, which is killable.
-    "src/encode.rs:2097:19.*replace > with >= in encode_with",
+    "src/encode.rs:2097:19: replace > with >= in encode_parts",
     # `quantize_one`'s `ac_nearest` search scans the symmetric offsets
     # {0, -1, 1, -2, 2}, so `q + d` → `q - d` scans the same five candidates in
     # a different order — the reasoning of `select_dc_codes`' entry above.
@@ -87,13 +84,16 @@ exclude_re = [
     # leaves every batch result byte-identical, so no functional test can observe it.
     "src/batch.rs.*replace <impl Drop for BatchEncoder>::drop with \\(\\)",
 
-    # Header (de)packing ORs each field into a disjoint bit/byte range, so `|` and
-    # `^` produce identical results — the values are clamped to fit their fields,
-    # so no two ever share a set bit. The golden hashes pin the packed result.
-    "replace \\| with \\^ in encode_with",
-    "replace \\| with \\^ in read_aspect",
-    "replace \\| with \\^ in render_at_size",
-    "replace \\| with \\^ in average_color_with",
+    # Byte 0 ORs the version, the tier and the alpha flag into disjoint bit
+    # ranges (the version and tier are clamped to fit their fields), so no two
+    # ever share a set bit and `|` and `^` produce identical results. The
+    # golden hashes pin the packed byte. Anchored to the two `|`s of that one
+    # line: the unanchored per-function form this replaces had drifted onto
+    # functions that no longer exist (`encode_with`, `read_aspect`,
+    # `average_color_with`) and so matched nothing, while `render_at_size`
+    # and `synthesize_detail` carry `|`/`&` sites that are killable.
+    "src/encode.rs:2076:30: replace \\| with \\^ in encode_parts",
+    "src/encode.rs:2076:55: replace \\| with \\^ in encode_parts",
 
     # The decode-aware DC search scans the *symmetric* offset set {0, -1, 1}, so
     # negating an offset (`l0 + dl` → `l0 - dl`) scans the same three candidates
@@ -166,10 +166,10 @@ exclude_re = [
     # So q-2 is never nearer than q-1, which is scored first, and the strict
     # `<` keeps the earlier of two equal errors.
     "src/encode.rs:994:28: delete - in quantize_one",
-    # `encode_with` refines only `if t.refine_passes > 0`. With `>=` it also
+    # `encode_parts` refines only `if t.refine_passes > 0`. With `>=` it also
     # calls `refine_codes` at 0 passes, whose loop `for _ in 0..refine_passes`
     # then never runs: it builds a reconstruction and writes nothing back.
-    "src/encode.rs:1999:24: replace > with >= in encode_with",
+    "src/encode.rs:1999:24: replace > with >= in encode_parts",
     # A-law expand's knee: at x = 1/(1 + ln A) the linear segment is t/A and
     # the log one exp(t - 1)/A with t = x·(1 + ln A) within an ulp of 1, where
     # portable_exp(t - 1) rounds to t. `a_law_expand_segments_agree_at_the_knee`
