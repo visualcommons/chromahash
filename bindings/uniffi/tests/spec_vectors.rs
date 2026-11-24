@@ -59,7 +59,7 @@ fn integration_encode_vectors() {
         let tier = input["tier"].as_u64().expect("tier") as u8;
         let rgba = bytes(&input["rgba"]);
 
-        let hash = ChromaHash::encode_with_quality(w, h, rgba, gamut, tier)
+        let hash = ChromaHash::encode_with_quality(w, h, rgba.into(), gamut, tier)
             .unwrap_or_else(|e| panic!("{name}: encode rejected a spec vector: {e}"));
 
         assert_eq!(
@@ -97,7 +97,7 @@ fn batch_encode_matches_single_encode() {
             ImageInput {
                 w: input["width"].as_u64().expect("width") as u32,
                 h: input["height"].as_u64().expect("height") as u32,
-                rgba: bytes(&input["rgba"]),
+                rgba: bytes(&input["rgba"]).into(),
                 gamut: gamut_from_str(input["gamut"].as_str().expect("gamut")),
                 quality: (i % (MAX_TIER as usize + 1)) as u8,
             }
@@ -113,7 +113,7 @@ fn batch_encode_matches_single_encode() {
         let single = ChromaHash::encode_with_quality(
             item.w,
             item.h,
-            item.rgba.clone(),
+            item.rgba.to_vec().into(),
             item.gamut,
             item.quality,
         )
@@ -139,7 +139,7 @@ fn batch_encode_honors_quality() {
         .map(|quality| ImageInput {
             w: 8,
             h: 8,
-            rgba: rgba.clone(),
+            rgba: rgba.clone().into(),
             gamut: Gamut::Srgb,
             quality,
         })
@@ -162,9 +162,10 @@ fn batch_encode_honors_quality() {
 #[test]
 fn from_bytes_rejects_a_malformed_header() {
     let rgba = vec![128u8; 4 * 4 * 4];
-    let valid = ChromaHash::encode(4, 4, rgba, Gamut::Srgb)
+    let valid = ChromaHash::encode(4, 4, rgba.into(), Gamut::Srgb)
         .expect("encode")
-        .as_bytes();
+        .as_bytes()
+        .0;
 
     for (what, mutate) in [
         ("reserved bit set", 0usize),
@@ -179,7 +180,7 @@ fn from_bytes_rejects_a_malformed_header() {
         };
         assert!(
             matches!(
-                ChromaHash::from_bytes(bytes),
+                ChromaHash::from_bytes(bytes.into()),
                 Err(ChromaHashError::InvalidData { .. })
             ),
             "{what}"
@@ -196,7 +197,7 @@ fn decoded_dimensions_follow_the_tier_raster() {
         .collect();
     let edges = [32i32, 32, 64, 128, 256];
     for tier in COMPACT_TIER..=MAX_TIER {
-        let hash = ChromaHash::encode_with_quality(4, 4, rgba.clone(), Gamut::Srgb, tier)
+        let hash = ChromaHash::encode_with_quality(4, 4, rgba.clone().into(), Gamut::Srgb, tier)
             .expect("a valid tier must encode");
         let result = hash.decode();
         assert_eq!(result.width, edges[tier as usize], "tier {tier} width");
@@ -215,19 +216,19 @@ fn encode_rejects_invalid_input_without_panicking() {
     let rgba = vec![128u8; 4 * 4 * 4];
 
     assert!(matches!(
-        ChromaHash::encode(0, 4, rgba.clone(), Gamut::Srgb),
+        ChromaHash::encode(0, 4, rgba.clone().into(), Gamut::Srgb),
         Err(ChromaHashError::InvalidDimensions { .. })
     ));
     assert!(matches!(
-        ChromaHash::encode(4, 0, rgba.clone(), Gamut::Srgb),
+        ChromaHash::encode(4, 0, rgba.clone().into(), Gamut::Srgb),
         Err(ChromaHashError::InvalidDimensions { .. })
     ));
     assert!(matches!(
-        ChromaHash::encode(4, 4, vec![0u8; 3], Gamut::Srgb),
+        ChromaHash::encode(4, 4, vec![0u8; 3].into(), Gamut::Srgb),
         Err(ChromaHashError::InvalidLength { .. })
     ));
     assert!(matches!(
-        ChromaHash::encode_with_quality(4, 4, rgba.clone(), Gamut::Srgb, MAX_TIER + 1),
+        ChromaHash::encode_with_quality(4, 4, rgba.clone().into(), Gamut::Srgb, MAX_TIER + 1),
         Err(ChromaHashError::InvalidTier { .. })
     ));
 
@@ -235,7 +236,7 @@ fn encode_rejects_invalid_input_without_panicking() {
     let good = ImageInput {
         w: 4,
         h: 4,
-        rgba: rgba.clone(),
+        rgba: rgba.clone().into(),
         gamut: Gamut::Srgb,
         quality: DEFAULT_TIER,
     };
@@ -269,7 +270,7 @@ fn integration_decode_vectors() {
 
     for case in cases {
         let name = case["name"].as_str().unwrap_or("<unnamed>");
-        let hash = ChromaHash::from_bytes(bytes(&case["input"]["hash"]))
+        let hash = ChromaHash::from_bytes(bytes(&case["input"]["hash"]).into())
             .expect("spec vector hash should be exactly 32 bytes");
         let result = hash.decode();
 
@@ -301,26 +302,26 @@ fn from_bytes_rejects_wrong_length() {
     let mut default_tier = vec![0u8; 32];
     default_tier[0] = 9;
     assert!(
-        ChromaHash::from_bytes(default_tier.clone()).is_ok(),
+        ChromaHash::from_bytes(default_tier.clone().into()).is_ok(),
         "from_bytes should accept a 32-byte default-tier buffer"
     );
     let mut compact = vec![0u8; 21];
     compact[0] = 1;
     assert!(
-        ChromaHash::from_bytes(compact).is_ok(),
+        ChromaHash::from_bytes(compact.into()).is_ok(),
         "from_bytes should accept a 21-byte compact-tier buffer"
     );
 
     let mut short = default_tier.clone();
     short.truncate(16);
     assert!(
-        ChromaHash::from_bytes(short).is_err(),
+        ChromaHash::from_bytes(short.into()).is_err(),
         "from_bytes should reject a 16-byte buffer"
     );
     let mut long = default_tier.clone();
     long.push(0);
     assert!(
-        ChromaHash::from_bytes(long).is_err(),
+        ChromaHash::from_bytes(long.into()).is_err(),
         "from_bytes should reject a 33-byte buffer"
     );
     // A compact descriptor on a 32-byte buffer is the renumbering's own hazard:
@@ -328,7 +329,7 @@ fn from_bytes_rejects_wrong_length() {
     let mut compact_on_32 = vec![0u8; 32];
     compact_on_32[0] = 1;
     assert!(
-        ChromaHash::from_bytes(compact_on_32).is_err(),
+        ChromaHash::from_bytes(compact_on_32.into()).is_err(),
         "a compact-tier descriptor on 32 bytes must be rejected"
     );
 }
@@ -350,7 +351,7 @@ fn integration_decode_capped_vectors() {
         let input = &case["input"];
         let max_w = input["max_width"].as_u64().expect("max_width") as u32;
         let max_h = input["max_height"].as_u64().expect("max_height") as u32;
-        let hash = ChromaHash::from_bytes(bytes(&input["hash"]))
+        let hash = ChromaHash::from_bytes(bytes(&input["hash"]).into())
             .unwrap_or_else(|e| panic!("{name}: from_bytes rejected a spec-vector hash: {e}"));
         let result = hash.decode_capped(max_w, max_h);
 

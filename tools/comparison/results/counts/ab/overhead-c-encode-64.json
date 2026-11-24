@@ -1,0 +1,269 @@
+{
+  "schema": 1,
+  "tool": "benchmark-counts",
+  "cell": {
+    "impl": "Rust",
+    "op": "encode",
+    "width": 64,
+    "height": 64,
+    "tier": 1,
+    "content": "gradient",
+    "fixtureSha256": "a5af0fcfebbd5175074412b0207744050965b83c30080814a0815c0feab9e8a9",
+    "input": null
+  },
+  "arms": {
+    "a": {
+      "bin": "bindings/c/target/release/examples/overhead_c",
+      "binSha256": "60365a2ec8eda3911f2de1c183400cb47b66ff011cd3ddd303dab72d042acce1",
+      "tune": ""
+    },
+    "b": {
+      "bin": "bindings/c/target/release/examples/overhead_core",
+      "binSha256": "cc90b3e4f3386f6261542108ace3a4b6ba9a4564d1c34990c1574b70d3faa1d0",
+      "tune": ""
+    }
+  },
+  "settings": {
+    "events": [
+      "instructions:u",
+      "cycles:u"
+    ],
+    "iterations": 200,
+    "blocks": 10,
+    "ratio": "a / b, per operation"
+  },
+  "provenance": {
+    "rev": "8f78dff892aebb1882d0e4a25a94e04a29eb830c",
+    "dirty": false,
+    "dirtyPaths": [],
+    "node": "v24.20.0"
+  },
+  "host": {
+    "cpu": {
+      "vendor": "AuthenticAMD",
+      "family": "25",
+      "model": "97",
+      "stepping": "2",
+      "modelName": "AMD Ryzen 7 7800X3D 8-Core Processor"
+    },
+    "kernel": "7.3.4-300.fc45.x86_64",
+    "threads": 16,
+    "counter": {
+      "backend": "perf-stat",
+      "version": "perf version 7.3.4-300.fc45.x86_64",
+      "paranoid": 2
+    },
+    "loadavgStart": [
+      13.26,
+      11.5,
+      15.61
+    ],
+    "loadavgEnd": [
+      13.26,
+      11.5,
+      15.61
+    ]
+  },
+  "outputs": {
+    "a": "0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d",
+    "b": "0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d",
+    "equal": true
+  },
+  "blocks": [
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 3736095.96,
+        "cycles:u": 1226757.22
+      },
+      "b": {
+        "instructions:u": 3735894.39,
+        "cycles:u": 1199680.265
+      },
+      "ratio": {
+        "instructions:u": 1.0000539549513336,
+        "cycles:u": 1.0225701428871967
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 3736097.045,
+        "cycles:u": 1232105.495
+      },
+      "b": {
+        "instructions:u": 3735889.79,
+        "cycles:u": 1214467.525
+      },
+      "ratio": {
+        "instructions:u": 1.0000554767436005,
+        "cycles:u": 1.014523212549467
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 3736096.755,
+        "cycles:u": 1212767.07
+      },
+      "b": {
+        "instructions:u": 3735892.505,
+        "cycles:u": 1188698.955
+      },
+      "ratio": {
+        "instructions:u": 1.0000546723439516,
+        "cycles:u": 1.0202474435589959
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 3736097.455,
+        "cycles:u": 1229085.135
+      },
+      "b": {
+        "instructions:u": 3735888.96,
+        "cycles:u": 1235065.965
+      },
+      "ratio": {
+        "instructions:u": 1.0000558086715725,
+        "cycles:u": 0.995157481325299
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 3736097.945,
+        "cycles:u": 1332850.79
+      },
+      "b": {
+        "instructions:u": 3735893.745,
+        "cycles:u": 1220026.9
+      },
+      "ratio": {
+        "instructions:u": 1.0000546589421269,
+        "cycles:u": 1.0924765593283232
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 3736099.68,
+        "cycles:u": 1229037.97
+      },
+      "b": {
+        "instructions:u": 3735891.08,
+        "cycles:u": 1283764.955
+      },
+      "ratio": {
+        "instructions:u": 1.0000558367456474,
+        "cycles:u": 0.9573699338131566
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 3736096.775,
+        "cycles:u": 1245768.68
+      },
+      "b": {
+        "instructions:u": 3735889.33,
+        "cycles:u": 1277423.005
+      },
+      "ratio": {
+        "instructions:u": 1.000055527608469,
+        "cycles:u": 0.9752201699232745
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 3736097.025,
+        "cycles:u": 1203275.73
+      },
+      "b": {
+        "instructions:u": 3735891.375,
+        "cycles:u": 1239625.845
+      },
+      "ratio": {
+        "instructions:u": 1.0000550471037184,
+        "cycles:u": 0.9706765431306412
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 3736094.94,
+        "cycles:u": 1245063.355
+      },
+      "b": {
+        "instructions:u": 3735891.1,
+        "cycles:u": 1188562.295
+      },
+      "ratio": {
+        "instructions:u": 1.0000545626182733,
+        "cycles:u": 1.047537314819498
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 3736102.25,
+        "cycles:u": 1195672.17
+      },
+      "b": {
+        "instructions:u": 3735892.745,
+        "cycles:u": 1221557.795
+      },
+      "ratio": {
+        "instructions:u": 1.000056078965404,
+        "cycles:u": 0.9788093325539297
+      }
+    }
+  ],
+  "summary": {
+    "a": {
+      "median": {
+        "instructions:u": 3736097.035,
+        "cycles:u": 1229061.5525
+      },
+      "min": {
+        "instructions:u": 3736094.94,
+        "cycles:u": 1195672.17
+      },
+      "max": {
+        "instructions:u": 3736102.25,
+        "cycles:u": 1332850.79
+      }
+    },
+    "b": {
+      "median": {
+        "instructions:u": 3735891.2375,
+        "cycles:u": 1220792.3475
+      },
+      "min": {
+        "instructions:u": 3735888.96,
+        "cycles:u": 1188562.295
+      },
+      "max": {
+        "instructions:u": 3735894.39,
+        "cycles:u": 1283764.955
+      }
+    },
+    "ratio": {
+      "geomean": {
+        "instructions:u": 1.0000551624691962,
+        "cycles:u": 1.0067205059795916
+      },
+      "min": {
+        "instructions:u": 1.0000539549513336,
+        "cycles:u": 0.9573699338131566
+      },
+      "max": {
+        "instructions:u": 1.000056078965404,
+        "cycles:u": 1.0924765593283232
+      }
+    }
+  },
+  "against": null
+}
