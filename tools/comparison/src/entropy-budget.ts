@@ -36,7 +36,13 @@
  *
  * Usage:
  *   node dist/entropy-budget.js [--split tune|tune2|all] [--max-images N]
- *                               [--skip-score] [--out <name>]
+ *                               [--skip-score] [--out <name>] [--record DIR]
+ *
+ * The full output goes to the gitignored `output/sweeps/`. `--record DIR`
+ * also writes `DIR/entropy-budget-<split>.json`: the picks and the shipped
+ * layout's coded sizes, which every §7.13 figure is computed from, with the
+ * run's provenance. That is the record `EXPERIMENTS.md` §13.16 checks §7.13
+ * against (`results/reproductions/entropy-budget-tune.json`).
  *
  * `all` is every split that is not sealed. `holdout` is refused because the
  * photographic holdout is spent and is `tune2` now (#76); `holdout2` is
@@ -64,8 +70,9 @@ import { gamutToSrgbReference } from "./gamut.ts";
 import { ensureHoldoutImages } from "./holdout-images.ts";
 import { loadImage } from "./image-loader.ts";
 import { computeAllMetrics, setScoringConfig } from "./metrics.ts";
-import { ensureIqaAvailable } from "./metrics/iqa.ts";
+import { ensureIqaAvailable, iqaVersionBanner } from "./metrics/iqa.ts";
 import { ensureNaturalImages } from "./natural-images.ts";
+import { captureProvenance, fileSha256, repoRelative } from "./results.ts";
 import type { ImageInput } from "./types.ts";
 
 /** Fixed bit prefix before the AC payload (descriptor+aspect+DC+scales). */
@@ -134,6 +141,7 @@ const { values } = parseArgs({
     "max-images": { type: "string" },
     "skip-score": { type: "boolean", default: false },
     out: { type: "string" },
+    record: { type: "string" },
   },
 });
 let splitArg: CorpusSplit | "all" = "tune";
@@ -147,6 +155,12 @@ const maxImages = values["max-images"]
   ? Number.parseInt(values["max-images"], 10)
   : null;
 const skipScore = values["skip-score"] === true;
+if (values.record !== undefined && (maxImages !== null || skipScore)) {
+  console.error(
+    "--record keeps a whole, scored run: it takes neither --max-images nor --skip-score",
+  );
+  process.exit(1);
+}
 
 /** mu-law compress, matching `rust/src/mulaw.rs`. */
 function muCompress(v: number, mu: number): number {
@@ -948,6 +962,45 @@ async function main(): Promise<void> {
     )}\n`,
   );
   console.log(`\n→ ${outPath}`);
+
+  // The record a reproduction is checked against (EXPERIMENTS.md §13.16):
+  // the picks and the shipped layout's rows, which every §7.13 figure is
+  // computed from, with the run's provenance. The full grid above is ~1 MB of
+  // intermediate costs no figure reads, so it stays scratch.
+  if (values.record !== undefined) {
+    const recordDir = path.resolve(values.record);
+    await fs.mkdir(recordDir, { recursive: true });
+    const recordPath = path.join(recordDir, `entropy-budget-${splitArg}.json`);
+    const self = path.join(import.meta.dirname, "entropy-budget.js");
+    await fs.writeFile(
+      recordPath,
+      `${JSON.stringify(
+        {
+          split: splitArg,
+          images: inputs.length,
+          prefixBits: PREFIX_BITS,
+          budgets: BUDGETS,
+          picks,
+          rows: rows.filter((r) => r === shippedRow),
+          provenance: {
+            ...captureProvenance({
+              config: repoRelative(self),
+              configSha256: fileSha256(self) ?? "missing",
+              iqaCli: iqaVersionBanner(),
+              binaries: [RUST_CLI],
+            }),
+            corpus: inputs.map((i) => ({
+              name: path.basename(i.filePath).replace(/\.[^.]+$/, ""),
+              sha256: fileSha256(i.filePath) ?? "missing",
+            })),
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    console.log(`→ ${recordPath}`);
+  }
 }
 
 main().catch((e) => {
