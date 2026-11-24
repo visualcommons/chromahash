@@ -41,6 +41,15 @@
  * (`--impl`), so a host binding can be counted against a Rust driver on the
  * same cell: each arm then records its implementation, and a decode cell
  * compares the arms' RGBA bytes.
+ *
+ * `--glibc-tunables VALUE` runs every process of both arms with
+ * `GLIBC_TUNABLES=VALUE` and records it as `settings.glibcTunables`, so a
+ * record states the allocator configuration it ran under; without it the run
+ * refuses an inherited `GLIBC_TUNABLES`, which the record would not state.
+ * Pinning `glibc.malloc.mmap_threshold` turns off glibc's dynamic threshold,
+ * which otherwise rises once the first large buffer is freed and so serves an
+ * operation's large buffers from the heap in one process and from fresh pages
+ * in another (`overhead-core.ts` `OVERHEAD_GLIBC_TUNABLES`).
  */
 
 import { spawnSync } from "node:child_process";
@@ -109,6 +118,7 @@ const { values } = parseArgs({
     blocks: { type: "string", default: String(DEFAULT_BLOCKS) },
     out: { type: "string" },
     against: { type: "string" },
+    "glibc-tunables": { type: "string" },
   },
 });
 
@@ -137,6 +147,13 @@ try {
   fail((e as Error).message);
 }
 if (!values.out) fail("--out is required");
+const glibcTunables = values["glibc-tunables"];
+if (glibcTunables === "") fail("--glibc-tunables must name a tunable");
+if (glibcTunables === undefined && process.env.GLIBC_TUNABLES !== undefined) {
+  fail(
+    `GLIBC_TUNABLES is set (${process.env.GLIBC_TUNABLES}) but not recorded; pass it as --glibc-tunables instead`,
+  );
+}
 const out = path.resolve(values.out);
 
 function admittedTarget(name: string): Target {
@@ -289,6 +306,7 @@ function env(a: RunArm): NodeJS.ProcessEnv {
   return {
     ...process.env,
     ...a.env,
+    ...(glibcTunables === undefined ? {} : { GLIBC_TUNABLES: glibcTunables }),
     CHROMAHASH_TUNE: a.tune,
     CHROMAHASH_TIER: String(tier),
     CHROMAHASH_BENCH_REPS: "1",
@@ -427,6 +445,7 @@ const record: CountsRecord = {
     iterations,
     blocks: schedule.length,
     ratio: "a / b, per operation",
+    ...(glibcTunables === undefined ? {} : { glibcTunables }),
   },
   provenance: {
     rev: provenance.rev,

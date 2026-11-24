@@ -9088,8 +9088,21 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
   const refused = (r: CountsRecord, text: string) =>
     (recordProblem(r, cell, a, b) ?? "").includes(text);
   check(
-    "overhead recordProblem: accepts a committed record and refuses a dirty tree, swapped arms, a tune, unequal outputs, another cell and another batch size",
+    "overhead recordProblem: accepts a committed record and refuses a dirty tree, swapped arms, a tune, no allocator configuration, another one, unequal outputs, another cell and another batch size",
     recordProblem(good, cell, a, b) === null &&
+      refused(
+        variant((r) => {
+          const { glibcTunables: _, ...defaults } = r.settings;
+          r.settings = defaults;
+        }),
+        "glibc's default allocator configuration",
+      ) &&
+      refused(
+        variant((r) => {
+          r.settings.glibcTunables = "glibc.malloc.mmap_threshold=131072";
+        }),
+        "GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072, not",
+      ) &&
       refused(
         variant((r) => {
           r.provenance.dirty = true;
@@ -9275,6 +9288,44 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
       ) &&
       flat.includes(`${redName}: a reduction must count fewer instructions`),
     flat.slice(0, 160),
+  );
+  // The by-size paragraph's figures come from the records (PR #186 review
+  // D1): moving the Python 512×512 host side moves the percentage it prints,
+  // and a C# 512×512 record whose A − B no longer spreads more between blocks
+  // than its 64×64 one is refused rather than explained.
+  let grown = "";
+  try {
+    grown = renderOverheadTable(
+      withRecord(pyName, (r) => {
+        r.summary.a.median["instructions:u"] += 29_553;
+        r.summary.a.max["instructions:u"] += 29_553;
+      }),
+    );
+  } catch (e) {
+    grown = (e as Error).message;
+  }
+  const csHost = OVERHEAD_HOSTS.find((h) => h.impl === "C#");
+  if (csHost === undefined) throw new Error("OVERHEAD_HOSTS lost C#");
+  const csName = hostRecord(csHost, enc512);
+  let still = "";
+  try {
+    still = renderOverheadTable(
+      withRecord(csName, (r) => {
+        for (const b of r.blocks) {
+          b.a["instructions:u"] = b.b["instructions:u"] + 2_000;
+        }
+      }),
+    );
+  } catch (e) {
+    still = (e as Error).message;
+  }
+  check(
+    "renderOverheadTable: the by-size paragraph prints the Python percentage its records give (10.7% over once its 512×512 host side grows by 29,553), and refuses a C# 512×512 record whose A − B per block does not spread more than its 64×64 one's",
+    grown.includes("its 512×512 host side is 10.7% over its 64×64 one") &&
+      !rendered.includes("10.7% over") &&
+      still.startsWith(`${csName}: its A − B spreads 0 instructions`) &&
+      still.includes("no longer holds"),
+    `${grown.length} ${still.slice(0, 160)}`,
   );
 }
 
