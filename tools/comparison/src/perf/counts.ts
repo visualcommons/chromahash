@@ -34,7 +34,8 @@
  * configuration (`counts-core.ts` `COUNTING_CONFIGS`: Go, Node for the
  * TypeScript wasm package, .NET, the JVM, CPython) is admitted and run under
  * it, and its arm records the configuration; `--a-bin` / `--b-bin` then name
- * the program its runtime runs.
+ * the program its runtime runs (for CPython, the package directory, run from
+ * its parent).
  *
  * `--b-impl NAME` runs arm B on another implementation than arm A's
  * (`--impl`), so a host binding can be counted against a Rust driver on the
@@ -190,7 +191,7 @@ function arm(t: Target, bin: string | undefined, tune: string): RunArm {
     };
   }
   if (bin !== undefined && cfg.program === null) {
-    fail(`${t.name} runs a module by name; no other build of it can be named`);
+    fail(`${t.name} names no program; no other build of it can be named`);
   }
   // The program the arm runs, replacing the target's default one wherever the
   // target's command line names it.
@@ -229,7 +230,10 @@ function arm(t: Target, bin: string | undefined, tune: string): RunArm {
     command,
     args,
     env: { ...t.env, ...cfg.env },
-    cwd: t.cwd,
+    cwd:
+      cfg.cwd === undefined || program === null
+        ? t.cwd
+        : path.resolve(REPO_ROOT, cfg.cwd(repoRelative(program))),
   };
 }
 const arms = {

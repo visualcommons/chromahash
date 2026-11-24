@@ -123,6 +123,16 @@ export const OVERHEAD_REDUCTIONS: readonly OverheadReduction[] = [
     beforeBin: "bindings/wasm/target/before/typescript/dist/encode-stdin.js",
     cells: ["decode-64"],
   },
+  {
+    id: "uniffi-py-bytes",
+    layer: "uniffi",
+    what: "The Python bindings write a byte array into the RustBuffer in one `ctypes.memmove` instead of one Python loop iteration per byte, by a step `mise run cbuild:python` applies to uniffi-bindgen's output (`mise-tasks/cbuild/python`), so lowering `ImageInput.rgba` no longer runs w × h × 4 iterations per encode. Counted through the Python package's CLI under CPython's counting configuration (Host runtimes), on the encode cells, the ones whose input it writes; each arm is a package directory, run from its parent",
+    impl: "Python",
+    afterBin: "python/chromahash",
+    beforeRev: "32ffc24",
+    beforeBin: "bindings/uniffi/target/before/python/chromahash",
+    cells: ["encode-64", "encode-512"],
+  },
 ];
 
 /** A host runtime counted through its own binding, and the layer it binds. */

@@ -81,4 +81,13 @@ UniFFI byte arrays lifted and lowered in one slice copy instead of one push per 
 | --- | ---: | ---: | ---: | ---: | --- |
 | decode (64×64's hash) | 6,128,083 | 6,129,710 | −1,627 per decode | 0.9997 | `reduce-wasm-rgba-copy-decode-64.json` |
 
-Counted at 84e33389d9258cbebac4f536fe8a1accd9613278, 8f78dff892aebb1882d0e4a25a94e04a29eb830c, b2f222f6f7748e404fc21d1cdf9b99df8dcd18cf on AMD Ryzen 7 7800X3D 8-Core Processor; each record holds its binaries' SHA-256, the host, the counter and every block.
+### `uniffi-py-bytes` (uniffi)
+
+The Python bindings write a byte array into the RustBuffer in one `ctypes.memmove` instead of one Python loop iteration per byte, by a step `mise run cbuild:python` applies to uniffi-bindgen's output (`mise-tasks/cbuild/python`), so lowering `ImageInput.rgba` no longer runs w × h × 4 iterations per encode. Counted through the Python package's CLI under CPython's counting configuration (Host runtimes), on the encode cells, the ones whose input it writes; each arm is a package directory, run from its parent. B is `bindings/uniffi/target/before/python/chromahash`, built at `32ffc24`.
+
+| Cell | After (A) | Before (B) | Change | A/B | Record |
+| --- | ---: | ---: | ---: | ---: | --- |
+| encode 64×64 | 3,729,075 | 46,326,177 | −42,597,102 per encode | 0.0805 | `reduce-uniffi-py-bytes-encode-64.json` |
+| encode 512×512 | 107,109,034 | 2,833,081,139 | −2,725,972,105 per encode | 0.0379 | `reduce-uniffi-py-bytes-encode-512.json` |
+
+Counted at 84e33389d9258cbebac4f536fe8a1accd9613278, 8f78dff892aebb1882d0e4a25a94e04a29eb830c, b2f222f6f7748e404fc21d1cdf9b99df8dcd18cf, baa863e782fbce9d3437875241b86717131a52c4 on AMD Ryzen 7 7800X3D 8-Core Processor; each record holds its binaries' SHA-256, the host, the counter and every block.

@@ -15,5 +15,10 @@ gen="$(mktemp -d)"
 ( cd bindings/uniffi && cargo run --release --quiet --bin uniffi-bindgen -- \
     generate --library "target/release/$lib" --language python --out-dir "$gen" )
 
+# Replace uniffi-bindgen's per-byte RustBuffer writer with one copy; fails the
+# build if the generated loop is not found exactly once. The CI (Python) and
+# Release (PyPI) workflows run the same script.
+python3 python/scripts/patch_uniffi_rustbuffer.py "$gen/chromahash_uniffi.py"
+
 cp "$gen/chromahash_uniffi.py" python/chromahash/_uniffi.py
 cp "bindings/uniffi/target/release/$lib" python/chromahash/
