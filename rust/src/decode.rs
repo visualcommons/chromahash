@@ -66,6 +66,13 @@ fn linear_to_gamma8(x: f64, lut: &[u8; 4096]) -> u8 {
 fn read_header_fields(hash: &[u8], t: &Tunables) -> (u8, bool, u8) {
     let b0 = hash[0];
     let tier = (b0 >> VERSION_BITS) & ((1 << TIER_BITS) - 1);
+    // The precondition above, checked where it is cheap: a reserved code
+    // (5..=7) renders at up to 4^6 times the coefficients, so a corrupt
+    // header should stop here rather than run for minutes.
+    debug_assert!(
+        crate::constants::is_valid_tier(tier),
+        "read_header_fields: reserved tier code {tier} in an unvalidated hash"
+    );
     let has_alpha = (b0 >> ALPHA_FLAG_BIT) & 1 == 1;
     // The aspect field may be narrower than a byte; reconstruct the byte the
     // encoder selected and rendered on.
@@ -317,12 +324,12 @@ fn render_at_size(hash: &[u8], w: usize, h: usize, t: &Tunables, output: Gamut) 
     let mut b_raw = vec![0u32; c_count];
     let mut l_bits_at = vec![0u32; l_count];
     {
+        // The luma tier counts sum to l_count, so i stays in bounds without
+        // a guard (one that was always true, and so never tested anything).
         let mut i = 0usize;
         for &(count, bits) in &shape.l_tiers {
             for _ in 0..count {
-                if i < l_count {
-                    l_bits_at[i] = bits;
-                }
+                l_bits_at[i] = bits;
                 i += 1;
             }
         }
