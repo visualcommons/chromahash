@@ -303,6 +303,31 @@ func TestFromBytesRejectsWrongLength(t *testing.T) {
 	}
 }
 
+// Gamut is an int, so Gamut(5) compiles. Every entry point that takes a gamut
+// must panic on one no constant names, rather than hand it to the C ABI — and
+// 1<<32, which a bare int32 conversion would truncate to GamutSRGB, included.
+func TestUnknownGamutPanics(t *testing.T) {
+	rgba := solidImage(4, 4, 128, 64, 32, 255)
+	ch := Encode(4, 4, rgba, GamutSRGB)
+	for _, g := range []Gamut{5, -1, 1 << 32} {
+		for name, call := range map[string]func(){
+			"Encode":            func() { Encode(4, 4, rgba, g) },
+			"EncodeWithQuality": func() { EncodeWithQuality(4, 4, rgba, g, DefaultTier) },
+			"DecodeTo":          func() { ch.DecodeTo(g) },
+			"DecodeCappedTo":    func() { ch.DecodeCappedTo(8, 8, g) },
+		} {
+			t.Run(fmt.Sprintf("%s/%d", name, g), func(t *testing.T) {
+				defer func() {
+					if r := recover(); r != "chromahash: unknown gamut" {
+						t.Errorf("recovered %v, want the unknown-gamut panic", r)
+					}
+				}()
+				call()
+			})
+		}
+	}
+}
+
 func TestFromBytesRoundtrip(t *testing.T) {
 	ch := Encode(4, 4, solidImage(4, 4, 128, 64, 32, 255), GamutSRGB)
 	got, err := FromBytes(ch.Hash)
