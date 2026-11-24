@@ -8,7 +8,7 @@
 //! | bytes | field |
 //! |---|---|
 //! | 0 | flags, below |
-//! | 1 | output gamut (`% 5`, discriminant order) |
+//! | 1 | output gamut, as `i8` widened to the ABI's `int32_t`: 0–4 name a gamut, every other value must be refused |
 //! | 2..6 | `max_width`, u32 LE |
 //! | 6..10 | `max_height`, u32 LE |
 //! | 10..12 | `chromahash_as_bytes` output capacity, u16 LE |
@@ -18,10 +18,6 @@
 //! bit 3 NULL `out_image`; bit 4 NULL `out_color`; bits 5–6 pick the decode
 //! entry point (`decode`, `decode_to`, `decode_capped`, `decode_capped_to`);
 //! at tier codes 3 and 4 the capped twin runs, with each cap at most 32 px.
-//!
-//! Only the five defined gamut discriminants are passed: the parameter is a
-//! `#[repr(i32)]` enum, so any other value is undefined behaviour on the Rust
-//! side before a line of the binding runs, not a case a fuzzer can check.
 #![no_main]
 
 use std::ptr;
@@ -31,7 +27,8 @@ use chromahash_c::{
     chromahash_as_bytes, chromahash_average_color, chromahash_byte_len, chromahash_decode,
     chromahash_decode_capped, chromahash_decode_capped_to, chromahash_decode_to, chromahash_free,
     chromahash_from_bytes, chromahash_image_free, ChromaHash, ChromaHashColor, ChromaHashGamut,
-    ChromaHashImage, ChromaHashStatus,
+    ChromaHashImage, ChromaHashStatus, CHROMA_HASH_GAMUT_ADOBE_RGB, CHROMA_HASH_GAMUT_BT2020,
+    CHROMA_HASH_GAMUT_DISPLAY_P3, CHROMA_HASH_GAMUT_PRO_PHOTO_RGB, CHROMA_HASH_GAMUT_SRGB,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -40,13 +37,18 @@ const HEADER: usize = 12;
 const HEAVY_TIER: u8 = 3;
 const HEAVY_CAP: u32 = 32;
 
-const GAMUTS: [(ChromaHashGamut, Gamut); 5] = [
-    (ChromaHashGamut::Srgb, Gamut::Srgb),
-    (ChromaHashGamut::DisplayP3, Gamut::DisplayP3),
-    (ChromaHashGamut::AdobeRgb, Gamut::AdobeRgb),
-    (ChromaHashGamut::Bt2020, Gamut::Bt2020),
-    (ChromaHashGamut::ProPhotoRgb, Gamut::ProPhotoRgb),
-];
+/// The core gamut a `CHROMA_HASH_GAMUT_*` value names, or `None` for any
+/// other `int32_t`, which the ABI must refuse with `InvalidData`.
+fn core_gamut(g: ChromaHashGamut) -> Option<Gamut> {
+    match g {
+        CHROMA_HASH_GAMUT_SRGB => Some(Gamut::Srgb),
+        CHROMA_HASH_GAMUT_DISPLAY_P3 => Some(Gamut::DisplayP3),
+        CHROMA_HASH_GAMUT_ADOBE_RGB => Some(Gamut::AdobeRgb),
+        CHROMA_HASH_GAMUT_BT2020 => Some(Gamut::Bt2020),
+        CHROMA_HASH_GAMUT_PRO_PHOTO_RGB => Some(Gamut::ProPhotoRgb),
+        _ => None,
+    }
+}
 
 fn empty_image() -> ChromaHashImage {
     ChromaHashImage {
@@ -93,7 +95,8 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
     let flags = data[0];
-    let (c_gamut, gamut) = GAMUTS[data[1] as usize % GAMUTS.len()];
+    let c_gamut = ChromaHashGamut::from(data[1] as i8);
+    let gamut = core_gamut(c_gamut);
     let max_w = u32::from_le_bytes([data[2], data[3], data[4], data[5]]);
     let max_h = u32::from_le_bytes([data[6], data[7], data[8], data[9]]);
     let out_cap = usize::from(u16::from_le_bytes([data[10], data[11]]));
@@ -215,16 +218,28 @@ fuzz_target!(|data: &[u8]| {
             2 => chromahash_decode_capped(handle, max_w, max_h, out),
             _ => chromahash_decode_capped_to(handle, max_w, max_h, c_gamut, out),
         };
+        // Entries 1 and 3 take the fuzzed gamut; 0 and 2 pass sRGB.
+        let takes_gamut = entry & 1 == 1;
         if flags & 8 != 0 {
+            // The NULL check comes before the gamut check.
             assert_eq!(decode(ptr::null_mut()), ChromaHashStatus::NullPointer);
+        } else if takes_gamut && gamut.is_none() {
+            let mut image = empty_image();
+            assert_eq!(
+                decode(&mut image),
+                ChromaHashStatus::InvalidData,
+                "gamut {c_gamut} was not refused"
+            );
+            assert!(image.rgba.is_null(), "a refused decode wrote an image");
         } else {
             let mut image = empty_image();
             assert_eq!(decode(&mut image), ChromaHashStatus::Ok);
+            let in_gamut = gamut.unwrap_or(Gamut::Srgb);
             let (w, h, rgba) = match entry {
                 0 => core.decode(),
-                1 => core.decode_to(gamut),
+                1 => core.decode_to(in_gamut),
                 2 => core.decode_capped(max_w, max_h),
-                _ => core.decode_capped_to(max_w, max_h, gamut),
+                _ => core.decode_capped_to(max_w, max_h, in_gamut),
             };
             assert_eq!((image.width, image.height), (w, h));
             assert_eq!(image.rgba_len, rgba.len());

@@ -136,7 +136,7 @@ pub fn check_decode(hash: &ChromaHash) -> (u32, u32) {
     (w, h)
 }
 
-/// The five gamuts, indexed in the C ABI's discriminant order.
+/// The five gamuts, indexed by the C ABI's `CHROMA_HASH_GAMUT_*` values.
 pub const GAMUTS: [Gamut; 5] = [
     Gamut::Srgb,
     Gamut::DisplayP3,

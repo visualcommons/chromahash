@@ -1,15 +1,16 @@
 //! The C ABI's encode surface: `chromahash_encode`,
 //! `chromahash_encode_with_quality` and `chromahash_batch_encode`, with zero
-//! dimensions, mismatched RGBA lengths, out-of-range tiers and NULL pointers
-//! wherever the header documents a NULL check. Each status is checked against
-//! the validation order the binding documents, and each hash against the core.
+//! dimensions, mismatched RGBA lengths, out-of-range tiers and gamuts, and NULL
+//! pointers wherever the header documents a NULL check. Each status is checked
+//! against the validation order the binding documents, and each hash against
+//! the core.
 //!
 //! Input layout (`rust/fuzz/seeds.py` writes the seeds in it):
 //!
 //! | bytes | field |
 //! |---|---|
 //! | 0 | flags, below |
-//! | 1 | source gamut (`% 5`, discriminant order) |
+//! | 1 | source gamut, as `i8` widened to the ABI's `int32_t`: 0–4 name a gamut, every other value must be refused |
 //! | 2 | quality tier, raw: codes above `CHROMAHASH_MAX_TIER` must be refused |
 //! | 3..5 | width, u16 LE, `% 513` (0 is a case) |
 //! | 5..7 | height, likewise, then lowered so `w · h ≤ 32768` |
@@ -29,7 +30,8 @@ use chromahash_c::{
     chromahash_as_bytes, chromahash_batch_encode, chromahash_batch_encoder_free,
     chromahash_batch_encoder_with_threads, chromahash_byte_len, chromahash_encode,
     chromahash_encode_with_quality, chromahash_free, ChromaHash, ChromaHashGamut,
-    ChromaHashImageInput, ChromaHashStatus,
+    ChromaHashImageInput, ChromaHashStatus, CHROMA_HASH_GAMUT_ADOBE_RGB, CHROMA_HASH_GAMUT_BT2020,
+    CHROMA_HASH_GAMUT_DISPLAY_P3, CHROMA_HASH_GAMUT_PRO_PHOTO_RGB, CHROMA_HASH_GAMUT_SRGB,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -37,13 +39,18 @@ const HEADER: usize = 8;
 const MAX_SIDE: u32 = 512;
 const MAX_PIXELS: u32 = 32_768;
 
-const GAMUTS: [(ChromaHashGamut, Gamut); 5] = [
-    (ChromaHashGamut::Srgb, Gamut::Srgb),
-    (ChromaHashGamut::DisplayP3, Gamut::DisplayP3),
-    (ChromaHashGamut::AdobeRgb, Gamut::AdobeRgb),
-    (ChromaHashGamut::Bt2020, Gamut::Bt2020),
-    (ChromaHashGamut::ProPhotoRgb, Gamut::ProPhotoRgb),
-];
+/// The core gamut a `CHROMA_HASH_GAMUT_*` value names, or `None` for any
+/// other `int32_t`, which the ABI must refuse with `InvalidData`.
+fn core_gamut(g: ChromaHashGamut) -> Option<Gamut> {
+    match g {
+        CHROMA_HASH_GAMUT_SRGB => Some(Gamut::Srgb),
+        CHROMA_HASH_GAMUT_DISPLAY_P3 => Some(Gamut::DisplayP3),
+        CHROMA_HASH_GAMUT_ADOBE_RGB => Some(Gamut::AdobeRgb),
+        CHROMA_HASH_GAMUT_BT2020 => Some(Gamut::Bt2020),
+        CHROMA_HASH_GAMUT_PRO_PHOTO_RGB => Some(Gamut::ProPhotoRgb),
+        _ => None,
+    }
+}
 
 /// The bytes behind a handle, read back through the ABI.
 unsafe fn handle_bytes(h: *const ChromaHash) -> Vec<u8> {
@@ -61,7 +68,8 @@ fuzz_target!(|data: &[u8]| {
         return;
     }
     let flags = data[0];
-    let (c_gamut, gamut) = GAMUTS[data[1] as usize % GAMUTS.len()];
+    let c_gamut = ChromaHashGamut::from(data[1] as i8);
+    let gamut = core_gamut(c_gamut);
     let quality = data[2];
     let w = u32::from(u16::from_le_bytes([data[3], data[4]])) % (MAX_SIDE + 1);
     let mut h = u32::from(u16::from_le_bytes([data[5], data[6]])) % (MAX_SIDE + 1);
@@ -88,20 +96,25 @@ fuzz_target!(|data: &[u8]| {
     };
 
     // The single-image entry points check, in order: NULL pointers,
-    // dimensions, RGBA length, then (with_quality only) the tier.
+    // dimensions, RGBA length, (with_quality only) the tier, then the gamut.
     let expected = if null_rgba || flags & 2 != 0 {
         ChromaHashStatus::NullPointer
     } else if w == 0 || h == 0 {
         ChromaHashStatus::InvalidDimensions
     } else if rgba_len != exact {
         ChromaHashStatus::InvalidLength
-    } else if tier > MAX_TIER {
+    } else if tier > MAX_TIER || gamut.is_none() {
         ChromaHashStatus::InvalidData
     } else {
         ChromaHashStatus::Ok
     };
-    let valid = expected == ChromaHashStatus::Ok;
-    let core = valid.then(|| Core::encode_with_quality(w, h, &rgba, gamut, tier));
+    // The reference hash, whenever the image itself is valid.
+    let core = match gamut {
+        Some(g) if w > 0 && h > 0 && rgba_len == exact && tier <= MAX_TIER => {
+            Some(Core::encode_with_quality(w, h, &rgba, g, tier))
+        }
+        _ => None,
+    };
 
     let mut handle: *mut ChromaHash = ptr::null_mut();
     let out_hash = if flags & 2 != 0 {
@@ -116,8 +129,12 @@ fuzz_target!(|data: &[u8]| {
             chromahash_encode_with_quality(w, h, rgba_ptr, rgba_len, c_gamut, quality, out_hash)
         }
     };
-    assert_eq!(status, expected, "{w}x{h} len {rgba_len} tier {tier}");
-    if let Some(core) = &core {
+    assert_eq!(
+        status, expected,
+        "{w}x{h} len {rgba_len} tier {tier} gamut {c_gamut}"
+    );
+    if status == ChromaHashStatus::Ok {
+        let core = core.as_ref().expect("an accepted encode has a reference");
         unsafe {
             assert_eq!(handle_bytes(handle), core.as_bytes());
             chromahash_free(handle);
@@ -147,7 +164,7 @@ fuzz_target!(|data: &[u8]| {
             height: 1,
             rgba: pixel.as_ptr(),
             rgba_len: 4,
-            gamut: ChromaHashGamut::Srgb,
+            gamut: CHROMA_HASH_GAMUT_SRGB,
             quality: DEFAULT_TIER,
         },
     ];
@@ -156,7 +173,7 @@ fuzz_target!(|data: &[u8]| {
     let count = if flags & 64 != 0 { 0 } else { items.len() };
     let null_enc = flags & 128 != 0;
     // The batch path checks, in order: the encoder, an empty batch, the
-    // array pointers, then per item: dimensions, length, `rgba`, tier.
+    // array pointers, then per item: dimensions, length, `rgba`, tier, gamut.
     let expected = if null_enc {
         ChromaHashStatus::NullPointer
     } else if count == 0 {
@@ -169,7 +186,7 @@ fuzz_target!(|data: &[u8]| {
         ChromaHashStatus::InvalidLength
     } else if null_rgba {
         ChromaHashStatus::NullPointer
-    } else if tier > MAX_TIER {
+    } else if tier > MAX_TIER || gamut.is_none() {
         ChromaHashStatus::InvalidData
     } else {
         ChromaHashStatus::Ok
@@ -199,12 +216,12 @@ fuzz_target!(|data: &[u8]| {
         );
         assert_eq!(
             status, expected,
-            "batch: {w}x{h} len {rgba_len} tier {tier}"
+            "batch: {w}x{h} len {rgba_len} tier {tier} gamut {c_gamut}"
         );
         if status == ChromaHashStatus::Ok && count > 0 {
-            // Reuse the single-image reference: a tier-3 encode of a large
-            // image costs about a second under the sanitizer.
-            let first = core.unwrap_or_else(|| Core::encode_with_quality(w, h, &rgba, gamut, tier));
+            // The single-image reference: a tier-3 encode of a large image
+            // costs about a second under the sanitizer, so it is not redone.
+            let first = core.expect("an accepted batch item has a reference");
             let second = Core::encode_with_quality(1, 1, &pixel, Gamut::Srgb, DEFAULT_TIER);
             assert_eq!(handle_bytes(out[0]), first.as_bytes());
             assert_eq!(handle_bytes(out[1]), second.as_bytes());

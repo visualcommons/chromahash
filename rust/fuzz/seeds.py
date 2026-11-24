@@ -24,7 +24,7 @@ VECTORS = ROOT / "spec" / "test-vectors"
 CORE = ROOT / "rust" / "fuzz" / "seeds"
 C_ABI = ROOT / "bindings" / "c" / "fuzz" / "seeds"
 
-# Discriminant order of the C ABI's ChromaHashGamut, which the core targets
+# The C ABI's CHROMA_HASH_GAMUT_* values, 0-4, whose order the core targets
 # share (`chromahash_fuzz::GAMUTS`).
 GAMUTS = ["sRGB", "Display P3", "Adobe RGB", "BT.2020", "ProPhoto RGB"]
 UNCAPPED = 0xFFFF_FFFF
