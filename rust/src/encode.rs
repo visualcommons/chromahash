@@ -485,33 +485,40 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
         let mut tr = [0.0f64; FUSED_TILE];
         let mut tg = [0.0f64; FUSED_TILE];
         let mut tb = [0.0f64; FUSED_TILE];
-        // A bounded `for`, not a `while` on `start`: a mutated bound in the
-        // mutation sweep must fail a test, not hang it.
-        for start in (0..pixel_count).step_by(FUSED_TILE) {
-            let end = (start + FUSED_TILE).min(pixel_count);
-            let n = end - start;
-            for k in 0..n {
-                let i = start + k;
-                tr[k] = eotf_lut[rgba[i * 4] as usize];
-                tg[k] = eotf_lut[rgba[i * 4 + 1] as usize];
-                tb[k] = eotf_lut[rgba[i * 4 + 2] as usize];
+        // Zipped chunk iterators, not indices: each tile's source bytes and
+        // OKLAB slice are matched by construction, so no per-element bounds
+        // check survives in the three loops.
+        for (src, lab_tile) in rgba
+            .chunks(FUSED_TILE * 4)
+            .zip(oklab_pixels.chunks_mut(FUSED_TILE))
+        {
+            let n = lab_tile.len();
+            let (tr, tg, tb) = (&mut tr[..n], &mut tg[..n], &mut tb[..n]);
+            for (((px, r), g), b) in src
+                .chunks_exact(4)
+                .zip(tr.iter_mut())
+                .zip(tg.iter_mut())
+                .zip(tb.iter_mut())
+            {
+                *r = eotf_lut[px[0] as usize];
+                *g = eotf_lut[px[1] as usize];
+                *b = eotf_lut[px[2] as usize];
             }
-            crate::simd::oklab_forward_batch(
-                &tr[..n],
-                &tg[..n],
-                &tb[..n],
-                gamut,
-                &mut oklab_pixels[start..end],
-            );
-            for (i, lab) in oklab_pixels.iter().enumerate().take(end).skip(start) {
-                let alpha = rgba[i * 4 + 3] as f64 / 255.0;
+            stage!("linearize");
+            crate::simd::oklab_forward_batch(tr, tg, tb, gamut, lab_tile);
+            stage!("oklab_forward");
+            for (px, lab) in src.chunks_exact(4).zip(lab_tile.iter()) {
+                let alpha = px[3] as f64 / 255.0;
                 avg_l += alpha * lab[0];
                 avg_a += alpha * lab[1];
                 avg_b += alpha * lab[2];
                 avg_alpha += alpha;
             }
+            // The same three stage names as the unfused passes, marked once
+            // per tile: the recorder sums a name's marks, so §1 keeps its
+            // rows whichever path runs.
+            stage!("alpha_average");
         }
-        stage!("fused_pixels");
     } else {
         crate::simd::oklab_forward_batch(&lin_r, &lin_g, &lin_b, gamut, &mut oklab_pixels);
         stage!("oklab_forward");
@@ -550,16 +557,22 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
         // with the identical expression, and build the buffer only for an
         // image whose alpha plane the forward DCT below will transform.
         if has_alpha {
-            alpha_pixels = Vec::with_capacity(pixel_count);
+            alpha_pixels = rgba
+                .chunks_exact(4)
+                .map(|px| px[3] as f64 / 255.0)
+                .collect();
         }
-        for i in 0..pixel_count {
-            let alpha = rgba[i * 4 + 3] as f64 / 255.0;
-            l_chan[i] = avg_l * (1.0 - alpha) + alpha * oklab_pixels[i][0];
-            a_chan[i] = avg_a * (1.0 - alpha) + alpha * oklab_pixels[i][1];
-            b_chan[i] = avg_b * (1.0 - alpha) + alpha * oklab_pixels[i][2];
-            if has_alpha {
-                alpha_pixels.push(alpha);
-            }
+        for ((((px, lab), l), a), b) in rgba
+            .chunks_exact(4)
+            .zip(oklab_pixels.iter())
+            .zip(l_chan.iter_mut())
+            .zip(a_chan.iter_mut())
+            .zip(b_chan.iter_mut())
+        {
+            let alpha = px[3] as f64 / 255.0;
+            *l = avg_l * (1.0 - alpha) + alpha * lab[0];
+            *a = avg_a * (1.0 - alpha) + alpha * lab[1];
+            *b = avg_b * (1.0 - alpha) + alpha * lab[2];
         }
     } else {
         for i in 0..pixel_count {
