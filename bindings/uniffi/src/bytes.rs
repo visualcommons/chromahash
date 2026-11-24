@@ -4,7 +4,7 @@
 //! bytes, but its Rust side converts that buffer through the generic
 //! `Vec<T>` path: one bounds check and one push per byte. An RGBA input is
 //! `w * h * 4` bytes, so that loop, not the encode, was most of what the
-//! binding added to an encode (`tools/comparison/results/counts/overhead/`).
+//! binding added to an encode (`tools/comparison/results/counts/overhead.md`).
 //!
 //! [`Bytes`] and [`SharedBytes`] write and read the same wire bytes with one
 //! slice copy, and declare the same type metadata as `Vec<u8>`, so the
