@@ -766,7 +766,7 @@ pub struct Tunables {
     /// Measurement-only: it is how a progressive decoder would behave.
     pub trunc_bytes: usize,
     /// Decode only the prefix a code-`k` hash of the same alpha mode would
-    /// occupy ([`body_len_bytes`] under these tunables), as [`Self::trunc_bytes`]
+    /// occupy (`body_len_bytes` under these tunables), as [`Self::trunc_bytes`]
     /// does for a byte count. This is register entry D2's cut: the code-`k`
     /// length taken from a longer hash, which differs between the opaque and
     /// the alpha mode, so a sweep over both cannot name it as one byte count.
@@ -779,7 +779,7 @@ pub struct Tunables {
     /// channel-sequential order, as one adaptive binary arithmetic-coded
     /// stream (`bitpack::AcModels`) that fills the rest of the hash, whose
     /// length stays the one the *shipped* layout gives the same tier and
-    /// alpha mode ([`body_len_bytes`]): the layout's counts and widths then
+    /// alpha mode (`body_len_bytes`): the layout's counts and widths then
     /// bound what the stream may carry rather than fix its size, and the
     /// encoder zeroes the highest-index codes until the stream fits. Every
     /// bit string of that length decodes (the code is total), so the length
@@ -790,8 +790,7 @@ pub struct Tunables {
     /// in the bits after it) and the shipped fixed-width fields (`0`, one bit
     /// later than they would sit; every shipped layout at codes 2–4 leaves a
     /// padding bit for it). The encoder writes both and keeps the one with the
-    /// smaller AC reconstruction error ([`crate::encode`]'s
-    /// `encode_adaptive`), an encoder-side decision paid for inside the same
+    /// smaller AC reconstruction error (`encode::encode_adaptive`), an encoder-side decision paid for inside the same
     /// bytes. Any other value reads as `1`. Wire-level.
     ///
     /// One entry per tier code. Generation v2 ships `1` at code 3 alone,
