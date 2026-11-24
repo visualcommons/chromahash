@@ -147,7 +147,9 @@ run = "cargo mutants -d rust"
 # Two standalone cargo-fuzz crates: the core's from_bytes / decode / encode, and
 # the C ABI's handle and encode surfaces. cargo-fuzz needs a nightly toolchain;
 # only these tasks and the ci-fuzz workflow use one (FUZZ_TOOLCHAIN overrides
-# the `nightly` default, e.g. FUZZ_TOOLCHAIN=nightly-2026-11-20). Each target
+# the `nightly` default, e.g. FUZZ_TOOLCHAIN=nightly-2026-11-20). `--target`
+# is pinned to that toolchain's host: cargo-fuzz otherwise defaults to the
+# triple it was built for, which is musl for a prebuilt binary. Each target
 # runs FUZZ_SECONDS (default 60, the CI smoke budget) over its growing corpus
 # plus the seeds `fuzz:seeds` writes from spec/test-vectors. A crash lands in
 # <crate>/fuzz/artifacts/<target>/; replay it with
@@ -162,9 +164,10 @@ description = "Fuzz each core target (from_bytes, decode, encode) for FUZZ_SECON
 depends = ["fuzz:seeds"]
 run = '''
 set -eu
+host=$(rustc "+${FUZZ_TOOLCHAIN:-nightly}" -vV | sed -n 's/^host: //p')
 for t in from_bytes decode encode; do
   mkdir -p "rust/fuzz/corpus/$t"
-  cargo "+${FUZZ_TOOLCHAIN:-nightly}" fuzz run --fuzz-dir rust/fuzz "$t" \
+  cargo "+${FUZZ_TOOLCHAIN:-nightly}" fuzz run --target "$host" --fuzz-dir rust/fuzz "$t" \
     "rust/fuzz/corpus/$t" "rust/fuzz/seeds/$t" -- -max_total_time="${FUZZ_SECONDS:-60}"
 done
 '''
@@ -174,9 +177,10 @@ description = "Fuzz each C ABI target (c_handle, c_encode) for FUZZ_SECONDS"
 depends = ["fuzz:seeds"]
 run = '''
 set -eu
+host=$(rustc "+${FUZZ_TOOLCHAIN:-nightly}" -vV | sed -n 's/^host: //p')
 for t in c_handle c_encode; do
   mkdir -p "bindings/c/fuzz/corpus/$t"
-  cargo "+${FUZZ_TOOLCHAIN:-nightly}" fuzz run --fuzz-dir bindings/c/fuzz "$t" \
+  cargo "+${FUZZ_TOOLCHAIN:-nightly}" fuzz run --target "$host" --fuzz-dir bindings/c/fuzz "$t" \
     "bindings/c/fuzz/corpus/$t" "bindings/c/fuzz/seeds/$t" -- -max_total_time="${FUZZ_SECONDS:-60}"
 done
 '''

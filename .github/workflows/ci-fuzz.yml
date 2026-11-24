@@ -80,8 +80,15 @@ jobs:
       - name: Write seed corpora
         run: python3 -I rust/fuzz/seeds.py
 
+      # cargo-fuzz defaults `--target` to the triple it was itself built for,
+      # and install-action ships a musl-built binary: left to default, it
+      # builds for x86_64-unknown-linux-musl, which has no std installed and
+      # cannot take the address sanitizer. Pin the toolchain's own host.
+      - name: Resolve host triple
+        run: echo "FUZZ_HOST=$(rustc +nightly -vV | sed -n 's/^host: //p')" >> "$GITHUB_ENV"
+
       - name: Build
-        run: cargo +nightly fuzz build --fuzz-dir ${{ matrix.dir }} ${{ matrix.target }}
+        run: cargo +nightly fuzz build --target "$FUZZ_HOST" --fuzz-dir ${{ matrix.dir }} ${{ matrix.target }}
 
       - name: Fuzz for 60 s
         env:
@@ -89,7 +96,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           mkdir -p "$DIR/corpus/$TARGET"
-          cargo +nightly fuzz run --fuzz-dir "$DIR" "$TARGET" \
+          cargo +nightly fuzz run --target "$FUZZ_HOST" --fuzz-dir "$DIR" "$TARGET" \
             "$DIR/corpus/$TARGET" "$DIR/seeds/$TARGET" -- -max_total_time=60
 
       - name: Upload crash artifacts
