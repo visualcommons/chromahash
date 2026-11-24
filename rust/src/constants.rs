@@ -612,7 +612,7 @@ pub struct Tunables {
     /// randomized input set. [`Tunables::DEFAULT`] turns on each lever whose
     /// paired instruction count (`mise run benchmark:counts`, committed under
     /// `tools/comparison/results/counts/ab/accel-*.json`) is a reduction: all
-    /// but [`Tunables::accel_fused_pixels`]. Off, a flag selects the
+    /// seven. Off, a flag selects the
     /// unaccelerated path, which stays as the reference
     /// `mise run lever-identity` and `benchmark:counts` compare the shipped
     /// path against (`accel_*=0`); either setting changes the time an
@@ -638,10 +638,10 @@ pub struct Tunables {
     /// one tiled pass, and the per-pixel alpha buffer is built only when the
     /// image has alpha to transform.
     ///
-    /// Off in [`Tunables::DEFAULT`]: byte-identical, but its paired count on
-    /// a 512×512 tier-1 encode (`results/counts/ab/accel-fused-pixels.json`)
-    /// is 8.3% *more* user-space instructions than the four separate passes
-    /// it replaces, so it is not a hot-path win as built.
+    /// On in [`Tunables::DEFAULT`] since #165, which removed the per-element
+    /// bounds checks that had made it cost more instructions than the four
+    /// separate passes (#142 left it off on that count). Its paired count on
+    /// a 512×512 tier-1 encode is `results/counts/ab/accel-fused-pixels.json`.
     pub accel_fused_pixels: bool,
     /// §12.1 item 7: each bit field is shifted into place as one word and
     /// OR-ed a byte at a time, instead of one bit at a time.
@@ -912,7 +912,7 @@ impl Tunables {
         accel_gamma_lut_cache: true,
         accel_flat_cos: true,
         accel_sse_early_exit: true,
-        accel_fused_pixels: false,
+        accel_fused_pixels: true,
         accel_word_bitpack: true,
         refine_passes: 0,
         refine_delta: 1,

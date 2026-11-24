@@ -194,6 +194,32 @@ public class ChromaHashTests
     }
 
     /// <summary>
+    /// A C# enum holds any int, so <c>(Gamut)5</c> compiles. It must throw at
+    /// every entry point that takes a gamut, naming the argument, rather than
+    /// reach the native ABI.
+    /// </summary>
+    [Theory]
+    [InlineData(5)]
+    [InlineData(-1)]
+    public void UndefinedGamutThrows(int value)
+    {
+        var gamut = (Gamut)value;
+        byte[] rgba = Helpers.SolidImage(4, 4, 128, 128, 128, 255);
+        var hash = CH.Encode(4, 4, rgba, Gamut.Srgb);
+
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => CH.Encode(4, 4, rgba, gamut));
+        Assert.Equal("gamut", ex.ParamName);
+        ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            CH.EncodeWithQuality(4, 4, rgba, gamut, CH.DefaultTier)
+        );
+        Assert.Equal("gamut", ex.ParamName);
+        ex = Assert.Throws<ArgumentOutOfRangeException>(() => hash.Decode(gamut));
+        Assert.Equal("output", ex.ParamName);
+        ex = Assert.Throws<ArgumentOutOfRangeException>(() => hash.DecodeCapped(8, 8, gamut));
+        Assert.Equal("output", ex.ParamName);
+    }
+
+    /// <summary>
     /// The tier codes are declared as C# consts for constant expressions, but
     /// the format owns them and the native ABI exports them. Assert the two
     /// agree, so a renumber in the core cannot leave this package one code

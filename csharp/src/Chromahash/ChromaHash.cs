@@ -62,6 +62,7 @@ public sealed class ChromaHash : IEquatable<ChromaHash>
                 nameof(quality),
                 $"quality tier must be 0..={MaxTier}"
             );
+        ThrowIfUndefined(gamut, nameof(gamut));
         var status = Native.chromahash_encode_with_quality(
             width,
             height,
@@ -89,6 +90,7 @@ public sealed class ChromaHash : IEquatable<ChromaHash>
     /// </summary>
     public (uint Width, uint Height, byte[] Rgba) Decode(Gamut output = Gamut.Srgb)
     {
+        ThrowIfUndefined(output, nameof(output));
         IntPtr handle = CreateHandle();
         try
         {
@@ -110,6 +112,7 @@ public sealed class ChromaHash : IEquatable<ChromaHash>
     public (uint Width, uint Height, byte[] Rgba) DecodeCapped(
         uint maxWidth, uint maxHeight, Gamut output = Gamut.Srgb)
     {
+        ThrowIfUndefined(output, nameof(output));
         IntPtr handle = CreateHandle();
         try
         {
@@ -213,6 +216,20 @@ public sealed class ChromaHash : IEquatable<ChromaHash>
         {
             Native.chromahash_image_free(ref img);
         }
+    }
+
+    /// <summary>
+    /// A C# enum holds any int, so <c>(Gamut)5</c> compiles. The native ABI
+    /// rejects it too, but as a bare status code; check here so the caller gets
+    /// the argument that was wrong.
+    /// </summary>
+    private static void ThrowIfUndefined(Gamut gamut, string paramName)
+    {
+        if (!Enum.IsDefined(gamut))
+            throw new ArgumentOutOfRangeException(
+                paramName,
+                $"gamut {(int)gamut} is not a defined Gamut"
+            );
     }
 
     private static void ThrowOnEncodeError(Native.Status status, string paramName)

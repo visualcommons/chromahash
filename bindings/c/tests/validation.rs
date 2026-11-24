@@ -21,8 +21,8 @@ use chromahash_c::{
     chromahash_batch_encoder_free, chromahash_batch_encoder_new, chromahash_byte_len,
     chromahash_decode, chromahash_decode_capped, chromahash_decode_capped_to, chromahash_decode_to,
     chromahash_encode, chromahash_encode_with_quality, chromahash_free, chromahash_from_bytes,
-    chromahash_image_free, ChromaHash, ChromaHashBatchEncoder, ChromaHashColor, ChromaHashGamut,
-    ChromaHashImage, ChromaHashImageInput, ChromaHashStatus,
+    chromahash_image_free, ChromaHash, ChromaHashBatchEncoder, ChromaHashColor, ChromaHashImage,
+    ChromaHashImageInput, ChromaHashStatus, CHROMA_HASH_GAMUT_DISPLAY_P3, CHROMA_HASH_GAMUT_SRGB,
 };
 
 /// Byte lengths per tier code (spec §3.3), opaque then alpha.
@@ -60,7 +60,7 @@ fn encode_at(tier: u8) -> *mut ChromaHash {
             4,
             rgba.as_ptr(),
             rgba.len(),
-            ChromaHashGamut::Srgb,
+            CHROMA_HASH_GAMUT_SRGB,
             tier,
             &mut handle,
         )
@@ -77,7 +77,7 @@ fn encode_at(tier: u8) -> *mut ChromaHash {
 fn every_pointer_argument_rejects_null() {
     let rgba = grey(2, 2);
     let hash = encode_at(chromahash::DEFAULT_TIER);
-    let gamut = ChromaHashGamut::Srgb;
+    let gamut = CHROMA_HASH_GAMUT_SRGB;
 
     unsafe {
         // encode / encode_with_quality: rgba, out_hash.
@@ -201,7 +201,7 @@ fn a_null_pointer_wins_over_every_other_argument_error() {
     let mut out: *mut ChromaHash = sentinel();
     unsafe {
         assert_eq!(
-            chromahash_encode(0, 0, ptr::null(), 1, ChromaHashGamut::Srgb, &mut out),
+            chromahash_encode(0, 0, ptr::null(), 1, CHROMA_HASH_GAMUT_SRGB, &mut out),
             ChromaHashStatus::NullPointer
         );
         assert_eq!(
@@ -210,7 +210,7 @@ fn a_null_pointer_wins_over_every_other_argument_error() {
                 0,
                 ptr::null(),
                 1,
-                ChromaHashGamut::Srgb,
+                CHROMA_HASH_GAMUT_SRGB,
                 255,
                 &mut out
             ),
@@ -232,7 +232,7 @@ fn a_zero_dimension_is_invalid_dimensions_before_the_length() {
         for len in [0usize, 16, 64] {
             let mut out: *mut ChromaHash = sentinel();
             let single = unsafe {
-                chromahash_encode(w, h, rgba.as_ptr(), len, ChromaHashGamut::Srgb, &mut out)
+                chromahash_encode(w, h, rgba.as_ptr(), len, CHROMA_HASH_GAMUT_SRGB, &mut out)
             };
             let tiered = unsafe {
                 chromahash_encode_with_quality(
@@ -240,7 +240,7 @@ fn a_zero_dimension_is_invalid_dimensions_before_the_length() {
                     h,
                     rgba.as_ptr(),
                     len,
-                    ChromaHashGamut::Srgb,
+                    CHROMA_HASH_GAMUT_SRGB,
                     255,
                     &mut out,
                 )
@@ -275,7 +275,7 @@ fn the_rgba_length_must_be_exactly_w_h_4() {
                 }
                 let mut out: *mut ChromaHash = sentinel();
                 let single = unsafe {
-                    chromahash_encode(w, h, rgba.as_ptr(), len, ChromaHashGamut::Srgb, &mut out)
+                    chromahash_encode(w, h, rgba.as_ptr(), len, CHROMA_HASH_GAMUT_SRGB, &mut out)
                 };
                 // Quality 255 too: the length is checked before the tier.
                 let tiered = unsafe {
@@ -284,7 +284,7 @@ fn the_rgba_length_must_be_exactly_w_h_4() {
                         h,
                         rgba.as_ptr(),
                         len,
-                        ChromaHashGamut::Srgb,
+                        CHROMA_HASH_GAMUT_SRGB,
                         255,
                         &mut out,
                     )
@@ -296,7 +296,7 @@ fn the_rgba_length_must_be_exactly_w_h_4() {
 
             let mut out = ptr::null_mut();
             let ok = unsafe {
-                chromahash_encode(w, h, rgba.as_ptr(), want, ChromaHashGamut::Srgb, &mut out)
+                chromahash_encode(w, h, rgba.as_ptr(), want, CHROMA_HASH_GAMUT_SRGB, &mut out)
             };
             assert_eq!(ok, ChromaHashStatus::Ok, "{w}x{h} at its exact length");
             unsafe { chromahash_free(out) };
@@ -315,7 +315,7 @@ fn an_overflowing_rgba_length_is_invalid_length() {
         for len in [0usize, 16, usize::MAX] {
             let mut out: *mut ChromaHash = sentinel();
             let status = unsafe {
-                chromahash_encode(w, h, rgba.as_ptr(), len, ChromaHashGamut::Srgb, &mut out)
+                chromahash_encode(w, h, rgba.as_ptr(), len, CHROMA_HASH_GAMUT_SRGB, &mut out)
             };
             assert_eq!(status, ChromaHashStatus::InvalidLength, "{w}x{h} len {len}");
             assert_eq!(out, sentinel());
@@ -338,7 +338,7 @@ fn every_quality_byte_is_accepted_iff_it_is_a_tier() {
                 4,
                 rgba.as_ptr(),
                 rgba.len(),
-                ChromaHashGamut::Srgb,
+                CHROMA_HASH_GAMUT_SRGB,
                 quality,
                 &mut out,
             )
@@ -475,7 +475,7 @@ fn a_capped_decode_renders_at_min_of_natural_and_cap() {
                                 hash,
                                 max_w,
                                 max_h,
-                                ChromaHashGamut::DisplayP3,
+                                CHROMA_HASH_GAMUT_DISPLAY_P3,
                                 &mut image,
                             )
                         } else {
@@ -511,7 +511,7 @@ fn item(rgba: &[u8], w: u32, h: u32, quality: u8) -> ChromaHashImageInput {
         height: h,
         rgba: rgba.as_ptr(),
         rgba_len: rgba.len(),
-        gamut: ChromaHashGamut::Srgb,
+        gamut: CHROMA_HASH_GAMUT_SRGB,
         quality,
     }
 }
@@ -587,7 +587,7 @@ fn batch_item_checks_and_their_order() {
         height: h,
         rgba: ptr::null(),
         rgba_len: len,
-        gamut: ChromaHashGamut::Srgb,
+        gamut: CHROMA_HASH_GAMUT_SRGB,
         quality,
     };
 

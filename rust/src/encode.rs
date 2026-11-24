@@ -29,6 +29,30 @@ fn build_eotf_lut(gamut: Gamut) -> [f64; 256] {
     lut
 }
 
+/// [`build_eotf_lut`]'s table for `gamut`, built once per process and shared.
+///
+/// The encode-side twin of the decoder's `cached_gamma_lut`: 256 transfer
+/// curve evaluations, each a `portable_pow` for most gamuts, rebuilt on every
+/// call, were 1.2% of a 100×100 encode's user-space instructions (the EOTF
+/// table cache row's 1.012 count ratio, `spec/PERFORMANCE.md` §12.4). The
+/// table is a pure function of the curve `build_eotf_lut` picks, and sRGB and
+/// Display P3 pick the same one, so there are four tables, each the same 256
+/// values whether it is built once or on every call.
+fn cached_eotf_lut(gamut: Gamut) -> &'static [f64; 256] {
+    use std::sync::OnceLock;
+    static SRGB_CURVE: OnceLock<[f64; 256]> = OnceLock::new();
+    static ADOBE_CURVE: OnceLock<[f64; 256]> = OnceLock::new();
+    static PROPHOTO_CURVE: OnceLock<[f64; 256]> = OnceLock::new();
+    static PQ_CURVE: OnceLock<[f64; 256]> = OnceLock::new();
+    let slot = match gamut {
+        Gamut::Srgb | Gamut::DisplayP3 => &SRGB_CURVE,
+        Gamut::AdobeRgb => &ADOBE_CURVE,
+        Gamut::ProPhotoRgb => &PROPHOTO_CURVE,
+        Gamut::Bt2020 => &PQ_CURVE,
+    };
+    slot.get_or_init(|| build_eotf_lut(gamut))
+}
+
 /// Simulate the decoder's DC-only path for a quantized (L, a, b) code triple:
 /// dequantize → clamp L → linear sRGB → per-channel clip → gamma. Returns the
 /// gamma-encoded sRGB triple the decoder would render for a flat region.
@@ -404,8 +428,9 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     let (pw, ph) = linear_grid.unwrap_or((w, h));
     let pixel_count = pw * ph;
 
-    // 1. Precompute EOTF LUT (256 entries, eliminates per-pixel portable_pow)
-    let eotf_lut = build_eotf_lut(gamut);
+    // 1. The EOTF LUT (256 entries, eliminates per-pixel portable_pow), built
+    // once per transfer curve and shared (`cached_eotf_lut`).
+    let eotf_lut = cached_eotf_lut(gamut);
     stage!("eotf_lut");
 
     // 2. Per-pixel OKLAB conversion with alpha accumulation.
@@ -416,15 +441,16 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     // average is a reduction, so it stays a scalar pass in pixel order to keep
     // the floating-point summation bit-exact.
     //
-    // The shipped path allocates, fills and frees these buffers exactly as it
-    // always has — the three linear-RGB planes and the alpha plane first, all
-    // four living to the end of this function — because it is the reference
-    // every lever is timed against, and the allocator is part of what a timing
-    // measures. Shortening one lifetime or moving one allocation lets a later
-    // buffer reuse freed, already-faulted memory, and that alone moved a
-    // 512×512 encode by more than 10% while this was being written. The fused
-    // path (`accel_fused_pixels`) allocates none of the four; the alpha plane
-    // is rebuilt below only when the image has alpha to transform.
+    // The unfused path (`accel_fused_pixels = false`) allocates, fills and
+    // frees these buffers exactly as it always has — the three linear-RGB
+    // planes and the alpha plane first, all four living to the end of this
+    // function — because it is the reference the lever is timed against, and
+    // the allocator is part of what a timing measures. Shortening one
+    // lifetime or moving one allocation lets a later buffer reuse freed,
+    // already-faulted memory, and that alone moved a 512×512 encode by more
+    // than 10% while this was being written. The fused path, which the
+    // shipped defaults take, allocates none of the four; the alpha plane is
+    // rebuilt below only when the image has alpha to transform.
     // The fused pass reads the source bytes, so the linear placement, whose
     // colour pass reads the grid planes instead, takes the unfused path.
     let fused = t.accel_fused_pixels && linear_grid.is_none();
@@ -440,7 +466,7 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
             h,
             dw,
             dh,
-            &eotf_lut,
+            eotf_lut,
             [&mut lin_r, &mut lin_g, &mut lin_b],
             &mut alpha_pixels,
         );
@@ -485,33 +511,40 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
         let mut tr = [0.0f64; FUSED_TILE];
         let mut tg = [0.0f64; FUSED_TILE];
         let mut tb = [0.0f64; FUSED_TILE];
-        // A bounded `for`, not a `while` on `start`: a mutated bound in the
-        // mutation sweep must fail a test, not hang it.
-        for start in (0..pixel_count).step_by(FUSED_TILE) {
-            let end = (start + FUSED_TILE).min(pixel_count);
-            let n = end - start;
-            for k in 0..n {
-                let i = start + k;
-                tr[k] = eotf_lut[rgba[i * 4] as usize];
-                tg[k] = eotf_lut[rgba[i * 4 + 1] as usize];
-                tb[k] = eotf_lut[rgba[i * 4 + 2] as usize];
+        // Zipped chunk iterators, not indices: each tile's source bytes and
+        // OKLAB slice are matched by construction, so no per-element bounds
+        // check survives in the three loops.
+        for (src, lab_tile) in rgba
+            .chunks(FUSED_TILE * 4)
+            .zip(oklab_pixels.chunks_mut(FUSED_TILE))
+        {
+            let n = lab_tile.len();
+            let (tr, tg, tb) = (&mut tr[..n], &mut tg[..n], &mut tb[..n]);
+            for (((px, r), g), b) in src
+                .chunks_exact(4)
+                .zip(tr.iter_mut())
+                .zip(tg.iter_mut())
+                .zip(tb.iter_mut())
+            {
+                *r = eotf_lut[px[0] as usize];
+                *g = eotf_lut[px[1] as usize];
+                *b = eotf_lut[px[2] as usize];
             }
-            crate::simd::oklab_forward_batch(
-                &tr[..n],
-                &tg[..n],
-                &tb[..n],
-                gamut,
-                &mut oklab_pixels[start..end],
-            );
-            for (i, lab) in oklab_pixels.iter().enumerate().take(end).skip(start) {
-                let alpha = rgba[i * 4 + 3] as f64 / 255.0;
+            stage!("linearize");
+            crate::simd::oklab_forward_batch(tr, tg, tb, gamut, lab_tile);
+            stage!("oklab_forward");
+            for (px, lab) in src.chunks_exact(4).zip(lab_tile.iter()) {
+                let alpha = px[3] as f64 / 255.0;
                 avg_l += alpha * lab[0];
                 avg_a += alpha * lab[1];
                 avg_b += alpha * lab[2];
                 avg_alpha += alpha;
             }
+            // The same three stage names as the unfused passes, marked once
+            // per tile: the recorder sums a name's marks, so §1 keeps its
+            // rows whichever path runs.
+            stage!("alpha_average");
         }
-        stage!("fused_pixels");
     } else {
         crate::simd::oklab_forward_batch(&lin_r, &lin_g, &lin_b, gamut, &mut oklab_pixels);
         stage!("oklab_forward");
@@ -550,16 +583,22 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
         // with the identical expression, and build the buffer only for an
         // image whose alpha plane the forward DCT below will transform.
         if has_alpha {
-            alpha_pixels = Vec::with_capacity(pixel_count);
+            alpha_pixels = rgba
+                .chunks_exact(4)
+                .map(|px| px[3] as f64 / 255.0)
+                .collect();
         }
-        for i in 0..pixel_count {
-            let alpha = rgba[i * 4 + 3] as f64 / 255.0;
-            l_chan[i] = avg_l * (1.0 - alpha) + alpha * oklab_pixels[i][0];
-            a_chan[i] = avg_a * (1.0 - alpha) + alpha * oklab_pixels[i][1];
-            b_chan[i] = avg_b * (1.0 - alpha) + alpha * oklab_pixels[i][2];
-            if has_alpha {
-                alpha_pixels.push(alpha);
-            }
+        for ((((px, lab), l), a), b) in rgba
+            .chunks_exact(4)
+            .zip(oklab_pixels.iter())
+            .zip(l_chan.iter_mut())
+            .zip(a_chan.iter_mut())
+            .zip(b_chan.iter_mut())
+        {
+            let alpha = px[3] as f64 / 255.0;
+            *l = avg_l * (1.0 - alpha) + alpha * lab[0];
+            *a = avg_a * (1.0 - alpha) + alpha * lab[1];
+            *b = avg_b * (1.0 - alpha) + alpha * lab[2];
         }
     } else {
         for i in 0..pixel_count {
@@ -593,11 +632,16 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     let shape = ac_shape(t, has_alpha, tier);
     let l_count = shape.l_count();
     let c_count = shape.c_count;
-    let order = SelectionOrder::new(aspect, tier, t.aniso_oblique, t.sel_hv);
+    // Only the longest prefix any channel takes is ordered
+    // (`SelectionOrder::with_prefix`): the same coefficients, without sorting
+    // the whole candidate grid.
+    let alpha_count = if has_alpha { shape.alpha_ac_count } else { 0 };
+    let need = l_count.max(c_count).max(alpha_count);
+    let order = SelectionOrder::with_prefix(aspect, tier, t.aniso_oblique, t.sel_hv, need);
     let l_sel: Selection = order.take(l_count);
     let c_sel: Selection = order.take(c_count);
     let alpha_sel = if has_alpha {
-        order.take(shape.alpha_ac_count)
+        order.take(alpha_count)
     } else {
         Selection {
             coeffs: vec![],
@@ -2245,6 +2289,31 @@ pub fn encode_quality(w: u32, h: u32, rgba: &[u8], gamut: Gamut, tier: u8) -> Bo
 mod tests {
     use super::*;
     use crate::bitpack::read_bits;
+
+    #[test]
+    fn cached_eotf_lut_is_the_built_one_for_every_gamut() {
+        // Four cached tables serve five gamuts, which holds only because sRGB
+        // and Display P3 share the transfer curve `build_eotf_lut` picks. Two
+        // rounds, so a gamut routed to another curve's slot meets that
+        // curve's table whichever of them filled it first.
+        let gamuts = [
+            Gamut::Srgb,
+            Gamut::DisplayP3,
+            Gamut::AdobeRgb,
+            Gamut::Bt2020,
+            Gamut::ProPhotoRgb,
+        ];
+        for _ in 0..2 {
+            for g in gamuts {
+                let (cached, built) = (cached_eotf_lut(g), build_eotf_lut(g));
+                for (i, (c, b)) in cached.iter().zip(built.iter()).enumerate() {
+                    assert_eq!(c.to_bits(), b.to_bits(), "{g:?} entry {i}");
+                }
+                // A second call returns the same table, not a rebuilt one.
+                assert!(std::ptr::eq(cached_eotf_lut(g), cached_eotf_lut(g)));
+            }
+        }
+    }
 
     // Self-contained golden vectors copied from `spec/test-vectors/`. The
     // crate's full golden cross-check lives in `tests/spec_vectors.rs`, but that
