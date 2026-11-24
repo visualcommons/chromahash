@@ -72,6 +72,8 @@ import {
   TOLERANCE,
   applyEdits,
   bare,
+  leverArmSpeedup,
+  leverSpeedup,
   MissingCell,
   checkDecodeStagesProvenance,
   checkProseClaims,
@@ -172,20 +174,6 @@ const vsBase = (r: Estimate): Estimate => {
       : null,
   };
 };
-
-/**
- * A §12.1 lever's speedup, reference time ÷ shipped time, from the paired
- * ratio the run records (shipped ÷ reference). The shipped defaults turn
- * every lever but `accel_fused_pixels` on (#142), so their arms turn one off
- * (`accel_*=0`, or `accel none` for all seven), and the speedup is that pair
- * read the other
- * way: the reciprocal of a geometric mean is the geometric mean of the
- * reciprocals, and the range's ends swap.
- */
-const leverSpeedup = (r: Estimate): Estimate => ({
-  value: 1 / r.value,
-  interval: r.interval ? [1 / r.interval[1], 1 / r.interval[0]] : null,
-});
 
 /** A lever's cell id, keyed by the arm label the driver records. */
 const armId = (n: number, arm: string): string =>
@@ -714,12 +702,7 @@ const BINDINGS: Binding[] = [
           const base = arm.startsWith("refine_passes=1 ")
             ? "refine_passes=1"
             : "shipped";
-          const r = R.ratio(armId(n, base), armId(n, arm));
-          // A lever the defaults leave off (`accel_fused_pixels`) is an arm
-          // that turns it on, and its speedup is the pair as recorded.
-          return arm.endsWith("=0") || arm === "accel none"
-            ? leverSpeedup(r)
-            : r;
+          return leverArmSpeedup(arm, R.ratio(armId(n, base), armId(n, arm)));
         },
       ]),
     ) as Record<string, Resolve>,
@@ -734,7 +717,8 @@ const BINDINGS: Binding[] = [
       speedup: (row, R) => {
         const arm = clean(row("lever"));
         if (arm === "shipped") return null;
-        return leverSpeedup(
+        return leverArmSpeedup(
+          arm,
           R.ratio(
             "encode/Rust/t4/100x100/gradient/shipped",
             `encode/Rust/t4/100x100/gradient/${arm}`,
@@ -757,7 +741,8 @@ const BINDINGS: Binding[] = [
       ).map(([header, raster]) => [
         header,
         (row: (h: string) => string, R: Runs) =>
-          leverSpeedup(
+          leverArmSpeedup(
+            clean(row("lever")),
             R.ratio(
               `decode/Rust/${raster}/shipped`,
               `decode/Rust/${raster}/${clean(row("lever"))}`,

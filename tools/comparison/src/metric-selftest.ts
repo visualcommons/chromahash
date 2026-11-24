@@ -355,12 +355,15 @@ import {
   checkTable,
   clean,
   fixRefusal,
+  leverArmSpeedup,
+  leverSpeedup,
   parseDecodeStages,
   parseStages,
   parseTables,
   parseUnavailableMarker,
   runFailures,
   stabilityFailures,
+  turnsLeverOff,
   withheldReason,
 } from "./verify-benchmark-core.ts";
 import {
@@ -1556,6 +1559,62 @@ console.log(
 }
 
 console.log("\nverify-benchmark — what passes, what is skipped, what fails\n");
+
+{
+  // §12.4's lever speedups and the §12.3 claims are read off a paired ratio
+  // base ÷ arm. Since #142 a lever's arm turns it off, so its ratio is
+  // shipped ÷ reference and the speedup is its reciprocal; the one arm that
+  // turns a lever on (`accel_fused_pixels`) is read as recorded. A selection
+  // or reciprocal that went the wrong way would print every speedup inverted.
+  const r = { value: 0.5, interval: [0.4, 0.625] as [number, number] };
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-12;
+  const flipped = leverSpeedup(r);
+  check(
+    "leverSpeedup is the reciprocal, with the range's ends swapped",
+    near(flipped.value, 2) &&
+      flipped.interval !== null &&
+      near(flipped.interval[0], 1.6) &&
+      near(flipped.interval[1], 2.5),
+    `got ${flipped.value} [${flipped.interval?.join(", ")}]`,
+  );
+  const unordered = leverSpeedup({ value: 0.5, interval: [0.625, 0.4] });
+  check(
+    "leverSpeedup orders the range whichever way it was recorded",
+    unordered.interval !== null &&
+      near(unordered.interval[0], 1.6) &&
+      near(unordered.interval[1], 2.5),
+    `got [${unordered.interval?.join(", ")}]`,
+  );
+  check(
+    "leverSpeedup keeps a missing range missing",
+    leverSpeedup({ value: 4, interval: null }).interval === null &&
+      near(leverSpeedup({ value: 4, interval: null }).value, 0.25),
+    "",
+  );
+  const off = [
+    "accel_quant_table=0",
+    "accel_dct_lanes=0",
+    "accel_word_bitpack=0",
+    "accel_gamma_lut_cache=0",
+    "accel_flat_cos=0",
+    "accel none",
+    "refine_passes=1 accel_sse_early_exit=0",
+  ];
+  const on = ["accel_fused_pixels", "shipped", "dct_separable"];
+  const wrongOff = off.filter(
+    (a) => !turnsLeverOff(a) || !near(leverArmSpeedup(a, r).value, 2),
+  );
+  const wrongOn = on.filter(
+    (a) => turnsLeverOff(a) || leverArmSpeedup(a, r) !== r,
+  );
+  check(
+    "a lever-off arm's speedup is the reciprocal, a lever-on arm's is as recorded",
+    wrongOff.length === 0 && wrongOn.length === 0,
+    wrongOff.length + wrongOn.length === 0
+      ? `${off.length} off, ${on.length} on`
+      : `misread: ${[...wrongOff, ...wrongOn].join(", ")}`,
+  );
+}
 
 // Fixtures: a run is a list of cell ids plus what it recorded unavailable, and
 // a table is markdown parsed exactly as PERFORMANCE.md is. The binding reads
