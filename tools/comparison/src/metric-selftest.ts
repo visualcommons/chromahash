@@ -245,6 +245,12 @@ import {
 } from "./perf/count.ts";
 import { countClaimFailures } from "./perf/counts-claims.ts";
 import {
+  OVERHEAD_CELLS,
+  overheadRecord,
+  recordProblem,
+  renderOverheadTable,
+} from "./perf/overhead-core.ts";
+import {
   AB_COUNTS_DIR,
   type CountsRecord,
   blockSchedule,
@@ -8945,6 +8951,77 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
     errors.join("; "),
   );
   rmSync(dir, { recursive: true, force: true });
+}
+
+// ─── The per-binding overhead table's record checks ───────────────────────
+//
+// verify:claims re-renders results/counts/overhead.md from its records, so the
+// table is only as trustworthy as recordProblem's refusals: a record counted on
+// a dirty tree, with other arms, unequal outputs or another batch size must
+// not be quotable under a row's label.
+{
+  const readAb = (name: string): CountsRecord =>
+    JSON.parse(readFileSync(path.join(AB_COUNTS_DIR, name), "utf8"));
+  const cell = OVERHEAD_CELLS.find((c) => c.cell === "encode-64");
+  const batch = OVERHEAD_CELLS.find((c) => c.batch === 16);
+  if (cell === undefined || batch === undefined) {
+    throw new Error("OVERHEAD_CELLS lost its encode-64 or batch-of-16 cell");
+  }
+  const good = readAb(overheadRecord("c", cell));
+  const a = good.arms.a.bin;
+  const b = good.arms.b.bin;
+  const variant = (f: (r: CountsRecord) => void): CountsRecord => {
+    const r = structuredClone(good);
+    f(r);
+    return r;
+  };
+  const refused = (r: CountsRecord, text: string) =>
+    (recordProblem(r, cell, a, b) ?? "").includes(text);
+  check(
+    "overhead recordProblem: accepts a committed record and refuses a dirty tree, swapped arms, a tune, unequal outputs, another cell and another batch size",
+    recordProblem(good, cell, a, b) === null &&
+      refused(
+        variant((r) => {
+          r.provenance.dirty = true;
+        }),
+        "dirty",
+      ) &&
+      (recordProblem(good, cell, b, a) ?? "").includes("its arms are") &&
+      refused(
+        variant((r) => {
+          r.arms.b.tune = "accel_quant_table=0";
+        }),
+        "tune",
+      ) &&
+      refused(
+        variant((r) => {
+          r.outputs.equal = false;
+        }),
+        "outputs differ",
+      ) &&
+      refused(
+        variant((r) => {
+          r.cell.width = 65;
+        }),
+        "its cell is",
+      ) &&
+      (recordProblem(good, batch, a, b) ?? "").includes("16 tier-1 hash(es)"),
+    "",
+  );
+  let rendered = "";
+  try {
+    rendered = renderOverheadTable(readAb);
+  } catch (e) {
+    rendered = (e as Error).message;
+  }
+  check(
+    "renderOverheadTable: the committed records render the committed results/counts/overhead.md",
+    rendered ===
+      readFileSync(path.join(AB_COUNTS_DIR, "../overhead.md"), "utf8"),
+    rendered.startsWith("#")
+      ? `${rendered.split("\n").length} lines`
+      : rendered,
+  );
 }
 
 console.log(

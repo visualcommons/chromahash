@@ -30,26 +30,37 @@ use chromahash::{
     MAX_TIER,
 };
 
-/// Source/target color space. Mirrors [`chromahash::Gamut`].
-#[repr(i32)]
-#[derive(Debug, Clone, Copy)]
-pub enum ChromaHashGamut {
-    Srgb = 0,
-    DisplayP3 = 1,
-    AdobeRgb = 2,
-    Bt2020 = 3,
-    ProPhotoRgb = 4,
-}
+/// Source/target color space: one of the `CHROMA_HASH_GAMUT_*` constants, which
+/// mirror [`chromahash::Gamut`]. Any other value is rejected with
+/// [`ChromaHashStatus::InvalidData`].
+///
+/// A plain `int32_t` rather than a Rust enum: the caller can pass any
+/// `int32_t`, and a Rust enum holding a value with no matching discriminant is
+/// undefined behaviour before a line of this crate runs. Every entry point
+/// checks the value instead.
+pub type ChromaHashGamut = i32;
 
-impl From<ChromaHashGamut> for CoreGamut {
-    fn from(g: ChromaHashGamut) -> Self {
-        match g {
-            ChromaHashGamut::Srgb => CoreGamut::Srgb,
-            ChromaHashGamut::DisplayP3 => CoreGamut::DisplayP3,
-            ChromaHashGamut::AdobeRgb => CoreGamut::AdobeRgb,
-            ChromaHashGamut::Bt2020 => CoreGamut::Bt2020,
-            ChromaHashGamut::ProPhotoRgb => CoreGamut::ProPhotoRgb,
-        }
+/// sRGB.
+pub const CHROMA_HASH_GAMUT_SRGB: ChromaHashGamut = 0;
+/// Display P3.
+pub const CHROMA_HASH_GAMUT_DISPLAY_P3: ChromaHashGamut = 1;
+/// Adobe RGB.
+pub const CHROMA_HASH_GAMUT_ADOBE_RGB: ChromaHashGamut = 2;
+/// BT.2020.
+pub const CHROMA_HASH_GAMUT_BT2020: ChromaHashGamut = 3;
+/// ProPhoto RGB.
+pub const CHROMA_HASH_GAMUT_PRO_PHOTO_RGB: ChromaHashGamut = 4;
+
+/// The checked conversion from the ABI's `int32_t` to the core's gamut: `None`
+/// for a value no `CHROMA_HASH_GAMUT_*` constant names.
+fn gamut_from_abi(g: ChromaHashGamut) -> Option<CoreGamut> {
+    match g {
+        CHROMA_HASH_GAMUT_SRGB => Some(CoreGamut::Srgb),
+        CHROMA_HASH_GAMUT_DISPLAY_P3 => Some(CoreGamut::DisplayP3),
+        CHROMA_HASH_GAMUT_ADOBE_RGB => Some(CoreGamut::AdobeRgb),
+        CHROMA_HASH_GAMUT_BT2020 => Some(CoreGamut::Bt2020),
+        CHROMA_HASH_GAMUT_PRO_PHOTO_RGB => Some(CoreGamut::ProPhotoRgb),
+        _ => None,
     }
 }
 
@@ -93,7 +104,9 @@ pub enum ChromaHashStatus {
     /// The core panicked or an allocation failed — caught at the boundary.
     Internal = 4,
     /// The bytes are not a valid v2 ChromaHash (bad version, tier, reserved bit,
-    /// or the length does not match the self-describing header).
+    /// or the length does not match the self-describing header), or an
+    /// argument is out of range (a quality tier above `CHROMAHASH_MAX_TIER`, or
+    /// a gamut no `CHROMA_HASH_GAMUT_*` constant names).
     InvalidData = 5,
 }
 
@@ -139,6 +152,8 @@ pub struct ChromaHashImageInput {
     pub height: u32,
     pub rgba: *const u8,
     pub rgba_len: usize,
+    /// One of the `CHROMA_HASH_GAMUT_*` constants; any other value fails the
+    /// whole batch with [`ChromaHashStatus::InvalidData`].
     pub gamut: ChromaHashGamut,
     /// Quality tier (`0..=CHROMAHASH_MAX_TIER`, ordered by quality). Set it to
     /// `CHROMAHASH_DEFAULT_TIER` for the 32-byte default; a zeroed struct
@@ -176,8 +191,10 @@ fn boxed_handle(inner: CoreHash) -> *mut ChromaHash {
 
 // ─── construct ────────────────────────────────────────────────────────────────
 
-/// Encode an RGBA image (4 bytes/pixel) into a default-tier (32-byte) ChromaHash. On
-/// success `*out_hash` receives a new handle to free with [`chromahash_free`].
+/// Encode an RGBA image (4 bytes/pixel) into a default-tier (32-byte) ChromaHash.
+/// Rejects a gamut no `CHROMA_HASH_GAMUT_*` constant names with
+/// [`ChromaHashStatus::InvalidData`]. On success `*out_hash` receives a new
+/// handle to free with [`chromahash_free`].
 #[no_mangle]
 pub unsafe extern "C" fn chromahash_encode(
     width: u32,
@@ -196,9 +213,12 @@ pub unsafe extern "C" fn chromahash_encode(
     if expected_rgba_len(width, height) != Some(rgba_len) {
         return ChromaHashStatus::InvalidLength;
     }
+    let Some(gamut) = gamut_from_abi(gamut) else {
+        return ChromaHashStatus::InvalidData;
+    };
     let slice = std::slice::from_raw_parts(rgba, rgba_len);
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        boxed_handle(CoreHash::encode(width, height, slice, gamut.into()))
+        boxed_handle(CoreHash::encode(width, height, slice, gamut))
     }));
     match result {
         Ok(handle) => {
@@ -211,7 +231,8 @@ pub unsafe extern "C" fn chromahash_encode(
 
 /// Encode an RGBA image at an explicit quality tier (`0..=4`, ordered by
 /// quality; `1` is the 32-byte default and `0` the 21-byte compact tier, each
-/// higher code ~4× larger). Rejects an out-of-range tier with
+/// higher code ~4× larger). Rejects an out-of-range tier, or a gamut no
+/// `CHROMA_HASH_GAMUT_*` constant names, with
 /// [`ChromaHashStatus::InvalidData`]. On success `*out_hash` receives a new
 /// handle to free with [`chromahash_free`].
 #[no_mangle]
@@ -236,14 +257,13 @@ pub unsafe extern "C" fn chromahash_encode_with_quality(
     if quality > MAX_TIER {
         return ChromaHashStatus::InvalidData;
     }
+    let Some(gamut) = gamut_from_abi(gamut) else {
+        return ChromaHashStatus::InvalidData;
+    };
     let slice = std::slice::from_raw_parts(rgba, rgba_len);
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
         boxed_handle(CoreHash::encode_with_quality(
-            width,
-            height,
-            slice,
-            gamut.into(),
-            quality,
+            width, height, slice, gamut, quality,
         ))
     }));
     match result {
@@ -354,11 +374,14 @@ unsafe fn decode_into(
     hash: *const ChromaHash,
     out_image: *mut ChromaHashImage,
     capped: Option<(u32, u32)>,
-    output: CoreGamut,
+    output: ChromaHashGamut,
 ) -> ChromaHashStatus {
     if hash.is_null() || out_image.is_null() {
         return ChromaHashStatus::NullPointer;
     }
+    let Some(output) = gamut_from_abi(output) else {
+        return ChromaHashStatus::InvalidData;
+    };
     let handle = &*hash;
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
         let (w, h, rgba) = match capped {
@@ -383,19 +406,21 @@ pub unsafe extern "C" fn chromahash_decode(
     hash: *const ChromaHash,
     out_image: *mut ChromaHashImage,
 ) -> ChromaHashStatus {
-    decode_into(hash, out_image, None, CoreGamut::Srgb)
+    decode_into(hash, out_image, None, CHROMA_HASH_GAMUT_SRGB)
 }
 
 /// Decode into an RGBA image in the given output gamut (sRGB / Display P3 /
-/// Adobe RGB; others fall back to sRGB). `*out_image` receives a library-owned
-/// image to release with [`chromahash_image_free`].
+/// Adobe RGB; BT.2020 and ProPhoto RGB fall back to sRGB). Rejects a gamut no
+/// `CHROMA_HASH_GAMUT_*` constant names with [`ChromaHashStatus::InvalidData`].
+/// `*out_image` receives a library-owned image to release with
+/// [`chromahash_image_free`].
 #[no_mangle]
 pub unsafe extern "C" fn chromahash_decode_to(
     hash: *const ChromaHash,
     output: ChromaHashGamut,
     out_image: *mut ChromaHashImage,
 ) -> ChromaHashStatus {
-    decode_into(hash, out_image, None, output.into())
+    decode_into(hash, out_image, None, output)
 }
 
 /// Decode into an sRGB RGBA image, capped at the given maximum dimensions. `*out_image`
@@ -411,11 +436,12 @@ pub unsafe extern "C" fn chromahash_decode_capped(
         hash,
         out_image,
         Some((max_width, max_height)),
-        CoreGamut::Srgb,
+        CHROMA_HASH_GAMUT_SRGB,
     )
 }
 
-/// Capped decode (see [`chromahash_decode_capped`]) in the given output gamut.
+/// Capped decode (see [`chromahash_decode_capped`]) in the given output gamut,
+/// checked as in [`chromahash_decode_to`].
 #[no_mangle]
 pub unsafe extern "C" fn chromahash_decode_capped_to(
     hash: *const ChromaHash,
@@ -424,12 +450,7 @@ pub unsafe extern "C" fn chromahash_decode_capped_to(
     output: ChromaHashGamut,
     out_image: *mut ChromaHashImage,
 ) -> ChromaHashStatus {
-    decode_into(
-        hash,
-        out_image,
-        Some((max_width, max_height)),
-        output.into(),
-    )
+    decode_into(hash, out_image, Some((max_width, max_height)), output)
 }
 
 /// Release the RGBA buffer owned by a [`ChromaHashImage`] and zero the struct.
@@ -527,12 +548,15 @@ pub unsafe extern "C" fn chromahash_batch_encode(
         if it.quality > MAX_TIER {
             return ChromaHashStatus::InvalidData;
         }
+        let Some(gamut) = gamut_from_abi(it.gamut) else {
+            return ChromaHashStatus::InvalidData;
+        };
         let slice = std::slice::from_raw_parts(it.rgba, it.rgba_len);
         inputs.push(CoreInput {
             w: it.width,
             h: it.height,
             rgba: Arc::from(slice),
-            gamut: it.gamut.into(),
+            gamut,
             quality: it.quality,
         });
     }

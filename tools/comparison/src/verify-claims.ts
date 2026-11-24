@@ -69,6 +69,7 @@ import {
   countClaimFailures,
 } from "./perf/counts-claims.ts";
 import { AB_COUNTS_DIR } from "./perf/counts-core.ts";
+import { OVERHEAD_TABLE, renderOverheadTable } from "./perf/overhead-core.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const SOURCE = path.join(REPO_ROOT, "spec/EXPERIMENTS.md");
@@ -155,8 +156,33 @@ function cflPaidOverShipped(paid: number): number {
 }
 
 /**
+ * Code 3's ΔE00 and the size-matched WebP row's beside it in §11.14, as one
+ * file quotes the pair. A function declaration so the register can spread it.
+ */
+function code3AgainstWebp(file: string, code3: RegExp, webp: RegExp): Claim[] {
+  return [
+    {
+      file,
+      what: "code 3 at 411 B on holdout",
+      pattern: code3,
+      section: "11.14",
+      row: "411",
+      column: "ΔE00 ↓",
+    },
+    {
+      file,
+      what: "WebP at ~405 B on holdout",
+      pattern: webp,
+      section: "11.14",
+      row: "404.8",
+      column: "ΔE00 ↓",
+    },
+  ];
+}
+
+/**
  * How far AVIF at ~1.6 kB leads code 4 on ΔE00 in §11.14, as a percentage of
- * code 4's score — the "19%" §11.14's own prose gives, recomputed from cells.
+ * code 4's score — the "18%" §11.14's own prose gives, recomputed from cells.
  */
 function avifLeadOverCode4(code4: number): number {
   const avif = cellOf("11.14", 0, "1595.6", "ΔE00 ↓");
@@ -525,6 +551,18 @@ const REGISTER: Claim[] = [
     row: "1574.0",
     column: "ΔE00 ↓",
   },
+  // Code 3 against size-matched WebP at ~405 B. Generation v2's coder moved
+  // code 3 past WebP on ΔE00 (#168); at generation v1 WebP led all four.
+  ...code3AgainstWebp(
+    "spec/README.md",
+    /ΔE00 off size-matched WebP at ~405 B, ([\d.]+) against/,
+    /against WebP's ([\d.]+), and loses/,
+  ),
+  ...code3AgainstWebp(
+    "spec/RATIONALE.md",
+    /keeps ΔE00 at generation v2 \(([\d.]+) against/,
+    /against WebP's\n {3}([\d.]+)\), and AVIF/,
+  ),
 
   // ── The AC bit-depth trade, §7.4 of the spec ─────────────────────────────
   {
@@ -1767,6 +1805,26 @@ if (countFailures.length > 0) {
   );
 }
 
+// The per-binding FFI overhead table is rendered from its committed records
+// (`perf/overhead-core.ts`), so it is checked by rendering it again: any
+// difference is a re-recorded count the table was not regenerated from.
+let overheadFailure: string | null = null;
+try {
+  const rendered = renderOverheadTable((record) =>
+    JSON.parse(readFileSync(path.join(AB_COUNTS_DIR, record), "utf8")),
+  );
+  if (readFileSync(path.join(REPO_ROOT, OVERHEAD_TABLE), "utf8") !== rendered) {
+    overheadFailure = `${OVERHEAD_TABLE} differs from what its records give`;
+  }
+} catch (e) {
+  overheadFailure = `${OVERHEAD_TABLE}: ${(e as Error).message}`;
+}
+if (overheadFailure !== null) {
+  console.error(
+    `${overheadFailure}.\n\nRegenerate it with \`node tools/comparison/dist/perf/overhead-table.js\`, or re-record its counts with \`mise run benchmark:overhead\`.\n`,
+  );
+}
+
 if (failures.length > 0) {
   console.error(
     `${failures.length} claim(s) disagree with spec/EXPERIMENTS.md:\n`,
@@ -1782,7 +1840,7 @@ if (failures.length > 0) {
   );
   process.exit(1);
 }
-if (countFailures.length > 0) process.exit(1);
+if (countFailures.length > 0 || overheadFailure !== null) process.exit(1);
 
 /**
  * The register is hand-written, so the gate above can only be as complete as
@@ -1884,6 +1942,7 @@ console.log(
 console.log(
   `Checked ${COUNT_ROWS.length} rows of PERFORMANCE.md §12.4's counts table and ${COUNT_PROSE.length} quoted count figure(s) against results/counts/ab/.`,
 );
+console.log(`${OVERHEAD_TABLE} matches its records.`);
 console.log("\nEvery registered claim agrees with the section it cites.");
 console.log(
   `No unregistered ΔE00 or pp figure in the ${new Set(REGISTER.map((c) => c.file)).size} gated files.`,

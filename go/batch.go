@@ -107,6 +107,9 @@ func (be *BatchEncoder) EncodeBatch(items []ImageInput) []ChromaHash {
 		if it.Quality > MaxTier {
 			panic("chromahash: item " + strconv.Itoa(i) + ": quality tier out of range")
 		}
+		if !it.Gamut.valid() {
+			panic("chromahash: item " + strconv.Itoa(i) + ": unknown gamut")
+		}
 	}
 
 	out := make([]ChromaHash, len(items))

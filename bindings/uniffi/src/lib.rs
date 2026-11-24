@@ -23,6 +23,10 @@ use chromahash::{
 
 uniffi::setup_scaffolding!();
 
+mod bytes;
+
+pub use bytes::{Bytes, SharedBytes};
+
 // ─── quality tiers ────────────────────────────────────────────────────────────
 //
 // Re-exported from the core rather than restated in each generated language, so
@@ -177,7 +181,7 @@ fn prefix(e: ChromaHashError, index: usize) -> ChromaHashError {
 pub struct DecodeResult {
     pub width: i32,
     pub height: i32,
-    pub rgba: Vec<u8>,
+    pub rgba: Bytes,
 }
 
 /// An 8-bit-per-channel RGBA color. Each field is in the range `0..=255`.
@@ -201,12 +205,7 @@ impl ChromaHash {
     /// Encode an image (RGBA, 4 bytes/pixel) into a default-tier (32-byte)
     /// ChromaHash. Throws if a dimension is zero or `rgba.len() != w * h * 4`.
     #[uniffi::constructor]
-    pub fn encode(
-        w: u32,
-        h: u32,
-        rgba: Vec<u8>,
-        gamut: Gamut,
-    ) -> Result<Arc<Self>, ChromaHashError> {
+    pub fn encode(w: u32, h: u32, rgba: Bytes, gamut: Gamut) -> Result<Arc<Self>, ChromaHashError> {
         Self::encode_with_quality(w, h, rgba, gamut, DEFAULT_TIER)
     }
 
@@ -218,7 +217,7 @@ impl ChromaHash {
     pub fn encode_with_quality(
         w: u32,
         h: u32,
-        rgba: Vec<u8>,
+        rgba: Bytes,
         gamut: Gamut,
         quality: u8,
     ) -> Result<Arc<Self>, ChromaHashError> {
@@ -231,7 +230,7 @@ impl ChromaHash {
     /// Reconstruct from raw hash bytes. Throws [`ChromaHashError::InvalidData`] if
     /// `bytes` is not a valid v2 ChromaHash.
     #[uniffi::constructor]
-    pub fn from_bytes(bytes: Vec<u8>) -> Result<Arc<Self>, ChromaHashError> {
+    pub fn from_bytes(bytes: Bytes) -> Result<Arc<Self>, ChromaHashError> {
         let inner = CoreHash::from_bytes(&bytes).map_err(|e| ChromaHashError::InvalidData {
             reason: e.to_string(),
         })?;
@@ -250,7 +249,7 @@ impl ChromaHash {
         DecodeResult {
             width: width as i32,
             height: height as i32,
-            rgba,
+            rgba: Bytes(rgba),
         }
     }
 
@@ -265,7 +264,7 @@ impl ChromaHash {
         DecodeResult {
             width: width as i32,
             height: height as i32,
-            rgba,
+            rgba: Bytes(rgba),
         }
     }
 
@@ -281,8 +280,8 @@ impl ChromaHash {
     }
 
     /// The raw hash bytes (32 at the default tier, more at higher tiers).
-    pub fn as_bytes(&self) -> Vec<u8> {
-        self.inner.as_bytes().to_vec()
+    pub fn as_bytes(&self) -> Bytes {
+        Bytes(self.inner.as_bytes().to_vec())
     }
 }
 
@@ -292,7 +291,10 @@ impl ChromaHash {
 pub struct ImageInput {
     pub w: u32,
     pub h: u32,
-    pub rgba: Vec<u8>,
+    // Lifted straight into the shared buffer the core's batch encoder takes. A
+    // plain comment, not a doc comment: UniFFI would publish a doc comment into
+    // every generated binding, which this change leaves byte-identical.
+    pub rgba: SharedBytes,
     pub gamut: Gamut,
     /// Quality tier (`0..=4`, ordered by quality). Defaults to the 32-byte
     /// default tier, matching [`ChromaHash::encode`] — note that the tier
@@ -362,7 +364,7 @@ impl BatchEncoder {
             inputs.push(CoreInput {
                 w: it.w,
                 h: it.h,
-                rgba: Arc::from(it.rgba),
+                rgba: it.rgba.0,
                 gamut: it.gamut.into(),
                 quality: it.quality,
             });

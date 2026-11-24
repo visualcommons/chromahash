@@ -1890,16 +1890,18 @@ output at all, which is the compact and default tiers' whole argument.
 
 Codes 3 and 4 are **not** justified that way, and this specification does not claim they
 are. Measured at equal bytes on the same corpus (`EXPERIMENTS.md` §11.14, holdout split),
-WebP overtakes ChromaHash on ΔE00 between 193 and 411 bytes. At ~1.6 kB AVIF scores
-5.471 mean ΔE00 against code 4's 6.768, and WebP and JPEG also beat code 4 on every
+code 3 keeps ΔE00 off size-matched WebP at ~405 B, 7.313 against WebP's 7.518, and loses
+SSIMULACRA2, Butteraugli and DSSIM to it. At ~1.6 kB AVIF scores
+5.471 mean ΔE00 against code 4's 6.642, and WebP and JPEG also beat code 4 on every
 metric. Even uncoded RGB565 pixels edge code 4 on ΔE00 there, 6.570, though not on
-SSIMULACRA2 or Butteraugli, and not on the tune split, where code 4 wins (§2).
+SSIMULACRA2, Butteraugli or DSSIM, and not on the tune split, where code 4 won at
+generation v1 (§2).
 Entropy coding recovers a few percent (`EXPERIMENTS.md` §7.13: 1.6% at 32 B, 4.8% at
 108 B, on tune; §13.8: 6.04% at code 3 and 2.80% at code 4, on `holdout3`) — well short
 of that gap at code 4. Generation v2 adopts it at code 3, where it passed (§3.6); its
 total-code design keeps the O(1) length check that *is* this format's validity check
-(§2.6), at the cost of random access to an AC code. The codec comparison above was
-measured on v1's codes 3–4 and has not been re-run for v2.
+(§2.6), at the cost of random access to an AC code. The codec comparison above is
+generation v2's codes 3–4; at generation v1, WebP led code 3 on all four metrics.
 
 They are kept for the operational properties they share with the rest of the format, and
 those are real: no codec dependency, no decoder CVE surface, no container or metadata
