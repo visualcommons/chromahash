@@ -6,30 +6,61 @@ What each binding layer adds to an operation over the Rust core, as retired user
 
 | Layer | Serves | Cell | Layer (A) | Core (B) | Overhead | A/B | Record |
 | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| C ABI | C, C# (P/Invoke), Go (cgo) | encode 64×64 | 3,736,097 | 3,735,891 | +206 per encode | 1.0001 | `overhead-c-encode-64.json` |
-| C ABI | C, C# (P/Invoke), Go (cgo) | encode 512×512 | 109,821,152 | 109,820,943 | +209 per encode | 1.0000 | `overhead-c-encode-512.json` |
-| C ABI | C, C# (P/Invoke), Go (cgo) | decode (64×64's hash) | 2,401,488 | 2,401,306 | +182 per decode | 1.0001 | `overhead-c-decode-64.json` |
-| C ABI | C, C# (P/Invoke), Go (cgo) | batch of 16 × 64×64 | 59,830,968 | 59,827,494 | +3,474 per batch (+217 per image) | 1.0001 | `overhead-c-batch16-64.json` |
-| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | encode 64×64 | 3,740,197 | 3,735,890 | +4,307 per encode | 1.0012 | `overhead-uniffi-encode-64.json` |
-| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | encode 512×512 | 109,947,501 | 109,820,926 | +126,575 per encode | 1.0012 | `overhead-uniffi-encode-512.json` |
-| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | decode (64×64's hash) | 2,405,443 | 2,401,306 | +4,137 per decode | 1.0017 | `overhead-uniffi-decode-64.json` |
-| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | batch of 16 × 64×64 | 59,868,208 | 59,827,517 | +40,691 per batch (+2,543 per image) | 1.0007 | `overhead-uniffi-batch16-64.json` |
+| C ABI | C, C# (P/Invoke), Go (cgo) | encode 64×64 | 3,736,095 | 3,735,887 | +208 per encode | 1.0001 | `overhead-c-encode-64.json` |
+| C ABI | C, C# (P/Invoke), Go (cgo) | encode 512×512 | 109,849,619 | 109,849,422 | +197 per encode | 1.0000 | `overhead-c-encode-512.json` |
+| C ABI | C, C# (P/Invoke), Go (cgo) | decode (64×64's hash) | 2,400,842 | 2,400,660 | +182 per decode | 1.0001 | `overhead-c-decode-64.json` |
+| C ABI | C, C# (P/Invoke), Go (cgo) | batch of 16 × 64×64 | 59,839,149 | 59,834,673 | +4,476 per batch (+280 per image) | 1.0001 | `overhead-c-batch16-64.json` |
+| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | encode 64×64 | 3,740,194 | 3,735,886 | +4,308 per encode | 1.0012 | `overhead-uniffi-encode-64.json` |
+| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | encode 512×512 | 109,977,360 | 109,849,407 | +127,953 per encode | 1.0012 | `overhead-uniffi-encode-512.json` |
+| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | decode (64×64's hash) | 2,404,798 | 2,400,660 | +4,138 per decode | 1.0017 | `overhead-uniffi-decode-64.json` |
+| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | batch of 16 × 64×64 | 59,877,817 | 59,835,641 | +42,176 per batch (+2,636 per image) | 1.0007 | `overhead-uniffi-batch16-64.json` |
+
+## Host runtimes
+
+What each host runtime adds to a call, counted through its published binding. Arm A is the host's own command-line driver (the cross-language benchmark's `encode-stdin`), run under the host's counting configuration (`counts-core.ts` `COUNTING_CONFIGS`); arm B is the core driver of the native layer the host binds, counted with `--b-impl Rust` on the same cell, and both arms decode to the same RGBA bytes or encode to the same hash in every record. A host is countable where, in every one of its records, each arm's per-operation count in each of the interleaved blocks is within 1.000% of that arm's median; the check and its tolerance were fixed in issue #173 before any host was counted. A counting configuration is not how the host ships: it pins the runtime's compiler tier and its collector's pacing, so a host's figure is its cost under that configuration. "Native layer" is the overhead row above for the same cell, counted against the same core binary, and "Host side" is what is left: the host's call, its marshalling and its runtime, with its CLI's bench loop. The TypeScript (wasm) arm runs the core itself as wasm in V8's baseline compiler, so its figure is the whole call against native code rather than the glue alone; the glue's share is not separable by this count.
+
+| Host | Counting configuration | Largest block spread | Countable |
+| --- | --- | ---: | --- |
+| C# | `DOTNET_GCgen0size=0x10000000` `DOTNET_TieredCompilation=0` `DOTNET_TieredPGO=0` `DOTNET_gcConcurrent=0` | 0.024% | yes |
+| Go | `GOGC=off` `GOMAXPROCS=1` | 0.099% | yes |
+| Kotlin | `JAVA_OPTS=-XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Xbatch -XX:CICompilerCount=1` | 0.139% | yes |
+| Python | `PYTHONHASHSEED=0` `runs: python/.venv/bin/python -m chromahash.encode_stdin` | 0.422% | yes |
+| TypeScript (wasm) | `--single-threaded` `--no-opt` `--no-maglev` `--no-sparkplug` `--liftoff-only` `--random-seed=1` `--hash-seed=1` | 0.002% | yes |
+
+| Host | Via | Cell | Host (A) | Core (B) | Over the core | Native layer | Host side | A/B | Record |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| C# | P/Invoke and .NET | encode 64×64 | 3,737,165 | 3,735,889 | +1,276 per encode | +208 | +1,068 | 1.0004 | `host-csharp-encode-64.json` |
+| C# | P/Invoke and .NET | encode 512×512 | 109,959,588 | 109,849,437 | +110,151 per encode | +197 | +109,954 | 1.0011 | `host-csharp-encode-512.json` |
+| C# | P/Invoke and .NET | decode (64×64's hash) | 2,402,396 | 2,400,660 | +1,736 per decode | +182 | +1,554 | 1.0007 | `host-csharp-decode-64.json` |
+| Go | cgo and the Go runtime | encode 64×64 | 3,740,767 | 3,735,887 | +4,880 per encode | +208 | +4,672 | 1.0013 | `host-go-encode-64.json` |
+| Go | cgo and the Go runtime | encode 512×512 | 109,884,856 | 109,849,427 | +35,429 per encode | +197 | +35,232 | 1.0006 | `host-go-encode-512.json` |
+| Go | cgo and the Go runtime | decode (64×64's hash) | 2,408,194 | 2,400,660 | +7,534 per decode | +182 | +7,352 | 1.0031 | `host-go-decode-64.json` |
+| Kotlin | JNA and the JVM | encode 64×64 | 5,434,788 | 3,735,888 | +1,698,900 per encode | +4,308 | +1,694,592 | 1.4548 | `host-kotlin-encode-64.json` |
+| Kotlin | JNA and the JVM | encode 512×512 | 117,198,877 | 109,849,412 | +7,349,465 per encode | +127,953 | +7,221,512 | 1.0669 | `host-kotlin-encode-512.json` |
+| Kotlin | JNA and the JVM | decode (64×64's hash) | 2,848,256 | 2,400,660 | +447,596 per decode | +4,138 | +443,458 | 1.1869 | `host-kotlin-decode-64.json` |
+| Python | ctypes and CPython | encode 64×64 | 46,710,407 | 3,735,887 | +42,974,520 per encode | +4,308 | +42,970,212 | 12.4946 | `host-python-encode-64.json` |
+| Python | ctypes and CPython | encode 512×512 | 2,826,907,979 | 109,849,404 | +2,717,058,575 per encode | +127,953 | +2,716,930,622 | 25.7472 | `host-python-encode-512.json` |
+| Python | ctypes and CPython | decode (64×64's hash) | 2,748,974 | 2,400,660 | +348,314 per decode | +4,138 | +344,176 | 1.1451 | `host-python-decode-64.json` |
+| TypeScript (wasm) | the wasm-bindgen glue, V8, and the core itself compiled to wasm | encode 64×64 | 10,869,325 | 3,735,890 | +7,133,435 per encode | — | — | 2.9094 | `host-ts-wasm-encode-64.json` |
+| TypeScript (wasm) | the wasm-bindgen glue, V8, and the core itself compiled to wasm | encode 512×512 | 404,447,625 | 109,849,423 | +294,598,202 per encode | — | — | 3.6818 | `host-ts-wasm-encode-512.json` |
+| TypeScript (wasm) | the wasm-bindgen glue, V8, and the core itself compiled to wasm | decode (64×64's hash) | 6,128,078 | 2,400,660 | +3,727,418 per decode | — | — | 2.5527 | `host-ts-wasm-decode-64.json` |
 
 ## Every binding
 
 | Binding | Native layer | Counted here | Not counted |
 | --- | --- | --- | --- |
 | C | C ABI | the whole call | — |
-| C# | C ABI | the native side of every call | the P/Invoke marshalling and the .NET runtime: `benchmark:counts` refuses a JIT and a collector |
-| Go | C ABI | the native side of every call | the cgo transition and the Go runtime: `benchmark:counts` refuses Go's concurrent collector |
-| Kotlin/JVM, Android | UniFFI scaffolding | the native side of every call, with the host's buffer writes and reads emulated at their minimum | JNA and the JVM: `benchmark:counts` refuses a JIT and a collector |
-| Python | UniFFI scaffolding | as Kotlin | ctypes and CPython: `benchmark:counts` refuses a managed runtime |
-| TypeScript (wasm) | wasm-bindgen | not measured | the whole call: it runs in a JIT engine, and a native count of the wasm crate would measure neither the JS glue nor the engine |
+| C# | C ABI | the whole call, under its counting configuration (Host runtimes) | the .NET runtime (tiered JIT, concurrent collector) as it ships: its count is under the counting configuration |
+| Go | C ABI | the whole call, under its counting configuration (Host runtimes) | the Go runtime (its concurrent collector, every processor) as it ships: its count is under the counting configuration |
+| Kotlin/JVM | UniFFI scaffolding | the whole call, under its counting configuration (Host runtimes) | the JVM (tiered C1/C2 compilation in the background, its default collector) as it ships: its count is under the counting configuration |
+| Android | UniFFI scaffolding | the native side of every call, as Kotlin/JVM | JNA and ART: they run on a device, not on the counting host |
+| Python | UniFFI scaffolding | the whole call, under its counting configuration (Host runtimes) | CPython started through `uv run`, with a random hash seed as it ships: its count is under the counting configuration |
+| TypeScript (wasm) | wasm-bindgen | the whole call, under its counting configuration (Host runtimes) | V8 with its optimizing tiers (Maglev, TurboFan) and background threads, which is where the wasm core runs as it ships as it ships: its count is under the counting configuration |
 | Swift | UniFFI scaffolding | not measured | Swift builds on macOS only (`ci-swift.yml`); its native layer is the UniFFI row above |
 
 ## Reductions
 
-Each reduction is byte-identical (both arms' outputs are equal in every record) and is shown by a paired count of the layer's driver after it (A) against the same driver built before it (B), each cell counted with `benchmark:overhead`'s options and `--b-bin` naming the earlier build.
+Each reduction is byte-identical (both arms' outputs are equal in every record) and is shown by a paired count of the layer's driver after it (A) against the same driver built before it (B), each cell counted with `benchmark:overhead`'s options, `--impl` naming the driver's implementation and `--b-bin` naming the earlier build; every block of every record counts fewer instructions after it.
 
 ### `uniffi-bytes` (uniffi)
 
@@ -42,4 +73,12 @@ UniFFI byte arrays lifted and lowered in one slice copy instead of one push per 
 | decode (64×64's hash) | 2,405,443 | 2,450,508 | −45,065 per decode | 0.9816 | `reduce-uniffi-bytes-decode-64.json` |
 | batch of 16 × 64×64 | 59,868,230 | 69,598,781 | −9,730,551 per batch | 0.8602 | `reduce-uniffi-bytes-batch16-64.json` |
 
-Counted at 8f78dff892aebb1882d0e4a25a94e04a29eb830c on AMD Ryzen 7 7800X3D 8-Core Processor; each record holds its binaries' SHA-256, the host, the counter and every block.
+### `wasm-rgba-copy` (wasm)
+
+`DecodeResult::rgba` returns a `Uint8Array` built from the decoded slice (`bindings/wasm/src/lib.rs`), so the pixels cross to JS in one copy instead of a clone in the wasm heap, wasm-bindgen's copy of the clone and its free. Counted through the TypeScript package's CLI under Node's counting configuration (Host runtimes), on the decode cell, the only one whose path it changes. B is `bindings/wasm/target/before/typescript/dist/encode-stdin.js`, built at `4fd0571`.
+
+| Cell | After (A) | Before (B) | Change | A/B | Record |
+| --- | ---: | ---: | ---: | ---: | --- |
+| decode (64×64's hash) | 6,128,083 | 6,129,710 | −1,627 per decode | 0.9997 | `reduce-wasm-rgba-copy-decode-64.json` |
+
+Counted at 84e33389d9258cbebac4f536fe8a1accd9613278, 8f78dff892aebb1882d0e4a25a94e04a29eb830c on AMD Ryzen 7 7800X3D 8-Core Processor; each record holds its binaries' SHA-256, the host, the counter and every block.

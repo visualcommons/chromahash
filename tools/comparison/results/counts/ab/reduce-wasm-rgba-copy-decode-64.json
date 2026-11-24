@@ -1,0 +1,287 @@
+{
+  "schema": 1,
+  "tool": "benchmark-counts",
+  "cell": {
+    "impl": "TypeScript (wasm)",
+    "op": "decode",
+    "width": 64,
+    "height": 64,
+    "tier": 1,
+    "content": "gradient",
+    "fixtureSha256": "a5af0fcfebbd5175074412b0207744050965b83c30080814a0815c0feab9e8a9",
+    "input": "0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d"
+  },
+  "arms": {
+    "a": {
+      "bin": "typescript/dist/encode-stdin.js",
+      "binSha256": "cd0b930aa7cf808459923332f8b871700985c2a2fdb80d7a59c1c8a938e8ab45",
+      "tune": "",
+      "config": [
+        "--single-threaded",
+        "--no-opt",
+        "--no-maglev",
+        "--no-sparkplug",
+        "--liftoff-only",
+        "--random-seed=1",
+        "--hash-seed=1"
+      ]
+    },
+    "b": {
+      "bin": "bindings/wasm/target/before/typescript/dist/encode-stdin.js",
+      "binSha256": "d990c079e4b46abc78afe035968a6c2346197072ae7aab5af796e463d99731b0",
+      "tune": "",
+      "config": [
+        "--single-threaded",
+        "--no-opt",
+        "--no-maglev",
+        "--no-sparkplug",
+        "--liftoff-only",
+        "--random-seed=1",
+        "--hash-seed=1"
+      ]
+    }
+  },
+  "settings": {
+    "events": [
+      "instructions:u",
+      "cycles:u"
+    ],
+    "iterations": 2000,
+    "blocks": 10,
+    "ratio": "a / b, per operation"
+  },
+  "provenance": {
+    "rev": "84e33389d9258cbebac4f536fe8a1accd9613278",
+    "dirty": false,
+    "dirtyPaths": [],
+    "node": "v24.20.0"
+  },
+  "host": {
+    "cpu": {
+      "vendor": "AuthenticAMD",
+      "family": "25",
+      "model": "97",
+      "stepping": "2",
+      "modelName": "AMD Ryzen 7 7800X3D 8-Core Processor"
+    },
+    "kernel": "7.3.4-300.fc45.x86_64",
+    "threads": 16,
+    "counter": {
+      "backend": "perf-stat",
+      "version": "perf version 7.3.4-300.fc45.x86_64",
+      "paranoid": 2
+    },
+    "loadavgStart": [
+      29.65,
+      30.3,
+      33.46
+    ],
+    "loadavgEnd": [
+      30.54,
+      30.43,
+      33.42
+    ]
+  },
+  "outputs": {
+    "a": "ec0faf6c712632a73307a8c801707dcf2c246507b04aa078b85d43d34edc9416",
+    "b": "ec0faf6c712632a73307a8c801707dcf2c246507b04aa078b85d43d34edc9416",
+    "equal": true
+  },
+  "blocks": [
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 6128086.019,
+        "cycles:u": 1918108.809
+      },
+      "b": {
+        "instructions:u": 6129718.1965,
+        "cycles:u": 1796772.9825
+      },
+      "ratio": {
+        "instructions:u": 0.9997337271555271,
+        "cycles:u": 1.067529859187428
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 6128074.357,
+        "cycles:u": 2277257.765
+      },
+      "b": {
+        "instructions:u": 6129707.591,
+        "cycles:u": 1816269.768
+      },
+      "ratio": {
+        "instructions:u": 0.9997335543375024,
+        "cycles:u": 1.2538103122795579
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 6128090.4785,
+        "cycles:u": 2080470.0955
+      },
+      "b": {
+        "instructions:u": 6129709.8975,
+        "cycles:u": 2126418.7265
+      },
+      "ratio": {
+        "instructions:u": 0.9997358082148944,
+        "cycles:u": 0.9783915414083898
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 6128079.794,
+        "cycles:u": 2045741.1955
+      },
+      "b": {
+        "instructions:u": 6129697.5485,
+        "cycles:u": 2097856.4395
+      },
+      "ratio": {
+        "instructions:u": 0.9997360792294889,
+        "cycles:u": 0.9751578596996747
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 6128076.771,
+        "cycles:u": 2258216.772
+      },
+      "b": {
+        "instructions:u": 6129707.079,
+        "cycles:u": 2500528.5825
+      },
+      "ratio": {
+        "instructions:u": 0.9997340316626898,
+        "cycles:u": 0.9030957645532132
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 6128092.4785,
+        "cycles:u": 1873457.0515
+      },
+      "b": {
+        "instructions:u": 6129711.2005,
+        "cycles:u": 1895661.1065
+      },
+      "ratio": {
+        "instructions:u": 0.9997359219795106,
+        "cycles:u": 0.9882869069139706
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 6128078.365,
+        "cycles:u": 2063916.3385
+      },
+      "b": {
+        "instructions:u": 6129713.3915,
+        "cycles:u": 2159055.241
+      },
+      "ratio": {
+        "instructions:u": 0.9997332621616098,
+        "cycles:u": 0.9559349382575618
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 6128080.928,
+        "cycles:u": 1832227.856
+      },
+      "b": {
+        "instructions:u": 6129707.545,
+        "cycles:u": 1949278.8365
+      },
+      "ratio": {
+        "instructions:u": 0.9997346338323553,
+        "cycles:u": 0.9399516486260276
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 6128097.7515,
+        "cycles:u": 1931754.9815
+      },
+      "b": {
+        "instructions:u": 6129715.3925,
+        "cycles:u": 2084041.446
+      },
+      "ratio": {
+        "instructions:u": 0.9997360985141367,
+        "cycles:u": 0.926927334006581
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 6128095.077,
+        "cycles:u": 2171711.89
+      },
+      "b": {
+        "instructions:u": 6129723.589,
+        "cycles:u": 2241278.505
+      },
+      "ratio": {
+        "instructions:u": 0.9997343253775876,
+        "cycles:u": 0.9689611911929705
+      }
+    }
+  ],
+  "summary": {
+    "a": {
+      "median": {
+        "instructions:u": 6128083.4735,
+        "cycles:u": 2054828.767
+      },
+      "min": {
+        "instructions:u": 6128074.357,
+        "cycles:u": 1832227.856
+      },
+      "max": {
+        "instructions:u": 6128097.7515,
+        "cycles:u": 2277257.765
+      }
+    },
+    "b": {
+      "median": {
+        "instructions:u": 6129710.549000001,
+        "cycles:u": 2090948.94275
+      },
+      "min": {
+        "instructions:u": 6129697.5485,
+        "cycles:u": 1796772.9825
+      },
+      "max": {
+        "instructions:u": 6129723.589,
+        "cycles:u": 2500528.5825
+      }
+    },
+    "ratio": {
+      "geomean": {
+        "instructions:u": 0.9997347442459562,
+        "cycles:u": 0.9916769644736183
+      },
+      "min": {
+        "instructions:u": 0.9997332621616098,
+        "cycles:u": 0.9030957645532132
+      },
+      "max": {
+        "instructions:u": 0.9997360985141367,
+        "cycles:u": 1.2538103122795579
+      }
+    }
+  },
+  "against": null
+}
