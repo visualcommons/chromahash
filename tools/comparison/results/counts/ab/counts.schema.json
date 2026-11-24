@@ -122,7 +122,7 @@
       }
     },
     "outputs": {
-      "description": "What each arm produces on the cell's input: an encode cell's hash, hex; a decode cell's sha256 of the decoded output.",
+      "description": "What each arm produces on the cell's input: an encode cell's hash, hex; a decode cell's sha256 of the decoded output, or, where the arms run different implementations, of the decoded RGBA bytes alone (counts-core.ts decodedPixels).",
       "type": "object",
       "additionalProperties": false,
       "required": ["a", "b", "equal"],
@@ -205,9 +205,24 @@
       "additionalProperties": false,
       "required": ["bin", "binSha256", "tune"],
       "properties": {
-        "bin": { "type": "string" },
-        "binSha256": { "type": "string" },
-        "tune": { "type": "string" }
+        "bin": {
+          "description": "The binary the arm runs; for a host run under a counting configuration, the program its runtime runs (script, assembly or launcher), or its package where it runs a module by name.",
+          "type": "string"
+        },
+        "binSha256": {
+          "description": "SHA-256 of the binary; for a host run under a counting configuration, of one '<sha256>  <path>' line per file of its code (counts-core.ts artifactsSha256).",
+          "type": "string"
+        },
+        "tune": { "type": "string" },
+        "impl": {
+          "description": "The implementation this arm runs, present where the arms run different ones (--b-impl).",
+          "type": "string"
+        },
+        "config": {
+          "description": "The counting configuration the arm's host runtime ran under (counts-core.ts COUNTING_CONFIGS): environment as NAME=value, then runtime flags, then any replacement command.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
       }
     },
     "counts": {

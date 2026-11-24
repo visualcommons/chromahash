@@ -15,9 +15,17 @@
 #
 # The C# (P/Invoke) and Go (cgo) bindings run on the C ABI and the Kotlin/JVM,
 # Android and Python bindings on the UniFFI scaffolding, so these two layers
-# are the native side of every binding but TypeScript (wasm) and Swift; what a
-# managed host runtime adds on its side is not counted (benchmark:counts
-# refuses a JIT or a collector). Extra arguments go to every count.
+# are the native side of every binding but TypeScript (wasm) and Swift.
+#
+# Then builds each host's own CLI driver (C#, Go, Kotlin/JVM, Python, and the
+# TypeScript package over wasm) and counts it, under the host's counting
+# configuration (counts-core.ts COUNTING_CONFIGS), against the core driver of
+# the native layer it binds (`--b-impl Rust`; the wasm package against the C
+# crate's), on the three single-image cells. Writes
+# tools/comparison/results/counts/ab/host-<host>-<cell>.json. The table lists a
+# host whose blocks spread over 1% as not countable. Needs dotnet, go, a JDK,
+# uv and wasm-pack (with the wasm-bindgen CLI its lockfile pins) on PATH.
+# Extra arguments go to every count.
 set -euo pipefail
 
 cargo build --manifest-path bindings/c/Cargo.toml --release --example overhead_c --example overhead_core
@@ -36,5 +44,35 @@ for layer in c uniffi; do
   CHROMAHASH_OVERHEAD_BATCH=16 count --op encode --size 64 --iterations 20 \
     --out "$out/overhead-$layer-batch16-64.json" "${@}"
 done
+
+# The hosts' drivers, as build:benchmark builds them.
+wasm-pack build --target web bindings/wasm --out-dir ../../typescript/wasm
+pnpm --prefix typescript run build
+mkdir -p go/lib go/include
+cp bindings/c/target/release/libchromahash_c.a go/lib/
+cp bindings/c/include/chromahash.h go/include/
+( cd go && CGO_ENABLED=1 go build -o encode-stdin ./cmd/encode-stdin )
+dotnet build csharp/src/Chromahash.Cli -c Release --verbosity quiet
+( cd bindings/uniffi/jvm && ./gradlew installDist -q )
+mise run cbuild:python
+( cd python && uv sync --quiet )
+
+host() {
+  local impl=$1 slug=$2 layer=$3
+  shift 3
+  local core=bindings/$layer/target/release/examples/overhead_core
+  count() {
+    node tools/comparison/dist/perf/counts.js --impl "$impl" --b-impl Rust \
+      --b-bin "$core" --tier 1 "$@"
+  }
+  count --op encode --size 64 --iterations 200 --out "$out/host-$slug-encode-64.json" "${@}"
+  count --op encode --size 512 --iterations 20 --out "$out/host-$slug-encode-512.json" "${@}"
+  count --op decode --size 64 --iterations 2000 --out "$out/host-$slug-decode-64.json" "${@}"
+}
+host "C#" csharp c "${@}"
+host Go go c "${@}"
+host Kotlin kotlin uniffi "${@}"
+host Python python uniffi "${@}"
+host "TypeScript (wasm)" ts-wasm c "${@}"
 
 node tools/comparison/dist/perf/overhead-table.js

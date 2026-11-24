@@ -98,7 +98,7 @@ fn integration_decode_vectors() {
             "{name}: height mismatch"
         );
         assert_eq!(
-            result.rgba(),
+            result.rgba().to_vec(),
             bytes(&expected["rgba"]),
             "{name}: rgba mismatch"
         );
@@ -195,10 +195,7 @@ fn each_tier_has_its_documented_length_and_raster() {
         let decoded = hash.decode();
         assert_eq!(decoded.width, edges[tier as usize], "tier {tier} width");
         assert_eq!(decoded.height, edges[tier as usize], "tier {tier} height");
-        assert_eq!(
-            decoded.rgba().len(),
-            (decoded.width * decoded.height * 4) as usize
-        );
+        assert_eq!(decoded.rgba().length(), decoded.width * decoded.height * 4);
     }
 }
 
@@ -264,7 +261,7 @@ fn integration_decode_capped_vectors() {
             "{name}: height mismatch"
         );
         assert_eq!(
-            result.rgba(),
+            result.rgba().to_vec(),
             bytes(&expected["rgba"]),
             "{name}: rgba mismatch"
         );

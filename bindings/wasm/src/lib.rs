@@ -105,9 +105,13 @@ pub struct DecodeResult {
 
 #[wasm_bindgen]
 impl DecodeResult {
+    /// The decoded pixels, copied once, straight from the wasm heap into a new
+    /// JS `Uint8Array`. Returning a `Vec<u8>` would copy them twice: a clone in
+    /// the wasm heap, then wasm-bindgen's copy of that clone out to JS before it
+    /// frees it.
     #[wasm_bindgen(getter)]
-    pub fn rgba(&self) -> Vec<u8> {
-        self.rgba.clone()
+    pub fn rgba(&self) -> js_sys::Uint8Array {
+        js_sys::Uint8Array::from(self.rgba.as_slice())
     }
 }
 

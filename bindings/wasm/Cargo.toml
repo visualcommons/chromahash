@@ -18,6 +18,9 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 chromahash = { path = "../../rust" }
 wasm-bindgen = "0.2"
+# `DecodeResult::rgba` returns a `Uint8Array` built from the decoded slice, so the
+# pixels cross to JS in one copy rather than a clone plus wasm-bindgen's copy.
+js-sys = "0.3"
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3"

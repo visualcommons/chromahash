@@ -245,18 +245,31 @@ import {
 } from "./perf/count.ts";
 import { countClaimFailures } from "./perf/counts-claims.ts";
 import {
+  HOST_CELLS,
   OVERHEAD_CELLS,
+  OVERHEAD_HOSTS,
+  OVERHEAD_REDUCTIONS,
+  hostCore,
+  hostProgram,
+  hostRecord,
   overheadRecord,
   recordProblem,
+  reductionRecord,
   renderOverheadTable,
 } from "./perf/overhead-core.ts";
 import {
   AB_COUNTS_DIR,
   type CountsRecord,
+  artifactsSha256,
   blockSchedule,
+  blockSpread,
+  COUNTING_CONFIGS,
   compareRuns,
   COUNTABLE_IMPLS,
+  configTokens,
   counterRefusal,
+  decodedPixels,
+  HOST_SPREAD,
   implRefusal,
   parseCpuinfo,
   readSchema,
@@ -7707,25 +7720,111 @@ console.log(
     String(probe({ paranoid: 4 })),
   );
 
-  // Admission: exactly the native targets without a collector are counted.
+  // Admission: the native targets without a collector, and each host runtime
+  // with a counting configuration, are counted; nothing else is.
   const admitted = allTargets()
     .filter((t) => implRefusal(t) === null)
-    .map((t) => t.name);
-  const goTarget = allTargets().find((t) => t.name === "Go");
+    .map((t) => t.name)
+    .sort();
+  const wantAdmitted = [
+    ...COUNTABLE_IMPLS,
+    ...Object.keys(COUNTING_CONFIGS),
+  ].sort();
   check(
-    "implRefusal admits exactly Rust, Rust (scalar) and Swift, refuses Go by its garbage collector, every managed runtime by name, and an unknown implementation",
-    admitted.join(",") === COUNTABLE_IMPLS.join(",") &&
-      goTarget !== undefined &&
-      !goTarget.managed &&
-      (implRefusal(goTarget) ?? "").includes("garbage collector") &&
+    "implRefusal admits exactly Rust, Rust (scalar), Swift and the hosts with a counting configuration (C#, Go, Kotlin, Python, TypeScript (wasm)), and refuses a managed runtime without one (TypeScript (pure)) and an unknown implementation by name",
+    admitted.join(",") === wantAdmitted.join(",") &&
+      wantAdmitted.join(",") ===
+        "C#,Go,Kotlin,Python,Rust,Rust (scalar),Swift,TypeScript (wasm)" &&
       allTargets()
-        .filter((t) => t.managed)
-        .every((t) => (implRefusal(t) ?? "").includes("managed runtime")) &&
+        .filter((t) => t.managed && COUNTING_CONFIGS[t.name] === undefined)
+        .every((t) =>
+          (implRefusal(t) ?? "").includes("no counting configuration"),
+        ) &&
+      implRefusal({ name: "TypeScript (pure)", managed: true }) !== null &&
       (implRefusal({ name: "Zig", managed: false }) ?? "").includes(
         "not one of",
       ),
     admitted.join(","),
   );
+
+  // A counting configuration as a record states it, and the host check.
+  check(
+    "configTokens states the environment sorted as NAME=value, then the runtime flags in order, then any replacement command; every host's configuration names a program or a package that exists in the repository's layout",
+    configTokens({
+      env: { ZZ: "1", AA: "2" },
+      flags: ["--x", "--a"],
+      program: null,
+      artifacts: () => [],
+      why: "",
+    }).join(" ") === "AA=2 ZZ=1 --x --a" &&
+      configTokens({
+        env: {},
+        flags: [],
+        command: "py/bin/python",
+        args: ["-m", "m"],
+        program: null,
+        artifacts: () => [],
+        why: "",
+      }).join(" ") === "runs: py/bin/python -m m" &&
+      (COUNTING_CONFIGS["TypeScript (wasm)"]?.flags ?? []).join(" ") ===
+        "--single-threaded --no-opt --no-maglev --no-sparkplug --liftoff-only --random-seed=1 --hash-seed=1" &&
+      (COUNTING_CONFIGS["TypeScript (wasm)"]
+        ?.artifacts("pkg/dist/encode-stdin.js")
+        .join(" ") ?? "") === "pkg/dist pkg/wasm",
+    configTokens(COUNTING_CONFIGS.Go as never).join(" "),
+  );
+  const spreadOf = (median: number, min: number, max: number) =>
+    blockSpread({
+      median: c(median, 1),
+      min: c(min, 1),
+      max: c(max, 1),
+    });
+  check(
+    "blockSpread is the largest relative distance of an arm's block counts from its median (either side), and HOST_SPREAD admits a spread under 1% and not one over it",
+    Math.abs(spreadOf(1000, 990, 1001) - 0.01) < 1e-12 &&
+      Math.abs(spreadOf(1000, 999, 1020) - 0.02) < 1e-12 &&
+      spreadOf(1000, 1000, 1000) === 0 &&
+      HOST_SPREAD === 0.01 &&
+      spreadOf(1000, 991, 1009) <= HOST_SPREAD &&
+      !(spreadOf(1000, 989, 1000) <= HOST_SPREAD) &&
+      thrown(() => spreadOf(0, 0, 0)).includes("positive"),
+    String(spreadOf(1000, 990, 1001)),
+  );
+  const px = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]);
+  const headed = Buffer.concat([Buffer.from("2 1\n"), px]);
+  check(
+    "decodedPixels strips the Rust drivers' W H header and checks it against the bytes after it, passes a host's raw pixels through untouched, and refuses a Rust output with no header",
+    decodedPixels("Rust", headed).equals(px) &&
+      decodedPixels("Go", headed).equals(headed) &&
+      decodedPixels("TypeScript (wasm)", px).equals(px) &&
+      thrown(() => decodedPixels("Rust", px)).includes("no") &&
+      thrown(() =>
+        decodedPixels("Rust", Buffer.concat([Buffer.from("3 1\n"), px])),
+      ).includes("not 12"),
+    "",
+  );
+  {
+    const dir = mkdtempSync(path.join(tmpdir(), "artifacts-"));
+    writeFileSync(path.join(dir, "one"), "a");
+    mkdirSync(path.join(dir, "pkg/__pycache__"), { recursive: true });
+    writeFileSync(path.join(dir, "pkg/x.py"), "b");
+    const tree = artifactsSha256(dir, ["pkg"]);
+    writeFileSync(path.join(dir, "pkg/__pycache__/x.pyc"), "c");
+    const skipped = artifactsSha256(dir, ["pkg"]);
+    writeFileSync(path.join(dir, "pkg/x.py"), "B");
+    const edited = artifactsSha256(dir, ["pkg"]);
+    const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+    check(
+      "artifactsSha256 is a single file's own SHA-256, digests a directory's files by content and path, ignores __pycache__, changes with a file's bytes, and is null where an artifact is missing",
+      artifactsSha256(dir, ["one"]) === sha("a") &&
+        tree === sha(`${sha("b")}  pkg/x.py\n`) &&
+        skipped === tree &&
+        edited !== tree &&
+        artifactsSha256(dir, ["one", "missing"]) === null,
+      String(tree),
+    );
+    rmSync(dir, { recursive: true, force: true });
+  }
 
   // Refusal to compare runs from different CPUs.
   const cpu = parseCpuinfo(
@@ -9021,6 +9120,122 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
     rendered.startsWith("#")
       ? `${rendered.split("\n").length} lines`
       : rendered,
+  );
+
+  // A host record is quotable only as its host, against the Rust core, under
+  // the counting configuration the code holds now; a host whose blocks spread
+  // over HOST_SPREAD is rendered as not countable instead of in rows; and a
+  // reduction must count fewer instructions in every block.
+  const goHost = OVERHEAD_HOSTS.find((h) => h.impl === "Go");
+  const decode = HOST_CELLS.find((c) => c.cell === "decode-64");
+  if (goHost === undefined || decode === undefined) {
+    throw new Error("OVERHEAD_HOSTS lost Go or HOST_CELLS its decode cell");
+  }
+  const goName = hostRecord(goHost, decode);
+  const goRec = readAb(goName);
+  const hostRefused = (r: CountsRecord, text: string) =>
+    (
+      recordProblem(
+        r,
+        decode,
+        hostProgram(goHost),
+        hostCore(goHost),
+        "Go",
+        "Rust",
+      ) ?? ""
+    ).includes(text);
+  const goVariant = (f: (r: CountsRecord) => void): CountsRecord => {
+    const r = structuredClone(goRec);
+    f(r);
+    return r;
+  };
+  check(
+    "overhead recordProblem on a host record: accepts the committed one, and refuses another counting configuration, none, an arm B that is not the Rust core, and a same-implementation reading of it",
+    recordProblem(
+      goRec,
+      decode,
+      hostProgram(goHost),
+      hostCore(goHost),
+      "Go",
+      "Rust",
+    ) === null &&
+      hostRefused(
+        goVariant((r) => {
+          r.arms.a.config = ["GOGC=100", "GOMAXPROCS=1"];
+        }),
+        "ran under GOGC=100",
+      ) &&
+      hostRefused(
+        goVariant((r) => {
+          r.arms.a = {
+            bin: r.arms.a.bin,
+            binSha256: r.arms.a.binSha256,
+            tune: r.arms.a.tune,
+            impl: "Go",
+          };
+        }),
+        "no counting configuration",
+      ) &&
+      hostRefused(
+        goVariant((r) => {
+          r.arms.b.impl = "Go";
+        }),
+        "its arms run",
+      ) &&
+      (
+        recordProblem(
+          goRec,
+          decode,
+          hostProgram(goHost),
+          hostCore(goHost),
+          "Go",
+        ) ?? ""
+      ).includes("its arms run"),
+    "",
+  );
+  const withRecord =
+    (name: string, f: (r: CountsRecord) => void) =>
+    (n: string): CountsRecord => {
+      const r = readAb(n);
+      if (n === name) f(r);
+      return r;
+    };
+  let wide = "";
+  try {
+    wide = renderOverheadTable(
+      withRecord(goName, (r) => {
+        r.summary.a.max["instructions:u"] =
+          r.summary.a.median["instructions:u"] * 1.02;
+      }),
+    );
+  } catch (e) {
+    wide = (e as Error).message;
+  }
+  const red = OVERHEAD_REDUCTIONS.find((x) => x.id === "wasm-rgba-copy");
+  if (red === undefined)
+    throw new Error("the wasm-rgba-copy reduction is gone");
+  const redName = reductionRecord(red, decode);
+  let flat = "";
+  try {
+    flat = renderOverheadTable(
+      withRecord(redName, (r) => {
+        r.summary.ratio.max["instructions:u"] = 1;
+      }),
+    );
+  } catch (e) {
+    flat = (e as Error).message;
+  }
+  check(
+    "renderOverheadTable: a host whose arm spreads 2% is listed not countable with that spread and loses its rows, and a reduction with a block that does not count fewer instructions is refused",
+    wide.includes(
+      "| Go | `GOGC=off` `GOMAXPROCS=1` | 2.000% | no: over 1.000% |",
+    ) &&
+      !wide.includes(`\`${goName}\``) &&
+      wide.includes(
+        "under its counting configuration its blocks spread 2.000%",
+      ) &&
+      flat.includes(`${redName}: a reduction must count fewer instructions`),
+    flat.slice(0, 160),
   );
 }
 

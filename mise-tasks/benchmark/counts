@@ -3,7 +3,8 @@
 #MISE depends=["build:compare"]
 #
 # Usage: mise run benchmark:counts -- --size N|WxH --tier T --out FILE
-#          [--impl Rust] [--op encode|decode] [--content gradient|noise|solid]
+#          [--impl Rust] [--b-impl NAME] [--op encode|decode]
+#          [--content gradient|noise|solid]
 #          [--a-bin PATH] [--b-bin PATH] [--a-tune TUNE] [--b-tune TUNE]
 #          [--iterations N] [--blocks 10] [--against EARLIER.json]
 #
@@ -15,8 +16,10 @@
 # compares with an earlier record of the same cell, arms and CPU and fails if
 # the instruction ratios differ by more than 1%. Refuses, by name, a host whose
 # counter cannot be read (needs perf with kernel.perf_event_paranoid <= 2) and
-# an implementation with a JIT or garbage collector (every managed runtime,
-# and Go). See tools/comparison/src/perf/counts.ts.
+# an implementation with a JIT or garbage collector that has no counting
+# configuration; C#, Go, Kotlin, Python and TypeScript (wasm) run under theirs
+# (counts-core.ts COUNTING_CONFIGS), and `--b-impl` counts arm B on another
+# implementation. See tools/comparison/src/perf/counts.ts.
 #
 # The Rust encoder is built exactly as `mise run sweep` builds it, so a count
 # and a sweep running side by side never rebuild the binary under each other.
