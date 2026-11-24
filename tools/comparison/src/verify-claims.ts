@@ -156,6 +156,8 @@ function avifLeadOverCode4(code4: number): number {
 /** The bounds of an interval cell like "[−0.028, +0.011]". */
 const INTERVAL_LOWER = /^\[([+−–—-]?[\d.]+),/;
 const INTERVAL_UPPER = /, ([+−–—-]?[\d.]+)\]$/;
+/** The point figure leading a "+0.780 [+0.363, +1.193]" cell (§13.16). */
+const LEADING_FIGURE = /^([+−–—-]?[\d.]+)/;
 
 const REGISTER: Claim[] = [
   // ── The v0.7 recipe's holdout verdict ────────────────────────────────────
@@ -1422,7 +1424,87 @@ const REGISTER: Claim[] = [
   },
   ...spuriousRise("3"),
   ...spuriousRise("4"),
+  // #130 re-ran the figures above at generation v2 (EXPERIMENTS.md §13.16,
+  // the claims table's `at master` column). Every place that quotes a v1
+  // figure for codes 3 and 4 now quotes the v2 one beside it, and each v2
+  // figure is bound here to the cell that measures it.
+  ...generationV2Cfl(
+    "spec/README.md",
+    /on generation v2 the free predictor is −([\d.]+)% at code 3/,
+    /on generation v2 the free predictor is −[\d.]+% at code 3 and −([\d.]+)% at code 4/,
+  ),
+  ...generationV2Cfl(
+    "spec/RATIONALE.md",
+    /on generation v2 the free predictor is\n\s*−([\d.]+)% at code 3/,
+    /on generation v2 the free predictor is\n\s*−[\d.]+% at code 3 and −([\d.]+)% at code 4/,
+  ),
+  ...generationV2Cfl(
+    "spec/V0.8-DECISIONS.md",
+    /the free arm reads −([\d.]+)% at code 3/,
+    /the free arm reads −[\d.]+% at code 3 and −([\d.]+)% at code 4/,
+  ),
+  ...generationV2Cfl(
+    "spec/V0.8-DECISIONS.md",
+    /§13\.16 re-ran them on\n\s*v2 as −([\d.]+)% at code 3/,
+    /§13\.16 re-ran them on\n\s*v2 as −[\d.]+% at code 3 and −([\d.]+)% at code 4/,
+  ),
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "code 3 − code 2 spurious detail at generation v2",
+    pattern: /at v2 code 3 − code 2 is \+([\d.]+)/,
+    section: "13.16",
+    table: 1,
+    row: "code 3 − code 2, spurious detail on the pinned grid",
+    column: "at master",
+    cellPattern: LEADING_FIGURE,
+  },
+  {
+    file: "spec/V0.8-DECISIONS.md",
+    what: "code 4 − code 2 spurious detail at generation v2",
+    pattern: /and code 4 − code 2 is −([\d.]+), its interval/,
+    section: "13.16",
+    table: 1,
+    row: "code 4 − code 2, spurious detail on the pinned grid",
+    column: "at master",
+    cellPattern: LEADING_FIGURE,
+    transform: abs,
+  },
 ];
+
+/**
+ * The two generation-v2 figures for CfL given away free (§13.16's `CfL free
+ * at code 3` and `CfL free at code 4` rows, `at master`), as one file quotes
+ * them. Both are reductions quoted after a literal minus, so each is a
+ * magnitude against the cell's signed value.
+ */
+function generationV2Cfl(
+  file: string,
+  atCode3: RegExp,
+  atCode4: RegExp,
+): Claim[] {
+  return [
+    {
+      file,
+      what: "CfL with free gains at code 3 (411 B), generation v2",
+      pattern: atCode3,
+      section: "13.16",
+      table: 1,
+      row: "CfL free at code 3",
+      column: "at master",
+      transform: abs,
+    },
+    {
+      file,
+      what: "CfL with free gains at code 4 (1623 B), generation v2",
+      pattern: atCode4,
+      section: "13.16",
+      table: 1,
+      row: "CfL free at code 4",
+      column: "at master",
+      transform: abs,
+    },
+  ];
+}
 
 /**
  * The three figures `V0.8-DECISIONS.md` D3 quotes for one of §13.2's rises in

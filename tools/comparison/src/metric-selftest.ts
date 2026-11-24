@@ -295,6 +295,19 @@ import {
   stratumRule,
 } from "./register-verdict-core.ts";
 import {
+  type EntropyBudgetFile,
+  GENERATION_V1_REV,
+  REPRODUCTIONS,
+  acBitsFigure,
+  armMovements,
+  classify,
+  reproductionErrors,
+  reproductionProvenanceErrors,
+  signedFixed,
+  spendFigure,
+} from "./reproduce-core.ts";
+import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
+import {
   ARTIFACT_ZERO_BASE_ALLOWANCE,
   type Provenance,
   RESULT_SCHEMA,
@@ -5387,6 +5400,26 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
       ).includes("already been read by dct-identity"),
     JSON.stringify(holdout3Reads(results)),
   );
+  // #130's re-runs sit under reproductions/ and reproductions/v1/; a re-run
+  // of a holdout3 read is a second read, whatever it was filed as.
+  mkdirSync(path.join(results, "reproductions", "v1"), { recursive: true });
+  read("reproductions/d5-sweep-holdout3.json", "sweep", "holdout3", "D5");
+  read("reproductions/d5-sweep-tune.json", "sweep", "tune", "");
+  read("reproductions/v1/d6-sweep-holdout3.json", "sweep", "holdout3", "D6");
+  check(
+    "holdout3Reads also sees a holdout3 re-run under reproductions/ and reproductions/v1/, and assertHoldout3Unread refuses a second read of either entry",
+    holdout3Reads(results)
+      .map((r) => `${r.file}:${r.tool}:${r.decision}`)
+      .join(",") ===
+      "counts/d4-identity-holdout3.json:dct-identity:D4,d1-sweep-holdout3.json:sweep:D1,reproductions/d5-sweep-holdout3.json:sweep:D5,reproductions/v1/d6-sweep-holdout3.json:sweep:D6" &&
+      thrown(() => assertHoldout3Unread("D5", "sweep", results)).includes(
+        "already been read by sweep",
+      ) &&
+      thrown(() => assertHoldout3Unread("D6", "sweep", results)).includes(
+        "already been read by sweep",
+      ),
+    JSON.stringify(holdout3Reads(results)),
+  );
   const existing = path.join(results, "d1-sweep-holdout3.json");
   check(
     "a committed holdout3 result file is never overwritten either",
@@ -8509,6 +8542,240 @@ console.log(
       ),
     refused({ rev: null, dirty: false }),
   );
+}
+
+// ─── #130: the reproduction ledger (reproduce-core.ts) ──────────────────────
+
+console.log("\nreproduce — #130's status rule and the per-image reading\n");
+{
+  check(
+    "classify: equal at the printed precision is reproduced, whatever the verdicts",
+    classify("−1.00%", "−1.00%", "- holm:yes guards:ok", null) === "reproduced",
+    "",
+  );
+  check(
+    "classify: a moved figure whose verdict holds is drifted",
+    classify(
+      "−0.90%",
+      "−0.92%",
+      "- holm:yes guards:ok",
+      "- holm:yes guards:ok",
+    ) === "drifted",
+    "",
+  );
+  check(
+    "classify: a moved figure whose Holm, guards or sign turns is not reproduced",
+    classify(
+      "−0.45%",
+      "−0.29%",
+      "- holm:yes guards:ok",
+      "- holm:no guards:ok",
+    ) === "not reproduced" &&
+      classify(
+        "+0.742",
+        "−0.354",
+        "+ holm:yes guards:ok",
+        "- holm:yes guards:ok",
+      ) === "not reproduced" &&
+      classify(
+        "+1.0%",
+        "+1.1%",
+        "+ holm:yes guards:ok",
+        "+ holm:yes guards:FAIL",
+      ) === "not reproduced",
+    "",
+  );
+  check(
+    "classify: a figure or verdict missing on either side is not reproduced",
+    classify(null, "+1.0%", "+", "+") === "not reproduced" &&
+      classify("+1.0%", null, "+", "+") === "not reproduced" &&
+      classify("+1.0%", "+1.1%", null, "+") === "not reproduced",
+    "",
+  );
+  check(
+    "signedFixed: unicode minus, explicit plus, and no sign on a rounded zero",
+    signedFixed(-0.1, 2) === "−0.10" &&
+      signedFixed(0.735, 3) === "+0.735" &&
+      signedFixed(-0.0004, 3) === "0.000",
+    `${signedFixed(-0.1, 2)} ${signedFixed(0.735, 3)} ${signedFixed(-0.0004, 3)}`,
+  );
+
+  const file = (
+    rows: { label: string; ciede2000: (number | null)[] }[],
+  ): ResultFile => ({
+    schema: RESULT_SCHEMA,
+    tool: "sweep",
+    name: "fixture",
+    split: "tune",
+    settings: {},
+    provenance: {
+      rev: "0".repeat(40),
+      dirty: false,
+      dirtyPaths: [],
+      iqaCli: "iqa-cli fixture",
+      config: "fixture.json",
+      configSha256: "0".repeat(64),
+      binaries: {},
+      node: process.version,
+      corpus: [],
+    },
+    imageNames: ["a", "b"],
+    rows: rows.map((r) => ({
+      label: r.label,
+      tune: null,
+      tier: null,
+      version: null,
+      perImage: { ciede2000: r.ciede2000 },
+    })),
+  });
+  const committed = file([
+    { label: "base", ciede2000: [10, 12] },
+    { label: "arm", ciede2000: [9, 11] },
+  ]);
+  const same = file([
+    { label: "base", ciede2000: [10, 12] },
+    { label: "arm", ciede2000: [9 * (1 + 5e-6), 11] },
+  ]);
+  const moved = file([
+    { label: "base", ciede2000: [10, 12] },
+    { label: "arm", ciede2000: [9.1, 11] },
+  ]);
+  const narrowed = file([{ label: "arm", ciede2000: [9, 11] }]);
+  const count = (ms: ReturnType<typeof armMovements>) =>
+    ms.reduce((n, m) => n + m.moved, 0);
+  check(
+    "armMovements: inside REPRODUCTION_REL is no move, outside it is one",
+    count(armMovements(same, committed)) === 0 &&
+      count(armMovements(moved, committed)) === 1 &&
+      reproductionErrors(same, committed).length === 0 &&
+      reproductionErrors(moved, committed).length === 1,
+    `${count(armMovements(moved, committed))}`,
+  );
+  const whole = armMovements(narrowed, committed);
+  const scored = armMovements(narrowed, committed, true);
+  check(
+    "armMovements: an arm the re-run lacks counts as moved, unless the re-run is read on what it scored",
+    count(whole) === 2 &&
+      whole.length === 2 &&
+      count(scored) === 0 &&
+      scored.length === 1 &&
+      scored[0]?.label === "arm",
+    `${count(whole)} / ${count(scored)}`,
+  );
+
+  const entropy: EntropyBudgetFile = {
+    split: "tune",
+    images: 2,
+    prefixBits: 54,
+    picks: [
+      {
+        budgetBytes: 32,
+        coder: "fixed fields (today)",
+        kind: "best ΔE00",
+        layout: "L32@4 C11@3",
+        ciede2000: 10,
+      },
+      {
+        budgetBytes: 32,
+        coder: "order-0 adaptive",
+        kind: "best ΔE00",
+        layout: "L49@3 C17@3",
+        ciede2000: 9.9,
+      },
+      {
+        budgetBytes: 32,
+        coder: "context + order-0 backoff",
+        kind: "best ΔE00",
+        layout: "L38@4 C13@3",
+        ciede2000: 9.8,
+      },
+      {
+        budgetBytes: 32,
+        coder: "context + order-0 backoff",
+        kind: "most coefficients",
+        layout: "L63@3 C42@2",
+        ciede2000: 9.0,
+      },
+    ],
+    rows: [
+      {
+        tier: 1,
+        layout: "L26@5 C9@4",
+        fixedBits: 254,
+        contextBackoffBits: 239,
+      },
+    ],
+  };
+  check(
+    "acBitsFigure: the backoff coder's AC bits against the fixed fields', prefix excluded",
+    acBitsFigure(entropy) === "−7.5%",
+    `${acBitsFigure(entropy)}`,
+  );
+  check(
+    "spendFigure: the best coded best-ΔE00 pick against the fixed fields' best, never a count-maximal pick",
+    spendFigure(32)(entropy) === "−2.0%" && spendFigure(108)(entropy) === null,
+    `${spendFigure(32)(entropy)} / ${spendFigure(108)(entropy)}`,
+  );
+
+  // The provenance audit `verify:experiments` holds the re-runs to, on copies
+  // of the committed ones: each copy breaks one thing, and each break must be
+  // reported against the file that holds it.
+  const shipped = path.resolve(import.meta.dirname, "../results");
+  check(
+    "reproductionProvenanceErrors: the committed re-runs carry clean provenance",
+    reproductionProvenanceErrors(shipped, PINNED_IQA_CLI).length === 0,
+    reproductionProvenanceErrors(shipped, PINNED_IQA_CLI).join("; "),
+  );
+  const dir = mkdtempSync(path.join(tmpdir(), "reproduce-provenance-"));
+  const repro = path.join(dir, REPRODUCTIONS);
+  mkdirSync(path.join(repro, "v1"), { recursive: true });
+  const copy = (
+    rel: string,
+    edit: (
+      provenance: Record<string, unknown>,
+      body: Record<string, unknown>,
+    ) => void,
+  ) => {
+    const body = JSON.parse(
+      readFileSync(path.join(shipped, REPRODUCTIONS, rel), "utf8"),
+    ) as Record<string, unknown>;
+    edit(body.provenance as Record<string, unknown>, body);
+    writeFileSync(path.join(repro, rel), JSON.stringify(body));
+  };
+  copy("cfl.json", (p) => {
+    p.dirty = true;
+    p.dirtyPaths = ["rust/src/encode.rs"];
+  });
+  copy("cfl-range.json", (p) => {
+    p.iqaCli = "iqa-cli 1.2.0";
+  });
+  copy("v1/cfl.json", (p) => {
+    p.rev = "86a30af0000000000000000000000000000000000";
+  });
+  copy("v1/cfl-range.json", () => {});
+  copy("entropy-budget-tune.json", (_p, body) => {
+    // JSON.stringify drops an undefined field, so the copy has none.
+    body.provenance = undefined;
+  });
+  const errors = reproductionProvenanceErrors(dir, PINNED_IQA_CLI);
+  const has = (file: string, text: string) =>
+    errors.some((e) => e.startsWith(`results/${file}:`) && e.includes(text));
+  check(
+    "reproductionProvenanceErrors: a dirty-tree re-run, an unpinned iqa-cli, a v1 re-run not scored at 225bdce and an entropy-budget record with no provenance are each refused, and a clean v1 re-run is not",
+    has(`${REPRODUCTIONS}/cfl.json`, "dirty tree (rust/src/encode.rs)") &&
+      has(
+        `${REPRODUCTIONS}/cfl-range.json`,
+        'not the pinned "iqa-cli 1.2.1"',
+      ) &&
+      has(`${REPRODUCTIONS}/v1/cfl.json`, `not at ${GENERATION_V1_REV}`) &&
+      has(`${REPRODUCTIONS}/entropy-budget-tune.json`, "no provenance") &&
+      !errors.some((e) =>
+        e.startsWith(`results/${REPRODUCTIONS}/v1/cfl-range.json`),
+      ) &&
+      errors.length === 4,
+    errors.join("; "),
+  );
+  rmSync(dir, { recursive: true, force: true });
 }
 
 console.log(

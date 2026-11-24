@@ -1,0 +1,512 @@
+{
+  "split": "tune",
+  "images": 31,
+  "prefixBits": 54,
+  "budgets": [
+    {
+      "bytes": 32,
+      "tier": 1
+    },
+    {
+      "bytes": 108,
+      "tier": 2
+    }
+  ],
+  "picks": [
+    {
+      "budgetBytes": 32,
+      "coder": "fixed fields (today)",
+      "kind": "shipped shape",
+      "layout": "L26@5 C9@4",
+      "tier": 1,
+      "coefficients": 44,
+      "codedBits": 256,
+      "uncodedBytes": 32,
+      "ciede2000": 11.655423948044927
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "fixed fields (today)",
+      "kind": "best ΔE00",
+      "layout": "L32@4 C11@3",
+      "tier": 1,
+      "coefficients": 54,
+      "codedBits": 248,
+      "uncodedBytes": 31,
+      "ciede2000": 11.436713718792513
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "fixed fields (today)",
+      "kind": "most coefficients",
+      "layout": "L35@3 C23@2",
+      "tier": 1,
+      "coefficients": 81,
+      "codedBits": 251,
+      "uncodedBytes": 32,
+      "ciede2000": 11.987289785599094
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "order-0 adaptive",
+      "kind": "shipped shape",
+      "layout": "L26@5 C9@4",
+      "tier": 1,
+      "coefficients": 44,
+      "codedBits": 249.92567110534327,
+      "uncodedBytes": 32,
+      "ciede2000": 11.655423948044927
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "order-0 adaptive",
+      "kind": "best ΔE00",
+      "layout": "L49@3 C17@3",
+      "tier": 1,
+      "coefficients": 83,
+      "codedBits": 253.7395785099361,
+      "uncodedBytes": 38,
+      "ciede2000": 11.311956880808927
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "order-0 adaptive",
+      "kind": "most coefficients",
+      "layout": "L57@3 C38@2",
+      "tier": 1,
+      "coefficients": 133,
+      "codedBits": 255.95248851402465,
+      "uncodedBytes": 48,
+      "ciede2000": 11.634931008808037
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "order-0 table (LOO)",
+      "kind": "shipped shape",
+      "layout": "L26@5 C9@4",
+      "tier": 1,
+      "coefficients": 44,
+      "codedBits": 244.4046740993813,
+      "uncodedBytes": 32,
+      "ciede2000": 11.655423948044927
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "order-0 table (LOO)",
+      "kind": "best ΔE00",
+      "layout": "L38@4 C13@3",
+      "tier": 1,
+      "coefficients": 64,
+      "codedBits": 254.3204800254584,
+      "uncodedBytes": 36,
+      "ciede2000": 11.25280416584603
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "order-0 table (LOO)",
+      "kind": "most coefficients",
+      "layout": "L57@3 C38@2",
+      "tier": 1,
+      "coefficients": 133,
+      "codedBits": 255.52078510732304,
+      "uncodedBytes": 48,
+      "ciede2000": 11.634931008808037
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "per-index context (LOO)",
+      "kind": "shipped shape",
+      "layout": "L26@5 C9@4",
+      "tier": 1,
+      "coefficients": 44,
+      "codedBits": 244.25862629929,
+      "uncodedBytes": 32,
+      "ciede2000": 11.655423948044927
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "per-index context (LOO)",
+      "kind": "best ΔE00",
+      "layout": "L38@4 C13@3",
+      "tier": 1,
+      "coefficients": 64,
+      "codedBits": 251.51106745125907,
+      "uncodedBytes": 36,
+      "ciede2000": 11.25280416584603
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "per-index context (LOO)",
+      "kind": "most coefficients",
+      "layout": "L62@3 C41@2",
+      "tier": 1,
+      "coefficients": 144,
+      "codedBits": 255.1809757019016,
+      "uncodedBytes": 51,
+      "ciede2000": 11.596510703355328
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "context + order-0 backoff",
+      "kind": "shipped shape",
+      "layout": "L26@5 C9@4",
+      "tier": 1,
+      "coefficients": 44,
+      "codedBits": 240.85216343311419,
+      "uncodedBytes": 32,
+      "ciede2000": 11.655423948044927
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "context + order-0 backoff",
+      "kind": "best ΔE00",
+      "layout": "L38@4 C13@3",
+      "tier": 1,
+      "coefficients": 64,
+      "codedBits": 247.20371844727563,
+      "uncodedBytes": 36,
+      "ciede2000": 11.25280416584603
+    },
+    {
+      "budgetBytes": 32,
+      "coder": "context + order-0 backoff",
+      "kind": "most coefficients",
+      "layout": "L63@3 C42@2",
+      "tier": 1,
+      "coefficients": 147,
+      "codedBits": 253.29488750518342,
+      "uncodedBytes": 52,
+      "ciede2000": 11.57743088867265
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "fixed fields (today)",
+      "kind": "shipped shape",
+      "layout": "L26@5 C9@4",
+      "tier": 2,
+      "coefficients": 176,
+      "codedBits": 862,
+      "uncodedBytes": 108,
+      "ciede2000": 9.670418454621698
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "fixed fields (today)",
+      "kind": "best ΔE00",
+      "layout": "L26@5 C9@4",
+      "tier": 2,
+      "coefficients": 176,
+      "codedBits": 862,
+      "uncodedBytes": 108,
+      "ciede2000": 9.670418454621698
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "fixed fields (today)",
+      "kind": "most coefficients",
+      "layout": "L35@3 C23@2",
+      "tier": 2,
+      "coefficients": 324,
+      "codedBits": 842,
+      "uncodedBytes": 106,
+      "ciede2000": 11.166454037353953
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "order-0 adaptive",
+      "kind": "shipped shape",
+      "layout": "L29@5 C10@4",
+      "tier": 2,
+      "coefficients": 196,
+      "codedBits": 810.0032317608866,
+      "uncodedBytes": 120,
+      "ciede2000": 9.521640196728947
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "order-0 adaptive",
+      "kind": "best ΔE00",
+      "layout": "L52@4 C18@3",
+      "tier": 2,
+      "coefficients": 352,
+      "codedBits": 859.7132695742658,
+      "uncodedBytes": 165,
+      "ciede2000": 9.207414840978709
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "order-0 adaptive",
+      "kind": "most coefficients",
+      "layout": "L90@3 C60@2",
+      "tier": 2,
+      "coefficients": 840,
+      "codedBits": 619.4785704254037,
+      "uncodedBytes": 262,
+      "ciede2000": 10.678543301644003
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "order-0 table (LOO)",
+      "kind": "shipped shape",
+      "layout": "L32@5 C11@4",
+      "tier": 2,
+      "coefficients": 216,
+      "codedBits": 851.6919635821841,
+      "uncodedBytes": 131,
+      "ciede2000": 9.368288213242993
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "order-0 table (LOO)",
+      "kind": "best ΔE00",
+      "layout": "L40@4 C14@4",
+      "tier": 2,
+      "coefficients": 272,
+      "codedBits": 849.4053077780598,
+      "uncodedBytes": 143,
+      "ciede2000": 9.267961011910762
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "order-0 table (LOO)",
+      "kind": "most coefficients",
+      "layout": "L90@3 C60@2",
+      "tier": 2,
+      "coefficients": 840,
+      "codedBits": 703.5020563391151,
+      "uncodedBytes": 262,
+      "ciede2000": 10.678543301644003
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "per-index context (LOO)",
+      "kind": "shipped shape",
+      "layout": "L29@5 C10@4",
+      "tier": 2,
+      "coefficients": 196,
+      "codedBits": 820.3930330034078,
+      "uncodedBytes": 120,
+      "ciede2000": 9.521640196728947
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "per-index context (LOO)",
+      "kind": "best ΔE00",
+      "layout": "L49@4 C17@3",
+      "tier": 2,
+      "coefficients": 332,
+      "codedBits": 857.8566748503621,
+      "uncodedBytes": 156,
+      "ciede2000": 9.285928058896438
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "per-index context (LOO)",
+      "kind": "most coefficients",
+      "layout": "L90@3 C60@2",
+      "tier": 2,
+      "coefficients": 840,
+      "codedBits": 692.9231711629117,
+      "uncodedBytes": 262,
+      "ciede2000": 10.678543301644003
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "context + order-0 backoff",
+      "kind": "shipped shape",
+      "layout": "L32@5 C11@4",
+      "tier": 2,
+      "coefficients": 216,
+      "codedBits": 836.5121598630053,
+      "uncodedBytes": 131,
+      "ciede2000": 9.368288213242993
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "context + order-0 backoff",
+      "kind": "best ΔE00",
+      "layout": "L52@4 C18@3",
+      "tier": 2,
+      "coefficients": 352,
+      "codedBits": 838.8884218703092,
+      "uncodedBytes": 165,
+      "ciede2000": 9.207414840978709
+    },
+    {
+      "budgetBytes": 108,
+      "coder": "context + order-0 backoff",
+      "kind": "most coefficients",
+      "layout": "L90@3 C60@2",
+      "tier": 2,
+      "coefficients": 840,
+      "codedBits": 643.9902789725031,
+      "uncodedBytes": 262,
+      "ciede2000": 10.678543301644003
+    }
+  ],
+  "rows": [
+    {
+      "layout": "L26@5 C9@4",
+      "tier": 1,
+      "nL": 26,
+      "lBits": 5,
+      "nC": 9,
+      "cBits": 4,
+      "ratioIndex": 0,
+      "coefficients": 44,
+      "budgetBytes": 32,
+      "budgetBits": 256,
+      "fixedBits": 256,
+      "fixedBytes": 32,
+      "staticBits": 241.9633664713182,
+      "order0Bits": 249.92567110534327,
+      "order0TableBits": 244.4046740993813,
+      "contextBits": 244.25862629929,
+      "contextBackoffBits": 240.85216343311419,
+      "backoffAlpha": 64,
+      "fitsFixed": true,
+      "fitsOrder0": true,
+      "fitsOrder0Table": true,
+      "fitsContext": true,
+      "fitsContextBackoff": true
+    }
+  ],
+  "provenance": {
+    "rev": "cfc9b9f16ff2ea100f99d67dc7d7a6b510e281da",
+    "dirty": false,
+    "dirtyPaths": [],
+    "iqaCli": "iqa-cli 1.2.1",
+    "config": "tools/comparison/dist/entropy-budget.js",
+    "configSha256": "5b3fc2315e35eaee1c4f84206073d852fcf74687b235036140782a13c9dfc85f",
+    "binaries": {
+      "rust/target/release/examples/encode_stdin": "cbca9c2b9b36d67626f90c3855a634bcb5d98596e0a4302b73f076fcb05b0ceb"
+    },
+    "node": "v24.20.0",
+    "corpus": [
+      {
+        "name": "chroma-glass-reinforcements",
+        "sha256": "7dc132db36c390e2be4b2b343a52b09525e24a8cbeb671113bfc4072bed707eb"
+      },
+      {
+        "name": "chroma-the-old-monochrome",
+        "sha256": "b6e5db7f2b2225939b08ea4d7de2c0e5ba2fa590a6c1dda7bc682de5c759024b"
+      },
+      {
+        "name": "chroma-windows-toronto-city",
+        "sha256": "ebd77b5d88886ee03a4f38be2a87c88ab364beab124270c20a3e52c9a8df1027"
+      },
+      {
+        "name": "natural-agraulis-vanillae-isla",
+        "sha256": "04c47c24d08d713222691350748206f79cbbf40b14ce0833110c13f495b39b40"
+      },
+      {
+        "name": "natural-andrew-jackson-state",
+        "sha256": "9756e13cbf24c588ce74fce684c8917d10e63545b057c59bcbbcba22b5fffa08"
+      },
+      {
+        "name": "natural-bird-cherry-ermine",
+        "sha256": "bf2a30c065bc167f8d7a364b05412af44b106f780087cda1b196e4d96573c012"
+      },
+      {
+        "name": "natural-dish-meatloaf-served",
+        "sha256": "cacedc4705bfd6433849756addb692920b1819db2b187dd8ef3c7922f9d35017"
+      },
+      {
+        "name": "natural-fishing-the-coast",
+        "sha256": "7497c8976f59942a24cefbd7fa94e2097ae2504e6f295e4453fa6082384f6fcf"
+      },
+      {
+        "name": "natural-forest-road-slavne",
+        "sha256": "54f1fae4f6195bbb1092e5ce87abe946fc691cb17ebfcdcacc916f181936f07d"
+      },
+      {
+        "name": "natural-hard-rock-cafe",
+        "sha256": "fe9f5c50d1c5c7439526f45de71e211c7d46b6486c3ddbd469f4be5999c07a62"
+      },
+      {
+        "name": "natural-landschaftsschutzgebiet-volkspark-rehberge",
+        "sha256": "8600924344d252eeed2d5bfeb8502c77dedca362bcb4f996f63d94e8b5081b01"
+      },
+      {
+        "name": "natural-lmen-umland",
+        "sha256": "1330a32f865b6d3d713336bade56cb97d6b2c77a4d5b4506f309136de8bce3e6"
+      },
+      {
+        "name": "natural-maidens-tower",
+        "sha256": "6e2003530320c4b0f943940b9038ce56f80da238811a059fbfe6ce8cc3bb3d40"
+      },
+      {
+        "name": "natural-mid-1920s-house",
+        "sha256": "b71252c8ce94143164c38900d53f522d9e987e72eb00dd33384ae1d331bf95ec"
+      },
+      {
+        "name": "natural-nnov-shcherbinki-produce",
+        "sha256": "10030c1934c2753f6fd77451a45af8a8c94494252e0213df646b08b9d2d2185e"
+      },
+      {
+        "name": "natural-nster-westdeutsche-lotterie-2",
+        "sha256": "26f7412b89e183810ab9fe77142290296d87d3d65e7b7464340cb66a24ed3405"
+      },
+      {
+        "name": "natural-nster-westdeutsche-lotterie",
+        "sha256": "0ac1145f61da508d18f9b8b79fbb3e5c602c6618f641c88924444c9443dc3940"
+      },
+      {
+        "name": "natural-obama-center-library",
+        "sha256": "c849e4ca78b07c8e51f28c9aee920a48a12f9ac04d7eb9e40c2082ccc3cd5195"
+      },
+      {
+        "name": "natural-pike-place-market",
+        "sha256": "be45216f8c7cdbf31997ebacce9f297a0e20b3c5b4a5b07b7bc33fc3e674ef0e"
+      },
+      {
+        "name": "natural-roof-tiles-packed",
+        "sha256": "7832fed7d5f12a8aec3d36393d9f646b11d601a445d858eb214b916cb04d2688"
+      },
+      {
+        "name": "natural-studioarrangement-for-product",
+        "sha256": "7eac9625191027dc861c05e4b548f8fe2fa6b7abc37bcba5b0ac1270116b5c54"
+      },
+      {
+        "name": "natural-trees-rising-out",
+        "sha256": "31f10ec471cd35b2467469feac2c75b803e422f32e042c05ae2ac50250b54c18"
+      },
+      {
+        "name": "night-bas-lica-notre",
+        "sha256": "accfac7a9eb21d983456dc80936c7797dd3496cd5c0b4d6e387f3605bd3210de"
+      },
+      {
+        "name": "night-long-island-city",
+        "sha256": "f009409b13acdd9a1aba85fa81309fe7c29681ab284a029c9cf7552a8f92a591"
+      },
+      {
+        "name": "night-night-sky-milky",
+        "sha256": "a84ed4e7b6b81b0deaec580b6def472b74b031300d17712def354847900c7eef"
+      },
+      {
+        "name": "portrait-african-lady",
+        "sha256": "84d789fe7a5ef4f3713c596a5fdb562cdc11a2d0c6c903a13ccc8495f71beba9"
+      },
+      {
+        "name": "portrait-african-woman-rusinga",
+        "sha256": "b42b667d11aaeeca9a2b57c34c1bd5ec502935ad9565da8c4c1ffd12101d80cb"
+      },
+      {
+        "name": "portrait-imene6",
+        "sha256": "1c338666388eaba2b821ff9f1e136179bc1ac50f78e13cd13ace9d78ca563fd9"
+      },
+      {
+        "name": "portrait-mother-and-child",
+        "sha256": "0edca0e3a38b7670be967cb78c33ce1ed79c5a88e88ec4282970080a9766b8e0"
+      },
+      {
+        "name": "portrait-portrait-femme-tenue",
+        "sha256": "3db3587f2612133fc4859adc0b3097fb833bbe644e2b92617ee8fa60b9166fd4"
+      },
+      {
+        "name": "portrait-sideshow-bob-love",
+        "sha256": "1967684f3043484bb14543e2596c8bc94563a59094b510ca55bf2b82527597f0"
+      }
+    ]
+  }
+}

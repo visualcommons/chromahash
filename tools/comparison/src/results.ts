@@ -513,6 +513,49 @@ export function corpusPins(): Map<string, string> {
   return pins;
 }
 
+/**
+ * Where a result cannot be trusted as the record of a run: it records no git
+ * revision, was scored from a dirty tree, by an `iqa-cli` other than
+ * `pinnedIqaCli`, with a binary missing, or on corpus bytes that are not the
+ * pinned ones. `verify:experiments` holds every committed result, and every
+ * §13.16 re-run, to it.
+ */
+export function provenanceErrors(
+  file: Pick<ResultFile, "provenance">,
+  where: string,
+  pinnedIqaCli: string,
+): string[] {
+  const out: string[] = [];
+  const p = file.provenance;
+  if (p.rev === null) out.push(`${where}: no git revision`);
+  if (p.dirty !== false) {
+    out.push(
+      `${where}: scored from a ${p.dirty === null ? "tree git could not inspect" : `dirty tree (${p.dirtyPaths.join(", ")})`}`,
+    );
+  }
+  if (p.iqaCli !== pinnedIqaCli) {
+    out.push(
+      `${where}: scored by "${p.iqaCli}", not the pinned "${pinnedIqaCli}"`,
+    );
+  }
+  for (const [bin, digest] of Object.entries(p.binaries)) {
+    if (digest === "missing") out.push(`${where}: binary ${bin} was missing`);
+  }
+  const pins = corpusPins();
+  const off = p.corpus.filter((c) => {
+    const pin = pins.get(c.name);
+    return pin !== undefined && pin !== c.sha256;
+  });
+  if (off.length > 0) {
+    out.push(
+      `${where}: ${off.length} image(s) scored on bytes that are not the pinned ones (${off
+        .map((c) => c.name)
+        .join(", ")})`,
+    );
+  }
+  return out;
+}
+
 /** Read a result file, or null when there is none. Throws on a malformed one. */
 export function readResult(dir: string, name: string): ResultFile | null {
   const p = resultPath(dir, name);
