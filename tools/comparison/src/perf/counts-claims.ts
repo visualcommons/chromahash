@@ -1,6 +1,6 @@
 /**
- * The figures `spec/PERFORMANCE.md` §12.4 and `rust/src/constants.rs` quote
- * from the committed `benchmark:counts` records under
+ * The figures `spec/PERFORMANCE.md` §12.4 quotes from the committed
+ * `benchmark:counts` records under
  * `tools/comparison/results/counts/ab/`, each checked against the record it
  * comes from. They are the evidence `Tunables::DEFAULT`'s levers rest on (#142),
  * so a re-recorded count that moves one must fail here rather than leave the
@@ -19,7 +19,6 @@ import type { CountsRecord } from "./counts-core.ts";
 import { ACCEL_NONE } from "./matrix.ts";
 
 export const COUNTS_DOC = "spec/PERFORMANCE.md";
-export const COUNTS_CONSTANTS = "rust/src/constants.rs";
 /** §12.4's counts table: the section and its index within it. */
 export const COUNTS_SECTION = "12.4";
 export const COUNTS_TABLE = 1;
@@ -101,12 +100,36 @@ export const COUNT_ROWS: readonly CountRow[] = [
     shippedTune: "",
   },
   {
-    // Recorded at 955efb6, where the fused pass was briefly the default, so
-    // there the shipped arm (B) is the fused pass.
-    lever: "accel_fused_pixels (on)",
+    // Re-recorded by #165, which made the fused pass a reduction and a
+    // default; #142's record of it, an increase, is in that file's history.
+    lever: "accel_fused_pixels",
     cell: "encode 512×512 t1",
     record: "accel-fused-pixels.json",
     refTune: "accel_fused_pixels=0",
+    shippedTune: "",
+  },
+  // #165's selection prefix has no flag: its two arms are two builds, the
+  // reference the commit before it (`arms.a.bin` and its hash), under the
+  // same shipped tune.
+  {
+    lever: "selection prefix",
+    cell: "decode 100×100 t1",
+    record: "selection-prefix-decode-100-t1.json",
+    refTune: "",
+    shippedTune: "",
+  },
+  {
+    lever: "selection prefix",
+    cell: "encode 100×100 t1",
+    record: "selection-prefix-encode-100-t1.json",
+    refTune: "",
+    shippedTune: "",
+  },
+  {
+    lever: "selection prefix",
+    cell: "encode 512×512 t4",
+    record: "selection-prefix-encode-512-t4.json",
+    refTune: "",
     shippedTune: "",
   },
 ];
@@ -117,8 +140,6 @@ const reference = (r: CountsRecord): number =>
 const shipped = (r: CountsRecord): number =>
   Math.floor(r.summary.b.median[INSTR]);
 const ratio = (r: CountsRecord): number => r.summary.ratio.geomean[INSTR];
-/** The fused pass's instruction increase over the passes it replaces, in %. */
-const fusedIncrease = (r: CountsRecord): number => (1 / ratio(r) - 1) * 100;
 
 /** A figure quoted in prose, and how to compute it from its record. */
 export interface CountProse {
@@ -131,20 +152,6 @@ export interface CountProse {
 }
 
 export const COUNT_PROSE: readonly CountProse[] = [
-  {
-    file: COUNTS_DOC,
-    what: "§12.4: accel_fused_pixels' instruction increase",
-    pattern: /turned on, it executes ([\d.]+)% more/,
-    record: "accel-fused-pixels.json",
-    value: fusedIncrease,
-  },
-  {
-    file: COUNTS_CONSTANTS,
-    what: "Tunables::accel_fused_pixels: its instruction increase",
-    pattern: /is ([\d.]+)% \*more\* user-space instructions/,
-    record: "accel-fused-pixels.json",
-    value: fusedIncrease,
-  },
   {
     file: COUNTS_DOC,
     what: "§12.4: accel_word_bitpack's saving at tier 4",

@@ -7,9 +7,10 @@
  * is a claim about every input, so this widens the evidence to every fixture
  * image the harness has fetched. It encodes each one with every lever off
  * (`ACCEL_NONE`, the unaccelerated reference) and compares two arms with it
- * (`ON_ARMS`): the shipped defaults, which turn on every lever but
- * `accel_fused_pixels`, and all seven on (`ACCEL_ALL`), so the lever the
- * defaults leave off is held to the same evidence. Each arm is one pair, at
+ * (`ON_ARMS`): the shipped defaults, and all seven on (`ACCEL_ALL`). Since
+ * #165 the defaults turn on all seven too, so the two arms run the same
+ * path; `ACCEL_ALL` stays so a lever a future default leaves off is still
+ * held to the same evidence. Each arm is one pair, at
  * three sizes:
  *
  * - 100 px, at every tier code;

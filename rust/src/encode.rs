@@ -416,15 +416,16 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     // average is a reduction, so it stays a scalar pass in pixel order to keep
     // the floating-point summation bit-exact.
     //
-    // The shipped path allocates, fills and frees these buffers exactly as it
-    // always has — the three linear-RGB planes and the alpha plane first, all
-    // four living to the end of this function — because it is the reference
-    // every lever is timed against, and the allocator is part of what a timing
-    // measures. Shortening one lifetime or moving one allocation lets a later
-    // buffer reuse freed, already-faulted memory, and that alone moved a
-    // 512×512 encode by more than 10% while this was being written. The fused
-    // path (`accel_fused_pixels`) allocates none of the four; the alpha plane
-    // is rebuilt below only when the image has alpha to transform.
+    // The unfused path (`accel_fused_pixels = false`) allocates, fills and
+    // frees these buffers exactly as it always has — the three linear-RGB
+    // planes and the alpha plane first, all four living to the end of this
+    // function — because it is the reference the lever is timed against, and
+    // the allocator is part of what a timing measures. Shortening one
+    // lifetime or moving one allocation lets a later buffer reuse freed,
+    // already-faulted memory, and that alone moved a 512×512 encode by more
+    // than 10% while this was being written. The fused path, which the
+    // shipped defaults take, allocates none of the four; the alpha plane is
+    // rebuilt below only when the image has alpha to transform.
     // The fused pass reads the source bytes, so the linear placement, whose
     // colour pass reads the grid planes instead, takes the unfused path.
     let fused = t.accel_fused_pixels && linear_grid.is_none();
