@@ -690,7 +690,9 @@ mise run sweep budget-ladder-optimized --split holdout
 node tools/comparison/dist/rd-budget.js --split tune \
   --budgets 12,16,18,21,24,28,32,40,48,64,80,108,192,411,1623
 node tools/comparison/dist/rd-budget.js --split holdout \
-  --budgets 12,16,18,21,24,28,32,40,48,64,80,108,192,411,1623   # §11.14
+  --budgets 12,16,18,21,24,28,32,40,48,64,80,108,192,411,1623   # §11.14, generation v1
+CHROMAHASH_METRIC_CACHE=off node tools/comparison/dist/rd-budget.js --split tune2 \
+  --budgets 12,16,18,21,24,28,32,40,48,64,80,108,192,411,1623   # §11.14, generation v2 (#168)
 
 node tools/comparison/dist/cfl-probe.js      --split tune   # §4.8
 node tools/comparison/dist/coeff-stats.js    --split tune   # §4.9, §4.10
@@ -890,9 +892,11 @@ record `"split": "holdout"`, the split's name when they were scored. That split
 is retired as spent (§11.12), so asking for it refuses and names the
 replacement. Its 32 images are `--split tune2` now, which scores the same
 pinned bytes and writes `<name>-tune2.json` instead; `verify:experiments`
-reads the `-holdout` results, not those. The alpha line was already retired
-(#83); its seven surviving images are `--split tune2` now as well (#93). The
-out-of-sample split is `holdout2`: `sweep` and `rd-budget` read it only with
+reads the `-holdout` results, not those, except for §11.14, whose
+generation-v2 re-record is `rd-budget-tune2.json` (#168). The alpha line was
+already retired (#83); its seven surviving images are `--split tune2` now as
+well (#93). The out-of-sample split is `holdout2`: `sweep` and `rd-budget`
+read it only with
 `--split holdout2 --decision <ID>`, only when `spec/V0.8-DECISIONS.md`
 records that decision as frozen, only whole, and only once. A second reading
 under the same result name is refused. A config's corpus picks the half it
@@ -3212,13 +3216,18 @@ SSIMULACRA2 (−342.2) and Butteraugli (32.60) to ThumbHash; the shipped compact
 tier wins both. Off-anchor budgets are still synthesized and are now labelled
 `(resized)`.
 
-The ChromaHash rows at 411 B and 1623 B are **generation v1**. #162 changed
-the encoder at codes 3 and 4; re-run at master their ΔE00 is 7.313 and 6.642
-rather than 7.783 and 6.768, and every other row reproduces to the value
-(§13.16). Re-recording those two rows at generation v2 is #168.
+**The table is generation v2** (#168). It was first taken at `e310475`, on
+generation v1 (`rd-budget-holdout.json`). #162 then changed the encoder at
+codes 3 and 4, so the table was re-recorded at master on the same 32
+photographs, which `--split tune2` scores now (`rd-budget-tune2.json`). Every
+row below code 3 reproduces to the value; the two ChromaHash rows at 411 B
+and 1623 B move, and the generation-v1 values of those two rows are kept in
+the second table. The v1 rows reproduce exactly at `225bdce`, the last
+generation-v1 revision (§13.16), so the move is the format change, not a
+scoring drift. No sealed split was read.
 
-**Holdout split (32 photographs).** Bold marks the leader in a byte
-neighbourhood.
+**The retired holdout split (32 photographs, now `tune2`).** Bold marks the
+leader in a byte neighbourhood.
 
 | Bytes | Format | ΔE00 ↓ | SSIM2 ↑ | Butter ↓ | DSSIM ↓ |
 |---|---|---|---|---|---|
@@ -3237,13 +3246,30 @@ neighbourhood.
 | 188.7 | WebP | 9.091 | −100.4 | **18.83** | **0.2499** |
 | 193 | ChromaHash *(resized)* | **8.684** | −119.9 | 20.60 | 0.2554 |
 | 271.5 | lqip-modern r48 | 8.321 | −66.3 | 15.83 | 0.2411 |
-| 404.8 | **WebP** | **7.518** | **−62.6** | **14.21** | **0.2349** |
-| 411 | ChromaHash tier 3 | 7.783 | −76.8 | 17.94 | 0.2507 |
+| 404.8 | WebP | 7.518 | **−62.6** | **14.21** | **0.2349** |
+| 411 | ChromaHash tier 3 | **7.313** | −67.6 | 16.26 | 0.2476 |
 | 1574.0 | RawRGB565 | 6.570 | −65.5 | 16.47 | 0.2400 |
 | 1576.4 | WebP | 5.906 | −47.1 | 11.56 | 0.2165 |
 | 1576.6 | JPEG | 6.078 | −51.6 | 12.01 | 0.2225 |
 | 1595.6 | **AVIF** | **5.471** | **−47.1** | **11.53** | **0.2157** |
+| 1623 | ChromaHash tier 4 | 6.642 | −61.7 | 13.62 | 0.2351 |
+
+**Generation v1, kept as the record #162 moved** (`rd-budget-holdout.json`,
+`e310475`). These are the values the table carried until #168; every other row
+of the table is the same in both runs.
+
+| Bytes | Format | ΔE00 ↓ | SSIM2 ↑ | Butter ↓ | DSSIM ↓ |
+|---|---|---|---|---|---|
+| 411 | ChromaHash tier 3 | 7.783 | −76.8 | 17.94 | 0.2507 |
 | 1623 | ChromaHash tier 4 | 6.768 | −62.1 | 13.99 | 0.2400 |
+
+At generation v1 WebP led all four metrics at ~405 B, and code 3 has since
+taken ΔE00 off it: the entropy coder generation v2 adopts at code 3 lowers
+code 3's ΔE00 by 6.0% here, enough to pass WebP, and improves the three
+structural metrics without moving any of them past WebP. Code 4, where
+generation v2 turns the synthesis window on, improves on all four metrics and
+changes no ordering against the real codecs; against raw RGB565 it now wins
+DSSIM, which it tied.
 
 Four things this settles, and a fifth about the top of the ladder.
 
@@ -3264,18 +3290,20 @@ Four things this settles, and a fifth about the top of the ladder.
    neighbourhood ChromaHash still leads ΔE00 (8.684 against WebP's 9.091), WebP
    takes Butteraugli and DSSIM, and SSIMULACRA2 goes to **lqip-modern r32** at
    175.8 B (−92.1 against WebP's −100.4) — not to WebP, as round 3 recorded and
-   as §7.14 already says. The ΔE00 crossover is between 193 and 411 B, where
-   WebP does lead all four. The same ordering holds on tune
-   (8.788 vs 8.934 at ~190 B). §14.1 of the spec states this rather than
-   arguing around it.
+   as §7.14 already says. At ~405 B ChromaHash still leads ΔE00 (7.313
+   against WebP's 7.518) while WebP takes the other three, so the ΔE00
+   crossover is between 411 B and ~1.6 kB. At generation v1 it was between
+   193 and 411 B, where WebP led all four. The same ordering holds on tune at
+   ~190 B (8.788 vs 8.934); tune has not been re-run at 411 B for generation
+   v2. §14.1 of the spec states this rather than arguing around it.
 5. **At ~1.6 kB every real codec leads, and so, on ΔE00, do raw pixels.** AVIF
    leads all four metrics, and WebP and JPEG beat code 4 on all four as well.
-   ΔE00 goes to AVIF by 19% (5.471 against 6.768). Uncoded RGB565 also beats
-   code 4 on ΔE00 here (6.570), while losing SSIMULACRA2 and Butteraugli to it
-   and tying DSSIM. That half is split-dependent: on tune code 4 beats RGB565,
-   6.729 against 6.959 (§2). These rows were added in the 2026-09 re-measure;
-   the table used to stop at 411 B, and the spec's claim about 1.6 kB (§14.1)
-   cited round 1's §2 instead.
+   ΔE00 goes to AVIF by 18% (5.471 against 6.642). Uncoded RGB565 also beats
+   code 4 on ΔE00 here (6.570), while losing SSIMULACRA2, Butteraugli and
+   DSSIM to it. That half is split-dependent: on tune code 4 beat RGB565 at
+   generation v1, 6.729 against 6.959 (§2). These rows were added in the
+   2026-09 re-measure; the table used to stop at 411 B, and the spec's claim
+   about 1.6 kB (§14.1) cited round 1's §2 instead.
 
 The structural weakness §2 identified is narrowed but not gone: lqip-modern
 still takes SSIMULACRA2 and Butteraugli at ~84 B, where ChromaHash wins ΔE00 by
@@ -5626,11 +5654,17 @@ wire-format generation v2 after them, and it changes the encoder at codes 3
 and 4 (§13.15) and nothing below code 3. So every result that moved at master
 was re-run a second time at `225bdce`, the last generation-v1 revision, with
 the same harness. The scoring harness is identical at the two revisions:
-`git diff 225bdce 86a30af` also touches `spec/`, the bindings, `typescript/`
-and four files under `tools/comparison/src/` (`combination-core.ts`, new;
-`stratify.ts`'s `--combination`; and their `verify-experiments.ts` and
-`metric-selftest.ts` checks), none of them on the path `sweep` and `rd-budget`
-score through. A figure that
+`sweep` and `rd-budget` encode and decode ChromaHash through
+`rust/examples/encode_stdin`, and nothing on the path they score through
+changed outside `rust/`. Outside `rust/`,
+`git diff 225bdce 86a30af` touches `spec/`, `bindings/`, `csharp/`, `go/`,
+`python/`, `swift/`, `typescript/`, `tools/benchmark/` (its
+`pyproject.toml` and `uv.lock`), and seven paths under `tools/comparison/`:
+`package.json` (the version), `sweeps/v08-combination.json` and
+`results/v08-combination.json` (a new sweep and its result), and four files
+under `src/` (`combination-core.ts`, new; `stratify.ts`'s `--combination`;
+and their `verify-experiments.ts` and `metric-selftest.ts` checks). A
+figure that
 moves at master and holds at v1 is the format change, not an error in the
 record. The re-runs are committed under `results/reproductions/` (master) and
 `results/reproductions/v1/` (v1), outside the directory every count in §13.5
@@ -5743,8 +5777,9 @@ What it says:
 The readings above that the claims table does not hold, each with its status
 and command. This table is unbound: `verify:experiments` does not recompute
 the seed readings (20 seeds over every interval, at 10,000 resamples, is too
-slow for a gate that runs on every push), and §11.14's two rows sit outside
-#130's list. Each figure is the command's own output, read off it by hand.
+slow for a gate that runs on every push), and §11.14's two rows sat outside
+#130's list; #168 has since re-recorded them in §11.14, where they are bound.
+Each figure is the command's own output, read off it by hand.
 
 | reading | § | as recorded | re-run | status | command |
 |---|---|---|---|---|---|
@@ -5752,8 +5787,8 @@ slow for a gate that runs on every push), and §11.14's two rows sit outside
 | seed check at 10,000 resamples over the 54 results, the same four | 13.5 | 0.077 / 4.8% / 7 / 10 | 0.077 / 4.8% / 7 / 10 | reproduced | `arms --seed-sensitivity <the 54 results>` |
 | 1,000 → 10,000 resamples at seed 42 over the 54 results: largest bound move, interval flips, `guards (CI)` changes | 13.5 | 0.099 / 7 / 6 | 0.099 / 7 / 6 | reproduced | `arms --resample-change <the 54 results>` |
 | seed check at 10,000 resamples over every committed result (1,080 intervals), the same four | — | — | 0.077 / 4.8% / 8 / 10 | not a recorded claim | `arms --seed-sensitivity` |
-| `ChromaHash@411B` (code 3) mean ΔE00, `rd-budget` on tune2 | 11.14 | 7.783 | 7.313 (7.783 at v1) | outside #130's list (#168) | `rd-budget --split tune2` |
-| `ChromaHash@1623B` (code 4) mean ΔE00, `rd-budget` on tune2 | 11.14 | 6.768 | 6.642 (6.768 at v1) | outside #130's list (#168) | `rd-budget --split tune2` |
+| `ChromaHash@411B` (code 3) mean ΔE00, `rd-budget` on tune2 | 11.14 | 7.783 | 7.313 (7.783 at v1) | re-recorded at v2 in §11.14 (#168) | `rd-budget --split tune2` |
+| `ChromaHash@1623B` (code 4) mean ΔE00, `rd-budget` on tune2 | 11.14 | 6.768 | 6.642 (6.768 at v1) | re-recorded at v2 in §11.14 (#168) | `rd-budget --split tune2` |
 
 **What the record now says.** The four master figures are not errors in the
 sections that hold them: those tables record generation v1, and stay bound to
@@ -5764,9 +5799,9 @@ figures beside the v1 ones, and `V0.8-DECISIONS.md` marks D3's and D7/D9's
 prior evidence as generation v1, which is what those entries were decided on.
 `verify:claims` binds each quoted v2 figure to its cell above. One table
 outside #130's list moved the same way: §11.14's code-3 and code-4 rows, the
-cross-format record, are generation v1 (ΔE00 7.783 → 7.313 at code 3, 6.768 →
-6.642 at code 4 on the `rd-budget` re-run), and re-recording that table at v2
-is #168.
+cross-format record, were generation v1 (ΔE00 7.783 → 7.313 at code 3, 6.768 →
+6.642 at code 4 on the `rd-budget` re-run). #168 has since re-recorded that
+table at v2: §11.14 now carries the re-run and keeps the v1 rows beside it.
 
 **Per stratum.** Each comparison above, overall and in every holdout3 stratum
 its re-run's images fall in, as the relative change in the comparison's own

@@ -156,8 +156,33 @@ function cflPaidOverShipped(paid: number): number {
 }
 
 /**
+ * Code 3's ΔE00 and the size-matched WebP row's beside it in §11.14, as one
+ * file quotes the pair. A function declaration so the register can spread it.
+ */
+function code3AgainstWebp(file: string, code3: RegExp, webp: RegExp): Claim[] {
+  return [
+    {
+      file,
+      what: "code 3 at 411 B on holdout",
+      pattern: code3,
+      section: "11.14",
+      row: "411",
+      column: "ΔE00 ↓",
+    },
+    {
+      file,
+      what: "WebP at ~405 B on holdout",
+      pattern: webp,
+      section: "11.14",
+      row: "404.8",
+      column: "ΔE00 ↓",
+    },
+  ];
+}
+
+/**
  * How far AVIF at ~1.6 kB leads code 4 on ΔE00 in §11.14, as a percentage of
- * code 4's score — the "19%" §11.14's own prose gives, recomputed from cells.
+ * code 4's score — the "18%" §11.14's own prose gives, recomputed from cells.
  */
 function avifLeadOverCode4(code4: number): number {
   const avif = cellOf("11.14", 0, "1595.6", "ΔE00 ↓");
@@ -526,6 +551,18 @@ const REGISTER: Claim[] = [
     row: "1574.0",
     column: "ΔE00 ↓",
   },
+  // Code 3 against size-matched WebP at ~405 B. Generation v2's coder moved
+  // code 3 past WebP on ΔE00 (#168); at generation v1 WebP led all four.
+  ...code3AgainstWebp(
+    "spec/README.md",
+    /ΔE00 off size-matched WebP at ~405 B, ([\d.]+) against/,
+    /against WebP's ([\d.]+), and loses/,
+  ),
+  ...code3AgainstWebp(
+    "spec/RATIONALE.md",
+    /keeps ΔE00 at generation v2 \(([\d.]+) against/,
+    /against WebP's\n {3}([\d.]+)\), and AVIF/,
+  ),
 
   // ── The AC bit-depth trade, §7.4 of the spec ─────────────────────────────
   {
