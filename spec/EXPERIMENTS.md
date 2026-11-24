@@ -5654,11 +5654,17 @@ wire-format generation v2 after them, and it changes the encoder at codes 3
 and 4 (§13.15) and nothing below code 3. So every result that moved at master
 was re-run a second time at `225bdce`, the last generation-v1 revision, with
 the same harness. The scoring harness is identical at the two revisions:
-`git diff 225bdce 86a30af` also touches `spec/`, the bindings, `typescript/`
-and four files under `tools/comparison/src/` (`combination-core.ts`, new;
-`stratify.ts`'s `--combination`; and their `verify-experiments.ts` and
-`metric-selftest.ts` checks), none of them on the path `sweep` and `rd-budget`
-score through. A figure that
+`sweep` and `rd-budget` encode and decode ChromaHash through
+`rust/examples/encode_stdin`, and nothing on the path they score through
+changed outside `rust/`. Outside `rust/`,
+`git diff 225bdce 86a30af` touches `spec/`, `bindings/`, `csharp/`, `go/`,
+`python/`, `swift/`, `typescript/`, `tools/benchmark/` (its
+`pyproject.toml` and `uv.lock`), and seven paths under `tools/comparison/`:
+`package.json` (the version), `sweeps/v08-combination.json` and
+`results/v08-combination.json` (a new sweep and its result), and four files
+under `src/` (`combination-core.ts`, new; `stratify.ts`'s `--combination`;
+and their `verify-experiments.ts` and `metric-selftest.ts` checks). A
+figure that
 moves at master and holds at v1 is the format change, not an error in the
 record. The re-runs are committed under `results/reproductions/` (master) and
 `results/reproductions/v1/` (v1), outside the directory every count in §13.5
