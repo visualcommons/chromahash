@@ -1016,7 +1016,7 @@ A B / B A blocks of the reference arm (`accel_*=0`) against the shipped
 defaults on one cell, committed under `tools/comparison/results/counts/ab/`
 at `29ae913` from a clean tree, both arms producing equal outputs. The ratio
 is reference instructions ÷ shipped instructions, so above 1 is a reduction;
-every block agreed with the median to four decimals. An instruction count is
+every block's ratio agreed with their geometric mean to four decimals. An instruction count is
 not a time, and no speedup is claimed from one.
 
 | lever | cell | reference | shipped | ratio |

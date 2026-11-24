@@ -27,9 +27,8 @@
  * companding change that alters the quantized AC codes of any image with luma
  * detail. It reaches the binary through the same `CHROMAHASH_TUNE` path as
  * `ACCEL_ALL`, so it also shows the tune string is not silently dropped. Where
- * a control hash differs from the
- * levers-off hash, its decoded pixels are compared with the levers-off pixels
- * too. The run fails unless at least one control encode and one control decode
+ * a control hash differs from the levers-off hash, its decoded pixels are
+ * compared with the levers-off pixels too. The run fails unless at least one control encode and one control decode
  * are reported as differing, so a "0 differ" record shows the comparison could
  * see a difference on the same images.
  *
