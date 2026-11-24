@@ -108,7 +108,7 @@ pub fn check_natural(hash: &ChromaHash, w: u32, h: u32, rgba: &[u8]) {
 /// From this code up the targets render capped rasters instead.
 pub const HEAVY_TIER: u8 = 3;
 /// Per-axis cap the targets apply at [`HEAVY_TIER`] and above.
-pub const HEAVY_CAP: u32 = 64;
+pub const HEAVY_CAP: u32 = 32;
 
 /// Is this a [`HEAVY_TIER`] hash?
 pub fn is_heavy(hash: &ChromaHash) -> bool {

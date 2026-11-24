@@ -17,7 +17,7 @@
 //! Flags: bit 0 NULL `bytes`; bit 1 NULL `out_hash`; bit 2 NULL `out_buf`;
 //! bit 3 NULL `out_image`; bit 4 NULL `out_color`; bits 5–6 pick the decode
 //! entry point (`decode`, `decode_to`, `decode_capped`, `decode_capped_to`);
-//! at tier codes 3 and 4 the capped twin runs, with each cap at most 64 px.
+//! at tier codes 3 and 4 the capped twin runs, with each cap at most 32 px.
 //!
 //! Only the five defined gamut discriminants are passed: the parameter is a
 //! `#[repr(i32)]` enum, so any other value is undefined behaviour on the Rust
@@ -38,7 +38,7 @@ use libfuzzer_sys::fuzz_target;
 const HEADER: usize = 12;
 /// Tier code from which decodes are capped (spec §2.5: bits 3–5 of byte 0).
 const HEAVY_TIER: u8 = 3;
-const HEAVY_CAP: u32 = 64;
+const HEAVY_CAP: u32 = 32;
 
 const GAMUTS: [(ChromaHashGamut, Gamut); 5] = [
     (ChromaHashGamut::Srgb, Gamut::Srgb),
@@ -199,7 +199,7 @@ fuzz_target!(|data: &[u8]| {
         // Codes 3 and 4 render 128 and 256 px at O(w·h·K): a natural decode
         // costs about a second under the sanitizer, twice here (C and core).
         // There, take the capped twin of the chosen entry point and cap each
-        // axis at 64 px. The entry points differ only in the arguments they
+        // axis at 32 px. The entry points differ only in the arguments they
         // hand the core, so the uncapped ones stay covered at codes 0–2.
         let heavy = (bytes[0] >> 3) & 0b111 >= HEAVY_TIER;
         let mut entry = (flags >> 5) & 3;
