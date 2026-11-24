@@ -29,6 +29,29 @@ fn build_eotf_lut(gamut: Gamut) -> [f64; 256] {
     lut
 }
 
+/// [`build_eotf_lut`]'s table for `gamut`, built once per process and shared.
+///
+/// The encode-side twin of the decoder's `cached_gamma_lut`: 256 transfer
+/// curve evaluations, each a `portable_pow` for most gamuts, were about 3% of
+/// a 100×100 encode, rebuilt on every call (`spec/PERFORMANCE.md` §1). The
+/// table is a pure function of the curve `build_eotf_lut` picks, and sRGB and
+/// Display P3 pick the same one, so there are four tables, each the same 256
+/// values whether it is built once or on every call.
+fn cached_eotf_lut(gamut: Gamut) -> &'static [f64; 256] {
+    use std::sync::OnceLock;
+    static SRGB_CURVE: OnceLock<[f64; 256]> = OnceLock::new();
+    static ADOBE_CURVE: OnceLock<[f64; 256]> = OnceLock::new();
+    static PROPHOTO_CURVE: OnceLock<[f64; 256]> = OnceLock::new();
+    static PQ_CURVE: OnceLock<[f64; 256]> = OnceLock::new();
+    let slot = match gamut {
+        Gamut::Srgb | Gamut::DisplayP3 => &SRGB_CURVE,
+        Gamut::AdobeRgb => &ADOBE_CURVE,
+        Gamut::ProPhotoRgb => &PROPHOTO_CURVE,
+        Gamut::Bt2020 => &PQ_CURVE,
+    };
+    slot.get_or_init(|| build_eotf_lut(gamut))
+}
+
 /// Simulate the decoder's DC-only path for a quantized (L, a, b) code triple:
 /// dequantize → clamp L → linear sRGB → per-channel clip → gamma. Returns the
 /// gamma-encoded sRGB triple the decoder would render for a flat region.
@@ -404,8 +427,9 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     let (pw, ph) = linear_grid.unwrap_or((w, h));
     let pixel_count = pw * ph;
 
-    // 1. Precompute EOTF LUT (256 entries, eliminates per-pixel portable_pow)
-    let eotf_lut = build_eotf_lut(gamut);
+    // 1. The EOTF LUT (256 entries, eliminates per-pixel portable_pow), built
+    // once per transfer curve and shared (`cached_eotf_lut`).
+    let eotf_lut = cached_eotf_lut(gamut);
     stage!("eotf_lut");
 
     // 2. Per-pixel OKLAB conversion with alpha accumulation.
@@ -441,7 +465,7 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
             h,
             dw,
             dh,
-            &eotf_lut,
+            eotf_lut,
             [&mut lin_r, &mut lin_g, &mut lin_b],
             &mut alpha_pixels,
         );
@@ -2264,6 +2288,31 @@ pub fn encode_quality(w: u32, h: u32, rgba: &[u8], gamut: Gamut, tier: u8) -> Bo
 mod tests {
     use super::*;
     use crate::bitpack::read_bits;
+
+    #[test]
+    fn cached_eotf_lut_is_the_built_one_for_every_gamut() {
+        // Four cached tables serve five gamuts, which holds only because sRGB
+        // and Display P3 share the transfer curve `build_eotf_lut` picks. Two
+        // rounds, so a gamut routed to another curve's slot meets that
+        // curve's table whichever of them filled it first.
+        let gamuts = [
+            Gamut::Srgb,
+            Gamut::DisplayP3,
+            Gamut::AdobeRgb,
+            Gamut::Bt2020,
+            Gamut::ProPhotoRgb,
+        ];
+        for _ in 0..2 {
+            for g in gamuts {
+                let (cached, built) = (cached_eotf_lut(g), build_eotf_lut(g));
+                for (i, (c, b)) in cached.iter().zip(built.iter()).enumerate() {
+                    assert_eq!(c.to_bits(), b.to_bits(), "{g:?} entry {i}");
+                }
+                // A second call returns the same table, not a rebuilt one.
+                assert!(std::ptr::eq(cached_eotf_lut(g), cached_eotf_lut(g)));
+            }
+        }
+    }
 
     // Self-contained golden vectors copied from `spec/test-vectors/`. The
     // crate's full golden cross-check lives in `tests/spec_vectors.rs`, but that
