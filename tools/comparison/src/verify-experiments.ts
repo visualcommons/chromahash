@@ -3623,6 +3623,12 @@ const EXPECTED_CELLS: Record<string, number> = {
   // Every arm's mean (13), and the ten candidate arms' relative, interval
   // and guards against their own code's shipped arm (30).
   "13.15#0": 43,
+  // §13.16, the #130 reproduction ledger: each of the 20 re-runs' name, arms,
+  // values, moved values and master reading (100), and the six v1 readings;
+  // then each of the 31 claims' section, recorded figure, master figure,
+  // status and command (155), and the ten v1 figures.
+  "13.16#0": 106,
+  "13.16#1": 165,
 };
 
 /** The run's asserted total: what a complete run over every table compares. */
@@ -3721,7 +3727,10 @@ const UNBOUND_NOTES: Record<string, string> = {
   "7.6#0":
     "the compact tier vs ThumbHash, quoted from thumbhash-headtohead --split holdout; the same rows are bound in §4.3 table 1",
   "7.9#0": "per-image signalled selection, derived from §7.4's presets",
-  "7.13#0": "entropy-budget output, not a sweep",
+  "7.13#0":
+    "entropy-budget output, not a sweep; its bold row and the two figures its prose spends it on are re-run and bound in §13.16's claims table, against the committed results/reproductions/entropy-budget-tune.json record",
+  "13.16#2":
+    "UNCHECKED here: per-stratum readings need each image's strata measured off the fetched fixtures, and CI does not fetch the corpus; `node tools/comparison/dist/reproduce.js --strata` prints the table from the committed re-runs",
   "9.3#0":
     "old-corpus vs new-corpus figures; the old corpus no longer exists, which is the point of the section",
   "9.5#0":

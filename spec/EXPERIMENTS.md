@@ -856,6 +856,29 @@ mise run stratify cfl-oracle --cfl-oracle                               # §13.1
 mise run register-verdict D9                                            # §13.14
 mise run arms --seed-sensitivity cfl-oracle                             # §13.14
 
+# The #130 reproduction ledger (§13.16): every cited sweep re-run from a fresh
+# checkout, empty fixture cache, metric cache off, into results/reproductions/
+# (never over a committed result), and the ones #162 moves re-run again at
+# 225bdce, the last generation-v1 revision, into results/reproductions/v1/
+R=tools/comparison/results/reproductions
+for s in alpha-fields alpha-ac-count alpha-ceiling alpha-tier1 compact-tier \
+         compact-tier-graphics compact-tier-alpha v07-holdout-photo \
+         v07-holdout-alpha embedded-tiers cfl cfl-range selection-weights \
+         selection-hv synthesis-window synthesis-window-upper artifact-ladder \
+         artifact-ladder-common-grid; do
+  CHROMAHASH_METRIC_CACHE=off mise run sweep "$s" --out-dir "$R"         # §13.16
+done
+CHROMAHASH_METRIC_CACHE=off mise run sweep v07-holdout-photo --split tune2 --out-dir "$R"
+CHROMAHASH_METRIC_CACHE=off node tools/comparison/dist/rd-budget.js --split tune2 \
+  --budgets 12,16,18,21,24,28,32,40,48,64,80,108,192,411,1623 --out-dir "$R"
+CHROMAHASH_METRIC_CACHE=off node tools/comparison/dist/entropy-budget.js \
+  --split tune --record "$R"                                            # §7.13, §13.16
+# at 225bdce: sweep embedded-tiers, cfl, cfl-range, artifact-ladder and
+# artifact-ladder-common-grid with --out-dir "$R/v1", and
+# rd-budget.js --split tune2 --formats chromahash --budgets 411,1623 --out-dir "$R/v1"
+node tools/comparison/dist/reproduce.js --arms --strata                 # §13.16
+mise run arms --seed-sensitivity --resamples 1000 <the 54 results>      # §13.5, §13.16
+
 # Check the tables in this file against the results above
 mise run verify:experiments
 mise run verify:experiments --list-unbound
@@ -1237,6 +1260,13 @@ selection index. `sweeps/cfl.json`, tune:
 | tier 1 free | 109 | 9.659 | −0.12% |
 | tier 2 free | 412 | 7.797 | −0.45% |
 | tier 3 free | 1624 | 6.668 | −0.90% |
+
+The `tier 2 free` and `tier 3 free` rows, and the control each is read
+against, are **generation v1** (codes 3 and 4 before #162). Re-run on
+generation v2, whose code 3 is arithmetic-coded and whose code 4 carries the
+window, the free predictor is −0.29% at code 3, no longer surviving Holm, and
+−0.92% at code 4 (§13.16); every row above code 2 reproduces to the value at
+v1, and every row at codes 1 and 2 at both.
 
 **This column changed sign on the Wikimedia corpus, and it is the one column in
 the table nothing checks** — the binding covers `bytes` and `ΔE00`, so the
@@ -3182,6 +3212,11 @@ SSIMULACRA2 (−342.2) and Butteraugli (32.60) to ThumbHash; the shipped compact
 tier wins both. Off-anchor budgets are still synthesized and are now labelled
 `(resized)`.
 
+The ChromaHash rows at 411 B and 1623 B are **generation v1**. #162 changed
+the encoder at codes 3 and 4; re-run at master their ΔE00 is 7.313 and 6.642
+rather than 7.783 and 6.768, and every other row reproduces to the value
+(§13.16). Re-recording those two rows at generation v2 is #168.
+
 **Holdout split (32 photographs).** Bold marks the leader in a byte
 neighbourhood.
 
@@ -3591,6 +3626,11 @@ Ringing is deliberately still reported per row and still not comparable across
 them: it derives its envelope radius from the upscale factor and has no
 equivalent knob, which is the asymmetry §12.4 documents.
 
+The code-3 and code-4 rows of both tables are **generation v1**. #162 changed
+the encoder at those two codes (the coder at code 3, the window at code 4), so
+a re-run at master moves them and nothing else; at `225bdce`, the last v1
+revision, both ladders reproduce to the value (§13.16).
+
 ### 13.2 The upper tiers buy fidelity by inventing
 
 The paired differences in spurious detail this section reads, every tier against
@@ -3607,7 +3647,10 @@ against each other:
 
 `mise run arms artifact-ladder-common-grid --baseline "code 2 (108 B)"` prints
 the first four rows (and the same comparison for every other metric), and
-`--baseline "code 3 (411 B)"` the fifth. Δ is the row's tier minus the reference
+`--baseline "code 3 (411 B)"` the fifth. Every row with code 3 or code 4 in it
+is generation v1 (§13.16): on generation v2 code 3 − code 2 is +0.780 and
+still excludes zero, and code 4 − code 2 is −0.354 [−0.810, +0.081], the rise
+at code 4 gone with the window D3 adopted there. Δ is the row's tier minus the reference
 tier, so positive means the row invents more. The Holm p is adjusted across the
 four tiers compared with the same reference, which for the last row is code 3.
 
@@ -3918,7 +3961,9 @@ seeds. Over the 54 results of the 2026-09 re-measure that is 839 intervals
 (it was 504 over the 36 results this section was first written against).
 
 With the intervals drawn at 1,000 resamples, as they were when this section was
-written:
+written (`mise run arms --seed-sensitivity --resamples 1000` over those 54
+results reproduces every figure below; until #130 added `--resamples` that
+reading had no command, §13.16):
 
 * The largest move of either bound is 0.295 ΔE00, and the largest move relative
   to its own interval's width is 15.5%. (These are two separate maxima; this
@@ -5554,3 +5599,197 @@ wire-format generation v2 (`version` = 1) and release 0.8.0, in every
 language (spec `README.md` §13). Every form is conditional on the tier
 code and the alpha flag, both in the hash. U19 bounds every figure here:
 these are metric verdicts.
+
+### 13.16 The load-bearing claims, re-run from a clean fetch (2026-11)
+
+Every register entry started from figures in this file, and those figures had
+survived three corpus revisions (§9, §9.5, #102) and a resample change
+(§13.5). #130 re-ran each one that `V0.8-DECISIONS.md`, `RATIONALE.md` and
+`README.md` lean on, at `master` (`86a30af`), in a fresh checkout with an
+empty fixture cache (every image fetched again and checked against its pin)
+and the metric cache off, into scratch result names that overwrite nothing.
+No sealed split was read: only tune, tune2 and the graphics tune split.
+Nothing was tuned, and no criterion moved: every register entry was decided
+before this ran (§13.15), and none is reopened by it. The status rule was
+fixed in #130 before the first re-run:
+
+- **reproduced**: every per-image score matches, or the figure matches at its
+  printed precision;
+- **drifted**: the figure moves, but its sign, its Holm verdict and its
+  `guards (CI)` verdict do not;
+- **not reproduced**: one of those verdicts turns, or the claim cannot be
+  re-run.
+
+`master` is not the encoder these figures were measured on. #162 landed
+wire-format generation v2 after them, and it changes the encoder at codes 3
+and 4 (§13.15) and nothing below code 3. So every result that moved at master
+was re-run a second time at `225bdce`, the last generation-v1 revision, with
+the same harness: the two revisions differ only under `rust/`. A figure that
+moves at master and holds at v1 is the format change, not an error in the
+record. The re-runs are committed under `results/reproductions/` (master) and
+`results/reproductions/v1/` (v1), outside the directory every count in §13.5
+and §13.6 is taken over.
+
+**Per image.** Each re-run against its committed result, value by value, at
+the 10⁻⁵ relative tolerance `selftest:determinism` holds one sweep to.
+`rd-budget-holdout` and `v07-holdout-photo-holdout` scored what is `tune2` now
+(#76), so their re-runs are `--split tune2`; the v1 `rd-budget` re-run scored
+only the two ChromaHash arms #162 moves.
+
+| result | re-run | arms | values | moved at master | at master | at v1 |
+|---|---|---|---|---|---|---|
+| `alpha-fields` | `alpha-fields` | 11 | 1056 | 0 | identical (11 arms) | — |
+| `alpha-ac-count` | `alpha-ac-count` | 19 | 1824 | 0 | identical (19 arms) | — |
+| `alpha-ceiling` | `alpha-ceiling` | 34 | 3264 | 0 | identical (34 arms) | — |
+| `alpha-tier1` | `alpha-tier1` | 9 | 864 | 0 | identical (9 arms) | — |
+| `compact-tier` | `compact-tier` | 15 | 2325 | 0 | identical (15 arms) | — |
+| `compact-tier-graphics` | `compact-tier-graphics` | 9 | 720 | 0 | identical (9 arms) | — |
+| `compact-tier-alpha` | `compact-tier-alpha` | 24 | 2304 | 0 | identical (24 arms) | — |
+| `v07-holdout-photo` | `v07-holdout-photo` | 9 | 1395 | 0 | identical (9 arms) | — |
+| `v07-holdout-photo-holdout` | `v07-holdout-photo-tune2` | 9 | 1440 | 0 | identical (9 arms) | — |
+| `v07-holdout-alpha` | `v07-holdout-alpha` | 9 | 864 | 0 | identical (9 arms) | — |
+| `rd-budget-holdout` | `rd-budget-tune2` | 54 | 8640 | 255 | 2 of 54 arms moved | identical (2 re-run arms) |
+| `embedded-tiers` | `embedded-tiers` | 13 | 2015 | 372 | 3 of 13 arms moved | identical (13 arms) |
+| `cfl` | `cfl` | 18 | 2790 | 496 | 4 of 18 arms moved | identical (18 arms) |
+| `cfl-range` | `cfl-range` | 13 | 2015 | 248 | 2 of 13 arms moved | identical (13 arms) |
+| `selection-weights` | `selection-weights` | 29 | 4495 | 0 | identical (29 arms) | — |
+| `selection-hv` | `selection-hv` | 15 | 2325 | 0 | identical (15 arms) | — |
+| `synthesis-window` | `synthesis-window` | 8 | 2976 | 0 | identical (8 arms) | — |
+| `synthesis-window-upper` | `synthesis-window-upper` | 6 | 2232 | 0 | identical (6 arms) | — |
+| `artifact-ladder` | `artifact-ladder` | 5 | 1860 | 620 | 2 of 5 arms moved | identical (5 arms) |
+| `artifact-ladder-common-grid` | `artifact-ladder-common-grid` | 5 | 1860 | 620 | 2 of 5 arms moved | identical (5 arms) |
+
+47,264 per-image values across 20 results. Every arm below code 3 reproduces
+to the value. The 2,611 values that moved belong to 15 arms, every one of them
+at code 3 or code 4, and each of those arms reproduces to the value at v1. No
+value in this file's record failed to reproduce on the encoder that produced
+it.
+
+**The claims.** The figure as recorded is computed from the committed result
+exactly as its section's binding computes it, and `at master` and `at v1` from
+the re-runs (`reproduce-core.ts`). `verify:experiments` binds every cell, and
+`node tools/comparison/dist/reproduce.js` prints the table. §7.13's three
+figures had no committed result until now (`entropy-budget` wrote only scratch
+output), so their recorded figure is the one §7.13 prints, and their re-run is
+the record `entropy-budget --record` commits.
+
+| claim | § | as recorded | at master | at v1 | status | command |
+|---|---|---|---|---|---|---|
+| alpha row `A28@3 L22@4 C3@3` at code 1 | 11.3 | −17.10% | −17.10% | — | reproduced | `sweep alpha-ceiling` |
+| the same row at code 2 | 11.11 | −11.95% | −11.95% | — | reproduced | `sweep alpha-tier1` |
+| compact leader `L19@4 C6@3` against the shipped shape | 11.10 | −3.67% | −3.67% | — | reproduced | `sweep compact-tier` |
+| `L16@4 C8@3` against the leader, Holm p | 11.10 | 0.6775 | 0.6775 | — | reproduced | `sweep compact-tier` |
+| compact leader on the graphics tune split | 11.10 | −2.78% | −2.78% | — | reproduced | `sweep compact-tier-graphics` |
+| compact leader against the shipped shape, on tune2 | 11.12 | −2.78% | −2.78% | — | reproduced | `sweep v07-holdout-photo --split tune2` |
+| compact 21 B against ThumbHash, ΔE00, on tune2 | 11.12 | 12.146 vs 12.807 | 12.146 vs 12.807 | — | reproduced | `rd-budget --split tune2` |
+| best coder's AC bits against the fixed fields, LOO | 7.13 | −7.5% | −7.5% | — | reproduced | `entropy-budget --split tune --record` |
+| the saving spent at 32 B, ΔE00 | 7.13 | −1.6% | −1.6% | — | reproduced | `entropy-budget --split tune --record` |
+| the saving spent at 108 B, ΔE00 | 7.13 | −4.8% | −4.8% | — | reproduced | `entropy-budget --split tune --record` |
+| first 32 B of an interleaved code-2 hash against native code 1 | 7.11 | +4.15% | +4.15% | +4.15% | reproduced | `sweep embedded-tiers` |
+| interleaved against channel-sequential, at the 32 B cut | 7.11 | −5.0% | −5.0% | −5.0% | reproduced | `sweep embedded-tiers` |
+| CfL paid at 32 B (`L24@5 C9@4`) against the shipped layout | 7.10 | +2.11% | +2.11% | +2.11% | reproduced | `sweep cfl` |
+| CfL free at code 1 | 7.10 | −0.10% | −0.10% | −0.10% | reproduced | `sweep cfl` |
+| CfL free at code 3 | 7.10 | −0.45% | −0.29% | −0.45% | not reproduced | `sweep cfl` |
+| CfL free at code 4 | 7.10 | −0.90% | −0.92% | −0.90% | drifted | `sweep cfl` |
+| `aniso 0.9 / hv 0` against the default | 11.5 | −0.76% | −0.76% | — | reproduced | `sweep selection-weights` |
+| `aniso 0.9 / hv 0`, Holm p | 11.5 | 0.0432 | 0.0432 | — | reproduced | `sweep selection-weights` |
+| `aniso 1.2 / hv 0` (`sel_hv` off), Holm p | 11.5 | 0.2112 | 0.2112 | — | reproduced | `sweep selection-weights` |
+| `sel_hv` 0.15 → 0.30 | 11.5 | +0.39% | +0.39% | — | reproduced | `sweep selection-weights` |
+| window `w_min 0.5 exp 2` at code 1, spurious detail | 12.2 | −73% | −73% | — | reproduced | `sweep synthesis-window` |
+| window `w_min 0.85 exp 1` at code 1, ΔE00 | 12.2 | +0.33% | +0.33% | — | reproduced | `sweep synthesis-window` |
+| window `w_min 0.85 exp 1` at code 2, ΔE00 Δ and interval | 12.3 | +0.008 [−0.011, +0.028] | +0.008 [−0.011, +0.028] | — | reproduced | `sweep synthesis-window-upper` |
+| window `w_min 0.85 exp 1` at code 2, spurious detail | 12.3 | −28% | −28% | — | reproduced | `sweep synthesis-window-upper` |
+| the ladder, code 0 ΔE00 | 13.1 | 12.156 | 12.156 | 12.156 | reproduced | `sweep artifact-ladder` |
+| the ladder, code 1 ΔE00 | 13.1 | 11.481 | 11.481 | 11.481 | reproduced | `sweep artifact-ladder` |
+| code 3 − code 2, spurious detail on the pinned grid | 13.2 | +0.735 [+0.358, +1.159] | +0.780 [+0.363, +1.193] | +0.735 [+0.358, +1.159] | drifted | `sweep artifact-ladder-common-grid` |
+| code 4 − code 2, spurious detail on the pinned grid | 13.2 | +0.742 [+0.270, +1.195] | −0.354 [−0.810, +0.081] | +0.742 [+0.270, +1.195] | not reproduced | `sweep artifact-ladder-common-grid` |
+| `selection-weights`, arms that survive Holm | 13.5 | 2 | 2 | — | reproduced | `sweep selection-weights` |
+| `selection-weights`, arms `ok` on intervals | 13.5 | 2 | 2 | — | reproduced | `sweep selection-weights` |
+| `synthesis-window`, arms that survive Holm | 13.5 | 5 | 5 | — | reproduced | `sweep synthesis-window` |
+
+What it says:
+
+1. **27 of the 31 claims reproduce at master, to their printed precision.**
+   That is every claim below code 3: the alpha row (−17.10% at code 1,
+   −11.95% at code 2), the compact plateau and its tie-break across corpora,
+   the compact tier against ThumbHash on tune2, entropy coding's −7.5% of AC
+   bits and its −1.6% and −4.8%, the embedded-tier +4.15% and the 5.0%
+   interleaving gain, CfL's paid +2.11% and free −0.10% at code 1, both
+   §11.5 findings with their Holm p, the window at codes 1 and 2, the ladder's
+   code 0 and code 1, and the §13.5 counts of the re-run sweeps.
+2. **The other four are at codes 3 and 4, and #162 moved them.** CfL given
+   away free at code 3 is −0.29% at master, not −0.45%, and no longer survives
+   Holm: **not reproduced**, because the arm now rides on the code-3 coder. At
+   code 4 it is −0.92%, not −0.90%: **drifted**. §13.2's rise off the floor
+   holds at code 3 (+0.780, still excluding zero: **drifted**) and is gone at
+   code 4, where code 4 − code 2 is −0.354 [−0.810, +0.081]: **not
+   reproduced**, for the reason D3 adopted the window there. All four
+   reproduce to the digit at v1.
+3. **§13.5's seed readings reproduce.** Over the 54 results they were taken
+   on, `arms --seed-sensitivity` reads 0.077 ΔE00, 4.8% of the width, 7
+   interval and 10 Holm flips at 10,000 resamples, and 0.295, 15.5%, 26 and
+   10 at 1,000 (`--resamples 1000`, which #130 added: until then that reading
+   had no command). `--resample-change` reads 0.099, 7 flips and 6 guard
+   changes. Over every result committed now (1,080 intervals) the 10,000
+   reading is 0.077, 4.8%, 8 and 10; the eighth interval flip is
+   `compact-retune-graphics`' `t0 L28@3 C5@3`, committed after §13.5 counted.
+
+**What the record now says.** The four master figures are not errors in the
+sections that hold them: those tables record generation v1, and stay bound to
+the v1 results. Each of those sections now says which of its rows are
+generation v1 (§7.10, §13.1, §13.2), and so does every place that quotes them
+as the current format's: `RATIONALE.md` and `spec/README.md` give the v2 CfL
+figures beside the v1 ones, and `V0.8-DECISIONS.md` marks D3's and D7/D9's
+prior evidence as generation v1, which is what those entries were decided on.
+`verify:claims` binds each quoted v2 figure to its cell above. One table
+outside #130's list moved the same way: §11.14's code-3 and code-4 rows, the
+cross-format record, are generation v1 (ΔE00 7.783 → 7.313 at code 3, 6.768 →
+6.642 at code 4 on the `rd-budget` re-run), and re-recording that table at v2
+is #168.
+
+**Per stratum.** Each ΔE00 comparison above, overall and in every holdout3
+stratum its re-run's images fall in (`node tools/comparison/dist/reproduce.js
+--strata`, which measures the strata off the fetched fixtures; unbound,
+because CI does not fetch the corpus). On tune the strata gate nothing. A
+comparison is **input-dependent** when its sign turns in some stratum, and
+**shown** to be when that stratum's paired interval excludes zero on the other
+side; no later entry may inherit an input-dependent comparison as a global
+gain.
+
+| comparison | overall | alpha | smartphone | skin | low-light | graphics | extreme-aspect | input-dependent |
+|---|---|---|---|---|---|---|---|---|
+| §11.3 `A28@3 L22@4 C3@3` − `SHIPPED A5@4 L20@5 C9@4` | −17.10% | −17.10% (16) | — | — | — | — | — | no |
+| §11.11 `A28@3 L22@4 C3@3 (t0 winner)` − `SHIPPED A5@4 L20@5 C9@4` | −11.95% | −11.95% (16) | — | — | — | — | — | no |
+| §11.10 `L19@4 C6@3  (§8.1 tune)` − `shipped shape L13@5 C6@4` | −3.67% | — | −3.06% (4) | −5.01% (11) | −2.49% (9) | — | — | no |
+| §11.10 `L16@4 C8@3` − `L19@4 C6@3  (§8.1 tune)` | +0.72% | — | −0.58% (4) | +1.40% (11) | −0.54% (9) | — | — | sign turns |
+| §11.10 `L19@4 C6@3  (§8.1 tune)` − `shipped shape L13@5 C6@4` | −2.78% | −3.32% (1) | — | −3.32% (1) | −2.00% (1) | −2.78% (16) | −4.68% (1) | no |
+| §11.12 `compact 21B L19@4 C6@3` − `compact 21B shipped shape` | −2.78% | — | +0.80% (1) | −2.67% (16) | — | — | — | sign turns |
+| §7.11 `t1 interleaved, trunc 32 B` − `t0 native 32 B` | +4.15% | — | +3.65% (4) | +3.14% (11) | +2.56% (9) | — | — | no |
+| §7.11 `t1 interleaved, trunc 32 B` − `t1 seq, trunc 32 B` | −4.97% | — | −4.88% (4) | −12.20% (11) | −5.52% (9) | — | — | no |
+| §7.10 `32B paid cfl5 L24C9` − `32B shipped L26@5C9@4` | +2.11% | — | +3.20% (4) | +1.43% (11) | +2.41% (9) | — | — | no |
+| §7.10 `32B free cfl5 (34 B)` − `32B shipped L26@5C9@4` | −0.10% | — | −0.13% (4) | −0.35% (11) | +0.22% (9) | — | — | sign turns |
+| §7.10 `411B t2 free cfl5` − `411B t2 shipped` | −0.29% | — | +0.46% (4) | −0.62% (11) | −1.18% (9) | — | — | sign turns |
+| §7.10 `1623B t3 free cfl5` − `1623B t3 shipped` | −0.92% | — | −1.16% (4) | −1.74% (11) | −1.76% (9) | — | — | no |
+| §11.5 `aniso=0.9 hv=0.0` − `DEFAULT aniso=1.2 hv=0.15` | −0.76% | — | +0.28% (4) | −1.00% (11) | −0.72% (9) | — | — | sign turns |
+| §11.5 `aniso=1.2 hv=0.0` − `DEFAULT aniso=1.2 hv=0.15` | −0.52% | — | +0.03% (4) | −0.64% (11) | −0.80% (9) | — | — | sign turns |
+| §11.5 `aniso=1.2 hv=0.3` − `DEFAULT aniso=1.2 hv=0.15` | +0.39% | — | +1.46% (4) | +0.36% (11) | +0.75% (9) | — | — | no |
+| §12.2 `w_min 0.85 exp 1` − `shipped (no window)` | +0.33% | — | −0.14% (4) | +0.57% (11) | +0.12% (9) | — | — | sign turns |
+| §12.3 `t2 w_min 0.85 exp 1` − `t2 shipped (no window)` | +0.08% | — | −0.21% (4) | +0.20% (11) | +0.23% (9) | — | — | sign turns |
+
+No comparison is shown to be input-dependent: no stratum of two or more images
+has an interval wholly on the other side of its overall effect. Eight turn
+sign in some stratum, six of them in the smartphone stratum alone (four
+images on tune, one on tune2), and each is labelled input-dependent here:
+
+- seven were never adopted, so nothing inherited them as a global gain: the
+  §11.10 plateau's `L16@4 C8@3` against the leader (D8 kept the shipped
+  code-0 layout), CfL given away free at codes 1 and 3 (D7 and D9 left CfL
+  out of the format), both of §11.5's good-direction arms, and the window at
+  codes 1 and 2 (D3 adopted it only at codes 3 and 4);
+- one was adopted: the compact leader against the shipped shape on tune2,
+  which turns on tune2's single smartphone photograph (+0.80%) and nowhere
+  else. On tune and on the graphics split it holds its sign in every stratum.
+
+The other figures the format adopted on this evidence (the alpha row at codes
+1 and 2) and the costs that kept features out (the embedded-tier prefix and
+paid CfL) hold their sign in every stratum.

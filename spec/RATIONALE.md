@@ -546,7 +546,10 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
    least-squares gain and measured at every tier. The prediction is real and
    grows with tier — given away free it is −0.10% ΔE00 at 32 B, −0.45% at
    code 3 and −0.90% at code 4 — but the gain field that signals it costs
-   +2.11% at 32 B, which is more than it returns. Note what is *not* being
+   +2.11% at 32 B, which is more than it returns. The code-3 and code-4
+   figures are generation v1's: on generation v2 the free predictor is
+   −0.29% at code 3 and −0.92% at code 4 (`EXPERIMENTS.md` §13.16), and no
+   tier comes within reach of a pass. Note what is *not* being
    claimed: an earlier reading had a free predictor scoring *worse* than none,
    which is not physically expected and prompted an audit; on the Wikimedia corpus that anti-correlation
    is gone and the three measurements (residual energy, coefficient error, ΔE00)
