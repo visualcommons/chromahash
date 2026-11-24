@@ -5396,6 +5396,26 @@ console.log("\nverify:experiments --fix — a rewritten cell keeps its markup\n"
       ).includes("already been read by dct-identity"),
     JSON.stringify(holdout3Reads(results)),
   );
+  // #130's re-runs sit under reproductions/ and reproductions/v1/; a re-run
+  // of a holdout3 read is a second read, whatever it was filed as.
+  mkdirSync(path.join(results, "reproductions", "v1"), { recursive: true });
+  read("reproductions/d5-sweep-holdout3.json", "sweep", "holdout3", "D5");
+  read("reproductions/d5-sweep-tune.json", "sweep", "tune", "");
+  read("reproductions/v1/d6-sweep-holdout3.json", "sweep", "holdout3", "D6");
+  check(
+    "holdout3Reads also sees a holdout3 re-run under reproductions/ and reproductions/v1/, and assertHoldout3Unread refuses a second read of either entry",
+    holdout3Reads(results)
+      .map((r) => `${r.file}:${r.tool}:${r.decision}`)
+      .join(",") ===
+      "counts/d4-identity-holdout3.json:dct-identity:D4,d1-sweep-holdout3.json:sweep:D1,reproductions/d5-sweep-holdout3.json:sweep:D5,reproductions/v1/d6-sweep-holdout3.json:sweep:D6" &&
+      thrown(() => assertHoldout3Unread("D5", "sweep", results)).includes(
+        "already been read by sweep",
+      ) &&
+      thrown(() => assertHoldout3Unread("D6", "sweep", results)).includes(
+        "already been read by sweep",
+      ),
+    JSON.stringify(holdout3Reads(results)),
+  );
   const existing = path.join(results, "d1-sweep-holdout3.json");
   check(
     "a committed holdout3 result file is never overwritten either",
