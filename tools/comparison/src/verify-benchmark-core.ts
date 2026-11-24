@@ -330,8 +330,9 @@ export const leverSpeedup = (r: Estimate): Estimate => ({
 
 /**
  * Whether a §12.1 lever arm turns levers off rather than on. The shipped
- * defaults turn every lever but `accel_fused_pixels` on (#142), so those arms
- * are `accel_*=0`, or `accel none` for all seven, and run the reference path.
+ * defaults turn every lever on (#142, and #165 for `accel_fused_pixels`), so
+ * the arms are `accel_*=0`, or `accel none` for all seven, and run the
+ * reference path.
  */
 export const turnsLeverOff = (arm: string): boolean =>
   arm.endsWith("=0") || arm === "accel none";
@@ -340,8 +341,9 @@ export const turnsLeverOff = (arm: string): boolean =>
  * A §12.1 lever's speedup, reference time ÷ shipped time, from the paired
  * ratio the run records for `arm` (base ÷ arm). An arm that turns a lever off
  * is the reference, so its ratio is read the other way ({@link leverSpeedup});
- * one that turns a lever on (`accel_fused_pixels`) is the lever, and its ratio
- * is the speedup as recorded.
+ * an arm that turns a lever on — none since #165, when `accel_fused_pixels`
+ * became a default — would be the lever, and its ratio the speedup as
+ * recorded.
  */
 export const leverArmSpeedup = (arm: string, r: Estimate): Estimate =>
   turnsLeverOff(arm) ? leverSpeedup(r) : r;

@@ -1,0 +1,269 @@
+{
+  "schema": 1,
+  "tool": "benchmark-counts",
+  "cell": {
+    "impl": "Rust",
+    "op": "encode",
+    "width": 512,
+    "height": 512,
+    "tier": 4,
+    "content": "gradient",
+    "fixtureSha256": "81e16a67467e247ae9a0ec0baf4809227375438fb27d4f0a78ef38c9ad992f96",
+    "input": null
+  },
+  "arms": {
+    "a": {
+      "bin": "tools/comparison/output/base-86ab1c4/target/release/examples/encode_stdin",
+      "binSha256": "955e510bff5dee8b8c454d300c9ac7c1e70969c35e26c5b0f45bc74ff551f1d9",
+      "tune": ""
+    },
+    "b": {
+      "bin": "rust/target/release/examples/encode_stdin",
+      "binSha256": "79a944d335d2333be07d9f3383352783c0f13b686df4ed1e304fca587c2411d1",
+      "tune": ""
+    }
+  },
+  "settings": {
+    "events": [
+      "instructions:u",
+      "cycles:u"
+    ],
+    "iterations": 20,
+    "blocks": 10,
+    "ratio": "a / b, per operation"
+  },
+  "provenance": {
+    "rev": "49fcbe0a2986919144e62ea92d5aa9fffeba01e7",
+    "dirty": false,
+    "dirtyPaths": [],
+    "node": "v24.20.0"
+  },
+  "host": {
+    "cpu": {
+      "vendor": "AuthenticAMD",
+      "family": "25",
+      "model": "97",
+      "stepping": "2",
+      "modelName": "AMD Ryzen 7 7800X3D 8-Core Processor"
+    },
+    "kernel": "7.3.4-300.fc45.x86_64",
+    "threads": 16,
+    "counter": {
+      "backend": "perf-stat",
+      "version": "perf version 7.3.4-300.fc45.x86_64",
+      "paranoid": 2
+    },
+    "loadavgStart": [
+      14.06,
+      17.87,
+      19.76
+    ],
+    "loadavgEnd": [
+      27.07,
+      20.13,
+      20.32
+    ]
+  },
+  "outputs": {
+    "a": "2180d060b01123287349e69e7bf03df8dc7bef39f8de7bef3df7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf79e8715e299dd9ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5dcc159adddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd1d",
+    "b": "2180d060b01123287349e69e7bf03df8dc7bef39f8de7bef3df7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf79e8715e299dd9ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5dcc159adddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd1d",
+    "equal": true
+  },
+  "blocks": [
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 3513061473.1,
+        "cycles:u": 686178417
+      },
+      "b": {
+        "instructions:u": 3491924923.5,
+        "cycles:u": 689509565.95
+      },
+      "ratio": {
+        "instructions:u": 1.0060529793918978,
+        "cycles:u": 0.995168814017235
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 3513061921.8,
+        "cycles:u": 767073836.65
+      },
+      "b": {
+        "instructions:u": 3491925507.05,
+        "cycles:u": 799245722
+      },
+      "ratio": {
+        "instructions:u": 1.0060529397626974,
+        "cycles:u": 0.9597471910522156
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 3513061789.85,
+        "cycles:u": 805309415.2
+      },
+      "b": {
+        "instructions:u": 3491925114.05,
+        "cycles:u": 824208619.8
+      },
+      "ratio": {
+        "instructions:u": 1.0060530152021172,
+        "cycles:u": 0.9770698775213175
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 3513061480.8,
+        "cycles:u": 732080542.45
+      },
+      "b": {
+        "instructions:u": 3491924988.2,
+        "cycles:u": 742109979.75
+      },
+      "ratio": {
+        "instructions:u": 1.0060529629563708,
+        "cycles:u": 0.9864852413069843
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 3513061463.1,
+        "cycles:u": 729325978.95
+      },
+      "b": {
+        "instructions:u": 3491924997.1,
+        "cycles:u": 724560580.2
+      },
+      "ratio": {
+        "instructions:u": 1.0060529553233686,
+        "cycles:u": 1.0065769500580402
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 3513061709.6,
+        "cycles:u": 760358613.1
+      },
+      "b": {
+        "instructions:u": 3491925009.2,
+        "cycles:u": 781046259.6
+      },
+      "ratio": {
+        "instructions:u": 1.0060530224286925,
+        "cycles:u": 0.9735129049710899
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 3513061663.5,
+        "cycles:u": 779900346.85
+      },
+      "b": {
+        "instructions:u": 3491925061.7,
+        "cycles:u": 742216389.35
+      },
+      "ratio": {
+        "instructions:u": 1.0060529941011134,
+        "cycles:u": 1.050772198028397
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 3513061704.5,
+        "cycles:u": 878443936.25
+      },
+      "b": {
+        "instructions:u": 3491925237.8,
+        "cycles:u": 741225690.05
+      },
+      "ratio": {
+        "instructions:u": 1.006052955106598,
+        "cycles:u": 1.1851234354690863
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 3513061858.35,
+        "cycles:u": 976356235.3
+      },
+      "b": {
+        "instructions:u": 3491925350.65,
+        "cycles:u": 972385731.7
+      },
+      "ratio": {
+        "instructions:u": 1.0060529666523557,
+        "cycles:u": 1.0040832598325546
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 3513061910.15,
+        "cycles:u": 1005124438.05
+      },
+      "b": {
+        "instructions:u": 3491925366.2,
+        "cycles:u": 990983912.55
+      },
+      "ratio": {
+        "instructions:u": 1.0060529770064937,
+        "cycles:u": 1.0142691776535642
+      }
+    }
+  ],
+  "summary": {
+    "a": {
+      "median": {
+        "instructions:u": 3513061707.05,
+        "cycles:u": 773487091.75
+      },
+      "min": {
+        "instructions:u": 3513061463.1,
+        "cycles:u": 686178417
+      },
+      "max": {
+        "instructions:u": 3513061921.8,
+        "cycles:u": 1005124438.05
+      }
+    },
+    "b": {
+      "median": {
+        "instructions:u": 3491925087.875,
+        "cycles:u": 761631324.475
+      },
+      "min": {
+        "instructions:u": 3491924923.5,
+        "cycles:u": 689509565.95
+      },
+      "max": {
+        "instructions:u": 3491925507.05,
+        "cycles:u": 990983912.55
+      }
+    },
+    "ratio": {
+      "geomean": {
+        "instructions:u": 1.00605297679317,
+        "cycles:u": 1.0135504324041045
+      },
+      "min": {
+        "instructions:u": 1.0060529397626974,
+        "cycles:u": 0.9597471910522156
+      },
+      "max": {
+        "instructions:u": 1.0060530224286925,
+        "cycles:u": 1.1851234354690863
+      }
+    }
+  },
+  "against": null
+}
