@@ -1,0 +1,269 @@
+{
+  "schema": 1,
+  "tool": "benchmark-counts",
+  "cell": {
+    "impl": "Rust",
+    "op": "encode",
+    "width": 64,
+    "height": 64,
+    "tier": 1,
+    "content": "gradient",
+    "fixtureSha256": "a5af0fcfebbd5175074412b0207744050965b83c30080814a0815c0feab9e8a9",
+    "input": null
+  },
+  "arms": {
+    "a": {
+      "bin": "bindings/uniffi/target/release/examples/overhead_uniffi",
+      "binSha256": "52008665765c8f716d0d0426ded1f88ae25deecafef3a7a30a65a5f4b04df88c",
+      "tune": ""
+    },
+    "b": {
+      "bin": "bindings/uniffi/target/release/examples/overhead_core",
+      "binSha256": "86e7cd3f426f93be154c54759534079f793c1bf8e27a4879a0345631196b2497",
+      "tune": ""
+    }
+  },
+  "settings": {
+    "events": [
+      "instructions:u",
+      "cycles:u"
+    ],
+    "iterations": 20,
+    "blocks": 10,
+    "ratio": "a / b, per operation"
+  },
+  "provenance": {
+    "rev": "8f78dff892aebb1882d0e4a25a94e04a29eb830c",
+    "dirty": false,
+    "dirtyPaths": [],
+    "node": "v24.20.0"
+  },
+  "host": {
+    "cpu": {
+      "vendor": "AuthenticAMD",
+      "family": "25",
+      "model": "97",
+      "stepping": "2",
+      "modelName": "AMD Ryzen 7 7800X3D 8-Core Processor"
+    },
+    "kernel": "7.3.4-300.fc45.x86_64",
+    "threads": 16,
+    "counter": {
+      "backend": "perf-stat",
+      "version": "perf version 7.3.4-300.fc45.x86_64",
+      "paranoid": 2
+    },
+    "loadavgStart": [
+      11.44,
+      11.21,
+      15.41
+    ],
+    "loadavgEnd": [
+      11.08,
+      11.14,
+      15.37
+    ]
+  },
+  "outputs": {
+    "a": "0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d",
+    "b": "0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d",
+    "equal": true
+  },
+  "blocks": [
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 59868180.85,
+        "cycles:u": 21683285.85
+      },
+      "b": {
+        "instructions:u": 59827516.2,
+        "cycles:u": 19286853.55
+      },
+      "ratio": {
+        "instructions:u": 1.0006796981152295,
+        "cycles:u": 1.1242521126521439
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 59868237.35,
+        "cycles:u": 18899030.95
+      },
+      "b": {
+        "instructions:u": 59827510.75,
+        "cycles:u": 19427355.8
+      },
+      "ratio": {
+        "instructions:u": 1.000680733653957,
+        "cycles:u": 0.9728051076307563
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 59868199.6,
+        "cycles:u": 19754173.4
+      },
+      "b": {
+        "instructions:u": 59827516.35,
+        "cycles:u": 19870726.9
+      },
+      "ratio": {
+        "instructions:u": 1.00068000900726,
+        "cycles:u": 0.9941344118619032
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 59868203.65,
+        "cycles:u": 19565869.65
+      },
+      "b": {
+        "instructions:u": 59827517.95,
+        "cycles:u": 19583215.7
+      },
+      "ratio": {
+        "instructions:u": 1.0006800499401296,
+        "cycles:u": 0.999114238934722
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 59868239.05,
+        "cycles:u": 20729520.75
+      },
+      "b": {
+        "instructions:u": 59827527.15,
+        "cycles:u": 20257330.9
+      },
+      "ratio": {
+        "instructions:u": 1.000680487761059,
+        "cycles:u": 1.023309578756005
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 59868231.15,
+        "cycles:u": 24295582.25
+      },
+      "b": {
+        "instructions:u": 59827498,
+        "cycles:u": 20916766.4
+      },
+      "ratio": {
+        "instructions:u": 1.0006808432804595,
+        "cycles:u": 1.1615362425236055
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 59868084.3,
+        "cycles:u": 21176362.8
+      },
+      "b": {
+        "instructions:u": 59827525.9,
+        "cycles:u": 20723721.5
+      },
+      "ratio": {
+        "instructions:u": 1.0006779220666386,
+        "cycles:u": 1.0218416996194435
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 59868209.65,
+        "cycles:u": 19658844.05
+      },
+      "b": {
+        "instructions:u": 59827490.9,
+        "cycles:u": 21335909.95
+      },
+      "ratio": {
+        "instructions:u": 1.000680602669232,
+        "cycles:u": 0.9213970295183028
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 59868231.6,
+        "cycles:u": 19439092.3
+      },
+      "b": {
+        "instructions:u": 59827529.55,
+        "cycles:u": 19479945.55
+      },
+      "ratio": {
+        "instructions:u": 1.0006803230938357,
+        "cycles:u": 0.9979028047129218
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 59868207.3,
+        "cycles:u": 19676717.25
+      },
+      "b": {
+        "instructions:u": 59827518.7,
+        "cycles:u": 20102937.5
+      },
+      "ratio": {
+        "instructions:u": 1.0006800984042816,
+        "cycles:u": 0.978798110972588
+      }
+    }
+  ],
+  "summary": {
+    "a": {
+      "median": {
+        "instructions:u": 59868208.474999994,
+        "cycles:u": 19715445.325
+      },
+      "min": {
+        "instructions:u": 59868084.3,
+        "cycles:u": 18899030.95
+      },
+      "max": {
+        "instructions:u": 59868239.05,
+        "cycles:u": 24295582.25
+      }
+    },
+    "b": {
+      "median": {
+        "instructions:u": 59827517.150000006,
+        "cycles:u": 19986832.2
+      },
+      "min": {
+        "instructions:u": 59827490.9,
+        "cycles:u": 19286853.55
+      },
+      "max": {
+        "instructions:u": 59827529.55,
+        "cycles:u": 21335909.95
+      }
+    },
+    "ratio": {
+      "geomean": {
+        "instructions:u": 1.0006800767988926,
+        "cycles:u": 1.0173259929548877
+      },
+      "min": {
+        "instructions:u": 1.0006779220666386,
+        "cycles:u": 0.9213970295183028
+      },
+      "max": {
+        "instructions:u": 1.0006808432804595,
+        "cycles:u": 1.1615362425236055
+      }
+    }
+  },
+  "against": null
+}

@@ -69,6 +69,7 @@ import {
   countClaimFailures,
 } from "./perf/counts-claims.ts";
 import { AB_COUNTS_DIR } from "./perf/counts-core.ts";
+import { OVERHEAD_TABLE, renderOverheadTable } from "./perf/overhead-core.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const SOURCE = path.join(REPO_ROOT, "spec/EXPERIMENTS.md");
@@ -1804,6 +1805,26 @@ if (countFailures.length > 0) {
   );
 }
 
+// The per-binding FFI overhead table is rendered from its committed records
+// (`perf/overhead-core.ts`), so it is checked by rendering it again: any
+// difference is a re-recorded count the table was not regenerated from.
+let overheadFailure: string | null = null;
+try {
+  const rendered = renderOverheadTable((record) =>
+    JSON.parse(readFileSync(path.join(AB_COUNTS_DIR, record), "utf8")),
+  );
+  if (readFileSync(path.join(REPO_ROOT, OVERHEAD_TABLE), "utf8") !== rendered) {
+    overheadFailure = `${OVERHEAD_TABLE} differs from what its records give`;
+  }
+} catch (e) {
+  overheadFailure = `${OVERHEAD_TABLE}: ${(e as Error).message}`;
+}
+if (overheadFailure !== null) {
+  console.error(
+    `${overheadFailure}.\n\nRegenerate it with \`node tools/comparison/dist/perf/overhead-table.js\`, or re-record its counts with \`mise run benchmark:overhead\`.\n`,
+  );
+}
+
 if (failures.length > 0) {
   console.error(
     `${failures.length} claim(s) disagree with spec/EXPERIMENTS.md:\n`,
@@ -1819,7 +1840,7 @@ if (failures.length > 0) {
   );
   process.exit(1);
 }
-if (countFailures.length > 0) process.exit(1);
+if (countFailures.length > 0 || overheadFailure !== null) process.exit(1);
 
 /**
  * The register is hand-written, so the gate above can only be as complete as
@@ -1921,6 +1942,7 @@ console.log(
 console.log(
   `Checked ${COUNT_ROWS.length} rows of PERFORMANCE.md §12.4's counts table and ${COUNT_PROSE.length} quoted count figure(s) against results/counts/ab/.`,
 );
+console.log(`${OVERHEAD_TABLE} matches its records.`);
 console.log("\nEvery registered claim agrees with the section it cites.");
 console.log(
   `No unregistered ΔE00 or pp figure in the ${new Set(REGISTER.map((c) => c.file)).size} gated files.`,
