@@ -636,8 +636,10 @@ fn analyze(w: u32, h: u32, rgba: &[u8], gamut: Gamut, t: &Tunables, tier: u8) ->
     // byte-identical — see `dct::dct_encode_selected_separable` — and is false
     // in `Tunables::DEFAULT`, so the shipped path is always the direct sum.
     // `accel_dct_lanes` is §12.1 item 3, which *is* byte-identical
-    // (`dct::dct_encode_lanes`); the separable prototype wins if both
-    // are set, since it is the one that changes what is computed.
+    // (`dct::dct_encode_lanes`) and on in `Tunables::DEFAULT`: the shipped
+    // direct sum, four coefficients per pass, with `dct_encode_selected` as
+    // its reference. The separable prototype wins if both are set, since it
+    // is the one that changes what is computed.
     let forward = if t.dct_separable {
         crate::dct::dct_encode_selected_separable
     } else if t.accel_dct_lanes {
@@ -2583,6 +2585,19 @@ mod tests {
         |t| t.accel_word_bitpack = true,
     ];
 
+    /// `t` with every encoder lever off: the unaccelerated reference path
+    /// each lever is held to, whatever `Tunables::DEFAULT` turns on.
+    fn levers_off(t: Tunables) -> Tunables {
+        Tunables {
+            accel_quant_table: false,
+            accel_dct_lanes: false,
+            accel_sse_early_exit: false,
+            accel_fused_pixels: false,
+            accel_word_bitpack: false,
+            ..t
+        }
+    }
+
     /// Deterministic noise over a gradient, optionally with an alpha ramp that
     /// includes fully transparent pixels.
     fn lever_image(w: u32, h: u32, alpha: bool, seed: u32) -> Vec<u8> {
@@ -3106,9 +3121,13 @@ mod tests {
         s.fit(8);
     }
 
-    /// Every encoder lever alone and all together must give `base`'s bytes.
+    /// Every encoder lever alone and all together must give the bytes of
+    /// `base` with every lever off; so must `base` itself.
     fn assert_levers_reproduce(base: Tunables, w: u32, h: u32, rgba: &[u8], tier: u8) {
+        let as_given = encode_with(w, h, rgba, Gamut::Srgb, &base, tier);
+        let base = levers_off(base);
         let reference = encode_with(w, h, rgba, Gamut::Srgb, &base, tier);
+        assert_eq!(as_given, reference, "{w}x{h} tier {tier}, base {base:?}");
         let mut all = base;
         for (k, set) in ENCODE_LEVERS.iter().enumerate() {
             let mut t = base;
@@ -4197,7 +4216,7 @@ mod tests {
             let rgba = lever_image(53, 41, alpha, 21);
             for placement in [1, 2] {
                 for tier in [0, 1, 3] {
-                    let base = downsampled(placement, 20);
+                    let base = levers_off(downsampled(placement, 20));
                     let want = encode_with(53, 41, &rgba, Gamut::Srgb, &base, tier);
                     for lever in ENCODE_LEVERS {
                         let mut t = base;

@@ -6,8 +6,12 @@
  * blocks, against two incumbents, for every registered candidate (each
  * placement at each grid edge, `downsample-core.ts`).
  *
- * - **Pair `shipped`:** the shipped default (A) against the candidate's knob
- *   alone (B).
+ * - **Pair `shipped`:** every byte-identical lever off (A) against the same
+ *   with the candidate's knob added (B). The label is the record's key, and
+ *   it names the shipped default as it was when D5 was recorded (at
+ *   `6d1c062`), which turned every lever off. Since #142 the default turns
+ *   them on, so the incumbent is pinned to {@link ACCEL_NONE} to keep a
+ *   re-run measuring the pair D5 recorded.
  * - **Pair `ACCEL_ALL`:** every byte-identical lever on (A) against the same
  *   with the candidate's knob added (B), so the pair isolates the resample
  *   against the fastest encoder that writes the shipped bytes.
@@ -55,7 +59,7 @@ import {
   perIteration,
   runsAgree,
 } from "./count.ts";
-import { ACCEL_ALL, makeFixture } from "./matrix.ts";
+import { ACCEL_ALL, ACCEL_NONE, makeFixture } from "./matrix.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
 const BIN = path.join(REPO_ROOT, "rust/target/release/examples/encode_stdin");
@@ -76,8 +80,8 @@ export const PAIRS = d5Candidates().flatMap((c) => [
   {
     candidate: c.id,
     incumbentLabel: "shipped",
-    incumbent: "",
-    arm: c.tune,
+    incumbent: ACCEL_NONE,
+    arm: `${ACCEL_NONE} ${c.tune}`,
   },
   {
     candidate: c.id,

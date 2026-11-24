@@ -1,0 +1,269 @@
+{
+  "schema": 1,
+  "tool": "benchmark-counts",
+  "cell": {
+    "impl": "Rust",
+    "op": "decode",
+    "width": 100,
+    "height": 100,
+    "tier": 4,
+    "content": "gradient",
+    "fixtureSha256": "64dfd59305f1df589c23d8b76785b279867bb5f37fba3a8cb8fc65c2519bfb28",
+    "input": "2180d060b01119287349e69e7bf03df8dc7bef39f8de7bef3df7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf79e8715e2999d9ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd1dc8119a9ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd1d"
+  },
+  "arms": {
+    "a": {
+      "bin": "rust/target/release/examples/encode_stdin",
+      "binSha256": "1ea327c05db08fc1b9a9cdc2685e38f7c5b6713f6b5ab947236dac21ae6d7cdd",
+      "tune": "accel_flat_cos=0"
+    },
+    "b": {
+      "bin": "rust/target/release/examples/encode_stdin",
+      "binSha256": "1ea327c05db08fc1b9a9cdc2685e38f7c5b6713f6b5ab947236dac21ae6d7cdd",
+      "tune": ""
+    }
+  },
+  "settings": {
+    "events": [
+      "instructions:u",
+      "cycles:u"
+    ],
+    "iterations": 10,
+    "blocks": 10,
+    "ratio": "a / b, per operation"
+  },
+  "provenance": {
+    "rev": "29ae9133a877bce3c0afcb3b2af307551ff4d58e",
+    "dirty": false,
+    "dirtyPaths": [],
+    "node": "v24.20.0"
+  },
+  "host": {
+    "cpu": {
+      "vendor": "AuthenticAMD",
+      "family": "25",
+      "model": "97",
+      "stepping": "2",
+      "modelName": "AMD Ryzen 7 7800X3D 8-Core Processor"
+    },
+    "kernel": "7.3.4-300.fc45.x86_64",
+    "threads": 16,
+    "counter": {
+      "backend": "perf-stat",
+      "version": "perf version 7.3.4-300.fc45.x86_64",
+      "paranoid": 2
+    },
+    "loadavgStart": [
+      33.77,
+      32.39,
+      31.91
+    ],
+    "loadavgEnd": [
+      36.13,
+      35.24,
+      33.11
+    ]
+  },
+  "outputs": {
+    "a": "1461c7a3f14725c13e59d9f50f8b94b33daf4e705341f2b80a367837771e3d81",
+    "b": "1461c7a3f14725c13e59d9f50f8b94b33daf4e705341f2b80a367837771e3d81",
+    "equal": true
+  },
+  "blocks": [
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 7416211395.3,
+        "cycles:u": 1401898614.8
+      },
+      "b": {
+        "instructions:u": 5571385722.5,
+        "cycles:u": 1461585839.4
+      },
+      "ratio": {
+        "instructions:u": 1.331125103284392,
+        "cycles:u": 0.9591626964417619
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 7416212043.1,
+        "cycles:u": 2057522513.8
+      },
+      "b": {
+        "instructions:u": 5571385951.9,
+        "cycles:u": 1683245542.5
+      },
+      "ratio": {
+        "instructions:u": 1.3311251647484346,
+        "cycles:u": 1.2223543516676207
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 7416211971.6,
+        "cycles:u": 2061158694.4
+      },
+      "b": {
+        "instructions:u": 5571386534.2,
+        "cycles:u": 1725319373.5
+      },
+      "ratio": {
+        "instructions:u": 1.331125012790896,
+        "cycles:u": 1.1946534224667709
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 7416212111.6,
+        "cycles:u": 2067881448.8
+      },
+      "b": {
+        "instructions:u": 5571385976.1,
+        "cycles:u": 1775493089.9
+      },
+      "ratio": {
+        "instructions:u": 1.3311251712614942,
+        "cycles:u": 1.164680088344623
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 7416212039.2,
+        "cycles:u": 2091911397.9
+      },
+      "b": {
+        "instructions:u": 5571385945.5,
+        "cycles:u": 1729176377.5
+      },
+      "ratio": {
+        "instructions:u": 1.331125165577528,
+        "cycles:u": 1.2097732915623294
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 7416212280.2,
+        "cycles:u": 2062979570
+      },
+      "b": {
+        "instructions:u": 5571386049.8,
+        "cycles:u": 1712989650.1
+      },
+      "ratio": {
+        "instructions:u": 1.3311251839147324,
+        "cycles:u": 1.2043152565922208
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 7416211981.8,
+        "cycles:u": 2050433711.6
+      },
+      "b": {
+        "instructions:u": 5571386207,
+        "cycles:u": 1678969712.7
+      },
+      "ratio": {
+        "instructions:u": 1.3311250927968563,
+        "cycles:u": 1.221245205372191
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 7416211686.5,
+        "cycles:u": 1848728965.6
+      },
+      "b": {
+        "instructions:u": 5571385951.3,
+        "cycles:u": 1684837917.2
+      },
+      "ratio": {
+        "instructions:u": 1.3311251008861695,
+        "cycles:u": 1.0972740740975055
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 7416211811.8,
+        "cycles:u": 1899093788.8
+      },
+      "b": {
+        "instructions:u": 5571385705.9,
+        "cycles:u": 1481121830.1
+      },
+      "ratio": {
+        "instructions:u": 1.3311251820074783,
+        "cycles:u": 1.2821995802139923
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 7416211838,
+        "cycles:u": 1826041676.2
+      },
+      "b": {
+        "instructions:u": 5571385827,
+        "cycles:u": 1592710176.8
+      },
+      "ratio": {
+        "instructions:u": 1.331125157776656,
+        "cycles:u": 1.1464996600127206
+      }
+    }
+  ],
+  "summary": {
+    "a": {
+      "median": {
+        "instructions:u": 7416211976.700001,
+        "cycles:u": 2053978112.6999998
+      },
+      "min": {
+        "instructions:u": 7416211395.3,
+        "cycles:u": 1401898614.8
+      },
+      "max": {
+        "instructions:u": 7416212280.2,
+        "cycles:u": 2091911397.9
+      }
+    },
+    "b": {
+      "median": {
+        "instructions:u": 5571385951.6,
+        "cycles:u": 1684041729.85
+      },
+      "min": {
+        "instructions:u": 5571385705.9,
+        "cycles:u": 1461585839.4
+      },
+      "max": {
+        "instructions:u": 5571386534.2,
+        "cycles:u": 1775493089.9
+      }
+    },
+    "ratio": {
+      "geomean": {
+        "instructions:u": 1.3311251335044627,
+        "cycles:u": 1.1669250736397363
+      },
+      "min": {
+        "instructions:u": 1.331125012790896,
+        "cycles:u": 0.9591626964417619
+      },
+      "max": {
+        "instructions:u": 1.3311251839147324,
+        "cycles:u": 1.2821995802139923
+      }
+    }
+  },
+  "against": null
+}

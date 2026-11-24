@@ -72,6 +72,8 @@ import {
   TOLERANCE,
   applyEdits,
   bare,
+  leverArmSpeedup,
+  leverSpeedup,
   MissingCell,
   checkDecodeStagesProvenance,
   checkProseClaims,
@@ -176,6 +178,15 @@ const vsBase = (r: Estimate): Estimate => {
 /** A lever's cell id, keyed by the arm label the driver records. */
 const armId = (n: number, arm: string): string =>
   `encode/Rust/t1/${n}x${n}/gradient/${bare(arm)}`;
+
+/**
+ * §6's pair: the direct summation and the separable transform, each with every
+ * §12.1 lever off (`perf/matrix.ts`), so the two differ in the transform alone.
+ * Since #142 the shipped encode runs `accel_dct_lanes` rather than the direct
+ * sum, and `accel_quant_table` beside it, so `shipped` is not §6's direct arm.
+ */
+const DIRECT = "accel none";
+const SEPARABLE = "accel none dct_separable";
 
 function timeOr(R: Runs, id: string): Estimate | null {
   return R.has(id) ? R.est(id) : null;
@@ -652,28 +663,31 @@ const BINDINGS: Binding[] = [
     section: "6",
     index: 0,
     title: "Separable forward DCT against the direct summation",
+    // `R.est`, not `timeOr`: since #142 both arms run with every lever off
+    // (`DIRECT`, `SEPARABLE`), and a run that predates those arms is missing
+    // the measurement, so the cell must fail as missing rather than count as
+    // deliberately unbound.
     columns: {
       "tier 1 direct": (row, R) => {
         const n = sizeOf(row("source"));
-        return n === null ? null : timeOr(R, armId(n, "shipped"));
+        return n === null ? null : R.est(armId(n, DIRECT));
       },
       separable: (row, R) => {
         const n = sizeOf(row("source"));
-        return n === null ? null : timeOr(R, armId(n, "dct_separable"));
+        return n === null ? null : R.est(armId(n, SEPARABLE));
       },
       speedup: (row, R) => {
         const n = sizeOf(row("source"));
         if (n === null) return null;
-        const direct = armId(n, "shipped");
-        const sep = armId(n, "dct_separable");
-        if (!R.has(direct) || !R.has(sep)) return null;
+        const direct = armId(n, DIRECT);
+        const sep = armId(n, SEPARABLE);
         return R.ratio(direct, sep);
       },
     },
   },
   {
     section: "12.4",
-    index: 1,
+    index: 2,
     title: "§12.1's encode levers, built: speedup at tier 1",
     // `R.us`, not `timeOr`: a lever cell no committed run holds is a missing
     // measurement, and must fail as one rather than count as deliberately
@@ -688,14 +702,14 @@ const BINDINGS: Binding[] = [
           const base = arm.startsWith("refine_passes=1 ")
             ? "refine_passes=1"
             : "shipped";
-          return R.ratio(armId(n, base), armId(n, arm));
+          return leverArmSpeedup(arm, R.ratio(armId(n, base), armId(n, arm)));
         },
       ]),
     ) as Record<string, Resolve>,
   },
   {
     section: "12.4",
-    index: 2,
+    index: 3,
     title: "§12.1's encode levers, built: tier 4 at 100x100",
     columns: {
       encode: (row, R) =>
@@ -703,16 +717,19 @@ const BINDINGS: Binding[] = [
       speedup: (row, R) => {
         const arm = clean(row("lever"));
         if (arm === "shipped") return null;
-        return R.ratio(
-          "encode/Rust/t4/100x100/gradient/shipped",
-          `encode/Rust/t4/100x100/gradient/${arm}`,
+        return leverArmSpeedup(
+          arm,
+          R.ratio(
+            "encode/Rust/t4/100x100/gradient/shipped",
+            `encode/Rust/t4/100x100/gradient/${arm}`,
+          ),
         );
       },
     },
   },
   {
     section: "12.4",
-    index: 3,
+    index: 4,
     title: "§12.1's decode levers, built: speedup",
     columns: Object.fromEntries(
       (
@@ -724,9 +741,12 @@ const BINDINGS: Binding[] = [
       ).map(([header, raster]) => [
         header,
         (row: (h: string) => string, R: Runs) =>
-          R.ratio(
-            `decode/Rust/${raster}/shipped`,
-            `decode/Rust/${raster}/${clean(row("lever"))}`,
+          leverArmSpeedup(
+            clean(row("lever")),
+            R.ratio(
+              `decode/Rust/${raster}/shipped`,
+              `decode/Rust/${raster}/${clean(row("lever"))}`,
+            ),
           ),
       ]),
     ) as Record<string, Resolve>,
@@ -835,7 +855,7 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     ),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(100), `${t1(100)}/dct_separable`),
+    resolve: (R) => R.ratio(armId(100, DIRECT), armId(100, SEPARABLE)),
   },
   {
     what: "§6: the separable speedup at 256x256",
@@ -844,7 +864,7 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     ),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(256), `${t1(256)}/dct_separable`),
+    resolve: (R) => R.ratio(armId(256, DIRECT), armId(256, SEPARABLE)),
   },
   {
     what: "§6: the separable speedup at 512x512",
@@ -853,14 +873,14 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     ),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(512), `${t1(512)}/dct_separable`),
+    resolve: (R) => R.ratio(armId(512, DIRECT), armId(512, SEPARABLE)),
   },
   {
     what: "§6: the separable DCT's absolute saving at 512x512",
     pattern: new RegExp(String.raw`takes \*\*${FIG} ms off an encode`),
     unit: "ms",
     decimals: 1,
-    resolve: (R) => saving(R, t1(512), `${t1(512)}/dct_separable`),
+    resolve: (R) => saving(R, armId(512, DIRECT), armId(512, SEPARABLE)),
   },
   {
     what: "§6: the simd feature's absolute saving at 512x512",
@@ -875,7 +895,7 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     unit: "ratio",
     decimals: 0,
     resolve: (R) =>
-      saving(R, t1(512), `${t1(512)}/dct_separable`) /
+      saving(R, armId(512, DIRECT), armId(512, SEPARABLE)) /
       saving(R, scalarT1(512), t1(512)),
   },
   {
@@ -892,14 +912,14 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     pattern: new RegExp(String.raw`\*\*${FIG}× at 512×512\*\*, now measured`),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(512), `${t1(512)}/dct_separable`),
+    resolve: (R) => R.ratio(armId(512, DIRECT), armId(512, SEPARABLE)),
   },
   {
     what: "§12.2 item 8: the separable speedup, restated",
     pattern: new RegExp(String.raw`§6 measures \*\*${FIG}× at 512×512\*\*`),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(512), `${t1(512)}/dct_separable`),
+    resolve: (R) => R.ratio(armId(512, DIRECT), armId(512, SEPARABLE)),
   },
   {
     what: "§12.2 item 9: one 512x512 encode",
@@ -961,14 +981,16 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     ),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(100), `${t1(100)}/accel_quant_table`),
+    resolve: (R) =>
+      leverSpeedup(R.ratio(t1(100), `${t1(100)}/accel_quant_table=0`)),
   },
   {
     what: "§12.1: accel_quant_table at 512x512, measured",
     pattern: new RegExp(String.raw`and a 512×512 one \*\*${FIG}×\*\*`),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(512), `${t1(512)}/accel_quant_table`),
+    resolve: (R) =>
+      leverSpeedup(R.ratio(t1(512), `${t1(512)}/accel_quant_table=0`)),
   },
   {
     what: "§12.1: accel_quant_table at tier 4, measured",
@@ -976,9 +998,11 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     unit: "ratio",
     decimals: 2,
     resolve: (R) =>
-      R.ratio(
-        "encode/Rust/t4/100x100/gradient",
-        "encode/Rust/t4/100x100/gradient/accel_quant_table",
+      leverSpeedup(
+        R.ratio(
+          "encode/Rust/t4/100x100/gradient",
+          "encode/Rust/t4/100x100/gradient/accel_quant_table=0",
+        ),
       ),
   },
   {
@@ -988,16 +1012,17 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     ),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(100), `${t1(100)}/accel_word_bitpack`),
+    resolve: (R) =>
+      leverSpeedup(R.ratio(t1(100), `${t1(100)}/accel_word_bitpack=0`)),
   },
   {
     what: "§12.3: every encode lever together at 512x512, measured",
     pattern: new RegExp(
-      String.raw`all seven levers together measure \*\*${FIG}×\*\*`,
+      String.raw`the shipped levers together measure \*\*${FIG}×\*\*`,
     ),
     unit: "ratio",
     decimals: 2,
-    resolve: (R) => R.ratio(t1(512), `${t1(512)}/accel all`),
+    resolve: (R) => leverSpeedup(R.ratio(t1(512), `${t1(512)}/accel none`)),
   },
   {
     what: "§12.3: every lever together on a tier-1 decode, measured",
@@ -1007,7 +1032,9 @@ const SWEEP_CLAIMS: SweepClaim[] = [
     unit: "ratio",
     decimals: 2,
     resolve: (R) =>
-      R.ratio("decode/Rust/t1/natural", "decode/Rust/t1/natural/accel all"),
+      leverSpeedup(
+        R.ratio("decode/Rust/t1/natural", "decode/Rust/t1/natural/accel none"),
+      ),
   },
   // §0: the host-stability pair's own figures. The pair §0 describes from
   // 2026-09 was never committed, so its figures are no longer quoted; these

@@ -5,7 +5,12 @@
  * code 1 on the bounded matrix's gradient, from paired, interleaved A B / B A
  * blocks, against two incumbents.
  *
- * - **Pair `shipped`:** the shipped default (A) against `dct_separable=1` (B).
+ * - **Pair `shipped`:** every byte-identical lever off (A) against the same
+ *   with `dct_separable=1` added (B). The label is the record's key, and it
+ *   names the shipped default as it was when D4 was decided (2.930×, at
+ *   `ebf5a35`), which turned every lever off. Since #142 the default turns
+ *   them on, so the incumbent is pinned to {@link ACCEL_NONE} to keep a
+ *   re-run measuring the pair D4 recorded.
  * - **Pair `ACCEL_ALL`:** every byte-identical lever on (A) against the same
  *   with `dct_separable=1` added (B). The separable path replaces
  *   `accel_dct_lanes` (`rust/src/encode.rs`), and the other levers apply to
@@ -49,7 +54,7 @@ import {
   RUN_AGREEMENT,
   runsAgree,
 } from "./count.ts";
-import { ACCEL_ALL, makeFixture } from "./matrix.ts";
+import { ACCEL_ALL, ACCEL_NONE, makeFixture } from "./matrix.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
 const BIN = path.join(REPO_ROOT, "rust/target/release/examples/encode_stdin");
@@ -66,7 +71,11 @@ export const RUNS = 2;
 const CANDIDATE = "dct_separable=1";
 
 export const PAIRS = [
-  { label: "shipped", incumbent: "", candidate: CANDIDATE },
+  {
+    label: "shipped",
+    incumbent: ACCEL_NONE,
+    candidate: `${ACCEL_NONE} ${CANDIDATE}`,
+  },
   {
     label: "ACCEL_ALL",
     incumbent: ACCEL_ALL,

@@ -243,6 +243,7 @@ import {
   perIteration,
   runsAgree,
 } from "./perf/count.ts";
+import { countClaimFailures } from "./perf/counts-claims.ts";
 import {
   AB_COUNTS_DIR,
   type CountsRecord,
@@ -368,12 +369,15 @@ import {
   checkTable,
   clean,
   fixRefusal,
+  leverArmSpeedup,
+  leverSpeedup,
   parseDecodeStages,
   parseStages,
   parseTables,
   parseUnavailableMarker,
   runFailures,
   stabilityFailures,
+  turnsLeverOff,
   withheldReason,
 } from "./verify-benchmark-core.ts";
 import {
@@ -1569,6 +1573,62 @@ console.log(
 }
 
 console.log("\nverify-benchmark — what passes, what is skipped, what fails\n");
+
+{
+  // §12.4's lever speedups and the §12.3 claims are read off a paired ratio
+  // base ÷ arm. Since #142 a lever's arm turns it off, so its ratio is
+  // shipped ÷ reference and the speedup is its reciprocal; the one arm that
+  // turns a lever on (`accel_fused_pixels`) is read as recorded. A selection
+  // or reciprocal that went the wrong way would print every speedup inverted.
+  const r = { value: 0.5, interval: [0.4, 0.625] as [number, number] };
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-12;
+  const flipped = leverSpeedup(r);
+  check(
+    "leverSpeedup is the reciprocal, with the range's ends swapped",
+    near(flipped.value, 2) &&
+      flipped.interval !== null &&
+      near(flipped.interval[0], 1.6) &&
+      near(flipped.interval[1], 2.5),
+    `got ${flipped.value} [${flipped.interval?.join(", ")}]`,
+  );
+  const unordered = leverSpeedup({ value: 0.5, interval: [0.625, 0.4] });
+  check(
+    "leverSpeedup orders the range whichever way it was recorded",
+    unordered.interval !== null &&
+      near(unordered.interval[0], 1.6) &&
+      near(unordered.interval[1], 2.5),
+    `got [${unordered.interval?.join(", ")}]`,
+  );
+  check(
+    "leverSpeedup keeps a missing range missing",
+    leverSpeedup({ value: 4, interval: null }).interval === null &&
+      near(leverSpeedup({ value: 4, interval: null }).value, 0.25),
+    "",
+  );
+  const off = [
+    "accel_quant_table=0",
+    "accel_dct_lanes=0",
+    "accel_word_bitpack=0",
+    "accel_gamma_lut_cache=0",
+    "accel_flat_cos=0",
+    "accel none",
+    "refine_passes=1 accel_sse_early_exit=0",
+  ];
+  const on = ["accel_fused_pixels", "shipped", "dct_separable"];
+  const wrongOff = off.filter(
+    (a) => !turnsLeverOff(a) || !near(leverArmSpeedup(a, r).value, 2),
+  );
+  const wrongOn = on.filter(
+    (a) => turnsLeverOff(a) || leverArmSpeedup(a, r) !== r,
+  );
+  check(
+    "a lever-off arm's speedup is the reciprocal, a lever-on arm's is as recorded",
+    wrongOff.length === 0 && wrongOn.length === 0,
+    wrongOff.length + wrongOn.length === 0
+      ? `${off.length} off, ${on.length} on`
+      : `misread: ${[...wrongOff, ...wrongOn].join(", ")}`,
+  );
+}
 
 // Fixtures: a run is a list of cell ids plus what it recorded unavailable, and
 // a table is markdown parsed exactly as PERFORMANCE.md is. The binding reads
@@ -3531,7 +3591,7 @@ for (const order of ["full first", "bounded first"] as const) {
   const r0 = roundOrder(bounded, 0).map((c) => c.id);
   const r1 = roundOrder(bounded, 1).map((c) => c.id);
   const base = "encode/Rust/t1/512x512/gradient";
-  const arm = `${base}/accel_quant_table`;
+  const arm = `${base}/accel_quant_table=0`;
   const unit = bounded.unitOf.get(base);
   const unitIdx = r0
     .map((id, i) => (bounded.unitOf.get(id) === unit ? i : -1))
@@ -3550,7 +3610,7 @@ for (const order of ["full first", "bounded first"] as const) {
       bounded.pairs.some(
         (p) =>
           p.base === `${base}/refine_passes=1` &&
-          p.arm === `${base}/refine_passes=1 accel_sse_early_exit`,
+          p.arm === `${base}/refine_passes=1 accel_sse_early_exit=0`,
       ) &&
       contiguous &&
       r1.join() === [...r0].reverse().join() &&
@@ -7780,6 +7840,77 @@ console.log(
     "every committed benchmark:counts record matches the committed schema",
     recordErrors.length === 0,
     recordErrors.slice(0, 3).join("; "),
+  );
+
+  // verify:claims' count register (perf/counts-claims.ts): the committed
+  // documents agree with the committed records, and a moved figure on either
+  // side, or a row quoting another record, fails.
+  const repoFile = (rel: string): string =>
+    readFileSync(path.join(REPO_ROOT_FOR_SELFTEST, rel), "utf8");
+  const loadRecord = (f: string): CountsRecord =>
+    JSON.parse(readFileSync(path.join(AB_COUNTS_DIR, f), "utf8"));
+  const committed = countClaimFailures(repoFile, loadRecord);
+  check(
+    "verify:claims' count register agrees with the committed records",
+    committed.length === 0,
+    committed.slice(0, 3).join("; "),
+  );
+  // A `from` no file holds edits nothing, so its case passes the register
+  // and is reported as missed rather than vacuously caught.
+  const edited = (from: string, to: string) => (rel: string) =>
+    repoFile(rel).replace(from, to);
+  const cases: [string, (rel: string) => string, typeof loadRecord][] = [
+    [
+      "a table ratio",
+      edited(
+        "| encode 512×512 t1 | 281,235,421 | 109,849,392 | 2.560 |",
+        "| encode 512×512 t1 | 281,235,421 | 109,849,392 | 2.650 |",
+      ),
+      loadRecord,
+    ],
+    [
+      "a table count",
+      edited("| 11,645,256 | 6,238,744 |", "| 11,645,256 | 6,238,745 |"),
+      loadRecord,
+    ],
+    [
+      "the constants.rs increase",
+      edited("is 8.3% *more* user-space", "is 8.4% *more* user-space"),
+      loadRecord,
+    ],
+    [
+      "a re-recorded ratio",
+      repoFile,
+      (f) => {
+        const r = loadRecord(f);
+        if (f !== "accel-quant-table.json") return r;
+        const geomean = { ...r.summary.ratio.geomean, "instructions:u": 1.9 };
+        return {
+          ...r,
+          summary: { ...r.summary, ratio: { ...r.summary.ratio, geomean } },
+        };
+      },
+    ],
+    [
+      "a record of another cell",
+      repoFile,
+      (f) => {
+        const r = loadRecord(f);
+        return f === "accel-flat-cos.json"
+          ? { ...r, cell: { ...r.cell, tier: 1 } }
+          : r;
+      },
+    ],
+  ];
+  const missed = cases
+    .filter(([, read, load]) => countClaimFailures(read, load).length === 0)
+    .map(([name]) => name);
+  check(
+    "verify:claims' count register fails a moved figure on either side",
+    missed.length === 0,
+    missed.length === 0
+      ? `${cases.length} cases`
+      : `missed: ${missed.join(", ")}`,
   );
 }
 

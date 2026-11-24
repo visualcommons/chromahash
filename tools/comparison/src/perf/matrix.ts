@@ -74,19 +74,31 @@ export const FULL_SIZES = [64, 100, 128, 256, 512, 1024] as const;
 /** Cross-language tiers. Tier 4 decode costs ~250 ms, so bounded stops at 2. */
 export const BOUNDED_CROSS_TIERS = [0, 1, 2] as const;
 
+/** PERFORMANCE.md §12.1's seven byte-identical levers, by `Tunables` flag. */
+export const ACCEL_LEVERS = [
+  "accel_quant_table",
+  "accel_dct_lanes",
+  "accel_gamma_lut_cache",
+  "accel_flat_cos",
+  "accel_sse_early_exit",
+  "accel_fused_pixels",
+  "accel_word_bitpack",
+] as const;
+
 /**
  * Every §12.1 lever on at once. Encode-only and decode-only flags are both
- * harmless on the other operation, so one string serves both arm sets.
+ * harmless on the other operation, so one string serves both arm sets. Since
+ * #142 `Tunables::DEFAULT` sets every one of them but `accel_fused_pixels`,
+ * whose paired count is an instruction increase; records made before then
+ * compare this with a levers-off default.
  */
-export const ACCEL_ALL = [
-  "accel_quant_table=1",
-  "accel_dct_lanes=1",
-  "accel_gamma_lut_cache=1",
-  "accel_flat_cos=1",
-  "accel_sse_early_exit=1",
-  "accel_fused_pixels=1",
-  "accel_word_bitpack=1",
-].join(" ");
+export const ACCEL_ALL = ACCEL_LEVERS.map((l) => `${l}=1`).join(" ");
+
+/**
+ * Every §12.1 lever off: the unaccelerated reference path the shipped levers
+ * replace, which `lever-identity` and `benchmark:counts` compare them with.
+ */
+export const ACCEL_NONE = ACCEL_LEVERS.map((l) => `${l}=0`).join(" ");
 
 /**
  * Encoder-only levers: zero wire cost, decoder untouched, bytes unchanged.
@@ -105,24 +117,38 @@ export const TUNE_ARMS: ReadonlyArray<{ label: string; tune: string | null }> =
     },
     { label: "refine_passes=1", tune: "refine_passes=1" },
     { label: "refine_passes=2", tune: "refine_passes=2" },
+    // PERFORMANCE.md §12.1's byte-identical levers that act on encode. The
+    // shipped defaults turn all but `accel_fused_pixels` on (#142), so each
+    // of those arms turns one off, `accel_fused_pixels` turns its lever on,
+    // and `accel none` turns all seven off: the reference path the levers
+    // replaced. Every arm produces the shipped bytes
+    // (rust/tests/accel_levers.rs), so the time column is the whole of what
+    // it changes; a lever's speedup is the `=0` arm's time over `shipped`'s,
+    // and the fused pass's is `shipped`'s over its arm's. The two decode-only levers
+    // are in `DECODE_ACCEL_ARMS`; the early exit only acts inside refinement,
+    // so it is priced against `refine_passes=1` rather than against `shipped`.
+    { label: "accel_quant_table=0", tune: "accel_quant_table=0" },
+    { label: "accel_dct_lanes=0", tune: "accel_dct_lanes=0" },
+    { label: "accel_fused_pixels", tune: "accel_fused_pixels=1" },
+    { label: "accel_word_bitpack=0", tune: "accel_word_bitpack=0" },
+    { label: "accel none", tune: ACCEL_NONE },
     // The prototype separable forward DCT. Off by default and exposed by no
     // binding (constants.rs `dct_separable: false`, pinned by a test), so this
-    // is the only way to price it — and PERFORMANCE.md §6 quotes it.
-    { label: "dct_separable", tune: "dct_separable=1" },
-    // PERFORMANCE.md §12.1's byte-identical levers that act on encode, each
-    // alone and then all seven together. Unlike `dct_separable` these produce
-    // the shipped bytes (rust/tests/accel_levers.rs), so the time column is
-    // the whole of what they change. The two decode-only levers are in
-    // `DECODE_ACCEL_ARMS`; the early exit only acts inside refinement, so it
-    // is priced against `refine_passes=1` rather than against `shipped`.
-    { label: "accel_quant_table", tune: "accel_quant_table=1" },
-    { label: "accel_dct_lanes", tune: "accel_dct_lanes=1" },
-    { label: "accel_fused_pixels", tune: "accel_fused_pixels=1" },
-    { label: "accel_word_bitpack", tune: "accel_word_bitpack=1" },
-    { label: "accel all", tune: ACCEL_ALL },
+    // is the only way to price it — and PERFORMANCE.md §6 quotes it. §6 prices
+    // it against the direct summation with every §12.1 lever off, as it was
+    // measured before #142 made the levers the defaults: on the shipped
+    // defaults the direct path runs `accel_dct_lanes` and the quantizer runs
+    // `accel_quant_table`, so a ratio against `shipped` would be separable
+    // against the lane-batched DCT, not against the direct sum. The label
+    // extends `accel none`, so `plan.ts` pairs it with that arm, which must
+    // come first.
     {
-      label: "refine_passes=1 accel_sse_early_exit",
-      tune: "refine_passes=1 accel_sse_early_exit=1",
+      label: "accel none dct_separable",
+      tune: `${ACCEL_NONE} dct_separable=1`,
+    },
+    {
+      label: "refine_passes=1 accel_sse_early_exit=0",
+      tune: "refine_passes=1 accel_sse_early_exit=0",
     },
   ];
 
@@ -132,31 +158,31 @@ export const TUNE_ARMS: ReadonlyArray<{ label: string; tune: string | null }> =
  * and tier 4 selects ~16× the coefficients of tier 1. Priced at tier 4 on the
  * centre fixture. `shipped` is §2's tier-4 encode cell under the lever
  * table's name (an alias, `plan.ts`), and every other arm is a paired ratio
- * against it.
+ * against it: a lever turned off, or all of them (`TUNE_ARMS`).
  */
 export const TIER4_ACCEL_ARMS: ReadonlyArray<{
   label: string;
   tune: string | null;
 }> = [
   { label: "shipped", tune: null },
-  { label: "accel_quant_table", tune: "accel_quant_table=1" },
-  { label: "accel_dct_lanes", tune: "accel_dct_lanes=1" },
-  { label: "accel all", tune: ACCEL_ALL },
+  { label: "accel_quant_table=0", tune: "accel_quant_table=0" },
+  { label: "accel_dct_lanes=0", tune: "accel_dct_lanes=0" },
+  { label: "accel none", tune: ACCEL_NONE },
 ];
 
 /**
- * §12.1 item 4's two decode levers, alone and together with everything else,
- * each a paired ratio against §2's decode cell at the same tier and raster,
- * which `shipped` names (an alias, `plan.ts`).
+ * §12.1 item 4's two decode levers, each turned off alone and then every
+ * lever off, each a paired ratio against §2's decode cell at the same tier
+ * and raster, which `shipped` names (an alias, `plan.ts`).
  */
 export const DECODE_ACCEL_ARMS: ReadonlyArray<{
   label: string;
   tune: string | null;
 }> = [
   { label: "shipped", tune: null },
-  { label: "accel_gamma_lut_cache", tune: "accel_gamma_lut_cache=1" },
-  { label: "accel_flat_cos", tune: "accel_flat_cos=1" },
-  { label: "accel all", tune: ACCEL_ALL },
+  { label: "accel_gamma_lut_cache=0", tune: "accel_gamma_lut_cache=0" },
+  { label: "accel_flat_cos=0", tune: "accel_flat_cos=0" },
+  { label: "accel none", tune: ACCEL_NONE },
 ];
 
 /** Batch thread counts for the scaling sweep. */

@@ -317,6 +317,35 @@ export interface Estimate {
 export const isEstimate = (v: unknown): v is Estimate =>
   typeof v === "object" && v !== null && "value" in v && "interval" in v;
 
+/**
+ * A paired ratio read the other way: the reciprocal of a geometric mean is the
+ * geometric mean of the reciprocals, and the range's ends swap.
+ */
+export const leverSpeedup = (r: Estimate): Estimate => ({
+  value: 1 / r.value,
+  interval: r.interval
+    ? [1 / Math.max(...r.interval), 1 / Math.min(...r.interval)]
+    : null,
+});
+
+/**
+ * Whether a §12.1 lever arm turns levers off rather than on. The shipped
+ * defaults turn every lever but `accel_fused_pixels` on (#142), so those arms
+ * are `accel_*=0`, or `accel none` for all seven, and run the reference path.
+ */
+export const turnsLeverOff = (arm: string): boolean =>
+  arm.endsWith("=0") || arm === "accel none";
+
+/**
+ * A §12.1 lever's speedup, reference time ÷ shipped time, from the paired
+ * ratio the run records for `arm` (base ÷ arm). An arm that turns a lever off
+ * is the reference, so its ratio is read the other way ({@link leverSpeedup});
+ * one that turns a lever on (`accel_fused_pixels`) is the lever, and its ratio
+ * is the speedup as recorded.
+ */
+export const leverArmSpeedup = (arm: string, r: Estimate): Estimate =>
+  turnsLeverOff(arm) ? leverSpeedup(r) : r;
+
 interface Cell {
   id: string;
   /** chromahash-perf/2. Older runs reported the median as the headline. */

@@ -609,9 +609,14 @@ pub struct Tunables {
     /// Unlike [`Tunables::dct_separable`], every one of these produces the
     /// same bytes as the path it replaces — the unit tests beside each one and
     /// `tests/accel_levers.rs` hold them to that over the spec vectors and a
-    /// randomized input set. They are `false` in [`Tunables::DEFAULT`] only so
-    /// the shipped path stays the reference each lever is measured against;
-    /// turning one on changes the time an operation takes and nothing else.
+    /// randomized input set. [`Tunables::DEFAULT`] turns on each lever whose
+    /// paired instruction count (`mise run benchmark:counts`, committed under
+    /// `tools/comparison/results/counts/ab/accel-*.json`) is a reduction: all
+    /// but [`Tunables::accel_fused_pixels`]. Off, a flag selects the
+    /// unaccelerated path, which stays as the reference
+    /// `mise run lever-identity` and `benchmark:counts` compare the shipped
+    /// path against (`accel_*=0`); either setting changes the time an
+    /// operation takes and nothing else.
     ///
     /// §12.1 items 1 and 2: a per-job dequantization table keyed on
     /// `(bit width, index)`, the per-index bit widths computed once, and the
@@ -632,6 +637,11 @@ pub struct Tunables {
     /// §12.1 item 6: `linearize`, `oklab_forward` and `alpha_average` run as
     /// one tiled pass, and the per-pixel alpha buffer is built only when the
     /// image has alpha to transform.
+    ///
+    /// Off in [`Tunables::DEFAULT`]: byte-identical, but its paired count on
+    /// a 512×512 tier-1 encode (`results/counts/ab/accel-fused-pixels.json`)
+    /// is 8.3% *more* user-space instructions than the four separate passes
+    /// it replaces, so it is not a hot-path win as built.
     pub accel_fused_pixels: bool,
     /// §12.1 item 7: each bit field is shifted into place as one word and
     /// OR-ed a byte at a time, instead of one bit at a time.
@@ -897,13 +907,13 @@ impl Tunables {
         ac_nearest: true,
         scale_fit: 2,
         dct_separable: false,
-        accel_quant_table: false,
-        accel_dct_lanes: false,
-        accel_gamma_lut_cache: false,
-        accel_flat_cos: false,
-        accel_sse_early_exit: false,
+        accel_quant_table: true,
+        accel_dct_lanes: true,
+        accel_gamma_lut_cache: true,
+        accel_flat_cos: true,
+        accel_sse_early_exit: true,
         accel_fused_pixels: false,
-        accel_word_bitpack: false,
+        accel_word_bitpack: true,
         refine_passes: 0,
         refine_delta: 1,
         refine_obj: 0,
