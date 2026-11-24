@@ -394,7 +394,9 @@ anything.
 > encode at 100×100 tier 1 and tier 4 and a tier-4 decode. (That check caught
 > two places where the lever code *had* moved the shipped path — by more than
 > 10%, once in each direction — and both were fixed before these cells were
-> taken.)
+> taken.) Since #142 the shipped defaults turn six of those levers on, so
+> these shares now describe the unaccelerated reference path
+> (`accel_*=0`), not the shipped encoder; re-recording them is #165.
 >
 > **The host was not idle, and that is not free for shares either.** Its load
 > average was about 2.5 of 16 threads, in bursts. One recording taken during a
@@ -485,6 +487,12 @@ spec's bytes, and the artifact records how many it did.
 > microseconds between runs while `gamma_lut` held within a few, so the tier-1
 > split between those two rows is the least stable figure in the table. Those
 > re-runs are not committed; only the recorded run is checked.
+>
+> **The decoder these shares describe is the unaccelerated one.** They were
+> recorded with every §12.4 lever off. Since #142 the shipped defaults build
+> the gamma table once per transfer curve and read flat cosine tables, so
+> `gamma_lut` no longer costs what this table says on a shipped decode.
+> Re-recording §1 and §1.1 at the new defaults is #165.
 
 | stage | t1 natural | t4 natural | t4 capped 32×32 |
 |---|---:|---:|---:|
@@ -928,13 +936,17 @@ and the figures above are that measurement, pending (§12.3).
 
 ### 12.3 What this list does not claim
 
-* **Items 1–7 are built and bound; their measurement is pending.** #8 is
-  prototyped behind `Tunables::dct_separable`; items 1–7 are built (§12.4),
-  each behind its own flag and each held to the shipped bytes. Measured, all
-  seven levers together measure **TBD×** on a 512×512 encode and **TBD×** on a
-  default-tier decode. Until a committed run holds §12.4's cells those are
-  placeholders that fail the gate, and the stage shares above are the only
-  size any lever has. A stage share bounds a lever; it does not deliver one.
+* **Items 1–7 are built and bound; their wall-clock measurement is pending.**
+  #8 is prototyped behind `Tunables::dct_separable`; items 1–7 are built
+  (§12.4), each behind its own flag and each held to the shipped bytes, and
+  every one but item 6 is on in the shipped defaults on the strength of a
+  paired instruction count, not a timing. Measured against every lever off,
+  the shipped levers together measure **TBD×**
+  on a 512×512 encode and **TBD×** on a default-tier decode. Until a
+  committed run holds §12.4's cells those are placeholders that fail the
+  gate; the stage shares above and
+  §12.4's instruction counts are the only sizes any lever has. A stage share
+  bounds a lever, and an instruction count is not a time.
 * **The byte-identical column is an argument, not a proof** — and for items
   1–7 it is no longer only an argument. §12.4 lists what now checks "did not
   move" for each; "cannot move" and "did not move" are different claims, and
@@ -950,9 +962,12 @@ and the figures above are that measurement, pending (§12.3).
 
 ### 12.4 The byte-identical levers, built
 
-§12.1's items 1–7 exist in `rust/`, each behind a `Tunables` flag that is
-**off** in `Tunables::DEFAULT`. They are off so the shipped path stays the
-reference each one is timed against, not because any of them changes a byte:
+§12.1's items 1–7 exist in `rust/`, each behind a `Tunables` flag. Since #142
+every flag but `accel_fused_pixels` is **on** in `Tunables::DEFAULT`, each on
+the strength of a paired instruction count (below). Off (`accel_*=0`), a flag
+selects the unaccelerated path its lever replaced, which stays as the
+reference `lever-identity` and `benchmark:counts` compare the shipped path
+against. No setting of any flag changes a byte:
 
 | # | flag | what is built |
 |---|---|---|
@@ -965,9 +980,10 @@ reference each one is timed against, not because any of them changes a byte:
 | 7 | `accel_word_bitpack` | `bitpack::write_bits_word`: a field is masked and shifted into one 64-bit word and OR-ed a byte at a time |
 
 **"Did not move", checked.** `rust/tests/accel_levers.rs` reproduces every
-encode, decode and capped-decode vector in `spec/test-vectors/` with each flag
-on alone and with all seven on; then compares every flag against the shipped
-path under the shipped `Tunables` and eight non-default ones that reach what
+encode, decode and capped-decode vector in `spec/test-vectors/` under the
+shipped defaults, with every flag off, with each flag on alone over that, and
+with all seven on; then compares every flag against the levers-off reference
+under the shipped `Tunables` and eight non-default ones that reach what
 the vectors cannot —
 `LAYOUT_C`'s two widths at tier 2, refinement (the only caller of item 5),
 alpha through the channel quantizer, CfL, the interleaved payload, the other
@@ -979,36 +995,80 @@ the mutation sweep holds every lever too. And the eight photographs
 their encoder-input size and at tiers 0–2 on their display-size reference: 64
 of 64 hashes. (`rd:gate` itself cannot take a flag — its adapter strips
 `CHROMAHASH_TUNE` by design — but its figure is a function of the hash, so
-identical hashes are 0.00% drift.)
+identical hashes are 0.00% drift.) Since #142 `rd:gate` scores the shipped
+levers directly, because they are the defaults its adapter runs.
+`mise run lever-identity` widens the check to every open fixture image
+(`baselines/lever-identity.json`): it encodes each with every lever off and
+compares two arms with it, the shipped defaults and all seven on, at 100 px
+and 512 px at every tier code and at full resolution at codes 0–2, hashes
+byte for byte and decoded pixels too, beside a negative control that must
+report a difference.
 
 No binding exposes `Tunables`, so the other eight languages cannot reach a
-lever and their vector suites are unaffected by construction. **Making a lever
-the default is the change that would need them**, and the vectors they run are
-the ones this file already holds every lever to.
+lever, and since #142 they run the shipped levers through `Tunables::DEFAULT`.
+`spec/test-vectors/` did not change, so every binding's vector suite holds
+them to the same bytes it held the unaccelerated path to.
 
-**What each buys: bound, not yet measured.** Every cell below is a
+**What each lever buys, counted.** The shipped defaults were chosen on paired
+user-space instruction counts (`mise run benchmark:counts`), which a loaded
+host does not move the way it moves a time: each record is ten interleaved
+A B / B A blocks of the reference arm (`accel_*=0`) against the shipped
+defaults on one cell, committed under `tools/comparison/results/counts/ab/`
+at `29ae913` from a clean tree, both arms producing equal outputs. The ratio
+is reference instructions ÷ shipped instructions, so above 1 is a reduction;
+every block agreed with the median to four decimals. An instruction count is
+not a time, and no speedup is claimed from one.
+
+| lever | cell | reference | shipped | ratio |
+|---|---|---:|---:|---:|
+| accel_quant_table | encode 100×100 t1 | 11,645,256 | 6,238,744 | 1.867 |
+| accel_dct_lanes | encode 512×512 t1 | 281,235,421 | 109,849,392 | 2.560 |
+| accel_gamma_lut_cache | decode 100×100 t1 | 3,689,370 | 2,400,418 | 1.537 |
+| accel_flat_cos | decode 100×100 t4 | 7,416,211,976 | 5,571,385,951 | 1.331 |
+| accel_sse_early_exit | encode 100×100 t1, `refine_passes=1` | 326,807,578 | 278,289,676 | 1.174 |
+| accel_word_bitpack | encode 100×100 t4 | 239,475,894 | 239,433,012 | 1.0002 |
+| accel_word_bitpack | encode 100×100 t1 | 6,238,641 | 6,238,761 | 0.99998 |
+| every lever off | encode 512×512 t1 | 286,640,377 | 109,849,411 | 2.609 |
+| every lever off | decode 100×100 t1 | 4,273,343 | 2,400,419 | 1.780 |
+| accel_fused_pixels (on) | encode 512×512 t1 | 109,849,466 | 119,009,569 | 0.923 |
+
+Two rows are not reductions, and they decided two things.
+**`accel_fused_pixels` is off by default:** turned on, it executes 8.3% more
+instructions than the four passes it replaces (its record is from `955efb6`,
+where it was briefly the default, so there "shipped" is the fused pass), with
+no cycle win beside it; it stays built and byte-identical, and why the fused
+loop costs more is #165's to find. **`accel_word_bitpack` is on:** at tier 4,
+where the writer packs 1623 bytes, it removes 42,882 instructions per encode;
+at tier 1, 32 bytes, it costs 120 more out of 6.24 million, which is the
+`pack` stage §1 rounds to 0.0%.
+
+**What each buys in time: bound, not yet measured.** Every cell below is a
 `verify:benchmark` binding to a perf arm the bounded sweep now records
-(`perf/matrix.ts`: `TUNE_ARMS`, `TIER4_ACCEL_ARMS`, `DECODE_ACCEL_ARMS`), and
-each speedup is the sweep's paired record for that lever — its process minima
-divided round by round into its base's, timed back to back (§0) — not a ratio
-of two cells measured minutes apart. None is filled, because no
+(`perf/matrix.ts`: `TUNE_ARMS`, `TIER4_ACCEL_ARMS`, `DECODE_ACCEL_ARMS`).
+Because the levers are the defaults, each arm turns its lever off
+(`accel_*=0`, or `accel none` for all seven) and the speedup is the
+reference time over the shipped time; `accel_fused_pixels`, off by default,
+is the one arm that turns its lever on, and its speedup is the shipped time
+over its own. Each is the sweep's paired record for that lever — its process
+minima divided round by round into its base's, timed back to back (§0) — not
+a ratio of two cells measured minutes apart. None is filled, because no
 committed run holds those cells: the host this revision was written on was
 under sustained load, and §0's rule is that a wall-clock figure is published
 from a host that holds a clock still. §0's `mise run benchmark:session`
 fills them with `--fix`, and until then the gate reports each as missing
 rather than passing it.
 
-Speedup at tier 1 (shipped time ÷ lever time; the early exit is divided into
-`refine_passes=1`, the only encode it can shorten):
+Speedup at tier 1 (reference time ÷ shipped time; the early exit's arm runs
+`refine_passes=1`, the only encode it can shorten, and is divided by it):
 
 | lever | 100×100 | 256×256 | 512×512 |
 |---|---:|---:|---:|
-| accel_quant_table | TBD× | TBD× | TBD× |
-| accel_dct_lanes | TBD× | TBD× | TBD× |
+| accel_quant_table=0 | TBD× | TBD× | TBD× |
+| accel_dct_lanes=0 | TBD× | TBD× | TBD× |
 | accel_fused_pixels | TBD× | TBD× | TBD× |
-| accel_word_bitpack | TBD× | TBD× | TBD× |
-| accel all | TBD× | TBD× | TBD× |
-| refine_passes=1 accel_sse_early_exit | TBD× | TBD× | TBD× |
+| accel_word_bitpack=0 | TBD× | TBD× | TBD× |
+| accel none | TBD× | TBD× | TBD× |
+| refine_passes=1 accel_sse_early_exit=0 | TBD× | TBD× | TBD× |
 
 Tier 4 at 100×100, where the quantizer searches ~16× the coefficients of tier 1
 over the same source:
@@ -1016,14 +1076,15 @@ over the same source:
 | lever | encode | speedup |
 |---|---:|---:|
 | shipped | TBD ms | — |
-| accel_quant_table | TBD ms | TBD× |
-| accel_dct_lanes | TBD ms | TBD× |
-| accel all | TBD ms | TBD× |
+| accel_quant_table=0 | TBD ms | TBD× |
+| accel_dct_lanes=0 | TBD ms | TBD× |
+| accel none | TBD ms | TBD× |
 
-Decode (§12.1 item 4), 100×100 gradient source, speedup over the shipped decode:
+Decode (§12.1 item 4), 100×100 gradient source, each lever's speedup (the
+reference decode's time over the shipped decode's):
 
 | lever | t1 natural | t4 natural | t4 capped 32×32 |
 |---|---:|---:|---:|
-| accel_gamma_lut_cache | TBD× | TBD× | TBD× |
-| accel_flat_cos | TBD× | TBD× | TBD× |
-| accel all | TBD× | TBD× | TBD× |
+| accel_gamma_lut_cache=0 | TBD× | TBD× | TBD× |
+| accel_flat_cos=0 | TBD× | TBD× | TBD× |
+| accel none | TBD× | TBD× | TBD× |

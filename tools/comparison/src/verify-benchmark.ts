@@ -687,7 +687,7 @@ const BINDINGS: Binding[] = [
   },
   {
     section: "12.4",
-    index: 1,
+    index: 2,
     title: "§12.1's encode levers, built: speedup at tier 1",
     // `R.us`, not `timeOr`: a lever cell no committed run holds is a missing
     // measurement, and must fail as one rather than count as deliberately
@@ -714,7 +714,7 @@ const BINDINGS: Binding[] = [
   },
   {
     section: "12.4",
-    index: 2,
+    index: 3,
     title: "§12.1's encode levers, built: tier 4 at 100x100",
     columns: {
       encode: (row, R) =>
@@ -733,7 +733,7 @@ const BINDINGS: Binding[] = [
   },
   {
     section: "12.4",
-    index: 3,
+    index: 4,
     title: "§12.1's decode levers, built: speedup",
     columns: Object.fromEntries(
       (
@@ -1021,7 +1021,7 @@ const SWEEP_CLAIMS: SweepClaim[] = [
   {
     what: "§12.3: every encode lever together at 512x512, measured",
     pattern: new RegExp(
-      String.raw`all seven levers together measure \*\*${FIG}×\*\*`,
+      String.raw`the shipped levers together measure \*\*${FIG}×\*\*`,
     ),
     unit: "ratio",
     decimals: 2,
