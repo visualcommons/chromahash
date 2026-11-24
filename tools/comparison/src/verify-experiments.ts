@@ -1679,6 +1679,18 @@ const ARTIFACT_LADDER_ALIASES: Record<string, string> = {
   "code 4": "code 4 (1623 B)",
 };
 
+/** §11.14's columns, shared by its three bindings (two results, two tables). */
+const SECTION_11_14_COLUMNS: Partial<Record<string, Metric>> = {
+  // §9.5: this column carried a stale x-axis while its four metric columns
+  // were re-transcribed, because a binding checks columns and nobody had
+  // bound this one. It is the table's independent variable.
+  Bytes: "bytes",
+  "ΔE00 ↓": "meanCiede",
+  "SSIM2 ↑": "meanSsimulacra2",
+  "Butter ↓": "meanButteraugli",
+  "DSSIM ↓": "meanDssim",
+};
+
 const BINDINGS: Binding[] = [
   // §4.1 — the raster-vs-coefficients table. Its Δ is derived from the two
   // columns beside it, and was an order of magnitude wrong through two hand
@@ -2500,6 +2512,22 @@ const BINDINGS: Binding[] = [
 
   // §11.14 — the current cross-format table. Keyed on format *and* budget,
   // because a family appears at several byte anchors.
+  //
+  // Bound twice. Every row is bound to `rd-budget-tune2`, the generation-v2
+  // re-record of the same 32 photographs (#168), so the whole table is the
+  // format that ships. Every row but codes 3 and 4 is also bound to
+  // `rd-budget-holdout`, the generation-v1 run it was first taken from: those
+  // rows are the same value in both, and binding both is what says so.
+  {
+    kind: "rows",
+    section: "11.14",
+    table: 0,
+    sweep: "rd-budget-tune2",
+    labelColumn: 1,
+    resolve: byFormatAndBytes,
+    columns: SECTION_11_14_COLUMNS,
+    note: "Generation v2: the retired holdout's 32 photographs, scored as --split tune2.",
+  },
   {
     kind: "rows",
     section: "11.14",
@@ -2507,16 +2535,19 @@ const BINDINGS: Binding[] = [
     sweep: "rd-budget-holdout",
     labelColumn: 1,
     resolve: byFormatAndBytes,
-    columns: {
-      // §9.5: this column carried a stale x-axis while its four metric columns
-      // were re-transcribed, because a binding checks columns and nobody had
-      // bound this one. It is the table's independent variable.
-      Bytes: "bytes",
-      "ΔE00 ↓": "meanCiede",
-      "SSIM2 ↑": "meanSsimulacra2",
-      "Butter ↓": "meanButteraugli",
-      "DSSIM ↓": "meanDssim",
-    },
+    columns: SECTION_11_14_COLUMNS,
+    skipRows: ["ChromaHash tier 3", "ChromaHash tier 4"],
+    note: "Generation v1: #162 moved codes 3 and 4, whose v1 cells are §11.14's second table.",
+  },
+  // The generation-v1 code-3 and code-4 rows, kept as the record #162 moved.
+  {
+    kind: "rows",
+    section: "11.14",
+    table: 1,
+    sweep: "rd-budget-holdout",
+    labelColumn: 1,
+    resolve: byFormatAndBytes,
+    columns: SECTION_11_14_COLUMNS,
   },
 
   // §11.12's alpha table — bound after the 2026-09 audit found its source
@@ -3700,7 +3731,7 @@ const UNBOUND_NOTES: Record<string, string> = {
   "7.13#0":
     "entropy-budget output, not a sweep; its bold row and the two figures its prose spends it on are re-run and bound in §13.16's claims table, against the committed results/reproductions/entropy-budget-tune.json record",
   "13.16#2":
-    "UNCHECKED here: §13.5's seed readings re-derive every interval under 20 seeds at 10,000 resamples, too slow for this gate, and §11.14's two rows are outside #130's list (#168 re-records that table); `arms --seed-sensitivity`, `arms --resample-change` and `rd-budget --split tune2` print them",
+    "UNCHECKED here: §13.5's seed readings re-derive every interval under 20 seeds at 10,000 resamples, too slow for this gate; `arms --seed-sensitivity` and `arms --resample-change` print them. Its two §11.14 rows are bound where #168 re-recorded them, in §11.14 against `rd-budget-tune2`",
   "13.16#3":
     "UNCHECKED here: per-stratum readings need each image's strata measured off the fetched fixtures, and CI does not fetch the corpus; `node tools/comparison/dist/reproduce.js --strata` prints the table from the committed re-runs",
   "9.3#0":
