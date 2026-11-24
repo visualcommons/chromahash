@@ -331,14 +331,13 @@ export const COUNTING_CONFIGS: Readonly<Record<string, CountingConfig>> = {
   },
   Kotlin: {
     env: {
-      JAVA_OPTS:
-        "-XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Xbatch -XX:CICompilerCount=1",
+      JAVA_OPTS: "-XX:+UseSerialGC -Xint",
     },
     flags: [],
     program:
       "bindings/uniffi/jvm/build/install/chromahash-jvm/bin/chromahash-jvm",
     artifacts: (p) => [path.join(path.dirname(path.dirname(p)), "lib")],
-    why: "the JVM compiles with C1 only, synchronously (-Xbatch) on one compiler thread, so a method compiles at the same call count in every process, and the serial collector runs on the calling thread",
+    why: "the JVM runs every method in its interpreter (-Xint), with no JIT compile, so the host side of every call runs slower than it ships; a JIT compile happens once, after a method's call count crosses its threshold, so it falls in the long process alone and the short/long subtraction would spread it over the iterations (C1 only with -Xbatch counted 3,191,695 instructions per 64x64 decode at 500 iterations, 2,849,249 at 2,000 and 2,801,393 at 8,000; -Xcomp still 2,891,627 and 2,819,582; -Xint 5,030,186 and 5,006,567); the serial collector runs on the calling thread",
   },
   Python: {
     env: { PYTHONHASHSEED: "0" },
