@@ -1,6 +1,6 @@
 {
   "name": "downsample-before-dct-frozen",
-  "description": "Register entry D5's frozen holdout3 config: downsample-before-dct's rows kept for the read, per tier the full-resolution incumbent, at codes 0-2 the lever-free identity check, and the arm D5's selection rule froze, every setting and tune string copied unchanged. Register entry D5 (spec/V0.8-DECISIONS.md, #136): downsampling before the forward DCT, at every tier. Every arm encodes the source at its native resolution (encodeSource native), upright, and is scored against the harness's display reference as every sweep is. At each code k, 'tK full resolution' is the incumbent: the shipped encoder with every byte-identical lever of PERFORMANCE.md 12.1 on (ACCEL_ALL), which bounds a native encode at the top tiers to seconds. At codes 0-2, 'tK shipped default', every lever off (ACCEL_NONE), is identicalTo it; the label names the shipped default as it was when this config was read (fd781e3), which turned every lever off, and the tune pins that since #142 turned the levers on by default, so the run fails unless every image decodes to the same pixels both ways. Each candidate is a placement (Tunables::downsample: linear averages the premultiplied linear-light RGB and the alpha off the source bytes, before the colour pass; oklab averages the composited OKLAB and alpha planes after it) and a grid edge E (downsample_edge: a budget of E^2 pixels at the source's aspect, never enlarged), with the kernel the exact area average and the same levers as the incumbent. Every candidate arm at code k is read against 'tK full resolution', at equal bytes; expectBytes holds each tier to its shipped length per alpha mode. Corpus all with realOnly and the white-black-grey backdrops, as D1-D3: the photographic, alpha and graphics tune images, so the holdout3 read covers every stratum. Rows against the code-0 incumbent at other tiers, which the printed tables show by default, are at other byte counts and are not judged.",
+  "description": "Register entry D5's frozen holdout3 config: downsample-before-dct's rows kept for the read, per tier the full-resolution incumbent, at codes 0-2 the lever-free identity check, and the arm D5's selection rule froze, every setting and tune string copied unchanged. Register entry D5 (spec/V0.8-DECISIONS.md, #136): downsampling before the forward DCT, at every tier. Every arm encodes the source at its native resolution (encodeSource native), upright, and is scored against the harness's display reference as every sweep is. At each code k, 'tK full resolution' is the incumbent: the shipped encoder with every byte-identical lever of PERFORMANCE.md 12.1 on (ACCEL_ALL), which bounds a native encode at the top tiers to seconds. At codes 0-2, 'tK shipped default', the shipped default with no lever, is identicalTo it, so the run fails unless every image decodes to the same pixels both ways. Each candidate is a placement (Tunables::downsample: linear averages the premultiplied linear-light RGB and the alpha off the source bytes, before the colour pass; oklab averages the composited OKLAB and alpha planes after it) and a grid edge E (downsample_edge: a budget of E^2 pixels at the source's aspect, never enlarged), with the kernel the exact area average and the same levers as the incumbent. Every candidate arm at code k is read against 'tK full resolution', at equal bytes; expectBytes holds each tier to its shipped length per alpha mode. Corpus all with realOnly and the white-black-grey backdrops, as D1-D3: the photographic, alpha and graphics tune images, so the holdout3 read covers every stratum. Rows against the code-0 incumbent at other tiers, which the printed tables show by default, are at other byte counts and are not judged.",
   "corpus": "all",
   "realOnly": true,
   "backdrops": "white-black-grey",
@@ -37,7 +37,7 @@
     {
       "label": "t0 shipped default",
       "tier": 0,
-      "tune": "accel_quant_table=0 accel_dct_lanes=0 accel_gamma_lut_cache=0 accel_flat_cos=0 accel_sse_early_exit=0 accel_fused_pixels=0 accel_word_bitpack=0 downsample=off",
+      "tune": "downsample=off",
       "identicalTo": "t0 full resolution"
     },
     {
@@ -53,7 +53,7 @@
     {
       "label": "t1 shipped default",
       "tier": 1,
-      "tune": "accel_quant_table=0 accel_dct_lanes=0 accel_gamma_lut_cache=0 accel_flat_cos=0 accel_sse_early_exit=0 accel_fused_pixels=0 accel_word_bitpack=0 downsample=off",
+      "tune": "downsample=off",
       "identicalTo": "t1 full resolution"
     },
     {
@@ -69,7 +69,7 @@
     {
       "label": "t2 shipped default",
       "tier": 2,
-      "tune": "accel_quant_table=0 accel_dct_lanes=0 accel_gamma_lut_cache=0 accel_flat_cos=0 accel_sse_early_exit=0 accel_fused_pixels=0 accel_word_bitpack=0 downsample=off",
+      "tune": "downsample=off",
       "identicalTo": "t2 full resolution"
     },
     {
