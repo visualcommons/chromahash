@@ -23,8 +23,6 @@
  *                                 [--bins 3]
  */
 
-import fs from "node:fs/promises";
-import { glob } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import {
@@ -47,8 +45,6 @@ import {
   oracleTiers,
   readD9,
 } from "./cfl-oracle-core.ts";
-import { measureFile } from "./corpus-covariates.ts";
-import { holdout3Strata } from "./corpus.ts";
 import {
   CELLS,
   type AlphaMode,
@@ -73,6 +69,7 @@ import {
   selectionKey,
 } from "./downsample-core.ts";
 import { embeddedCuts, readCut, selectCuts } from "./embedded-core.ts";
+import { measuredStrata } from "./measured-strata.ts";
 import { CURATED_IMAGES } from "./natural-images.ts";
 import {
   holdout3StrataOf,
@@ -759,47 +756,6 @@ async function printStrata(name: string): Promise<void> {
       );
     }
   }
-}
-
-/** Each image's holdout3 strata, measured off its cached fixture. */
-async function measuredStrata(
-  names: readonly string[],
-): Promise<(name: string) => readonly string[]> {
-  const files = new Map<string, string>();
-  for await (const f of glob(
-    path.join(import.meta.dirname, "../fixtures/**/*.{png,jpg}"),
-  )) {
-    files.set(path.basename(f).replace(/\.[^.]+$/, ""), f);
-  }
-  const round4 = (x: number) => Math.round(x * 1e4) / 1e4;
-  const out = new Map<string, readonly string[]>();
-  for (const name of names) {
-    const f = files.get(name);
-    if (!f) {
-      console.error(`${name}: no cached fixture to measure — run the sweep`);
-      process.exit(1);
-    }
-    const c = await measureFile(await fs.readFile(f));
-    const corpus = realCorpusOf(name);
-    if (corpus === null) {
-      console.error(`${name}: in no real corpus, so it has no strata`);
-      process.exit(1);
-    }
-    out.set(
-      name,
-      holdout3Strata({
-        corpus,
-        width: c.width,
-        height: c.height,
-        nonOpaqueFraction: round4(c.alpha?.nonOpaqueFraction ?? 0),
-        phone: c.phone,
-        meanL: round4(c.meanL),
-        lowKey: round4(c.lowKey),
-        skin: round4(c.skin),
-      }),
-    );
-  }
-  return (name) => out.get(name) ?? [];
 }
 
 const metric = values.metric as MetricName;

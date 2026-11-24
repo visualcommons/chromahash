@@ -280,6 +280,15 @@ import {
   stratumRule,
 } from "./register-verdict-core.ts";
 import {
+  type EntropyBudgetFile,
+  acBitsFigure,
+  armMovements,
+  classify,
+  reproductionErrors,
+  signedFixed,
+  spendFigure,
+} from "./reproduce-core.ts";
+import {
   ARTIFACT_ZERO_BASE_ALLOWANCE,
   type Provenance,
   RESULT_SCHEMA,
@@ -8253,6 +8262,180 @@ console.log(
         "not at the combination rule",
       ),
     refused({ rev: null, dirty: false }),
+  );
+}
+
+// ─── #130: the reproduction ledger (reproduce-core.ts) ──────────────────────
+
+console.log("\nreproduce — #130's status rule and the per-image reading\n");
+{
+  check(
+    "classify: equal at the printed precision is reproduced, whatever the verdicts",
+    classify("−1.00%", "−1.00%", "- holm:yes guards:ok", null) === "reproduced",
+    "",
+  );
+  check(
+    "classify: a moved figure whose verdict holds is drifted",
+    classify(
+      "−0.90%",
+      "−0.92%",
+      "- holm:yes guards:ok",
+      "- holm:yes guards:ok",
+    ) === "drifted",
+    "",
+  );
+  check(
+    "classify: a moved figure whose Holm, guards or sign turns is not reproduced",
+    classify(
+      "−0.45%",
+      "−0.29%",
+      "- holm:yes guards:ok",
+      "- holm:no guards:ok",
+    ) === "not reproduced" &&
+      classify(
+        "+0.742",
+        "−0.354",
+        "+ holm:yes guards:ok",
+        "- holm:yes guards:ok",
+      ) === "not reproduced" &&
+      classify(
+        "+1.0%",
+        "+1.1%",
+        "+ holm:yes guards:ok",
+        "+ holm:yes guards:FAIL",
+      ) === "not reproduced",
+    "",
+  );
+  check(
+    "classify: a figure or verdict missing on either side is not reproduced",
+    classify(null, "+1.0%", "+", "+") === "not reproduced" &&
+      classify("+1.0%", null, "+", "+") === "not reproduced" &&
+      classify("+1.0%", "+1.1%", null, "+") === "not reproduced",
+    "",
+  );
+  check(
+    "signedFixed: unicode minus, explicit plus, and no sign on a rounded zero",
+    signedFixed(-0.1, 2) === "−0.10" &&
+      signedFixed(0.735, 3) === "+0.735" &&
+      signedFixed(-0.0004, 3) === "0.000",
+    `${signedFixed(-0.1, 2)} ${signedFixed(0.735, 3)} ${signedFixed(-0.0004, 3)}`,
+  );
+
+  const file = (
+    rows: { label: string; ciede2000: (number | null)[] }[],
+  ): ResultFile => ({
+    schema: RESULT_SCHEMA,
+    tool: "sweep",
+    name: "fixture",
+    split: "tune",
+    settings: {},
+    provenance: {
+      rev: "0".repeat(40),
+      dirty: false,
+      dirtyPaths: [],
+      iqaCli: "iqa-cli fixture",
+      config: "fixture.json",
+      configSha256: "0".repeat(64),
+      binaries: {},
+      node: process.version,
+      corpus: [],
+    },
+    imageNames: ["a", "b"],
+    rows: rows.map((r) => ({
+      label: r.label,
+      tune: null,
+      tier: null,
+      version: null,
+      perImage: { ciede2000: r.ciede2000 },
+    })),
+  });
+  const committed = file([
+    { label: "base", ciede2000: [10, 12] },
+    { label: "arm", ciede2000: [9, 11] },
+  ]);
+  const same = file([
+    { label: "base", ciede2000: [10, 12] },
+    { label: "arm", ciede2000: [9 * (1 + 5e-6), 11] },
+  ]);
+  const moved = file([
+    { label: "base", ciede2000: [10, 12] },
+    { label: "arm", ciede2000: [9.1, 11] },
+  ]);
+  const narrowed = file([{ label: "arm", ciede2000: [9, 11] }]);
+  const count = (ms: ReturnType<typeof armMovements>) =>
+    ms.reduce((n, m) => n + m.moved, 0);
+  check(
+    "armMovements: inside REPRODUCTION_REL is no move, outside it is one",
+    count(armMovements(same, committed)) === 0 &&
+      count(armMovements(moved, committed)) === 1 &&
+      reproductionErrors(same, committed).length === 0 &&
+      reproductionErrors(moved, committed).length === 1,
+    `${count(armMovements(moved, committed))}`,
+  );
+  const whole = armMovements(narrowed, committed);
+  const scored = armMovements(narrowed, committed, true);
+  check(
+    "armMovements: an arm the re-run lacks counts as moved, unless the re-run is read on what it scored",
+    count(whole) === 2 &&
+      whole.length === 2 &&
+      count(scored) === 0 &&
+      scored.length === 1 &&
+      scored[0]?.label === "arm",
+    `${count(whole)} / ${count(scored)}`,
+  );
+
+  const entropy: EntropyBudgetFile = {
+    split: "tune",
+    images: 2,
+    prefixBits: 54,
+    picks: [
+      {
+        budgetBytes: 32,
+        coder: "fixed fields (today)",
+        kind: "best ΔE00",
+        layout: "L32@4 C11@3",
+        ciede2000: 10,
+      },
+      {
+        budgetBytes: 32,
+        coder: "order-0 adaptive",
+        kind: "best ΔE00",
+        layout: "L49@3 C17@3",
+        ciede2000: 9.9,
+      },
+      {
+        budgetBytes: 32,
+        coder: "context + order-0 backoff",
+        kind: "best ΔE00",
+        layout: "L38@4 C13@3",
+        ciede2000: 9.8,
+      },
+      {
+        budgetBytes: 32,
+        coder: "context + order-0 backoff",
+        kind: "most coefficients",
+        layout: "L63@3 C42@2",
+        ciede2000: 9.0,
+      },
+    ],
+    rows: [
+      {
+        tier: 1,
+        layout: "L26@5 C9@4",
+        fixedBits: 254,
+        contextBackoffBits: 239,
+      },
+    ],
+  };
+  check(
+    "acBitsFigure: the backoff coder's AC bits against the fixed fields', prefix excluded",
+    acBitsFigure(entropy) === "−7.5%",
+    `${acBitsFigure(entropy)}`,
+  );
+  check(
+    "spendFigure: the best coded best-ΔE00 pick against the fixed fields' best, never a count-maximal pick",
+    spendFigure(32)(entropy) === "−2.0%" && spendFigure(108)(entropy) === null,
+    `${spendFigure(32)(entropy)} / ${spendFigure(108)(entropy)}`,
   );
 }
 

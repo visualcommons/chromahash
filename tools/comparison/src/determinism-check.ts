@@ -32,6 +32,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { generateFixtures } from "./generate-fixtures.ts";
+import { REPRODUCTION_REL, reproductionErrors } from "./reproduce-core.ts";
 import {
   RESULTS_DIR,
   type ResultFile,
@@ -56,18 +57,9 @@ const SYNTHETIC = path.join(TOOL_ROOT, "fixtures/synthetic");
 const GATE_SWEEP = "synthesis-window";
 const GATE_SWEEP_IMAGES = 2;
 
-/**
- * How far a re-run may sit from the committed value and still reproduce it.
- *
- * Not zero, because nothing pins the floating-point path across machines: the
- * SSIMULACRA2 and Butteraugli kernels dispatch on the host's SIMD width, and
- * libvips's resampler does the same. 1e-5 relative is two orders of magnitude
- * below the coarsest rounding `spec/EXPERIMENTS.md` prints (a ΔE00 near 10 to
- * three decimals is 1e-4), so a value inside it cannot move a cell, and one
- * outside it is a result this build does not reproduce.
- */
-const REPRODUCTION_REL = 1e-5;
-const REPRODUCTION_ABS = 1e-9;
+// How far a re-run may sit from the committed value, and the per-image
+// comparison itself, live in `reproduce-core.ts`: EXPERIMENTS.md §13.16 reads
+// every #130 re-run with the same rule this gate holds one sweep to.
 
 /**
  * The fixtures this gate scores.
@@ -164,65 +156,6 @@ function runSweep(outDir: string): ResultFile {
 function scored(result: ResultFile): string {
   const { provenance: _, ...rest } = result;
   return JSON.stringify(canonical(rest), null, 1);
-}
-
-/**
- * Where a re-run's per-image values fall outside {@link REPRODUCTION_REL} of the
- * committed result's, matched by arm label and image name. Also reports an arm
- * or a series the committed result has and the re-run lacks, or the reverse:
- * a series that stopped being measured is not a reproduction either.
- */
-function reproductionErrors(run: ResultFile, committed: ResultFile): string[] {
-  const out: string[] = [];
-  const committedIndex = new Map(
-    committed.imageNames.map((n, i) => [n, i] as const),
-  );
-  for (const row of run.rows) {
-    const twin = committed.rows.find((r) => r.label === row.label);
-    if (!twin) {
-      out.push(`arm "${row.label}" is not in the committed result`);
-      continue;
-    }
-    const keys = new Set([
-      ...Object.keys(row.perImage),
-      ...Object.keys(twin.perImage),
-    ]) as Set<keyof typeof row.perImage>;
-    for (const key of keys) {
-      const mine = row.perImage[key];
-      const theirs = twin.perImage[key];
-      if (!mine || !theirs) {
-        out.push(
-          `arm "${row.label}" ${key}: ${mine ? "absent from the committed result" : "not measured by the re-run"}`,
-        );
-        continue;
-      }
-      for (const [i, name] of run.imageNames.entries()) {
-        const j = committedIndex.get(name);
-        if (j === undefined) {
-          out.push(`image "${name}" is not in the committed result`);
-          continue;
-        }
-        const a = mine[i] ?? null;
-        const b = theirs[j] ?? null;
-        if (a === null || b === null) {
-          if (a !== b) out.push(`${row.label} / ${name} ${key}: ${a} vs ${b}`);
-          continue;
-        }
-        const tol = Math.max(REPRODUCTION_ABS, Math.abs(b) * REPRODUCTION_REL);
-        if (Math.abs(a - b) > tol) {
-          out.push(
-            `${row.label} / ${name} ${key}: re-run ${a}, committed ${b} (off by ${(Math.abs(a - b) / Math.max(Math.abs(b), REPRODUCTION_ABS)).toExponential(2)} relative)`,
-          );
-        }
-      }
-    }
-  }
-  for (const twin of committed.rows) {
-    if (!run.rows.some((r) => r.label === twin.label)) {
-      out.push(`committed arm "${twin.label}" was not re-run`);
-    }
-  }
-  return out;
 }
 
 /** First differing line, with a little context, or null when identical. */

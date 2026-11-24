@@ -15,7 +15,7 @@
  * Usage:
  *   node dist/arms.js <result> [--baseline LABEL [--baseline-from RESULT]]
  *   node dist/arms.js --summary [<result>...]
- *   node dist/arms.js --seed-sensitivity [--seeds N] [<result>...]
+ *   node dist/arms.js --seed-sensitivity [--seeds N] [--resamples R] [<result>...]
  *   node dist/arms.js --resample-change [--from B] [<result>...]
  *
  * `--summary` tallies, over every committed sweep, how many arms differ from
@@ -24,6 +24,10 @@
  * every committed ΔE00 interval against its incumbent under N other bootstrap
  * seeds (default 20) and reports how far the bounds move and whether any
  * verdict turns: the check `stats.ts`'s fixed seed is documented against.
+ * Its intervals, the seed-42 reference among them, are drawn at `--resamples`
+ * (default {@link BOOTSTRAP_RESAMPLES}); the p-values always at
+ * {@link BOOTSTRAP_RESAMPLES}. `--resamples 1000` re-derives the reading
+ * §13.5 first recorded, when the intervals were drawn at 1,000 (#130).
  * `--resample-change` re-derives the same intervals at an earlier resample
  * count (default 1,000, what the intervals were drawn at until
  * {@link BOOTSTRAP_RESAMPLES}) and at the current one, and counts the arms
@@ -73,6 +77,7 @@ const { values, positionals } = parseArgs({
     "resample-change": { type: "boolean", default: false },
     "seed-sensitivity": { type: "boolean", default: false },
     seeds: { type: "string", default: "20" },
+    resamples: { type: "string" },
     summary: { type: "boolean", default: false },
   },
 });
@@ -379,6 +384,16 @@ function seedSensitivity(): void {
     console.error(`--seeds must be a positive integer; got ${values.seeds}`);
     process.exit(2);
   }
+  const resamples =
+    values.resamples === undefined
+      ? BOOTSTRAP_RESAMPLES
+      : Number(values.resamples);
+  if (!Number.isInteger(resamples) || resamples < 1) {
+    console.error(
+      `--resamples must be a positive integer; got ${values.resamples}`,
+    );
+    process.exit(2);
+  }
   // Seeds 1..count, skipping the default so every one is an alternative.
   const seeds = otherSeeds(count);
   const names = resultNames();
@@ -396,7 +411,9 @@ function seedSensitivity(): void {
     const series = incumbentSeries(load(name));
     if (!series) continue;
     const deltas = series.map((s) => s.deltas);
-    const reference = deltas.map((d) => bootstrapCI(d));
+    const reference = deltas.map((d) =>
+      bootstrapCI(d, resamples, 0.05, BOOTSTRAP_SEED),
+    );
     const holmAt = (seed: number) =>
       holm(deltas.map((d) => bootstrapP(d, undefined, seed))).map(
         (p) => p < 0.05,
@@ -410,7 +427,7 @@ function seedSensitivity(): void {
       for (const [i, d] of deltas.entries()) {
         const ref = reference[i];
         if (!ref) continue;
-        const ci = bootstrapCI(d, BOOTSTRAP_RESAMPLES, 0.05, seed);
+        const ci = bootstrapCI(d, resamples, 0.05, seed);
         const move = Math.max(
           Math.abs(ci[0] - ref[0]),
           Math.abs(ci[1] - ref[1]),
@@ -441,7 +458,7 @@ function seedSensitivity(): void {
     );
   }
   console.log(
-    `\n${arms} ΔE00 intervals at ${BOOTSTRAP_RESAMPLES} resamples, each re-derived under ${seeds.length} seeds other than ${BOOTSTRAP_SEED}:` +
+    `\n${arms} ΔE00 intervals at ${resamples} resamples, each re-derived under ${seeds.length} seeds other than ${BOOTSTRAP_SEED}:` +
       `\n  largest move of either bound  ${worstShift.toFixed(4)} ΔE00` +
       `\n  as a fraction of the interval's width  ${(worstRelative * 100).toFixed(1)}%` +
       `\n  arms whose interval turns on whether it excludes zero  ${ciFlips}` +

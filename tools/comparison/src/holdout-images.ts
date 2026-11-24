@@ -310,13 +310,15 @@ export interface Holdout3Read {
  * reading when its `split` is `holdout3`; one that says so but records no
  * decision is reported as decision `""`, so it still counts against the seal.
  * The count records under `counts/` (D4's `dct-identity`, which are not
- * sweeps and so do not sit beside them) are read too, named `counts/<file>`.
+ * sweeps and so do not sit beside them) are read too, named `counts/<file>`,
+ * and so are the re-runs under `reproductions/` (#130): a re-run of a
+ * holdout3 read would be a second read, whatever it was filed as.
  */
 export function holdout3Reads(
   resultsDir: string = RESULTS_DIR,
 ): Holdout3Read[] {
   const files: string[] = [];
-  for (const sub of ["", "counts"]) {
+  for (const sub of ["", "counts", "reproductions", "reproductions/v1"]) {
     try {
       files.push(
         ...readdirSync(path.join(resultsDir, sub))

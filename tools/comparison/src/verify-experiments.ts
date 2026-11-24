@@ -91,6 +91,16 @@ import {
 } from "./doc-tables.ts";
 import { tableRegisterProblems } from "./experiments-register.ts";
 import { type SpreadData, mdeTableCells, readSpread } from "./mde-core.ts";
+import {
+  GENERATION_V1_REV,
+  LEDGER,
+  REPRODUCED_SWEEPS,
+  REPRODUCTIONS,
+  ledgerCells,
+  readEntropyBudget,
+  reproductionFiles,
+  sweepCells,
+} from "./reproduce-core.ts";
 // A result from another iqa-cli is a different instrument, not a reproduction.
 import { PINNED_IQA_CLI } from "./metrics/iqa.ts";
 import {
@@ -144,8 +154,10 @@ interface SweepFile {
  */
 const provenanceProblems: string[] = [];
 
-function auditProvenance(file: ResultFile): void {
-  const where = `results/${file.name}.json`;
+function auditProvenance(
+  file: Pick<ResultFile, "provenance">,
+  where: string,
+): void {
   const p = file.provenance;
   if (p.rev === null) provenanceProblems.push(`${where}: no git revision`);
   if (p.dirty !== false) {
@@ -253,7 +265,7 @@ function loadSweep(name: string): SweepFile | null {
   const result = readResult(resultsDir, name);
   let parsed: SweepFile | null = null;
   if (result) {
-    auditProvenance(result);
+    auditProvenance(result, `results/${result.name}.json`);
     const tol = result.settings.guardTolerances as
       | SweepFile["guardTolerances"]
       | undefined;
@@ -533,6 +545,20 @@ interface OracleBinding extends CommonBinding {
   columns: Partial<Record<string, string>>;
 }
 
+/**
+ * §13.16's reproduction ledger (#130), whose cells `reproduce-core.ts`
+ * computes from the committed results and their committed re-runs under
+ * `results/reproductions/`. `part: "sweeps"` is the per-image table, one row
+ * per committed result; `part: "claims"` the claims table, one row per
+ * {@link LEDGER} claim, each figure as recorded, at master and at v1, and
+ * its status.
+ */
+interface LedgerBinding extends CommonBinding {
+  kind: "ledger";
+  part: "sweeps" | "claims";
+  columns: Partial<Record<string, string>>;
+}
+
 type Binding =
   | RowBinding
   | ColumnBinding
@@ -540,7 +566,8 @@ type Binding =
   | SummaryBinding
   | MdeBinding
   | RegisterBinding
-  | OracleBinding;
+  | OracleBinding
+  | LedgerBinding;
 
 /** The label of a summary table's row that sums every committed sweep. */
 const ALL_SWEEPS = "all committed sweeps";
@@ -740,6 +767,106 @@ function checkOracleTable(
         failures,
         stats,
       );
+    }
+  }
+  return null;
+}
+
+/**
+ * Every cell of one §13.16 table, by row label. A re-run the table needs and
+ * the results directory lacks is a SKIP, as a missing sweep is elsewhere.
+ */
+function ledgerTableCells(
+  b: LedgerBinding,
+): Map<string, Record<string, number | string>> | string {
+  const out = new Map<string, Record<string, number | string>>();
+  if (b.part === "sweeps") {
+    for (const s of REPRODUCED_SWEEPS) {
+      const c = sweepCells(resultsDir, s);
+      if (!c.master) {
+        return `no ${REPRODUCTIONS}/${s.repro}.json beside ${s.committed} — run the re-run`;
+      }
+      if (s.v1 !== undefined && !c.v1) {
+        return `no ${REPRODUCTIONS}/v1/${s.v1}.json beside ${s.committed} — run the re-run`;
+      }
+      out.set(s.committed, {
+        repro: s.repro,
+        arms: c.master.arms,
+        compared: c.master.compared,
+        moved: c.master.moved,
+        master: c.master.status,
+        v1: c.v1 ? c.v1.status : "—",
+      });
+    }
+    return out;
+  }
+  const byClaim = ledgerCells(resultsDir);
+  for (const claim of LEDGER) {
+    const c = byClaim.get(claim.claim);
+    if (!c || c.recorded === null || c.rerun === null) {
+      return `the ledger cannot compute "${claim.claim}": its committed result or its re-run is missing`;
+    }
+    out.set(claim.claim, {
+      section: claim.section,
+      recorded: c.recorded,
+      rerun: c.rerun,
+      v1: c.v1 === undefined ? "—" : (c.v1 ?? "missing"),
+      status: c.status,
+      command: claim.command,
+    });
+  }
+  return out;
+}
+
+function checkLedgerTable(
+  b: LedgerBinding,
+  table: DocTable,
+  failures: Failure[],
+  stats: Stats,
+): string | null {
+  const byLabel = ledgerTableCells(b);
+  if (typeof byLabel === "string") return byLabel;
+  const strip = (s: string) => s.replace(/[*`]/g, "").trim();
+  const seen = new Set<string>();
+  for (const [rowIndex, row] of table.rows.entries()) {
+    const label = strip(row[0] ?? "");
+    const key = [...byLabel.keys()].find((k) => strip(k) === label);
+    const cellsOf = key === undefined ? undefined : byLabel.get(key);
+    if (key === undefined || !cellsOf) {
+      return `the ledger holds no row "${label}"`;
+    }
+    seen.add(key);
+    for (const [i, header] of table.header.entries()) {
+      const field = b.columns[header];
+      if (!field) continue;
+      const measured = cellsOf[field];
+      if (measured === undefined) return `no ${field} cell for "${label}"`;
+      compare(
+        {
+          section: b.section,
+          table: table.index,
+          row: label,
+          column: header,
+          fix: { line: table.line, rowIndex, colIndex: i },
+        },
+        row[i] ?? "",
+        measured,
+        failures,
+        stats,
+      );
+    }
+  }
+  // A row the ledger computes and the document dropped is a claim nobody
+  // reads any more, which is the drift this table exists to prevent.
+  for (const k of byLabel.keys()) {
+    if (!seen.has(k)) {
+      failures.push({
+        section: b.section,
+        row: strip(k),
+        column: "(row)",
+        claimed: "absent",
+        measured: "the ledger computes this row; the table must carry it",
+      });
     }
   }
   return null;
@@ -3141,6 +3268,38 @@ const BINDINGS: Binding[] = [
     rowBaselines: V08_COMBINATION_BASELINES,
   },
 
+  // §13.16 — the #130 reproduction ledger: every re-run against its committed
+  // result per image, then every load-bearing claim as recorded, as re-run at
+  // master and at v1, with its status (`reproduce-core.ts`).
+  {
+    kind: "ledger",
+    section: "13.16",
+    table: 0,
+    part: "sweeps",
+    columns: {
+      "re-run": "repro",
+      arms: "arms",
+      values: "compared",
+      "moved at master": "moved",
+      "at master": "master",
+      "at v1": "v1",
+    },
+  },
+  {
+    kind: "ledger",
+    section: "13.16",
+    table: 1,
+    part: "claims",
+    columns: {
+      "§": "section",
+      "as recorded": "recorded",
+      "at master": "rerun",
+      "at v1": "v1",
+      status: "status",
+      command: "command",
+    },
+  },
+
   // §13.5 — what the paired inference changes, per committed sweep and summed
   // over all of them. The summed row is the one a re-run of any sweep moves.
   {
@@ -3233,7 +3392,8 @@ function coverageOf(b: Binding, table: DocTable): Coverage {
     b.kind === "summary" ||
     b.kind === "mde" ||
     b.kind === "register" ||
-    b.kind === "oracle"
+    b.kind === "oracle" ||
+    b.kind === "ledger"
   ) {
     const labelCol = b.kind === "rows" ? (b.labelColumn ?? 0) : 0;
     const covered: string[] = [];
@@ -3668,7 +3828,9 @@ for (const binding of BINDINGS) {
               ? checkRegisterTable(binding, table, failures, stats)
               : binding.kind === "oracle"
                 ? checkOracleTable(binding, table, failures, stats)
-                : checkColumnTable(binding, table, failures, stats);
+                : binding.kind === "ledger"
+                  ? checkLedgerTable(binding, table, failures, stats)
+                  : checkColumnTable(binding, table, failures, stats);
   if (problem) {
     skipped.push(`§${binding.section} table ${binding.table ?? 0}: ${problem}`);
     skippedTables.add(key);
@@ -3676,6 +3838,30 @@ for (const binding of BINDINGS) {
   }
   coverage.push(coverageOf(binding, table));
   checked++;
+}
+
+// The §13.16 re-runs are evidence like any committed result, and are held to
+// the same provenance: a re-run from a dirty tree, an unpinned iqa-cli or off
+// the pinned bytes reproduces nothing.
+if (!values.section || values.section === "13.16") {
+  for (const { where, file } of reproductionFiles(resultsDir)) {
+    auditProvenance(file, `results/${where}.json`);
+    if (
+      where.startsWith(`${REPRODUCTIONS}/v1/`) &&
+      file.provenance.rev !== GENERATION_V1_REV
+    ) {
+      provenanceProblems.push(
+        `results/${where}.json: a generation-v1 re-run scored at ${file.provenance.rev}, not at ${GENERATION_V1_REV}`,
+      );
+    }
+  }
+  const entropy = readEntropyBudget(resultsDir, "entropy-budget-tune");
+  if (entropy) {
+    const where = `results/${REPRODUCTIONS}/entropy-budget-tune.json`;
+    const { provenance } = entropy;
+    if (provenance) auditProvenance({ provenance }, where);
+    else provenanceProblems.push(`${where}: no provenance`);
+  }
 }
 
 const merged = mergeCoverage(coverage);
