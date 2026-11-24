@@ -67,7 +67,8 @@
         },
         "iterations": { "type": "integer", "minimum": 1 },
         "blocks": { "type": "integer", "minimum": 2 },
-        "ratio": { "const": "a / b, per operation" }
+        "ratio": { "const": "a / b, per operation" },
+        "glibcTunables": { "type": "string" }
       }
     },
     "provenance": {

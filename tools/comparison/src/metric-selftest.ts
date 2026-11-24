@@ -9088,8 +9088,21 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
   const refused = (r: CountsRecord, text: string) =>
     (recordProblem(r, cell, a, b) ?? "").includes(text);
   check(
-    "overhead recordProblem: accepts a committed record and refuses a dirty tree, swapped arms, a tune, unequal outputs, another cell and another batch size",
+    "overhead recordProblem: accepts a committed record and refuses a dirty tree, swapped arms, a tune, no allocator configuration, another one, unequal outputs, another cell and another batch size",
     recordProblem(good, cell, a, b) === null &&
+      refused(
+        variant((r) => {
+          const { glibcTunables: _, ...defaults } = r.settings;
+          r.settings = defaults;
+        }),
+        "glibc's default allocator configuration",
+      ) &&
+      refused(
+        variant((r) => {
+          r.settings.glibcTunables = "glibc.malloc.mmap_threshold=131072";
+        }),
+        "GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072, not",
+      ) &&
       refused(
         variant((r) => {
           r.provenance.dirty = true;

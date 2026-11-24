@@ -28,6 +28,18 @@ import {
 
 export const OVERHEAD_TABLE = "tools/comparison/results/counts/overhead.md";
 
+/**
+ * The allocator configuration every overhead, host and reduction arm runs
+ * under (`benchmark:counts --glibc-tunables`). Pinning glibc malloc's mmap
+ * threshold turns off its dynamic threshold, which rises once the first buffer
+ * over 128 KiB is freed: without it a 512×512 encode's buffers are served from
+ * the heap, and zeroed in user space, in one process and from fresh zeroed
+ * pages in another, so the core's own allocator work differs between a host's
+ * process and the core driver's, and A − B no longer isolates the host. At
+ * 64 KiB every buffer that large is mapped in every process.
+ */
+export const OVERHEAD_GLIBC_TUNABLES = "glibc.malloc.mmap_threshold=65536";
+
 /** The default tier's hash length: every cell here encodes at tier 1. */
 const TIER1_BYTES = 32;
 
@@ -95,6 +107,12 @@ export interface OverheadReduction {
   impl: string;
   /** The driver after the reduction (arm A). */
   afterBin: string;
+  /**
+   * The commit arm A was built at, where it is not the record's own: the
+   * reduction landed before a core change, so A is built where the core is
+   * still the one B was built with, and A − B is the reduction alone.
+   */
+  afterRev: string | null;
   /** The commit the B arm (the driver before the reduction) was built at. */
   beforeRev: string;
   beforeBin: string;
@@ -108,7 +126,8 @@ export const OVERHEAD_REDUCTIONS: readonly OverheadReduction[] = [
     layer: "uniffi",
     what: "UniFFI byte arrays lifted and lowered in one slice copy instead of one push per byte (`bindings/uniffi/src/bytes.rs`); `ImageInput.rgba` lifted straight into the core's `Arc<[u8]>`",
     impl: "Rust",
-    afterBin: "bindings/uniffi/target/release/examples/overhead_uniffi",
+    afterBin: "bindings/uniffi/target/after/overhead_uniffi",
+    afterRev: "8f78dff",
     beforeRev: "c4b3f9e",
     beforeBin: "bindings/uniffi/target/before/overhead_uniffi",
     cells: ["encode-64", "encode-512", "decode-64", "batch16-64"],
@@ -118,7 +137,8 @@ export const OVERHEAD_REDUCTIONS: readonly OverheadReduction[] = [
     layer: "wasm",
     what: "`DecodeResult::rgba` returns a `Uint8Array` built from the decoded slice (`bindings/wasm/src/lib.rs`), so the pixels cross to JS in one copy instead of a clone in the wasm heap, wasm-bindgen's copy of the clone and its free. Counted through the TypeScript package's CLI under Node's counting configuration (Host runtimes), on the decode cell, the only one whose path it changes",
     impl: "TypeScript (wasm)",
-    afterBin: "typescript/dist/encode-stdin.js",
+    afterBin: "bindings/wasm/target/after/typescript/dist/encode-stdin.js",
+    afterRev: "84e3338",
     beforeRev: "4fd0571",
     beforeBin: "bindings/wasm/target/before/typescript/dist/encode-stdin.js",
     cells: ["decode-64"],
@@ -129,6 +149,7 @@ export const OVERHEAD_REDUCTIONS: readonly OverheadReduction[] = [
     what: "The Python bindings write a byte array into the RustBuffer in one `ctypes.memmove` instead of one Python loop iteration per byte, by a step `mise run cbuild:python` applies to uniffi-bindgen's output (`mise-tasks/cbuild/python`), so lowering `ImageInput.rgba` no longer runs w × h × 4 iterations per encode. Counted through the Python package's CLI under CPython's counting configuration (Host runtimes), on the encode cells, the ones whose input it writes; each arm is a package directory, run from its parent",
     impl: "Python",
     afterBin: "python/chromahash",
+    afterRev: null,
     beforeRev: "32ffc24",
     beforeBin: "bindings/uniffi/target/before/python/chromahash",
     cells: ["encode-64", "encode-512"],
@@ -200,7 +221,9 @@ const driver = (layer: string, bin: string) =>
  * from the encode output's length, its batch size. `impl` is arm A's
  * implementation (the cell's); `bImpl`, where given, is arm B's, which the
  * record must then name on each arm. An arm run under a counting
- * configuration must state the one `COUNTING_CONFIGS` holds for it now.
+ * configuration must state the one `COUNTING_CONFIGS` holds for it now, and
+ * the record must state {@link OVERHEAD_GLIBC_TUNABLES} as its allocator
+ * configuration.
  */
 export function recordProblem(
   record: CountsRecord,
@@ -242,6 +265,10 @@ export function recordProblem(
   }
   if (record.arms.a.tune !== "" || record.arms.b.tune !== "") {
     return "an arm ran under a tune";
+  }
+  const tunables = record.settings.glibcTunables;
+  if (tunables !== OVERHEAD_GLIBC_TUNABLES) {
+    return `its arms ran under ${tunables === undefined ? "glibc's default allocator configuration" : `GLIBC_TUNABLES=${tunables}`}, not GLIBC_TUNABLES=${OVERHEAD_GLIBC_TUNABLES}`;
   }
   if (record.provenance.dirty !== false) {
     return "it was counted on a dirty or unknown tree";
@@ -447,7 +474,7 @@ export function renderOverheadTable(
       "",
       `### \`${red.id}\` (${red.layer})`,
       "",
-      `${red.what}. B is \`${red.beforeBin}\`, built at \`${red.beforeRev}\`.`,
+      `${red.what}. ${red.afterRev === null ? "A is the build at the record's revision" : `A is \`${red.afterBin}\`, built at \`${red.afterRev}\``}; B is \`${red.beforeBin}\`, built at \`${red.beforeRev}\`.`,
       "",
       "| Cell | After (A) | Before (B) | Change | A/B | Record |",
       "| --- | ---: | ---: | ---: | ---: | --- |",

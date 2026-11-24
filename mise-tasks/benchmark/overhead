@@ -26,7 +26,14 @@
 # host whose blocks spread over 1% as not countable. Needs dotnet, go, a JDK,
 # uv and wasm-pack (with the wasm-bindgen CLI its lockfile pins) on PATH.
 # Extra arguments go to every count.
+#
+# Every count runs under one allocator configuration, recorded in each record
+# (`settings.glibcTunables`) and required by the table (overhead-core.ts
+# OVERHEAD_GLIBC_TUNABLES): glibc malloc's mmap threshold pinned, so the core's
+# large buffers are mapped the same way in every process.
 set -euo pipefail
+
+tunables=glibc.malloc.mmap_threshold=65536
 
 cargo build --manifest-path bindings/c/Cargo.toml --release --example overhead_c --example overhead_core
 cargo build --manifest-path bindings/uniffi/Cargo.toml --release --example overhead_uniffi --example overhead_core
@@ -36,7 +43,7 @@ for layer in c uniffi; do
   bin=bindings/$layer/target/release/examples
   count() {
     node tools/comparison/dist/perf/counts.js --impl Rust --tier 1 \
-      --a-bin "$bin/overhead_$layer" --b-bin "$bin/overhead_core" "$@"
+      --glibc-tunables "$tunables" --a-bin "$bin/overhead_$layer" --b-bin "$bin/overhead_core" "$@"
   }
   count --op encode --size 64 --iterations 200 --out "$out/overhead-$layer-encode-64.json" "${@}"
   count --op encode --size 512 --iterations 20 --out "$out/overhead-$layer-encode-512.json" "${@}"
@@ -63,7 +70,7 @@ host() {
   local core=bindings/$layer/target/release/examples/overhead_core
   count() {
     node tools/comparison/dist/perf/counts.js --impl "$impl" --b-impl Rust \
-      --b-bin "$core" --tier 1 "$@"
+      --b-bin "$core" --tier 1 --glibc-tunables "$tunables" "$@"
   }
   count --op encode --size 64 --iterations 200 --out "$out/host-$slug-encode-64.json" "${@}"
   count --op encode --size 512 --iterations 20 --out "$out/host-$slug-encode-512.json" "${@}"

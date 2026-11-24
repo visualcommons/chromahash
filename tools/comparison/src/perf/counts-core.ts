@@ -99,6 +99,11 @@ export interface CountsRecord {
     iterations: number;
     blocks: number;
     ratio: "a / b, per operation";
+    /**
+     * The `GLIBC_TUNABLES` every process of both arms ran under
+     * (`--glibc-tunables`); absent where the run left glibc's defaults.
+     */
+    glibcTunables?: string;
   };
   provenance: {
     rev: string | null;
