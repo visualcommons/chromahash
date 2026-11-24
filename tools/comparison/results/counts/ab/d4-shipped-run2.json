@@ -1,0 +1,283 @@
+{
+  "schema": 1,
+  "tool": "benchmark-counts",
+  "cell": {
+    "impl": "Rust",
+    "op": "encode",
+    "width": 512,
+    "height": 512,
+    "tier": 1,
+    "content": "gradient",
+    "fixtureSha256": "81e16a67467e247ae9a0ec0baf4809227375438fb27d4f0a78ef38c9ad992f96",
+    "input": null
+  },
+  "arms": {
+    "a": {
+      "bin": "rust/target/release/examples/encode_stdin",
+      "binSha256": "cbca9c2b9b36d67626f90c3855a634bcb5d98596e0a4302b73f076fcb05b0ceb",
+      "tune": ""
+    },
+    "b": {
+      "bin": "rust/target/release/examples/encode_stdin",
+      "binSha256": "cbca9c2b9b36d67626f90c3855a634bcb5d98596e0a4302b73f076fcb05b0ceb",
+      "tune": "dct_separable=1"
+    }
+  },
+  "settings": {
+    "events": [
+      "instructions:u",
+      "cycles:u"
+    ],
+    "iterations": 20,
+    "blocks": 10,
+    "ratio": "a / b, per operation"
+  },
+  "provenance": {
+    "rev": "c77d6b309e206e79d8557310b6170ef06453cca7",
+    "dirty": false,
+    "dirtyPaths": [],
+    "node": "v24.20.0"
+  },
+  "host": {
+    "cpu": {
+      "vendor": "AuthenticAMD",
+      "family": "25",
+      "model": "97",
+      "stepping": "2",
+      "modelName": "AMD Ryzen 7 7800X3D 8-Core Processor"
+    },
+    "kernel": "7.3.4-300.fc45.x86_64",
+    "threads": 16,
+    "counter": {
+      "backend": "perf-stat",
+      "version": "perf version 7.3.4-300.fc45.x86_64",
+      "paranoid": 2
+    },
+    "loadavgStart": [
+      33.6,
+      23.07,
+      22.47
+    ],
+    "loadavgEnd": [
+      28.53,
+      22.46,
+      22.28
+    ]
+  },
+  "outputs": {
+    "a": "0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d",
+    "b": "0980d06030eb98101adadddddddddddddddddddd9d316dd3b66d43a66ddbb66d",
+    "equal": true
+  },
+  "blocks": [
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 286640320.5,
+        "cycles:u": 205913583.5
+      },
+      "b": {
+        "instructions:u": 98079368.9,
+        "cycles:u": 34912424.05
+      },
+      "ratio": {
+        "instructions:u": 2.922534307824242,
+        "cycles:u": 5.898003049146626
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 286640311.45,
+        "cycles:u": 206555653.9
+      },
+      "b": {
+        "instructions:u": 98079353.25,
+        "cycles:u": 39459040.2
+      },
+      "ratio": {
+        "instructions:u": 2.922534681885252,
+        "cycles:u": 5.234685204025819
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 286640351.05,
+        "cycles:u": 208740788.5
+      },
+      "b": {
+        "instructions:u": 98079416.95,
+        "cycles:u": 36322746.6
+      },
+      "ratio": {
+        "instructions:u": 2.922533187530332,
+        "cycles:u": 5.746833817352347
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 286640331.05,
+        "cycles:u": 206839386.8
+      },
+      "b": {
+        "instructions:u": 98079270.75,
+        "cycles:u": 35621371.15
+      },
+      "ratio": {
+        "instructions:u": 2.92253734003217,
+        "cycles:u": 5.806609350578017
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 286640346.55,
+        "cycles:u": 205462344
+      },
+      "b": {
+        "instructions:u": 98079336.15,
+        "cycles:u": 35826099.1
+      },
+      "ratio": {
+        "instructions:u": 2.9225355492987806,
+        "cycles:u": 5.734990667739207
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 286640343.15,
+        "cycles:u": 206050100.45
+      },
+      "b": {
+        "instructions:u": 98079361.8,
+        "cycles:u": 35888168.35
+      },
+      "ratio": {
+        "instructions:u": 2.9225347503229777,
+        "cycles:u": 5.741449338971349
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 286640401.55,
+        "cycles:u": 211739514.35
+      },
+      "b": {
+        "instructions:u": 98079331.55,
+        "cycles:u": 36464433.4
+      },
+      "ratio": {
+        "instructions:u": 2.9225362471386056,
+        "cycles:u": 5.806740832287278
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 286640341.95,
+        "cycles:u": 205476896.1
+      },
+      "b": {
+        "instructions:u": 98079373.35,
+        "cycles:u": 36786436.4
+      },
+      "ratio": {
+        "instructions:u": 2.9225343939251425,
+        "cycles:u": 5.58567005147582
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 286640357,
+        "cycles:u": 208630833.35
+      },
+      "b": {
+        "instructions:u": 98079367,
+        "cycles:u": 42788164.45
+      },
+      "ratio": {
+        "instructions:u": 2.9225347365873597,
+        "cycles:u": 4.8759005213648505
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 286640388.55,
+        "cycles:u": 213812920.65
+      },
+      "b": {
+        "instructions:u": 98079375.9,
+        "cycles:u": 42632057.65
+      },
+      "ratio": {
+        "instructions:u": 2.9225347930665206,
+        "cycles:u": 5.015308489338187
+      }
+    }
+  ],
+  "summary": {
+    "a": {
+      "median": {
+        "instructions:u": 286640344.85,
+        "cycles:u": 206697520.35000002
+      },
+      "min": {
+        "instructions:u": 286640311.45,
+        "cycles:u": 205462344
+      },
+      "max": {
+        "instructions:u": 286640401.55,
+        "cycles:u": 213812920.65
+      }
+    },
+    "b": {
+      "median": {
+        "instructions:u": 98079364.4,
+        "cycles:u": 36393590
+      },
+      "min": {
+        "instructions:u": 98079270.75,
+        "cycles:u": 34912424.05
+      },
+      "max": {
+        "instructions:u": 98079416.95,
+        "cycles:u": 42788164.45
+      }
+    },
+    "ratio": {
+      "geomean": {
+        "instructions:u": 2.9225349987609377,
+        "cycles:u": 5.533324336694165
+      },
+      "min": {
+        "instructions:u": 2.922533187530332,
+        "cycles:u": 4.8759005213648505
+      },
+      "max": {
+        "instructions:u": 2.92253734003217,
+        "cycles:u": 5.898003049146626
+      }
+    }
+  },
+  "against": {
+    "record": "tools/comparison/results/counts/ab/d4-shipped-run1.json",
+    "rev": "c77d6b309e206e79d8557310b6170ef06453cca7",
+    "instructionRatio": [
+      2.922536209466947,
+      2.9225349987609377
+    ],
+    "instructionAgreement": 4.1426552910284187e-7,
+    "agree": true,
+    "cycleRatio": [
+      5.049058056078536,
+      5.533324336694165
+    ],
+    "cycleSpread": 0.09591220287764823
+  }
+}

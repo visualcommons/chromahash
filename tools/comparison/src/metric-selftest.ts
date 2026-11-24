@@ -77,6 +77,7 @@ import { createHash } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -242,6 +243,20 @@ import {
   perIteration,
   runsAgree,
 } from "./perf/count.ts";
+import {
+  AB_COUNTS_DIR,
+  type CountsRecord,
+  blockSchedule,
+  compareRuns,
+  COUNTABLE_IMPLS,
+  counterRefusal,
+  implRefusal,
+  parseCpuinfo,
+  readSchema,
+  schemaErrors,
+  summarize as summarizeCounts,
+  wallClockFields,
+} from "./perf/counts-core.ts";
 import {
   type Preflight,
   SUSTAINED_LOAD_FACTOR,
@@ -7501,6 +7516,246 @@ console.log(
       wrongRev.includes("not at D4's freeze") &&
       dirty.includes("clean tree"),
     `${before.outcome} ${passes.outcome} ${failsOut.outcome} ${slow.outcome} ${moved.outcome}`,
+  );
+}
+
+// ─── benchmark:counts: the paired A/B count harness (perf/counts-core.ts) ───
+{
+  console.log("\nbenchmark:counts (perf/counts-core.ts):");
+  const thrown = (f: () => unknown): string => {
+    try {
+      f();
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+    return "";
+  };
+  const c = (i: number, y: number): ProcessCounts => ({
+    "instructions:u": i,
+    "cycles:u": y,
+  });
+
+  // Ratio arithmetic. A counts 100, 400, 300, 200 against B's 50, 100, 100,
+  // 100: ratios 2, 4, 3, 2, geometric mean (2·4·3·2)^(1/4) = 48^(1/4).
+  const blocks = [
+    countBlock(0, c(100, 10), c(50, 10)),
+    countBlock(1, c(400, 10), c(100, 10)),
+    countBlock(2, c(300, 10), c(100, 10)),
+    countBlock(3, c(200, 10), c(100, 10)),
+  ];
+  const s = summarizeCounts(blocks);
+  check(
+    "summarize: each arm's median count with its block range, and the geometric-mean A/B ratio with its range",
+    s.a.median["instructions:u"] === 250 &&
+      s.a.min["instructions:u"] === 100 &&
+      s.a.max["instructions:u"] === 400 &&
+      s.b.median["instructions:u"] === 100 &&
+      s.b.min["instructions:u"] === 50 &&
+      Math.abs(s.ratio.geomean["instructions:u"] - 48 ** 0.25) < 1e-12 &&
+      s.ratio.min["instructions:u"] === 2 &&
+      s.ratio.max["instructions:u"] === 4 &&
+      s.ratio.geomean["cycles:u"] === 1 &&
+      s.a.median["cycles:u"] === 10,
+    `${s.a.median["instructions:u"]} ${s.ratio.geomean["instructions:u"]}`,
+  );
+
+  // Block pairing and its ordering.
+  check(
+    "blockSchedule runs complete A B / B A pairs from A B, and refuses a block count that is odd, zero, negative or fractional; summarize refuses blocks out of that order",
+    blockSchedule(4).join(" ") === "AB BA AB BA" &&
+      blockSchedule(2).join(" ") === "AB BA" &&
+      [0, 3, -2, 2.5, Number.NaN].every((n) =>
+        thrown(() => blockSchedule(n)).includes("positive even number"),
+      ) &&
+      thrown(() => summarizeCounts([blocks[1], blocks[0]] as never)).includes(
+        "out of A B / B A order",
+      ) &&
+      thrown(() => summarizeCounts(blocks.slice(0, 3))).includes("complete"),
+    blockSchedule(6).join(" "),
+  );
+
+  // Refusal on an unavailable counter.
+  const ok = "1000,,instructions:u,500,100.00,,\n2000,,cycles:u,500,100.00,,\n";
+  const probe = (
+    p: Partial<Parameters<typeof counterRefusal>[0]>,
+  ): string | null =>
+    counterRefusal({
+      errorCode: null,
+      status: 0,
+      stderr: ok,
+      paranoid: 2,
+      ...p,
+    });
+  check(
+    "counterRefusal names why the counter is unavailable (no perf, perf_event_paranoid above 2, an event not supported or not counted, a multiplexed count, a failed perf) and passes a readable one",
+    probe({}) === null &&
+      probe({ paranoid: null }) === null &&
+      (probe({ errorCode: "ENOENT" }) ?? "").includes(
+        "perf is not installed",
+      ) &&
+      (probe({ paranoid: 3 }) ?? "").includes("perf_event_paranoid is 3") &&
+      (
+        probe({
+          stderr: ok.replace(
+            "1000,,instructions:u",
+            "<not supported>,,instructions:u",
+          ),
+        }) ?? ""
+      ).includes("does not count instructions:u") &&
+      (
+        probe({
+          stderr: ok.replace("2000,,cycles:u", "<not counted>,,cycles:u"),
+        }) ?? ""
+      ).includes("does not count cycles:u") &&
+      (probe({ stderr: ok.replace("500,100.00", "500,50.00") }) ?? "").includes(
+        "multiplexed",
+      ) &&
+      (probe({ status: 255, stderr: "no access" }) ?? "").includes(
+        "perf stat exited 255",
+      ),
+    String(probe({ paranoid: 4 })),
+  );
+
+  // Admission: exactly the native targets without a collector are counted.
+  const admitted = allTargets()
+    .filter((t) => implRefusal(t) === null)
+    .map((t) => t.name);
+  const goTarget = allTargets().find((t) => t.name === "Go");
+  check(
+    "implRefusal admits exactly Rust, Rust (scalar) and Swift, refuses Go by its garbage collector, every managed runtime by name, and an unknown implementation",
+    admitted.join(",") === COUNTABLE_IMPLS.join(",") &&
+      goTarget !== undefined &&
+      !goTarget.managed &&
+      (implRefusal(goTarget) ?? "").includes("garbage collector") &&
+      allTargets()
+        .filter((t) => t.managed)
+        .every((t) => (implRefusal(t) ?? "").includes("managed runtime")) &&
+      (implRefusal({ name: "Zig", managed: false }) ?? "").includes(
+        "not one of",
+      ),
+    admitted.join(","),
+  );
+
+  // Refusal to compare runs from different CPUs.
+  const cpu = parseCpuinfo(
+    "processor\t: 0\nvendor_id\t: AuthenticAMD\ncpu family\t: 25\nmodel\t\t: 97\nmodel name\t: AMD Ryzen 7 7800X3D 8-Core Processor\nstepping\t: 2\n\nprocessor\t: 1\nmodel name\t: other\n",
+  );
+  const rec = (
+    instr: number,
+    cyc: number,
+    over: Partial<CountsRecord["host"]["cpu"]> = {},
+  ): CountsRecord => ({
+    schema: 1,
+    tool: "benchmark-counts",
+    cell: {
+      impl: "Rust",
+      op: "encode",
+      width: 64,
+      height: 64,
+      tier: 1,
+      content: "gradient",
+      fixtureSha256: "f",
+      input: null,
+    },
+    arms: {
+      a: { bin: "x", binSha256: "1", tune: "" },
+      b: { bin: "x", binSha256: "1", tune: "dct_separable=1" },
+    },
+    settings: {
+      events: ["instructions:u", "cycles:u"],
+      iterations: 20,
+      blocks: 4,
+      ratio: "a / b, per operation",
+    },
+    provenance: { rev: "r", dirty: false, dirtyPaths: [], node: "v0" },
+    host: {
+      cpu: { ...cpu, ...over },
+      kernel: "k",
+      threads: 16,
+      counter: { backend: "perf-stat", version: "perf", paranoid: 2 },
+      loadavgStart: [1, 1, 1],
+      loadavgEnd: [1, 1, 1],
+    },
+    outputs: { a: "00", b: "00", equal: true },
+    blocks,
+    summary: {
+      ...s,
+      ratio: {
+        ...s.ratio,
+        geomean: { "instructions:u": instr, "cycles:u": cyc },
+      },
+    },
+    against: null,
+  });
+  const near = compareRuns(rec(2.0, 4.0), rec(2.018, 5.0), "run1.json");
+  const far = compareRuns(rec(2.0, 4.0), rec(2.03, 4.0), "run1.json");
+  const otherArm = rec(2.0, 4.0);
+  otherArm.arms.b = { ...otherArm.arms.b, tune: "mu_l=3" };
+  check(
+    "compareRuns refuses runs from different CPUs (model name, family, model or stepping), an unknown CPU, and another arm; it agrees within 1% on the instruction ratio and reports the cycle spread beside it",
+    cpu.vendor === "AuthenticAMD" &&
+      cpu.family === "25" &&
+      cpu.model === "97" &&
+      cpu.stepping === "2" &&
+      cpu.modelName === "AMD Ryzen 7 7800X3D 8-Core Processor" &&
+      thrown(() =>
+        compareRuns(rec(2, 4), rec(2, 4, { modelName: "Other CPU" }), "x"),
+      ).includes("different CPUs") &&
+      thrown(() =>
+        compareRuns(rec(2, 4), rec(2, 4, { stepping: "1" }), "x"),
+      ).includes("different CPUs") &&
+      thrown(() =>
+        compareRuns(rec(2, 4), rec(2, 4, { family: "unknown" }), "x"),
+      ).includes("unknown") &&
+      thrown(() => compareRuns(rec(2, 4), otherArm, "x")).includes(
+        "arm B differs",
+      ) &&
+      near.agree &&
+      Math.abs(near.instructionAgreement - 0.009) < 1e-12 &&
+      Math.abs(near.cycleSpread - 0.25) < 1e-12 &&
+      near.record === "run1.json" &&
+      !far.agree,
+    `${near.instructionAgreement} ${far.instructionAgreement}`,
+  );
+
+  // The committed schema: a record validates, nothing in it is wall-clock,
+  // and the validator sees an undeclared field and a planted timing name.
+  const schema = readSchema();
+  const valid = rec(2.0, 4.0);
+  const planted = {
+    ...schema,
+    properties: {
+      ...schema.properties,
+      elapsedNs: { type: "number" },
+      summary: { properties: { speedupRatio: { type: "number" } } },
+    },
+  };
+  check(
+    "the committed counts schema accepts a record, refuses an undeclared field (a wall-clock figure included), and declares no wall-clock field",
+    schemaErrors(valid, schema).length === 0 &&
+      schemaErrors({ ...valid, speedup: 3.68 }, schema).some((e) =>
+        e.includes("has speedup"),
+      ) &&
+      schemaErrors({ ...valid, against: { record: "x" } }, schema).length > 0 &&
+      wallClockFields(schema).length === 0 &&
+      wallClockFields(planted).sort().join(" ") ===
+        "$.elapsedNs $.summary.speedupRatio",
+    `${schemaErrors(valid, schema).join("; ")} ${wallClockFields(schema).join(" ")}`,
+  );
+
+  // Every committed record matches the schema.
+  const recordErrors = readdirSync(AB_COUNTS_DIR)
+    .filter((f) => f.endsWith(".json") && f !== "counts.schema.json")
+    .flatMap((f) =>
+      schemaErrors(
+        JSON.parse(readFileSync(path.join(AB_COUNTS_DIR, f), "utf8")),
+        schema,
+      ).map((e) => `${f} ${e}`),
+    );
+  check(
+    "every committed benchmark:counts record matches the committed schema",
+    recordErrors.length === 0,
+    recordErrors.slice(0, 3).join("; "),
   );
 }
 
