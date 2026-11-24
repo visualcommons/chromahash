@@ -4091,6 +4091,96 @@ mod tests {
         );
     }
 
+    /// Three refinement decisions `refinement_goldens` does not reach, each on
+    /// an input a seeded search over 3,000 small images found to be the one
+    /// that tells the decision apart. Goldens are the refined hashes.
+    #[test]
+    fn refinement_edge_goldens() {
+        fn hex(s: &str) -> Box<[u8]> {
+            (0..s.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+                .collect()
+        }
+        // A pixel per digit: bit 4 sets R, bit 2 sets G, bit 1 sets B to 255,
+        // over a base colour.
+        fn masked(base: [u8; 3], masks: &str) -> Vec<u8> {
+            masks
+                .bytes()
+                .flat_map(|m| {
+                    let m = m - b'0';
+                    let ch = |k: usize| if m & (4 >> k) != 0 { 255 } else { base[k] };
+                    [ch(0), ch(1), ch(2), 255]
+                })
+                .collect()
+        }
+        let refine = |passes, delta, scale, obj, grid| Tunables {
+            refine_passes: passes,
+            refine_delta: delta,
+            refine_dc: true,
+            refine_scale: scale,
+            refine_obj: obj,
+            refine_grid: grid,
+            accel_sse_early_exit: false,
+            ..Tunables::DEFAULT
+        };
+
+        // `live` refines only frequencies the source can hold (`cx < src.0`).
+        // On this 3-px-wide strip scored on the decoder raster (grid 1), the
+        // raster holds cx = 3 and the source does not, and refining it (as
+        // `cx <= src.0` would) changes the hash.
+        let strip = masked([217, 12, 22], "010100502052253024604002");
+        assert_eq!(
+            encode_with(3, 8, &strip, Gamut::Srgb, &refine(2, 1, false, 3, 1), 1),
+            hex("09525bacd3684e8085226a32db0adec95decdd9d9eadae948085421760a9cd94")
+        );
+
+        // Both DC neighbours of a channel improve on the current code, and the
+        // second improves strictly more: the DC search must take it, which a
+        // first-improvement test (`e == be` for `e < be`) would not.
+        let primaries = masked(
+            [0, 0, 0],
+            "11611140571623113404004503326204666114710046654641",
+        );
+        assert_eq!(
+            encode_with(
+                5,
+                10,
+                &primaries,
+                Gamut::Srgb,
+                &refine(3, 2, false, 0, 0),
+                1
+            ),
+            hex("0960c9e24f41e258b0a205e8e4eeedcea6a505d91a0c40863ba94022b288b649")
+        );
+
+        // Two scale candidates tie exactly on a pixel-domain SSE below the
+        // current one, under the gamma-LUT objective. The strict `<` keeps the
+        // first scanned (cur - 2 before cur - 1 before cur + 1 before cur + 2);
+        // `<=`, or scanning the offsets in the reverse order, takes the other.
+        #[rustfmt::skip]
+        let rgb: [u8; 180] = [
+            192, 221, 27, 203, 225, 8, 199, 220, 24, 202, 232, 17, 210, 229, 25, 195, 221, 12,
+            209, 233, 22, 199, 238, 16, 209, 226, 26, 196, 241, 11, 213, 228, 17, 204, 221, 8,
+            211, 222, 13, 193, 233, 8, 210, 225, 13, 193, 234, 25, 210, 237, 30, 212, 241, 9,
+            202, 232, 20, 200, 234, 9, 202, 226, 11, 214, 226, 29, 211, 224, 27, 207, 234, 20,
+            207, 241, 27, 212, 234, 22, 191, 222, 22, 201, 227, 12, 191, 236, 25, 212, 235, 21,
+            212, 242, 11, 208, 228, 21, 201, 231, 12, 197, 220, 28, 196, 233, 13, 210, 237, 11,
+            213, 240, 7, 211, 227, 10, 198, 223, 30, 206, 223, 16, 195, 234, 8, 198, 236, 10,
+            206, 227, 26, 195, 240, 26, 207, 242, 11, 191, 239, 14, 209, 229, 9, 211, 235, 16,
+            195, 221, 14, 212, 220, 25, 194, 228, 25, 203, 238, 19, 196, 221, 23, 200, 242, 17,
+            197, 222, 14, 204, 224, 16, 195, 231, 9, 211, 232, 20, 212, 229, 27, 195, 228, 22,
+        ];
+        let yellow: Vec<u8> = rgb
+            .chunks(3)
+            .flat_map(|p| [p[0], p[1], p[2], 255])
+            .collect();
+        assert_eq!(
+            encode_with(10, 6, &yellow, Gamut::Srgb, &refine(2, 1, true, 0, 1), 1),
+            hex("0997ef971808c0dddddddddddddddddddddddddd9dca8659a428dbb66ddbb66d")
+        );
+    }
+
     // ── Register D5: downsampling before the transform (`downsample`) ────
 
     fn downsampled(placement: u32, edge: u32) -> Tunables {
