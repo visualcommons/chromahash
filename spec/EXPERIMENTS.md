@@ -4596,8 +4596,9 @@ and no Holm verdict.
 
 **The verdict: D2 does not pass.** Embedded tiers are not adopted. Part 1
 holds (the interleaved order is a pure permutation that decodes to the
-shipped pixels on every non-sealed image and every encode vector at codes
-0–4),
+shipped pixels on every `tune` and `tune2` image and every encode vector
+at codes 0–4; the 8 graphics `holdout` pins were read by neither run and
+are not covered),
 but it carries no benefit on its own, and every prefix fails R2's guards
 against the native code it stands for. Two readings go beyond the verdict.
 The prefix fails on guards a native lower tier also fails against the
