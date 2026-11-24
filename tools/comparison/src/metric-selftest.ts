@@ -9222,6 +9222,34 @@ console.log("\nreproduce — #130's status rule and the per-image reading\n");
   } catch (e) {
     wide = (e as Error).message;
   }
+  // A host whose arm A counts less than its core plus its native layer (the
+  // Python rows set against a core counted at another revision, issue #183)
+  // is refused, not printed with a negative host side.
+  const pyHost = OVERHEAD_HOSTS.find((h) => h.impl === "Python");
+  const enc512 = HOST_CELLS.find((c) => c.cell === "encode-512");
+  if (pyHost === undefined || enc512 === undefined) {
+    throw new Error("OVERHEAD_HOSTS lost Python or HOST_CELLS its 512 cell");
+  }
+  const pyName = hostRecord(pyHost, enc512);
+  let below = "";
+  try {
+    below = renderOverheadTable(
+      withRecord(pyName, (r) => {
+        const under = r.summary.b.median["instructions:u"] + 1000;
+        r.summary.a.min["instructions:u"] = under;
+        r.summary.a.median["instructions:u"] = under;
+        r.summary.a.max["instructions:u"] = under;
+      }),
+    );
+  } catch (e) {
+    below = (e as Error).message;
+  }
+  check(
+    "renderOverheadTable: a host row whose host side falls below zero (arm A 1,000 instructions over its core, under its native layer) is refused, naming the record",
+    below.startsWith(`${pyName}: the host counts −`) &&
+      below.includes("does not isolate the host"),
+    below.slice(0, 160),
+  );
   const red = OVERHEAD_REDUCTIONS.find((x) => x.id === "wasm-rgba-copy");
   if (red === undefined)
     throw new Error("the wasm-rgba-copy reduction is gone");
