@@ -379,7 +379,7 @@ export function renderOverheadTable(
     "",
     "## Host runtimes",
     "",
-    `What each host runtime adds to a call, counted through its published binding. Arm A is the host's own command-line driver (the cross-language benchmark's \`encode-stdin\`), run under the host's counting configuration (\`counts-core.ts\` \`COUNTING_CONFIGS\`); arm B is the core driver of the native layer the host binds, counted with \`--b-impl Rust\` on the same cell, and both arms decode to the same RGBA bytes or encode to the same hash in every record. A host is countable where, in every one of its records, each arm's per-operation count in each of the interleaved blocks is within ${pct(HOST_SPREAD)} of that arm's median; the check and its tolerance were fixed in issue #173 before any host was counted. The check tests that a record repeats, not that its per-operation figure is independent of the iteration count: work a process does once, part-way through the long process only (a JIT compile at its call threshold, say), is spread over the iterations, so each figure is its cell's at that record's iteration count (\`settings.iterations\`). Kotlin is counted in the JVM's interpreter for this reason; with C1 at its call threshold its decode counted about 12% more per call at 500 iterations than at 2,000. In the interpreter a smaller dependence remains, unexplained: arm A counts 0.5% more per decode at 500 iterations than at 2,000, 0.9% more per 64×64 encode at 200 than at 800, and 0.7% more per 512×512 encode at 20 than at 80, where the core (arm B) also moves by 0.1% and the host side falls by about 13%. A counting configuration is not how the host ships: it pins the runtime's compiler tier and its collector's pacing, so a host's figure is its cost under that configuration. "Native layer" is the overhead row above for the same cell, counted against the same core binary, and "Host side" is what is left: the host's call, its marshalling and its runtime, with its CLI's bench loop. The subtraction assumes the core does the same work in every process, which is why every arm runs under \`GLIBC_TUNABLES=${OVERHEAD_GLIBC_TUNABLES}\`: under glibc's defaults the 512×512 encode's buffers pass malloc's 128 KiB mmap threshold, which glibc raises once the first such buffer is freed, so one process served them from its heap, zeroing them in user space, and another mapped fresh zeroed pages, and the core's allocator work differed between a host's process and the core driver's (issue #184: unpinned, the Python CLI's 512×512 host side read +26,089 against +293,855 at 64×64). Pinning the threshold turns the dynamic threshold off, so every buffer of 64 KiB or more is mapped in every process. A host side below zero is not what the host adds (the core did less work in the host's process, or the arms ran different core code), and the table refuses such a row rather than print it. A count also belongs to its revision (the line at the end names each): two records' figures compare only where they were counted on the same core binary, which \`renderOverheadTable\` holds a host row to against its native layer's row. The TypeScript (wasm) arm runs the core itself as wasm in V8's baseline compiler, so its figure is the whole call against native code rather than the glue alone; the glue's share is not separable by this count.`,
+    `What each host runtime adds to a call, counted through its published binding. Arm A is the host's own command-line driver (the cross-language benchmark's \`encode-stdin\`), run under the host's counting configuration (\`counts-core.ts\` \`COUNTING_CONFIGS\`); arm B is the core driver of the native layer the host binds, counted with \`--b-impl Rust\` on the same cell, and both arms decode to the same RGBA bytes or encode to the same hash in every record. A host is countable where, in every one of its records, each arm's per-operation count in each of the interleaved blocks is within ${pct(HOST_SPREAD)} of that arm's median; the check and its tolerance were fixed in issue #173 before any host was counted. The check tests that a record repeats, not that its per-operation figure is independent of the iteration count: work a process does once, part-way through the long process only (a JIT compile at its call threshold, say), is spread over the iterations, so each figure is its cell's at that record's iteration count (\`settings.iterations\`). Kotlin is counted in the JVM's interpreter for this reason; with C1 at its call threshold its decode counted about 12% more per call at 500 iterations than at 2,000. In the interpreter a smaller dependence remains, unexplained: arm A counts 0.5% more per decode at 500 iterations than at 2,000, 0.9% more per 64×64 encode at 200 than at 800, and 0.7% more per 512×512 encode at 20 than at 80, where the host side falls by 11.7% and, under the pinned allocator configuration below, the core (arm B) moves by 45 instructions. A counting configuration is not how the host ships: it pins the runtime's compiler tier and its collector's pacing, so a host's figure is its cost under that configuration. "Native layer" is the overhead row above for the same cell, counted against the same core binary, and "Host side" is what is left: the host's call, its marshalling and its runtime, with its CLI's bench loop. The subtraction assumes the core does the same work in every process, which is why every arm runs under \`GLIBC_TUNABLES=${OVERHEAD_GLIBC_TUNABLES}\`: under glibc's defaults the 512×512 encode's buffers pass malloc's 128 KiB mmap threshold, which glibc raises once the first such buffer is freed, so one process served them from its heap, zeroing them in user space, and another mapped fresh zeroed pages, and the core's allocator work differed between a host's process and the core driver's (issue #184: unpinned, the Python CLI's 512×512 host side read +26,089 against +293,855 at 64×64). Pinning the threshold turns the dynamic threshold off, so every buffer of 64 KiB or more is mapped in every process. A host side below zero is not what the host adds (the core did less work in the host's process, or the arms ran different core code), and the table refuses such a row rather than print it. A count also belongs to its revision (the line at the end names each): two records' figures compare only where they were counted on the same core binary, which \`renderOverheadTable\` holds a host row to against its native layer's row. The TypeScript (wasm) arm runs the core itself as wasm in V8's baseline compiler, so its figure is the whole call against native code rather than the glue alone; the glue's share is not separable by this count.`,
     "",
     "| Host | Counting configuration | Largest block spread | Countable |",
     "| --- | --- | ---: | --- |",
@@ -401,6 +401,8 @@ export function renderOverheadTable(
     "| Host | Via | Cell | Host (A) | Core (B) | Over the core | Native layer | Host side | A/B | Record |",
     "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
   );
+  /** Each countable host's host side, by cell, for the by-size comparison. */
+  const hostSides = new Map<string, Map<string, number>>();
   for (const { h, records, countable } of hostRecords) {
     if (!countable) continue;
     for (const { cell, name, r } of records) {
@@ -421,11 +423,15 @@ export function renderOverheadTable(
         rest = over - diff(lr);
         layer = signed(diff(lr));
         side = signed(rest);
+        const sides = hostSides.get(h.impl) ?? new Map<string, number>();
+        sides.set(cell.cell, rest);
+        hostSides.set(h.impl, sides);
       }
       // Arm A runs the core arm B runs, plus the layer and the host, so a
       // remainder below zero is not what the host adds: the core did less
-      // work in the host's process (its allocator, at 512×512), or the arms
-      // ran different core code. Refused rather than printed.
+      // work in the host's process (its allocator, under another allocator
+      // configuration), or the arms ran different core code. Refused rather
+      // than printed.
       if (rest < 0) {
         throw new Error(
           `${name}: the host counts ${signed(rest)} ${unit(cell)} beyond the core${h.layer === null ? "" : " and its native layer"}, so the subtraction does not isolate the host: the core did less work in the host's process, or the arms ran different core code`,
@@ -435,6 +441,24 @@ export function renderOverheadTable(
         `| ${h.impl} | ${h.via} | ${cell.label} | ${whole(floored(s.a))} | ${whole(floored(s.b))} | ${signed(over)} ${unit(cell)} | ${layer} | ${side} | ${s.ratio.geomean[INS].toFixed(4)} | \`${name}\` |`,
       );
     }
+  }
+
+  // The host side by input size: with the allocator pinned, what a host adds
+  // to a 512×512 encode over a 64×64 one is what grows with the image.
+  lines.push(
+    "",
+    "With the allocator configuration pinned, the encode's host side changes with the input size only by what the host does per pixel or per unit of the call's duration. Python's pixels cross in one `memmove` (the `uniffi-py-bytes` reduction), and its 512×512 host side is within 1% of its 64×64 one. C# and Go pass the pixels by pointer, with no copy, and their 512×512 host sides are fewer than 4,000 instructions over their 64×64 ones, against a core that does 31 times the work; their 512×512 records also spread more between blocks than their 64×64 ones, which is what work that scales with the encode's duration rather than its input (a runtime thread counted with the process) would show. That share is not separated by this count. Kotlin's 512×512 host side is the interpreter's iteration dependence above: at 80 iterations, counted at `e1b90f8` with the same options, it is +5,752,341, 3.6% over its 64×64 one.",
+    "",
+    "| Host | Host side, encode 64×64 | Host side, encode 512×512 | 512×512 − 64×64 | 512×512 / 64×64 |",
+    "| --- | ---: | ---: | ---: | ---: |",
+  );
+  for (const [impl, sides] of hostSides) {
+    const small = sides.get("encode-64");
+    const large = sides.get("encode-512");
+    if (small === undefined || large === undefined) continue;
+    lines.push(
+      `| ${impl} | ${signed(small)} | ${signed(large)} | ${signed(large - small)} | ${(large / small).toFixed(3)} |`,
+    );
   }
 
   const host = (impl: string) => {
