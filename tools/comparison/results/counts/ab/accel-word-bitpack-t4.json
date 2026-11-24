@@ -1,0 +1,269 @@
+{
+  "schema": 1,
+  "tool": "benchmark-counts",
+  "cell": {
+    "impl": "Rust",
+    "op": "encode",
+    "width": 100,
+    "height": 100,
+    "tier": 4,
+    "content": "gradient",
+    "fixtureSha256": "64dfd59305f1df589c23d8b76785b279867bb5f37fba3a8cb8fc65c2519bfb28",
+    "input": null
+  },
+  "arms": {
+    "a": {
+      "bin": "rust/target/release/examples/encode_stdin",
+      "binSha256": "1ea327c05db08fc1b9a9cdc2685e38f7c5b6713f6b5ab947236dac21ae6d7cdd",
+      "tune": "accel_word_bitpack=0"
+    },
+    "b": {
+      "bin": "rust/target/release/examples/encode_stdin",
+      "binSha256": "1ea327c05db08fc1b9a9cdc2685e38f7c5b6713f6b5ab947236dac21ae6d7cdd",
+      "tune": ""
+    }
+  },
+  "settings": {
+    "events": [
+      "instructions:u",
+      "cycles:u"
+    ],
+    "iterations": 4,
+    "blocks": 10,
+    "ratio": "a / b, per operation"
+  },
+  "provenance": {
+    "rev": "29ae9133a877bce3c0afcb3b2af307551ff4d58e",
+    "dirty": false,
+    "dirtyPaths": [],
+    "node": "v24.20.0"
+  },
+  "host": {
+    "cpu": {
+      "vendor": "AuthenticAMD",
+      "family": "25",
+      "model": "97",
+      "stepping": "2",
+      "modelName": "AMD Ryzen 7 7800X3D 8-Core Processor"
+    },
+    "kernel": "7.3.4-300.fc45.x86_64",
+    "threads": 16,
+    "counter": {
+      "backend": "perf-stat",
+      "version": "perf version 7.3.4-300.fc45.x86_64",
+      "paranoid": 2
+    },
+    "loadavgStart": [
+      33.41,
+      31.73,
+      31.66
+    ],
+    "loadavgEnd": [
+      32.74,
+      31.62,
+      31.63
+    ]
+  },
+  "outputs": {
+    "a": "2180d060b01119287349e69e7bf03df8dc7bef39f8de7bef3df7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf79e8715e2999d9ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd1dc8119a9ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd1d",
+    "b": "2180d060b01119287349e69e7bf03df8dc7bef39f8de7bef3df7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf7de7befbdf79e8715e2999d9ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd1dc8119a9ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd1d",
+    "equal": true
+  },
+  "blocks": [
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 239475758.75,
+        "cycles:u": 93144529.75
+      },
+      "b": {
+        "instructions:u": 239432803,
+        "cycles:u": 80909275.25
+      },
+      "ratio": {
+        "instructions:u": 1.0001794062862808,
+        "cycles:u": 1.1512219020896495
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 239475865,
+        "cycles:u": 77180920.25
+      },
+      "b": {
+        "instructions:u": 239432959,
+        "cycles:u": 86970528.5
+      },
+      "ratio": {
+        "instructions:u": 1.0001791983868018,
+        "cycles:u": 0.8874376364172606
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 239475920,
+        "cycles:u": 89542320.25
+      },
+      "b": {
+        "instructions:u": 239433033.25,
+        "cycles:u": 91712635.75
+      },
+      "ratio": {
+        "instructions:u": 1.000179117932968,
+        "cycles:u": 0.9763356981047183
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 239475922.25,
+        "cycles:u": 90141814.75
+      },
+      "b": {
+        "instructions:u": 239433299.5,
+        "cycles:u": 115651639.75
+      },
+      "ratio": {
+        "instructions:u": 1.000178015130264,
+        "cycles:u": 0.7794253064189693
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 239476000.5,
+        "cycles:u": 61066622.75
+      },
+      "b": {
+        "instructions:u": 239432873.5,
+        "cycles:u": 72610266.75
+      },
+      "ratio": {
+        "instructions:u": 1.000180121465234,
+        "cycles:u": 0.8410191214453843
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 239475570.5,
+        "cycles:u": 101056598.5
+      },
+      "b": {
+        "instructions:u": 239433082.75,
+        "cycles:u": 86110993.75
+      },
+      "ratio": {
+        "instructions:u": 1.000177451459556,
+        "cycles:u": 1.1735620981612467
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 239475908.5,
+        "cycles:u": 95773195
+      },
+      "b": {
+        "instructions:u": 239432990.75,
+        "cycles:u": 72158705.5
+      },
+      "ratio": {
+        "instructions:u": 1.0001792474373126,
+        "cycles:u": 1.3272576653970047
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 239475880,
+        "cycles:u": 81038752.25
+      },
+      "b": {
+        "instructions:u": 239433205.25,
+        "cycles:u": 105768652.5
+      },
+      "ratio": {
+        "instructions:u": 1.000178232379905,
+        "cycles:u": 0.7661887556901606
+      }
+    },
+    {
+      "order": "AB",
+      "a": {
+        "instructions:u": 239475834.5,
+        "cycles:u": 103800445
+      },
+      "b": {
+        "instructions:u": 239433163.25,
+        "cycles:u": 77743891.5
+      },
+      "ratio": {
+        "instructions:u": 1.0001782177933114,
+        "cycles:u": 1.3351588529627436
+      }
+    },
+    {
+      "order": "BA",
+      "a": {
+        "instructions:u": 239476005.25,
+        "cycles:u": 62044690.75
+      },
+      "b": {
+        "instructions:u": 239432960.75,
+        "cycles:u": 77221887.25
+      },
+      "ratio": {
+        "instructions:u": 1.0001797768355083,
+        "cycles:u": 0.8034599122025472
+      }
+    }
+  ],
+  "summary": {
+    "a": {
+      "median": {
+        "instructions:u": 239475894.25,
+        "cycles:u": 89842067.5
+      },
+      "min": {
+        "instructions:u": 239475570.5,
+        "cycles:u": 61066622.75
+      },
+      "max": {
+        "instructions:u": 239476005.25,
+        "cycles:u": 103800445
+      }
+    },
+    "b": {
+      "median": {
+        "instructions:u": 239433012,
+        "cycles:u": 83510134.5
+      },
+      "min": {
+        "instructions:u": 239432803,
+        "cycles:u": 72158705.5
+      },
+      "max": {
+        "instructions:u": 239433299.5,
+        "cycles:u": 115651639.75
+      }
+    },
+    "ratio": {
+      "geomean": {
+        "instructions:u": 1.0001788785103862,
+        "cycles:u": 0.9823744693952837
+      },
+      "min": {
+        "instructions:u": 1.000177451459556,
+        "cycles:u": 0.7661887556901606
+      },
+      "max": {
+        "instructions:u": 1.000180121465234,
+        "cycles:u": 1.3351588529627436
+      }
+    }
+  },
+  "against": null
+}
