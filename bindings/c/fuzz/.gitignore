@@ -1,0 +1,10 @@
+target/
+Cargo.lock
+# What a fuzz run writes: the corpus it grows, crash/timeout artifacts, and
+# coverage reports.
+corpus/
+artifacts/
+coverage/
+# Generated from spec/test-vectors by rust/fuzz/seeds.py before every run, so
+# they can never drift from the vectors.
+seeds/
