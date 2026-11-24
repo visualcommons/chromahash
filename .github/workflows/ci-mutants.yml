@@ -66,10 +66,24 @@ jobs:
           path: rust/mutants.out
           if-no-files-found: ignore
 
-  # Weekly (and on-demand) full sweep of the whole core crate.
+  # Weekly (and on-demand) full sweep of the whole core crate, split into 8
+  # shards that run as parallel jobs. Unsharded, it does not fit one job: the
+  # 2026-11-23 scheduled run (2704 mutants then, -j 2) tested 1679 of them in
+  # the 6 h GitHub job limit and was cancelled, about 280 an hour. The sweep is
+  # now about 2,900 mutants, so one job would need over 10 h. Round-robin
+  # sharding gives each shard about 364 mutants from every file, about 1.3 h at
+  # that rate. A shard that still overruns fails at its own timeout, well
+  # before the platform's limit cancels it.
   full:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      # One shard's survivor must not cancel the others: the sweep's result is
+      # every shard's report.
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v4
 
@@ -90,13 +104,15 @@ jobs:
         with:
           tool: cargo-mutants
 
-      - name: Mutation-test the whole core crate
-        run: cargo mutants -d rust --no-shuffle -j 2 -vV
+      # `--shard` is zero-based: shards 0/8 to 7/8 together list every mutant
+      # once.
+      - name: Mutation-test shard ${{ matrix.shard }} of the whole core crate
+        run: cargo mutants -d rust --no-shuffle --shard ${{ matrix.shard }}/8 --sharding round-robin -j 2 -vV
 
       - name: Upload mutants report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mutants-full
+          name: mutants-full-shard-${{ matrix.shard }}
           path: rust/mutants.out
           if-no-files-found: ignore
