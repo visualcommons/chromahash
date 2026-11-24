@@ -113,6 +113,11 @@ public sealed class BatchEncoder : IDisposable
                     nameof(items),
                     $"item {i}: quality tier must be 0..={ChromaHash.MaxTier}"
                 );
+            if (!Enum.IsDefined(it.Gamut))
+                throw new ArgumentOutOfRangeException(
+                    nameof(items),
+                    $"item {i}: gamut {(int)it.Gamut} is not a defined Gamut"
+                );
         }
 
         var output = new ChromaHash[items.Count];
