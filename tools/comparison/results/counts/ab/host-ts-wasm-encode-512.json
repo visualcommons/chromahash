@@ -14,7 +14,7 @@
   "arms": {
     "a": {
       "bin": "typescript/dist/encode-stdin.js",
-      "binSha256": "cd0b930aa7cf808459923332f8b871700985c2a2fdb80d7a59c1c8a938e8ab45",
+      "binSha256": "85ec114288fe8d8857bdfdc6a6df825e473025290f6052567a521cc6ede1673d",
       "tune": "",
       "impl": "TypeScript (wasm)",
       "config": [
@@ -29,7 +29,7 @@
     },
     "b": {
       "bin": "bindings/c/target/release/examples/overhead_core",
-      "binSha256": "23e7447f821ff61c326f811fd290564e1751e973bce7b076f228e303b97b7c61",
+      "binSha256": "76bb6180746a869dcf7ba99fa044ad6c842446469d64b0da9b00dd8c86bf0781",
       "tune": "",
       "impl": "Rust"
     }
@@ -41,10 +41,11 @@
     ],
     "iterations": 20,
     "blocks": 10,
-    "ratio": "a / b, per operation"
+    "ratio": "a / b, per operation",
+    "glibcTunables": "glibc.malloc.mmap_threshold=65536"
   },
   "provenance": {
-    "rev": "84e33389d9258cbebac4f536fe8a1accd9613278",
+    "rev": "5d80e4c83d6cf044256a0f3b61bc08c8a452e2a2",
     "dirty": false,
     "dirtyPaths": [],
     "node": "v24.20.0"
@@ -65,14 +66,14 @@
       "paranoid": 2
     },
     "loadavgStart": [
-      33.09,
-      30.89,
-      33.75
+      60.87,
+      56.5,
+      55.68
     ],
     "loadavgEnd": [
-      31.97,
-      30.76,
-      33.66
+      57.42,
+      56.19,
+      55.61
     ]
   },
   "outputs": {
@@ -84,195 +85,195 @@
     {
       "order": "AB",
       "a": {
-        "instructions:u": 404447753.9,
-        "cycles:u": 169833670.9
+        "instructions:u": 397734674.65,
+        "cycles:u": 179869241.25
       },
       "b": {
-        "instructions:u": 109849401.9,
-        "cycles:u": 47744713.7
+        "instructions:u": 106695137.95,
+        "cycles:u": 45746450.85
       },
       "ratio": {
-        "instructions:u": 3.681838470710872,
-        "cycles:u": 3.5571198932542765
+        "instructions:u": 3.7277675655322584,
+        "cycles:u": 3.9318731378698857
       }
     },
     {
       "order": "BA",
       "a": {
-        "instructions:u": 404447747.15,
-        "cycles:u": 165415301.65
+        "instructions:u": 397729994,
+        "cycles:u": 173401308.6
       },
       "b": {
-        "instructions:u": 109849407.2,
-        "cycles:u": 44293238.55
+        "instructions:u": 106695171.45,
+        "cycles:u": 44546093.15
       },
       "ratio": {
-        "instructions:u": 3.6818382316222453,
-        "cycles:u": 3.734549720569033
+        "instructions:u": 3.7277225257226014,
+        "cycles:u": 3.892626633184329
       }
     },
     {
       "order": "AB",
       "a": {
-        "instructions:u": 404447312.45,
-        "cycles:u": 167694825.4
+        "instructions:u": 397730944.1,
+        "cycles:u": 176585752.15
       },
       "b": {
-        "instructions:u": 109849439.85,
-        "cycles:u": 46949537.65
+        "instructions:u": 106695168.5,
+        "cycles:u": 44366199.8
       },
       "ratio": {
-        "instructions:u": 3.6818331800533075,
-        "cycles:u": 3.571809943052762
+        "instructions:u": 3.7277315335979813,
+        "cycles:u": 3.9801865597242343
       }
     },
     {
       "order": "BA",
       "a": {
-        "instructions:u": 404448371.45,
-        "cycles:u": 165314555.9
+        "instructions:u": 397726041.4,
+        "cycles:u": 177734830.7
       },
       "b": {
-        "instructions:u": 109849406.75,
-        "cycles:u": 42402680.8
+        "instructions:u": 106695138.3,
+        "cycles:u": 43543837.05
       },
       "ratio": {
-        "instructions:u": 3.681843929940022,
-        "cycles:u": 3.8986817055208456
+        "instructions:u": 3.727686638183026,
+        "cycles:u": 4.08174480572102
       }
     },
     {
       "order": "AB",
       "a": {
-        "instructions:u": 404447729.55,
-        "cycles:u": 169857201.2
+        "instructions:u": 397733439.3,
+        "cycles:u": 178577230.95
       },
       "b": {
-        "instructions:u": 109849430.25,
-        "cycles:u": 42286827.65
+        "instructions:u": 106695137.85,
+        "cycles:u": 42966343.1
       },
       "ratio": {
-        "instructions:u": 3.6818372988329635,
-        "cycles:u": 4.016787511370577
+        "instructions:u": 3.7277559907103117,
+        "cycles:u": 4.156212003762545
       }
     },
     {
       "order": "BA",
       "a": {
-        "instructions:u": 404444216.75,
-        "cycles:u": 160658700.25
+        "instructions:u": 397730738.85,
+        "cycles:u": 193183488.9
       },
       "b": {
-        "instructions:u": 109849424.35,
-        "cycles:u": 44471166.1
+        "instructions:u": 106695158.45,
+        "cycles:u": 43147726.45
       },
       "ratio": {
-        "instructions:u": 3.6818055182644205,
-        "cycles:u": 3.6126486966574056
+        "instructions:u": 3.7277299610214882,
+        "cycles:u": 4.47725766324821
       }
     },
     {
       "order": "AB",
       "a": {
-        "instructions:u": 404444519.6,
-        "cycles:u": 154559392.3
+        "instructions:u": 397730282.8,
+        "cycles:u": 178973267.4
       },
       "b": {
-        "instructions:u": 109849406.65,
-        "cycles:u": 43414955.45
+        "instructions:u": 106695139.2,
+        "cycles:u": 46015607.65
       },
       "ratio": {
-        "instructions:u": 3.681808868468749,
-        "cycles:u": 3.560049542789523
+        "instructions:u": 3.727726359252925,
+        "cycles:u": 3.8894035424087248
       }
     },
     {
       "order": "BA",
       "a": {
-        "instructions:u": 404447520.6,
-        "cycles:u": 125004901.75
+        "instructions:u": 397730910.65,
+        "cycles:u": 174066612.45
       },
       "b": {
-        "instructions:u": 109849437.8,
-        "cycles:u": 37042389
+        "instructions:u": 106695129,
+        "cycles:u": 47081325.45
       },
       "ratio": {
-        "instructions:u": 3.6818351436296566,
-        "cycles:u": 3.374644700966776
+        "instructions:u": 3.727732600145223,
+        "cycles:u": 3.6971476649453585
       }
     },
     {
       "order": "AB",
       "a": {
-        "instructions:u": 404446217.7,
-        "cycles:u": 137459740.55
+        "instructions:u": 397733382.6,
+        "cycles:u": 157657629.75
       },
       "b": {
-        "instructions:u": 109849425.75,
-        "cycles:u": 33214417.05
+        "instructions:u": 106695143.95,
+        "cycles:u": 42776936.6
       },
       "ratio": {
-        "instructions:u": 3.6818236867296505,
-        "cycles:u": 4.138556469110151
+        "instructions:u": 3.7277552461655405,
+        "cycles:u": 3.685575505890714
       }
     },
     {
       "order": "BA",
       "a": {
-        "instructions:u": 404450831.05,
-        "cycles:u": 129843502.75
+        "instructions:u": 397735193.45,
+        "cycles:u": 187181792.6
       },
       "b": {
-        "instructions:u": 109849422.1,
-        "cycles:u": 33539823.9
+        "instructions:u": 106695148.5,
+        "cycles:u": 43390062.85
       },
       "ratio": {
-        "instructions:u": 3.6818658061014964,
-        "cycles:u": 3.871323330054813
+        "instructions:u": 3.7277720593828123,
+        "cycles:u": 4.31393227631612
       }
     }
   ],
   "summary": {
     "a": {
       "median": {
-        "instructions:u": 404447625.07500005,
-        "cycles:u": 162986628.075
+        "instructions:u": 397730927.375,
+        "cycles:u": 178156030.825
       },
       "min": {
-        "instructions:u": 404444216.75,
-        "cycles:u": 125004901.75
+        "instructions:u": 397726041.4,
+        "cycles:u": 157657629.75
       },
       "max": {
-        "instructions:u": 404450831.05,
-        "cycles:u": 169857201.2
+        "instructions:u": 397735193.45,
+        "cycles:u": 193183488.9
       }
     },
     "b": {
       "median": {
-        "instructions:u": 109849423.225,
-        "cycles:u": 42908818.125
+        "instructions:u": 106695141.575,
+        "cycles:u": 43955018.425
       },
       "min": {
-        "instructions:u": 109849401.9,
-        "cycles:u": 33214417.05
+        "instructions:u": 106695129,
+        "cycles:u": 42776936.6
       },
       "max": {
-        "instructions:u": 109849439.85,
-        "cycles:u": 47744713.7
+        "instructions:u": 106695171.45,
+        "cycles:u": 47081325.45
       }
     },
     "ratio": {
       "geomean": {
-        "instructions:u": 3.6818330133986654,
-        "cycles:u": 3.7266961850498257
+        "instructions:u": 3.72773804789357,
+        "cycles:u": 4.003528959317997
       },
       "min": {
-        "instructions:u": 3.6818055182644205,
-        "cycles:u": 3.374644700966776
+        "instructions:u": 3.727686638183026,
+        "cycles:u": 3.685575505890714
       },
       "max": {
-        "instructions:u": 3.6818658061014964,
-        "cycles:u": 4.138556469110151
+        "instructions:u": 3.7277720593828123,
+        "cycles:u": 4.47725766324821
       }
     }
   },
