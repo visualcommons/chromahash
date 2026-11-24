@@ -7,6 +7,9 @@
 //!
 //!   - a hash's byte length is a function of `(tier, has_alpha)` alone;
 //!   - `from_bytes` accepts exactly what `encode_with_quality` produces;
+//!   - every validation branch returns its own `ChromaHashError`, in the spec's
+//!     order of precedence — pinned exhaustively over every `(byte 0, length)`
+//!     pair as well as by one property per variant;
 //!   - anything `from_bytes` accepts, `decode` handles without panicking —
 //!     the documented contract that "a hash that validates is guaranteed to
 //!     decode";
@@ -265,8 +268,318 @@ fn every_error_variant_has_its_own_message() {
     }
 }
 
+// ─── validation branches ─────────────────────────────────────────────────────
+//
+// `from_bytes` (and its sweep twin `from_bytes_tuned`) has six outcomes, checked
+// in this order, the first failing check deciding the error:
+//
+//   1. `TooShort`           — fewer than `ceil(PREFIX_BITS / 8)` = 7 bytes;
+//   2. `UnsupportedVersion` — byte 0 bits 0..3 ≠ `FORMAT_VERSION`;
+//   3. `InvalidTier`        — byte 0 bits 3..6 > `MAX_TIER`;
+//   4. `ReservedBitSet`     — byte 0 bit 7 set;
+//   5. `LengthMismatch`     — length ≠ the (tier, bit-6 alpha flag) table;
+//   6. `Ok`                 — and an `Ok` hash decodes.
+//
+// Each outcome is pinned twice: once exhaustively, with no randomness, by
+// `every_header_byte_at_every_length_is_classified`, so a mutation sweep that
+// draws an unlucky seed still kills every validation mutant; and once as a
+// proptest per variant, which reaches that one check with every *later* field
+// random, so precedence is asserted over the whole input domain, not just the
+// fixture the exhaustive test pads with.
+
+/// The one length a TooShort check draws its line at: `ceil(54 / 8)`.
+const MIN_LEN: usize = 7;
+/// One past the longest hash the format defines (tier 4, opaque), so the
+/// enumerations below reach a length above every valid one.
+const LEN_LIMIT: usize = 1624;
+
+/// The length `(tier, alpha)` implies, read from the spec table.
+fn expected_len(tier: u8, alpha: bool) -> usize {
+    let table = if alpha { ALPHA_LEN } else { OPAQUE_LEN };
+    table[tier as usize]
+}
+
+/// Byte 0 from its four fields.
+fn header_byte(version: u8, tier: u8, alpha: bool, reserved: bool) -> u8 {
+    (version & 0b111) | ((tier & 0b111) << 3) | ((alpha as u8) << 6) | ((reserved as u8) << 7)
+}
+
+/// The spec's validation order, written independently of the crate: the oracle
+/// both validators are held to.
+fn classify(bytes: &[u8]) -> Result<(), ChromaHashError> {
+    if bytes.len() < MIN_LEN {
+        return Err(ChromaHashError::TooShort);
+    }
+    let b0 = bytes[0];
+    let tier = (b0 >> 3) & 0b111;
+    if b0 & 0b111 != FORMAT_VERSION {
+        Err(ChromaHashError::UnsupportedVersion)
+    } else if tier > MAX_TIER {
+        Err(ChromaHashError::InvalidTier)
+    } else if b0 >> 7 != 0 {
+        Err(ChromaHashError::ReservedBitSet)
+    } else if bytes.len() != expected_len(tier, (b0 >> 6) & 1 == 1) {
+        Err(ChromaHashError::LengthMismatch)
+    } else {
+        Ok(())
+    }
+}
+
+/// `len` bytes from a seed, byte 0 replaced by `b0` and byte 1 by `aspect`
+/// where the string is long enough to hold them.
+fn seeded_bytes(len: usize, seed: u64, b0: u8, aspect: u8) -> Vec<u8> {
+    let mut state = seed | 1;
+    let mut bytes: Vec<u8> = (0..len)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state as u8
+        })
+        .collect();
+    if let Some(b) = bytes.get_mut(0) {
+        *b = b0;
+    }
+    if let Some(b) = bytes.get_mut(1) {
+        *b = aspect;
+    }
+    bytes
+}
+
+/// Both validators must give `expected` for `bytes`, and an `Ok` must hand back
+/// the same bytes.
+fn assert_both_validators(
+    bytes: &[u8],
+    expected: Result<(), ChromaHashError>,
+) -> Result<(), TestCaseError> {
+    let plain = ChromaHash::from_bytes(bytes);
+    let tuned = ChromaHash::from_bytes_tuned(bytes, &Tunables::DEFAULT);
+    prop_assert_eq!(plain.as_ref().map(|_| ()).map_err(|e| *e), expected);
+    prop_assert_eq!(tuned.as_ref().map(|_| ()).map_err(|e| *e), expected);
+    if let Ok(h) = plain {
+        prop_assert_eq!(h.as_bytes(), bytes);
+    }
+    if let Ok(h) = tuned {
+        prop_assert_eq!(h.as_bytes(), bytes);
+    }
+    Ok(())
+}
+
+/// The tier's natural raster for a validated hash, from the spec alone: the
+/// long edge is `32 << render_level(tier)` (codes 0 and 1 share level 0), it is
+/// the width from aspect byte 128 up (`decode_aspect` > 1 there) and the height
+/// below, and the short edge is at least `2 << level` (a 16:1 clamp of 32 px).
+fn assert_tier_raster(bytes: &[u8], w: u32, h: u32) -> Result<(), TestCaseError> {
+    let tier = (bytes[0] >> 3) & 0b111;
+    let level = tier.saturating_sub(1);
+    let long = 32u32 << level;
+    let (major, minor) = if bytes[1] >= 128 { (w, h) } else { (h, w) };
+    prop_assert_eq!(
+        major,
+        long,
+        "tier {} aspect {}: {}x{}",
+        tier,
+        bytes[1],
+        w,
+        h
+    );
+    prop_assert!(
+        minor >= 2 << level && minor <= long,
+        "tier {} aspect {}: short edge {} outside [{}, {}]",
+        tier,
+        bytes[1],
+        minor,
+        2 << level,
+        long
+    );
+    Ok(())
+}
+
+/// The second half of the contract: a hash `from_bytes` accepts decodes, at the
+/// tier's natural raster, and a capped decode gives exactly `min(natural, cap)`
+/// per axis.
+fn assert_validated_decodes(bytes: &[u8], max_w: u32, max_h: u32) -> Result<(), TestCaseError> {
+    let hash = ChromaHash::from_bytes(bytes)
+        .map_err(|e| TestCaseError::fail(format!("expected a valid hash, got {e}")))?;
+    let (w, h, pixels) = hash.decode();
+    assert_tier_raster(bytes, w, h)?;
+    prop_assert_eq!(pixels.len(), (w * h * 4) as usize);
+
+    let (cw, ch, capped) = hash.decode_capped(max_w, max_h);
+    prop_assert_eq!((cw, ch), (w.min(max_w), h.min(max_h)));
+    prop_assert_eq!(capped.len(), (cw * ch * 4) as usize);
+    Ok(())
+}
+
+/// Every byte-0 value at every length from 0 to one past the longest hash: the
+/// whole `(header, length)` domain the validators branch on, 256 × 1625 strings,
+/// with no randomness. The payload bytes after byte 0 are never read by
+/// validation, so this is exhaustive over everything it can depend on.
+///
+/// This is the deterministic pin for every branch: a randomized property may
+/// draw past a boundary in one mutation sweep and onto it in the next, and this
+/// test does not.
+#[test]
+fn every_header_byte_at_every_length_is_classified() {
+    let buf = vec![0xA5u8; LEN_LIMIT];
+    let mut reached = [0usize; 6];
+
+    for b0 in 0u8..=255 {
+        for len in 0..=LEN_LIMIT {
+            let mut bytes = buf[..len].to_vec();
+            if let Some(b) = bytes.first_mut() {
+                *b = b0;
+            }
+            let expected = classify(&bytes);
+            reached[match expected {
+                Err(ChromaHashError::TooShort) => 0,
+                Err(ChromaHashError::UnsupportedVersion) => 1,
+                Err(ChromaHashError::InvalidTier) => 2,
+                Err(ChromaHashError::ReservedBitSet) => 3,
+                Err(ChromaHashError::LengthMismatch) => 4,
+                Ok(()) => 5,
+            }] += 1;
+            if let Err(e) = assert_both_validators(&bytes, expected) {
+                panic!("byte 0 = {b0:#04x}, len {len}: {e}");
+            }
+        }
+    }
+
+    // The counts are the format's own arithmetic, so a classifier that drifted
+    // from the spec order, not just one that never reached a branch, fails here.
+    // Lengths 0..7 are TooShort whatever byte 0 is (7 of them, × 256 headers);
+    // the 1618 lengths from 7 up split by header: 224 wrong versions, 12 of the
+    // remaining 32 name a reserved tier, 10 of the 20 left set the reserved bit,
+    // and each of the last 10 headers (5 tiers × 2 alpha flags) is valid at
+    // exactly one length.
+    let tail = LEN_LIMIT + 1 - MIN_LEN;
+    assert_eq!(
+        reached,
+        [
+            256 * MIN_LEN,
+            224 * tail,
+            12 * tail,
+            10 * tail,
+            10 * (tail - 1),
+            10
+        ]
+    );
+}
+
+/// The validated strings `every_header_byte_at_every_length_is_classified`
+/// accepts are exactly the ten (tier, alpha) table entries, and every one of
+/// them decodes at its tier's raster. Deterministic: one per table entry, with
+/// a payload no encoder wrote, at the square aspect and both clamp extremes.
+#[test]
+fn every_tier_and_alpha_mode_validates_and_decodes_at_its_raster() {
+    for tier in COMPACT_TIER..=MAX_TIER {
+        for alpha in [false, true] {
+            for aspect in [0u8, 128, 255] {
+                let b0 = header_byte(FORMAT_VERSION, tier, alpha, false);
+                let bytes = seeded_bytes(expected_len(tier, alpha), u64::from(b0), b0, aspect);
+                if let Err(e) = assert_validated_decodes(&bytes, 8, 8) {
+                    panic!("tier {tier} alpha {alpha} aspect {aspect}: {e}");
+                }
+            }
+        }
+    }
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(CASES))]
+
+    /// `TooShort` is decided by the length alone: below 7 bytes nothing else is
+    /// read, whatever byte 0 says.
+    #[test]
+    fn too_short_is_decided_by_the_length_alone(
+        bytes in prop::collection::vec(any::<u8>(), 0..MIN_LEN),
+    ) {
+        assert_both_validators(&bytes, Err(ChromaHashError::TooShort))?;
+    }
+
+    /// A wrong `version` rejects before the tier, the reserved bit or the
+    /// length is looked at.
+    #[test]
+    fn a_wrong_version_wins_over_every_later_check(
+        version in (0u8..=7).prop_filter("not this build's version", |v| *v != FORMAT_VERSION),
+        tier in 0u8..=7,
+        alpha in any::<bool>(),
+        reserved in any::<bool>(),
+        len in MIN_LEN..=LEN_LIMIT,
+        seed in any::<u64>(),
+        aspect in any::<u8>(),
+    ) {
+        let bytes = seeded_bytes(len, seed, header_byte(version, tier, alpha, reserved), aspect);
+        assert_both_validators(&bytes, Err(ChromaHashError::UnsupportedVersion))?;
+    }
+
+    /// A reserved tier code (5..=7) rejects before the reserved bit or the
+    /// length is looked at.
+    #[test]
+    fn a_reserved_tier_wins_over_the_reserved_bit_and_the_length(
+        tier in (MAX_TIER + 1)..=7u8,
+        alpha in any::<bool>(),
+        reserved in any::<bool>(),
+        len in MIN_LEN..=LEN_LIMIT,
+        seed in any::<u64>(),
+        aspect in any::<u8>(),
+    ) {
+        let bytes = seeded_bytes(len, seed, header_byte(FORMAT_VERSION, tier, alpha, reserved), aspect);
+        assert_both_validators(&bytes, Err(ChromaHashError::InvalidTier))?;
+    }
+
+    /// A set reserved bit rejects before the length is looked at: even a string
+    /// of exactly the length its tier and alpha flag imply.
+    #[test]
+    fn a_set_reserved_bit_wins_over_the_length(
+        tier in COMPACT_TIER..=MAX_TIER,
+        alpha in any::<bool>(),
+        exact in any::<bool>(),
+        len in MIN_LEN..=LEN_LIMIT,
+        seed in any::<u64>(),
+        aspect in any::<u8>(),
+    ) {
+        let len = if exact { expected_len(tier, alpha) } else { len };
+        let bytes = seeded_bytes(len, seed, header_byte(FORMAT_VERSION, tier, alpha, true), aspect);
+        assert_both_validators(&bytes, Err(ChromaHashError::ReservedBitSet))?;
+    }
+
+    /// With a valid header, every length but the one `(tier, alpha)` implies is
+    /// a `LengthMismatch` — including the *other* alpha mode's length, which is
+    /// what reading the alpha flag from the wrong bit would accept.
+    #[test]
+    fn a_valid_header_at_any_other_length_is_a_length_mismatch(
+        tier in COMPACT_TIER..=MAX_TIER,
+        alpha in any::<bool>(),
+        other_mode in any::<bool>(),
+        len in MIN_LEN..=LEN_LIMIT,
+        seed in any::<u64>(),
+        aspect in any::<u8>(),
+    ) {
+        let want = expected_len(tier, alpha);
+        let len = if other_mode { expected_len(tier, !alpha) } else { len };
+        prop_assume!(len != want);
+        let bytes = seeded_bytes(len, seed, header_byte(FORMAT_VERSION, tier, alpha, false), aspect);
+        assert_both_validators(&bytes, Err(ChromaHashError::LengthMismatch))?;
+    }
+
+    /// Arbitrary strings, not built around any one branch: whatever the bytes,
+    /// both validators agree with the spec's order of checks. Draws its length
+    /// near the table entries as often as anywhere else, so the accept path is
+    /// reached by more than chance.
+    #[test]
+    fn arbitrary_strings_follow_the_spec_order(
+        b0 in any::<u8>(),
+        len in prop_oneof![
+            0usize..=LEN_LIMIT,
+            prop::sample::select(OPAQUE_LEN.iter().chain(ALPHA_LEN.iter()).copied().collect::<Vec<_>>()),
+        ],
+        seed in any::<u64>(),
+        aspect in any::<u8>(),
+    ) {
+        let bytes = seeded_bytes(len, seed, b0, aspect);
+        assert_both_validators(&bytes, classify(&bytes))?;
+    }
 
     /// The byte length depends on the tier and the alpha mode, and on nothing
     /// else — not the dimensions, not the gamut, not the pixel content.
@@ -439,6 +752,40 @@ proptest! {
             let _ = hash.average_color();
             let _ = hash.decode_capped(8, 8);
         }
+    }
+
+    /// Validates-implies-decodes over byte strings no encoder wrote: any valid
+    /// header, any aspect byte, a random payload at exactly the header-implied
+    /// length. `from_bytes` must accept it, and `decode` and `decode_capped`
+    /// must render it at the tier's raster.
+    #[test]
+    fn any_valid_header_at_its_length_validates_and_decodes_at_the_tier_raster(
+        tier in COMPACT_TIER..=MAX_TIER,
+        alpha in any::<bool>(),
+        aspect in any::<u8>(),
+        seed in any::<u64>(),
+        max_w in 1u32..=300,
+        max_h in 1u32..=300,
+    ) {
+        let b0 = header_byte(FORMAT_VERSION, tier, alpha, false);
+        let bytes = seeded_bytes(expected_len(tier, alpha), seed, b0, aspect);
+        assert_validated_decodes(&bytes, max_w, max_h)?;
+    }
+
+    /// Validates-implies-decodes over real encodes: what the encoder writes
+    /// validates, and decodes at the tier's raster.
+    #[test]
+    fn every_encode_validates_and_decodes_at_the_tier_raster(
+        opaque in any::<bool>(),
+        gamut in gamuts(),
+        tier in COMPACT_TIER..=MAX_TIER,
+        seed in any::<u64>(),
+        max_w in 1u32..=300,
+        max_h in 1u32..=300,
+    ) {
+        let (w, h, rgba) = deterministic_image(seed, opaque);
+        let encoded = ChromaHash::encode_with_quality(w, h, &rgba, gamut, tier);
+        assert_validated_decodes(encoded.as_bytes(), max_w, max_h)?;
     }
 
     /// A capped decode never exceeds its cap, never returns an empty image, and

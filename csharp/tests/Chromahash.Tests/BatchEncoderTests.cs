@@ -112,6 +112,21 @@ public class BatchEncoderTests
         Assert.Contains("item 1", ex.Message);
     }
 
+    [Theory]
+    [InlineData(5)]
+    [InlineData(-1)]
+    public void UndefinedGamutThrowsWithIndex(int value)
+    {
+        using var encoder = new BatchEncoder();
+        var items = new List<ImageInput>
+        {
+            new(2, 2, Helpers.SolidImage(2, 2, 0, 0, 0, 255), Gamut.Srgb),
+            new(2, 2, Helpers.SolidImage(2, 2, 0, 0, 0, 255), (Gamut)value),
+        };
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => encoder.EncodeBatch(items));
+        Assert.Contains("item 1", ex.Message);
+    }
+
     [Fact]
     public void EmptyBatchReturnsEmpty()
     {

@@ -587,8 +587,10 @@ Explicitly unresolved, so nothing evaluated-in-thought silently disappears:
    does not hold for alpha. Both sit at the edge of D6's grid: a wider alpha
    field, or at code 3 a larger 5-bit count, was never measured.
 3. ~~**Code 3–4 positioning**~~ — **resolved in v0.7 by repositioning them**
-   (`README.md` §14.1). Size-matched WebP overtakes code 3 and AVIF/WebP/JPEG
-   beat code 4, AVIF by 19% on ΔE00 (`EXPERIMENTS.md` §11.14). Entropy coding
+   (`README.md` §14.1). Size-matched WebP takes SSIMULACRA2, Butteraugli and
+   DSSIM off code 3, which keeps ΔE00 at generation v2 (7.313 against WebP's
+   7.518), and AVIF/WebP/JPEG beat code 4, AVIF by 18% on ΔE00
+   (`EXPERIMENTS.md` §11.14). Entropy coding
    recovers 6.04% at code 3 and 2.80% at code 4 on `holdout3`
    (`EXPERIMENTS.md` §13.8), short of that gap at code 4. The spec
    now states that codes 3–4 are kept for their operational properties — no

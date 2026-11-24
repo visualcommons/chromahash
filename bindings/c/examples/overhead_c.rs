@@ -12,8 +12,8 @@ use chromahash_c::{
     chromahash_as_bytes, chromahash_batch_encode, chromahash_batch_encoder_free,
     chromahash_batch_encoder_with_threads, chromahash_byte_len, chromahash_decode,
     chromahash_encode_with_quality, chromahash_free, chromahash_from_bytes, chromahash_image_free,
-    ChromaHash, ChromaHashBatchEncoder, ChromaHashGamut, ChromaHashImage, ChromaHashImageInput,
-    ChromaHashStatus,
+    ChromaHash, ChromaHashBatchEncoder, ChromaHashImage, ChromaHashImageInput, ChromaHashStatus,
+    CHROMA_HASH_GAMUT_SRGB,
 };
 use protocol::Layer;
 
@@ -55,7 +55,7 @@ impl Layer for C {
                 h,
                 rgba.as_ptr(),
                 rgba.len(),
-                ChromaHashGamut::Srgb,
+                CHROMA_HASH_GAMUT_SRGB,
                 tier,
                 &mut hash,
             );
@@ -108,7 +108,7 @@ impl Layer for C {
                     height: h,
                     rgba: rgba.as_ptr(),
                     rgba_len: rgba.len(),
-                    gamut: ChromaHashGamut::Srgb,
+                    gamut: CHROMA_HASH_GAMUT_SRGB,
                     quality: tier,
                 })
                 .collect();

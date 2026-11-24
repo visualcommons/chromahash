@@ -36,7 +36,7 @@ parse_deps = false
 include = ["ChromaHash", "ChromaHashBatchEncoder"]
 
 [enum]
-# Srgb -> CHROMA_HASH_GAMUT_SRGB, Ok -> CHROMA_HASH_STATUS_OK: collision-safe,
+# Ok -> CHROMA_HASH_STATUS_OK: collision-safe,
 # idiomatic C constant names derived from the (already prefixed) enum type name.
 rename_variants = "QualifiedScreamingSnakeCase"
 prefix_with_name = false

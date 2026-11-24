@@ -2,6 +2,7 @@ package chromahash
 
 import (
 	"bytes"
+	"strconv"
 	"testing"
 )
 
@@ -88,6 +89,24 @@ func TestBatchEncodeRejectsReservedTier(t *testing.T) {
 	be.EncodeBatch([]ImageInput{
 		{W: 2, H: 2, Rgba: make([]byte, 16), Gamut: GamutSRGB, Quality: MaxTier + 1},
 	})
+}
+
+func TestBatchEncodeRejectsUnknownGamut(t *testing.T) {
+	for _, g := range []Gamut{5, -1} {
+		t.Run(strconv.Itoa(int(g)), func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != "chromahash: item 1: unknown gamut" {
+					t.Errorf("recovered %v, want item 1's unknown-gamut panic", r)
+				}
+			}()
+			be := NewBatchEncoder()
+			defer be.Close()
+			be.EncodeBatch([]ImageInput{
+				NewImageInput(2, 2, make([]byte, 16), GamutSRGB),
+				NewImageInput(2, 2, make([]byte, 16), g),
+			})
+		})
+	}
 }
 
 func TestBatchEncodePreservesOrder(t *testing.T) {

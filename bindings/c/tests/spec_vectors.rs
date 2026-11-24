@@ -12,7 +12,8 @@ use chromahash_c::{
     chromahash_free, chromahash_from_bytes, chromahash_image_free, ChromaHash, ChromaHashColor,
     ChromaHashGamut, ChromaHashImage, ChromaHashImageInput, ChromaHashStatus,
     CHROMAHASH_COMPACT_TIER, CHROMAHASH_DEFAULT_TIER, CHROMAHASH_FORMAT_VERSION,
-    CHROMAHASH_MAX_TIER,
+    CHROMAHASH_MAX_TIER, CHROMA_HASH_GAMUT_ADOBE_RGB, CHROMA_HASH_GAMUT_BT2020,
+    CHROMA_HASH_GAMUT_DISPLAY_P3, CHROMA_HASH_GAMUT_PRO_PHOTO_RGB, CHROMA_HASH_GAMUT_SRGB,
 };
 use serde_json::Value;
 
@@ -31,11 +32,11 @@ const DECODE_CAPPED_VECTORS: &str = include_str!(concat!(
 
 fn gamut_from_str(s: &str) -> ChromaHashGamut {
     match s {
-        "sRGB" => ChromaHashGamut::Srgb,
-        "Display P3" => ChromaHashGamut::DisplayP3,
-        "Adobe RGB" => ChromaHashGamut::AdobeRgb,
-        "BT.2020" => ChromaHashGamut::Bt2020,
-        "ProPhoto RGB" => ChromaHashGamut::ProPhotoRgb,
+        "sRGB" => CHROMA_HASH_GAMUT_SRGB,
+        "Display P3" => CHROMA_HASH_GAMUT_DISPLAY_P3,
+        "Adobe RGB" => CHROMA_HASH_GAMUT_ADOBE_RGB,
+        "BT.2020" => CHROMA_HASH_GAMUT_BT2020,
+        "ProPhoto RGB" => CHROMA_HASH_GAMUT_PRO_PHOTO_RGB,
         other => panic!("unknown gamut in spec vector: {other:?}"),
     }
 }
@@ -241,7 +242,7 @@ fn encode_rejects_bad_args() {
                 1,
                 rgba.as_ptr(),
                 rgba.len(),
-                ChromaHashGamut::Srgb,
+                CHROMA_HASH_GAMUT_SRGB,
                 &mut handle,
             )
         },
@@ -256,7 +257,7 @@ fn encode_rejects_bad_args() {
                 2,
                 short.as_ptr(),
                 short.len(),
-                ChromaHashGamut::Srgb,
+                CHROMA_HASH_GAMUT_SRGB,
                 &mut handle,
             )
         },
@@ -264,7 +265,7 @@ fn encode_rejects_bad_args() {
     );
     // Null rgba.
     assert_eq!(
-        unsafe { chromahash_encode(2, 2, ptr::null(), 16, ChromaHashGamut::Srgb, &mut handle) },
+        unsafe { chromahash_encode(2, 2, ptr::null(), 16, CHROMA_HASH_GAMUT_SRGB, &mut handle) },
         ChromaHashStatus::NullPointer
     );
 }
@@ -340,7 +341,7 @@ fn batch_encode_rejects_a_reserved_tier() {
         height: 4,
         rgba: rgba.as_ptr(),
         rgba_len: rgba.len(),
-        gamut: ChromaHashGamut::Srgb,
+        gamut: CHROMA_HASH_GAMUT_SRGB,
         quality: chromahash::MAX_TIER + 1,
     }];
 
@@ -365,7 +366,13 @@ fn batch_encode_rejects_a_reserved_tier() {
 fn from_bytes_rejects_a_malformed_header() {
     let rgba = [128u8; 4 * 4 * 4];
     let valid = {
-        let h = encode(4, 4, &rgba, ChromaHashGamut::Srgb, chromahash::DEFAULT_TIER);
+        let h = encode(
+            4,
+            4,
+            &rgba,
+            CHROMA_HASH_GAMUT_SRGB,
+            chromahash::DEFAULT_TIER,
+        );
         let bytes = hash_bytes(h).to_vec();
         unsafe { chromahash_free(h) };
         bytes
@@ -401,7 +408,7 @@ fn each_tier_has_its_documented_length_and_raster() {
     let edges = [32u32, 32, 64, 128, 256];
 
     for tier in 0..=chromahash::MAX_TIER {
-        let hash = encode(4, 4, &rgba, ChromaHashGamut::Srgb, tier);
+        let hash = encode(4, 4, &rgba, CHROMA_HASH_GAMUT_SRGB, tier);
         assert_eq!(
             hash_bytes(hash).len(),
             lengths[tier as usize],
