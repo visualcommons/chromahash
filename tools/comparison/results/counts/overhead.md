@@ -10,10 +10,10 @@ What each binding layer adds to an operation over the Rust core, as retired user
 | C ABI | C, C# (P/Invoke), Go (cgo) | encode 512×512 | 109,849,619 | 109,849,422 | +197 per encode | 1.0000 | `overhead-c-encode-512.json` |
 | C ABI | C, C# (P/Invoke), Go (cgo) | decode (64×64's hash) | 2,400,842 | 2,400,660 | +182 per decode | 1.0001 | `overhead-c-decode-64.json` |
 | C ABI | C, C# (P/Invoke), Go (cgo) | batch of 16 × 64×64 | 59,839,149 | 59,834,673 | +4,476 per batch (+280 per image) | 1.0001 | `overhead-c-batch16-64.json` |
-| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | encode 64×64 | 3,740,194 | 3,735,886 | +4,308 per encode | 1.0012 | `overhead-uniffi-encode-64.json` |
-| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | encode 512×512 | 109,977,360 | 109,849,407 | +127,953 per encode | 1.0012 | `overhead-uniffi-encode-512.json` |
-| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | decode (64×64's hash) | 2,404,798 | 2,400,660 | +4,138 per decode | 1.0017 | `overhead-uniffi-decode-64.json` |
-| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | batch of 16 × 64×64 | 59,877,817 | 59,835,641 | +42,176 per batch (+2,636 per image) | 1.0007 | `overhead-uniffi-batch16-64.json` |
+| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | encode 64×64 | 3,436,047 | 3,431,725 | +4,322 per encode | 1.0013 | `overhead-uniffi-encode-64.json` |
+| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | encode 512×512 | 107,082,943 | 106,954,992 | +127,951 per encode | 1.0012 | `overhead-uniffi-encode-512.json` |
+| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | decode (64×64's hash) | 2,216,885 | 2,212,747 | +4,138 per decode | 1.0019 | `overhead-uniffi-decode-64.json` |
+| UniFFI scaffolding | Kotlin/JVM, Android, Python; Swift (not counted) | batch of 16 × 64×64 | 55,005,855 | 54,964,227 | +41,628 per batch (+2,602 per image) | 1.0008 | `overhead-uniffi-batch16-64.json` |
 
 ## Host runtimes
 
@@ -23,8 +23,8 @@ What each host runtime adds to a call, counted through its published binding. Ar
 | --- | --- | ---: | --- |
 | C# | `DOTNET_GCgen0size=0x10000000` `DOTNET_TieredCompilation=0` `DOTNET_TieredPGO=0` `DOTNET_gcConcurrent=0` | 0.024% | yes |
 | Go | `GOGC=off` `GOMAXPROCS=1` | 0.099% | yes |
-| Kotlin | `JAVA_OPTS=-XX:+UseSerialGC -Xint` | 0.009% | yes |
-| Python | `PYTHONHASHSEED=0` `runs: python/.venv/bin/python -m chromahash.encode_stdin` | 0.422% | yes |
+| Kotlin | `JAVA_OPTS=-XX:+UseSerialGC -Xint` | 0.007% | yes |
+| Python | `PYTHONHASHSEED=0` `runs: python/.venv/bin/python -m chromahash.encode_stdin` | 0.047% | yes |
 | TypeScript (wasm) | `--single-threaded` `--no-opt` `--no-maglev` `--no-sparkplug` `--liftoff-only` `--random-seed=1` `--hash-seed=1` | 0.002% | yes |
 
 | Host | Via | Cell | Host (A) | Core (B) | Over the core | Native layer | Host side | A/B | Record |
@@ -35,12 +35,12 @@ What each host runtime adds to a call, counted through its published binding. Ar
 | Go | cgo and the Go runtime | encode 64×64 | 3,740,767 | 3,735,887 | +4,880 per encode | +208 | +4,672 | 1.0013 | `host-go-encode-64.json` |
 | Go | cgo and the Go runtime | encode 512×512 | 109,884,856 | 109,849,427 | +35,429 per encode | +197 | +35,232 | 1.0006 | `host-go-encode-512.json` |
 | Go | cgo and the Go runtime | decode (64×64's hash) | 2,408,194 | 2,400,660 | +7,534 per decode | +182 | +7,352 | 1.0031 | `host-go-decode-64.json` |
-| Kotlin | JNA and the JVM | encode 64×64 | 9,289,040 | 3,735,886 | +5,553,154 per encode | +4,308 | +5,548,846 | 2.4865 | `host-kotlin-encode-64.json` |
-| Kotlin | JNA and the JVM | encode 512×512 | 116,631,431 | 109,849,405 | +6,782,026 per encode | +127,953 | +6,654,073 | 1.0617 | `host-kotlin-encode-512.json` |
-| Kotlin | JNA and the JVM | decode (64×64's hash) | 5,006,579 | 2,400,660 | +2,605,919 per decode | +4,138 | +2,601,781 | 2.0855 | `host-kotlin-decode-64.json` |
-| Python | ctypes and CPython | encode 64×64 | 46,710,407 | 3,735,887 | +42,974,520 per encode | +4,308 | +42,970,212 | 12.4946 | `host-python-encode-64.json` |
-| Python | ctypes and CPython | encode 512×512 | 2,826,907,979 | 109,849,404 | +2,717,058,575 per encode | +127,953 | +2,716,930,622 | 25.7472 | `host-python-encode-512.json` |
-| Python | ctypes and CPython | decode (64×64's hash) | 2,748,974 | 2,400,660 | +348,314 per decode | +4,138 | +344,176 | 1.1451 | `host-python-decode-64.json` |
+| Kotlin | JNA and the JVM | encode 64×64 | 8,986,233 | 3,431,726 | +5,554,507 per encode | +4,322 | +5,550,185 | 2.6186 | `host-kotlin-encode-64.json` |
+| Kotlin | JNA and the JVM | encode 512×512 | 113,681,766 | 106,954,986 | +6,726,780 per encode | +127,951 | +6,598,829 | 1.0629 | `host-kotlin-encode-512.json` |
+| Kotlin | JNA and the JVM | decode (64×64's hash) | 4,818,670 | 2,212,747 | +2,605,923 per decode | +4,138 | +2,601,785 | 2.1777 | `host-kotlin-decode-64.json` |
+| Python | ctypes and CPython | encode 64×64 | 3,729,901 | 3,431,724 | +298,177 per encode | +4,322 | +293,855 | 1.0869 | `host-python-encode-64.json` |
+| Python | ctypes and CPython | encode 512×512 | 107,109,046 | 106,955,006 | +154,040 per encode | +127,951 | +26,089 | 1.0014 | `host-python-encode-512.json` |
+| Python | ctypes and CPython | decode (64×64's hash) | 2,506,928 | 2,212,747 | +294,181 per decode | +4,138 | +290,043 | 1.1329 | `host-python-decode-64.json` |
 | TypeScript (wasm) | the wasm-bindgen glue, V8, and the core itself compiled to wasm | encode 64×64 | 10,869,325 | 3,735,890 | +7,133,435 per encode | — | — | 2.9094 | `host-ts-wasm-encode-64.json` |
 | TypeScript (wasm) | the wasm-bindgen glue, V8, and the core itself compiled to wasm | encode 512×512 | 404,447,625 | 109,849,423 | +294,598,202 per encode | — | — | 3.6818 | `host-ts-wasm-encode-512.json` |
 | TypeScript (wasm) | the wasm-bindgen glue, V8, and the core itself compiled to wasm | decode (64×64's hash) | 6,128,078 | 2,400,660 | +3,727,418 per decode | — | — | 2.5527 | `host-ts-wasm-decode-64.json` |
@@ -90,4 +90,4 @@ The Python bindings write a byte array into the RustBuffer in one `ctypes.memmov
 | encode 64×64 | 3,729,075 | 46,326,177 | −42,597,102 per encode | 0.0805 | `reduce-uniffi-py-bytes-encode-64.json` |
 | encode 512×512 | 107,109,034 | 2,833,081,139 | −2,725,972,105 per encode | 0.0379 | `reduce-uniffi-py-bytes-encode-512.json` |
 
-Counted at 84e33389d9258cbebac4f536fe8a1accd9613278, 8f78dff892aebb1882d0e4a25a94e04a29eb830c, b2f222f6f7748e404fc21d1cdf9b99df8dcd18cf, baa863e782fbce9d3437875241b86717131a52c4 on AMD Ryzen 7 7800X3D 8-Core Processor; each record holds its binaries' SHA-256, the host, the counter and every block.
+Counted at 45498f888e3da188af6a48a66cca6b60d70a3f1a, 84e33389d9258cbebac4f536fe8a1accd9613278, 8f78dff892aebb1882d0e4a25a94e04a29eb830c, baa863e782fbce9d3437875241b86717131a52c4 on AMD Ryzen 7 7800X3D 8-Core Processor; each record holds its binaries' SHA-256, the host, the counter and every block.
