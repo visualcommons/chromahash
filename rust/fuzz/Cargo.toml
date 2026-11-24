@@ -1,0 +1,43 @@
+[package]
+name = "chromahash-fuzz"
+version = "0.0.0"
+edition = "2024"
+description = "cargo-fuzz targets for the chromahash core: from_bytes, decode and encode"
+license = "MIT OR Apache-2.0"
+publish = false
+
+# Standalone, like every other crate in this repository: there is no Cargo
+# workspace, and this crate deliberately has no `[workspace]` table. Build it
+# with `cargo +nightly fuzz ... --fuzz-dir rust/fuzz` (or `mise run fuzz:rust`).
+# `cargo package` for the core skips this directory because it holds its own
+# Cargo.toml, so nothing here ships with the published crate.
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+# The fuzz harness, and the only dependency the core gains anywhere — here, in
+# a crate of its own that never enters the core's runtime graph.
+libfuzzer-sys = "0.4"
+chromahash = { path = ".." }
+
+[[bin]]
+name = "from_bytes"
+path = "fuzz_targets/from_bytes.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode"
+path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "encode"
+path = "fuzz_targets/encode.rs"
+test = false
+doc = false
+bench = false
