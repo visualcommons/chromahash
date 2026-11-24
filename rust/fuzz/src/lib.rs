@@ -78,7 +78,7 @@ pub fn check_raster(hash: &ChromaHash, w: u32, h: u32, rgba: &[u8]) {
     );
     if !has_alpha(hash.as_bytes()[0]) {
         assert!(
-            rgba.chunks_exact(4).all(|p| p[3] == 255),
+            rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 255),
             "a hash without the alpha flag decoded a non-opaque pixel"
         );
     }

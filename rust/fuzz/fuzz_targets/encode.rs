@@ -19,7 +19,7 @@ fuzz_target!(|data: &[u8]| {
     let bytes = hash.as_bytes();
 
     let b0 = bytes[0];
-    let alpha = input.rgba.chunks_exact(4).any(|p| p[3] < 255);
+    let alpha = input.rgba.as_chunks::<4>().0.iter().any(|p| p[3] < 255);
     assert_eq!(
         version(b0),
         FORMAT_VERSION,
